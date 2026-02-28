@@ -1,4 +1,4 @@
-# Desktop Space Query - Complete Fix Summary
+﻿# Desktop Space Query - Complete Fix Summary
 
 ## ✅ ISSUE RESOLVED
 
@@ -187,7 +187,7 @@ For queries like "What's in that terminal window?":
 yabai -m query --spaces  # Lists all spaces
 yabai -m query --windows # Lists all windows
 
-# JARVIS uses this data for instant responses
+# Ironcliw uses this data for instant responses
 ```
 
 ### Without Yabai (Fallback):
@@ -211,13 +211,13 @@ python start_system.py
 # Emergency cleanup
 python start_system.py --emergency-cleanup
 
-# Start JARVIS
+# Start Ironcliw
 python start_system.py
 ```
 
 ### Test Desktop Space Query:
 ```bash
-# In JARVIS interface, ask:
+# In Ironcliw interface, ask:
 "What's happening across my desktop spaces?"
 "Where is Cursor?"
 "What apps are running on Desktop 2?"

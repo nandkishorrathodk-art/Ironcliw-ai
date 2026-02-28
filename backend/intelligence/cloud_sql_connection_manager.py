@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Singleton CloudSQL Connection Manager for JARVIS v3.1
+Singleton CloudSQL Connection Manager for Ironcliw v3.1
 ======================================================
 
 Production-grade, fully async, thread-safe connection pool manager with:
@@ -40,7 +40,7 @@ Architecture:
 │                 └─────────────────────────────┘                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 3.1.0
 """
 
@@ -310,7 +310,7 @@ def _cleanup_stale_tls_operations(max_age_seconds: float = 120.0) -> int:
 # =============================================================================
 # v132.0: TLS-Safe Connection Factory - UNIFIED ENTRY POINT FOR ALL ASYNCPG
 # =============================================================================
-# ALL asyncpg connections in the JARVIS ecosystem MUST use these factory
+# ALL asyncpg connections in the Ironcliw ecosystem MUST use these factory
 # functions to prevent TLS race conditions (InvalidStateError).
 #
 # The asyncpg TLS bug occurs when multiple connections attempt TLS upgrade
@@ -334,7 +334,7 @@ async def tls_safe_connect(
     """
     v133.0: TLS-Safe Connection Factory - Robust race condition protection.
 
-    This is the ONLY safe way to create asyncpg connections in JARVIS.
+    This is the ONLY safe way to create asyncpg connections in Ironcliw.
     All other methods bypass TLS serialization and may cause InvalidStateError.
 
     v133.0 ROOT CAUSE FIX for asyncpg TLS InvalidStateError:
@@ -543,7 +543,7 @@ async def tls_safe_create_pool(
     """
     v133.0: TLS-Safe Pool Factory - Robust connection pool with race protection.
 
-    This is the ONLY safe way to create asyncpg pools in JARVIS.
+    This is the ONLY safe way to create asyncpg pools in Ironcliw.
     All other methods bypass TLS serialization and may cause InvalidStateError.
 
     v133.0 ROOT CAUSE FIX for asyncpg TLS InvalidStateError:
@@ -856,7 +856,7 @@ def _discover_database_config_path() -> Optional[Path]:
     """
     search_paths = [
         Path.home() / ".jarvis" / "gcp" / "database_config.json",
-        Path(os.getenv("JARVIS_HOME", ".")) / "gcp" / "database_config.json",
+        Path(os.getenv("Ironcliw_HOME", ".")) / "gcp" / "database_config.json",
         Path("database_config.json"),
     ]
 
@@ -914,7 +914,7 @@ class CredentialSource(Enum):
     ENVIRONMENT_VARIABLE = "environment"      # CI/CD and container deployments
     MACOS_KEYCHAIN = "macos_keychain"        # Local development on macOS
     CONFIG_FILE = "config_file"               # Fallback for local development
-    CROSS_REPO_CACHE = "cross_repo_cache"    # Shared across JARVIS Trinity
+    CROSS_REPO_CACHE = "cross_repo_cache"    # Shared across Ironcliw Trinity
 
 
 @dataclass
@@ -940,7 +940,7 @@ class IntelligentCredentialResolver:
     - Caches validated credentials with TTL
     - Provides credential validation before use
     - Handles authentication failures with auto-refresh
-    - Synchronizes credentials across JARVIS Trinity repos
+    - Synchronizes credentials across Ironcliw Trinity repos
     - v115.0: GCP Application Default Credentials bootstrapping
     - v115.0: Event loop safe credential operations
     - v115.0: Intelligent retry after credential reload
@@ -948,29 +948,29 @@ class IntelligentCredentialResolver:
 
     Priority Order:
     1. IAM Authentication (if enabled and available)
-    2. Environment Variables (JARVIS_DB_PASSWORD, CLOUD_SQL_PASSWORD)
+    2. Environment Variables (Ironcliw_DB_PASSWORD, CLOUD_SQL_PASSWORD)
     3. GCP Secret Manager (jarvis-db-password secret)
     4. macOS Keychain (jarvis-db-password)
-    5. Cross-repo cache (from JARVIS Trinity shared state)
+    5. Cross-repo cache (from Ironcliw Trinity shared state)
     6. Config file (database_config.json)
     """
 
     # Class-level cache with TTL
     _credential_cache: Optional[CredentialResult] = None
     _cache_lock = threading.Lock()
-    _cache_ttl = float(os.getenv("JARVIS_CREDENTIAL_CACHE_TTL", "300"))  # 5 minutes default
+    _cache_ttl = float(os.getenv("Ironcliw_CREDENTIAL_CACHE_TTL", "300"))  # 5 minutes default
     _last_validation: float = 0
-    _validation_ttl = float(os.getenv("JARVIS_CREDENTIAL_VALIDATION_TTL", "60"))  # 1 minute
+    _validation_ttl = float(os.getenv("Ironcliw_CREDENTIAL_VALIDATION_TTL", "60"))  # 1 minute
 
     # IAM authentication settings
-    _iam_auth_enabled = os.getenv("JARVIS_USE_IAM_AUTH", "false").lower() in ("1", "true", "yes")
-    _iam_service_account: Optional[str] = os.getenv("JARVIS_IAM_SERVICE_ACCOUNT")
+    _iam_auth_enabled = os.getenv("Ironcliw_USE_IAM_AUTH", "false").lower() in ("1", "true", "yes")
+    _iam_service_account: Optional[str] = os.getenv("Ironcliw_IAM_SERVICE_ACCOUNT")
 
     # v115.0: GCP credentials bootstrapping
     _gcp_credentials_bootstrapped = False
     _gcp_credentials_path: Optional[str] = None
     _retry_count = 0
-    _max_credential_retries = int(os.getenv("JARVIS_MAX_CREDENTIAL_RETRIES", "3"))
+    _max_credential_retries = int(os.getenv("Ironcliw_MAX_CREDENTIAL_RETRIES", "3"))
 
     @classmethod
     def bootstrap_gcp_credentials(cls) -> bool:
@@ -1121,10 +1121,10 @@ class IntelligentCredentialResolver:
                 return None
 
             db_config = {
-                "host": os.getenv("JARVIS_DB_HOST", "127.0.0.1"),
-                "port": int(os.getenv("JARVIS_DB_PORT", cloud_sql.get("port", 5432))),
-                "database": os.getenv("JARVIS_DB_NAME", cloud_sql.get("database", "jarvis_learning")),
-                "user": os.getenv("JARVIS_DB_USER", cloud_sql.get("user", "jarvis")),
+                "host": os.getenv("Ironcliw_DB_HOST", "127.0.0.1"),
+                "port": int(os.getenv("Ironcliw_DB_PORT", cloud_sql.get("port", 5432))),
+                "database": os.getenv("Ironcliw_DB_NAME", cloud_sql.get("database", "jarvis_learning")),
+                "user": os.getenv("Ironcliw_DB_USER", cloud_sql.get("user", "jarvis")),
             }
 
             # Add authentication method
@@ -1148,7 +1148,7 @@ class IntelligentCredentialResolver:
     def _build_config_from_env(cls) -> Optional[Dict[str, Any]]:
         """Build config entirely from environment variables."""
         # Check if we have minimum required env vars
-        if not os.getenv("JARVIS_DB_PORT") and not os.getenv("CLOUD_SQL_PORT"):
+        if not os.getenv("Ironcliw_DB_PORT") and not os.getenv("CLOUD_SQL_PORT"):
             return None
 
         cred_result = cls._resolve_credentials({})
@@ -1157,10 +1157,10 @@ class IntelligentCredentialResolver:
             return None
 
         return {
-            "host": os.getenv("JARVIS_DB_HOST", "127.0.0.1"),
-            "port": int(os.getenv("JARVIS_DB_PORT", os.getenv("CLOUD_SQL_PORT", "5432"))),
-            "database": os.getenv("JARVIS_DB_NAME", "jarvis_learning"),
-            "user": os.getenv("JARVIS_DB_USER", "jarvis"),
+            "host": os.getenv("Ironcliw_DB_HOST", "127.0.0.1"),
+            "port": int(os.getenv("Ironcliw_DB_PORT", os.getenv("CLOUD_SQL_PORT", "5432"))),
+            "database": os.getenv("Ironcliw_DB_NAME", "jarvis_learning"),
+            "user": os.getenv("Ironcliw_DB_USER", "jarvis"),
             "password": cred_result.password if not cred_result.use_iam_auth else None,
             "iam_auth": cred_result.use_iam_auth,
         }
@@ -1239,7 +1239,7 @@ class IntelligentCredentialResolver:
             cls._update_cache(result)
             return result
 
-        # 6. Cross-repo cache (JARVIS Trinity shared state - validate to prevent stale credentials)
+        # 6. Cross-repo cache (Ironcliw Trinity shared state - validate to prevent stale credentials)
         result = cls._try_cross_repo_cache()
         if result.success:
             # v133.0: Validate cross-repo cache against config file (source of truth)
@@ -1330,7 +1330,7 @@ class IntelligentCredentialResolver:
     def _try_environment_variables(cls) -> CredentialResult:
         """Try to get credentials from environment variables."""
         password = (
-            os.getenv("JARVIS_DB_PASSWORD") or
+            os.getenv("Ironcliw_DB_PASSWORD") or
             os.getenv("CLOUD_SQL_PASSWORD") or
             os.getenv("POSTGRES_PASSWORD") or
             os.getenv("DATABASE_PASSWORD")
@@ -1457,9 +1457,9 @@ class IntelligentCredentialResolver:
     @classmethod
     def save_to_cross_repo_cache(cls, password: str) -> bool:
         """
-        Save validated credentials to cross-repo cache for JARVIS Trinity.
+        Save validated credentials to cross-repo cache for Ironcliw Trinity.
 
-        This allows JARVIS Prime and Reactor Core to use the same validated credentials.
+        This allows Ironcliw Prime and Reactor Core to use the same validated credentials.
         """
         try:
             cross_repo_dir = Path.home() / ".jarvis" / "cross_repo"
@@ -1473,7 +1473,7 @@ class IntelligentCredentialResolver:
                 "cached_at": time.time(),
                 "validated": True,
                 "source": "jarvis_main",
-                "db_user": os.getenv("JARVIS_DB_USER", "jarvis"),
+                "db_user": os.getenv("Ironcliw_DB_USER", "jarvis"),
                 # Note: In production, use proper encryption
                 "db_password": password,  # TODO: Encrypt this
             }
@@ -1497,7 +1497,7 @@ class IntelligentCredentialResolver:
         v133.0: Invalidate the cross-repo credential cache.
 
         This should be called when stale credentials are detected to prevent
-        other JARVIS Trinity repos from using outdated passwords.
+        other Ironcliw Trinity repos from using outdated passwords.
         """
         try:
             cross_repo_path = Path.home() / ".jarvis" / "cross_repo" / "credentials_cache.json"
@@ -1797,7 +1797,7 @@ class IntelligentCredentialResolver:
                 "timestamp": time.time(),
                 "source": source_value,
                 "reason": "password_authentication_failed",
-                "user": os.getenv("JARVIS_DB_USER", "jarvis"),
+                "user": os.getenv("Ironcliw_DB_USER", "jarvis"),
                 "version": "114.0",
             }
 
@@ -1825,7 +1825,7 @@ class IntelligentCredentialResolver:
         latency_ms: Optional[float] = None,
     ) -> None:
         """
-        v114.0: Broadcast that credentials have been validated across JARVIS Trinity.
+        v114.0: Broadcast that credentials have been validated across Ironcliw Trinity.
 
         Call this after a successful database connection.
         """
@@ -1844,7 +1844,7 @@ class IntelligentCredentialResolver:
             if initializer:
                 await initializer.broadcast_credential_validated(
                     source=source.value,
-                    user=os.getenv("JARVIS_DB_USER", "jarvis"),
+                    user=os.getenv("Ironcliw_DB_USER", "jarvis"),
                     latency_ms=latency_ms,
                 )
         except Exception as e:
@@ -1853,7 +1853,7 @@ class IntelligentCredentialResolver:
     @classmethod
     def check_invalidation_signal(cls) -> Optional[Dict[str, Any]]:
         """
-        v114.0: Check if another JARVIS Trinity repo has signaled credential invalidation.
+        v114.0: Check if another Ironcliw Trinity repo has signaled credential invalidation.
 
         This allows repos to detect when credentials have been invalidated by another
         process without needing IPC or network communication.
@@ -1921,7 +1921,7 @@ class IntelligentCredentialResolver:
         # Check each source
         # 1. Environment Variables
         env_password = (
-            os.getenv("JARVIS_DB_PASSWORD") or
+            os.getenv("Ironcliw_DB_PASSWORD") or
             os.getenv("CLOUD_SQL_PASSWORD") or
             os.getenv("POSTGRES_PASSWORD") or
             os.getenv("DATABASE_PASSWORD")
@@ -1929,7 +1929,7 @@ class IntelligentCredentialResolver:
         report["sources"]["environment"] = {
             "available": bool(env_password),
             "vars_checked": [
-                "JARVIS_DB_PASSWORD",
+                "Ironcliw_DB_PASSWORD",
                 "CLOUD_SQL_PASSWORD",
                 "POSTGRES_PASSWORD",
                 "DATABASE_PASSWORD"
@@ -2047,7 +2047,7 @@ class IntelligentCredentialResolver:
             "available_sources": available_sources,
             "recommended_action": (
                 "Credentials available" if available_sources else
-                "Set JARVIS_DB_PASSWORD or configure GCP Secret Manager"
+                "Set Ironcliw_DB_PASSWORD or configure GCP Secret Manager"
             )
         }
 
@@ -2091,13 +2091,13 @@ def _get_gate_config() -> Dict[str, Any]:
     Edge Case #13: All timeouts/delays externalized to env vars.
     """
     return {
-        "readiness_timeout": float(os.getenv("JARVIS_PROXY_READINESS_TIMEOUT", "30.0")),
-        "db_check_retries": int(os.getenv("JARVIS_PROXY_DB_CHECK_RETRIES", "5")),
-        "db_check_backoff_base": float(os.getenv("JARVIS_PROXY_DB_CHECK_BACKOFF_BASE", "1.0")),
-        "db_check_backoff_max": float(os.getenv("JARVIS_PROXY_DB_CHECK_BACKOFF_MAX", "10.0")),
-        "db_check_jitter": float(os.getenv("JARVIS_PROXY_DB_CHECK_JITTER", "0.3")),
-        "periodic_recheck_interval": float(os.getenv("JARVIS_PROXY_PERIODIC_RECHECK_INTERVAL", "300")),  # 0 = disabled
-        "db_check_timeout": float(os.getenv("JARVIS_PROXY_DB_CHECK_TIMEOUT", "5.0")),
+        "readiness_timeout": float(os.getenv("Ironcliw_PROXY_READINESS_TIMEOUT", "30.0")),
+        "db_check_retries": int(os.getenv("Ironcliw_PROXY_DB_CHECK_RETRIES", "5")),
+        "db_check_backoff_base": float(os.getenv("Ironcliw_PROXY_DB_CHECK_BACKOFF_BASE", "1.0")),
+        "db_check_backoff_max": float(os.getenv("Ironcliw_PROXY_DB_CHECK_BACKOFF_MAX", "10.0")),
+        "db_check_jitter": float(os.getenv("Ironcliw_PROXY_DB_CHECK_JITTER", "0.3")),
+        "periodic_recheck_interval": float(os.getenv("Ironcliw_PROXY_PERIODIC_RECHECK_INTERVAL", "300")),  # 0 = disabled
+        "db_check_timeout": float(os.getenv("Ironcliw_PROXY_DB_CHECK_TIMEOUT", "5.0")),
     }
 
 
@@ -2230,13 +2230,13 @@ class ProxyReadinessGate:
         self._runtime_failure_streak = 0
         self._runtime_failure_threshold = max(
             1,
-            int(_get_env_float_safe("JARVIS_RUNTIME_FAILURE_THRESHOLD", float(self._consecutive_failure_threshold))),
+            int(_get_env_float_safe("Ironcliw_RUNTIME_FAILURE_THRESHOLD", float(self._consecutive_failure_threshold))),
         )
         self._runtime_network_failure_threshold = max(
             self._runtime_failure_threshold,
             int(
                 _get_env_float_safe(
-                    "JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD",
+                    "Ironcliw_RUNTIME_NETWORK_FAILURE_THRESHOLD",
                     float(self._runtime_failure_threshold + 2),
                 )
             ),
@@ -2826,8 +2826,8 @@ class ProxyReadinessGate:
         assert self._check_lock is not None  # Guaranteed by _ensure_locks
 
         # v260.4 (Fix 3 + Fix 7): Retry before declaring UNAVAILABLE
-        _max_retries = int(_get_env_float_safe("JARVIS_RECHECK_RETRIES", 2))
-        _retry_delay = _get_env_float_safe("JARVIS_RECHECK_RETRY_DELAY", 5.0)
+        _max_retries = int(_get_env_float_safe("Ironcliw_RECHECK_RETRIES", 2))
+        _retry_delay = _get_env_float_safe("Ironcliw_RECHECK_RETRY_DELAY", 5.0)
 
         async with self._check_lock:
             if self._state != ReadinessState.READY:
@@ -2925,15 +2925,15 @@ class ProxyReadinessGate:
 
         async def _recheck_loop():
             # v260.4 (Fix 7): Safe env var parsing — bad values won't kill the loop
-            _max_retries = int(_get_env_float_safe("JARVIS_RECHECK_RETRIES", 2))
-            _retry_delay = _get_env_float_safe("JARVIS_RECHECK_RETRY_DELAY", 5.0)
+            _max_retries = int(_get_env_float_safe("Ironcliw_RECHECK_RETRIES", 2))
+            _retry_delay = _get_env_float_safe("Ironcliw_RECHECK_RETRY_DELAY", 5.0)
 
             # v260.4 (Fix 5): Exponential backoff for recovery probes
             # Starts at _recovery_base, doubles each attempt, caps at _recovery_max.
             # Fast initial probe (10s) when CloudSQL comes back quickly,
             # backs off to 120s to reduce log noise during prolonged outages.
-            _recovery_base = _get_env_float_safe("JARVIS_RECHECK_RECOVERY_BASE", 10.0)
-            _recovery_max = _get_env_float_safe("JARVIS_RECHECK_RECOVERY_MAX", 120.0)
+            _recovery_base = _get_env_float_safe("Ironcliw_RECHECK_RECOVERY_BASE", 10.0)
+            _recovery_max = _get_env_float_safe("Ironcliw_RECHECK_RECOVERY_MAX", 120.0)
             _recovery_attempt = 0
 
             # v260.4 (Fix 6): CancelledError handler — clean shutdown logging
@@ -3593,7 +3593,7 @@ class ProxyReadinessGate:
                     logger.error(
                         "[ReadinessGate v114.0] ❌ Failed to reload credentials - "
                         "cannot continue without valid credentials. "
-                        "Please set JARVIS_DB_PASSWORD or configure credentials in "
+                        "Please set Ironcliw_DB_PASSWORD or configure credentials in "
                         "GCP Secret Manager, macOS Keychain, or database_config.json"
                     )
                     # Give up on credential failures if we can't get new credentials
@@ -3730,7 +3730,7 @@ class ProxyReadinessGate:
 
         v113.0: Uses service registry to broadcast CloudSQL readiness.
         v113.1: Fixed to use update_supervisor_state with metadata instead of non-existent method.
-        v113.2: Also broadcasts via CrossRepoStateInitializer for JARVIS Prime and Reactor Core.
+        v113.2: Also broadcasts via CrossRepoStateInitializer for Ironcliw Prime and Reactor Core.
         """
         # Track signaling results
         signaled_via = []
@@ -3764,7 +3764,7 @@ class ProxyReadinessGate:
         except Exception as e:
             logger.debug(f"[ReadinessGate v113.2] Service registry signaling failed: {e}")
 
-        # Method 2: CrossRepoStateInitializer (for JARVIS Prime and Reactor Core)
+        # Method 2: CrossRepoStateInitializer (for Ironcliw Prime and Reactor Core)
         try:
             try:
                 from core.cross_repo_state_initializer import (
@@ -4171,22 +4171,22 @@ class ConnectionConfig:
     Dynamic configuration for connection pool.
 
     All values can be overridden via environment variables:
-    - JARVIS_DB_MIN_CONNECTIONS
-    - JARVIS_DB_MAX_CONNECTIONS
-    - JARVIS_DB_CONNECTION_TIMEOUT
-    - JARVIS_DB_QUERY_TIMEOUT
-    - JARVIS_DB_POOL_CREATION_TIMEOUT
-    - JARVIS_DB_MAX_QUERIES_PER_CONN
-    - JARVIS_DB_MAX_IDLE_TIME
-    - JARVIS_DB_CHECKOUT_WARNING
-    - JARVIS_DB_CHECKOUT_TIMEOUT
-    - JARVIS_DB_LEAK_CHECK_INTERVAL
-    - JARVIS_DB_LEAKED_IDLE_MINUTES
-    - JARVIS_DB_FAILURE_THRESHOLD
-    - JARVIS_DB_RECOVERY_TIMEOUT
-    - JARVIS_DB_ENABLE_CLEANUP
-    - JARVIS_DB_CLEANUP_INTERVAL
-    - JARVIS_DB_AGGRESSIVE_CLEANUP
+    - Ironcliw_DB_MIN_CONNECTIONS
+    - Ironcliw_DB_MAX_CONNECTIONS
+    - Ironcliw_DB_CONNECTION_TIMEOUT
+    - Ironcliw_DB_QUERY_TIMEOUT
+    - Ironcliw_DB_POOL_CREATION_TIMEOUT
+    - Ironcliw_DB_MAX_QUERIES_PER_CONN
+    - Ironcliw_DB_MAX_IDLE_TIME
+    - Ironcliw_DB_CHECKOUT_WARNING
+    - Ironcliw_DB_CHECKOUT_TIMEOUT
+    - Ironcliw_DB_LEAK_CHECK_INTERVAL
+    - Ironcliw_DB_LEAKED_IDLE_MINUTES
+    - Ironcliw_DB_FAILURE_THRESHOLD
+    - Ironcliw_DB_RECOVERY_TIMEOUT
+    - Ironcliw_DB_ENABLE_CLEANUP
+    - Ironcliw_DB_CLEANUP_INTERVAL
+    - Ironcliw_DB_AGGRESSIVE_CLEANUP
     """
 
     def __post_init__(self):
@@ -4196,35 +4196,35 @@ class ConnectionConfig:
     def _load_from_env(self):
         """Load configuration from environment variables."""
         # Pool sizing (conservative for db-f1-micro)
-        self.min_connections = get_env_int('JARVIS_DB_MIN_CONNECTIONS', self.min_connections)
-        self.max_connections = get_env_int('JARVIS_DB_MAX_CONNECTIONS', self.max_connections)
+        self.min_connections = get_env_int('Ironcliw_DB_MIN_CONNECTIONS', self.min_connections)
+        self.max_connections = get_env_int('Ironcliw_DB_MAX_CONNECTIONS', self.max_connections)
 
         # Timeouts
-        self.connection_timeout = get_env_float('JARVIS_DB_CONNECTION_TIMEOUT', self.connection_timeout)
-        self.startup_connection_timeout = get_env_float('JARVIS_DB_STARTUP_CONNECTION_TIMEOUT', self.startup_connection_timeout)
-        self.query_timeout = get_env_float('JARVIS_DB_QUERY_TIMEOUT', self.query_timeout)
-        self.pool_creation_timeout = get_env_float('JARVIS_DB_POOL_CREATION_TIMEOUT', self.pool_creation_timeout)
+        self.connection_timeout = get_env_float('Ironcliw_DB_CONNECTION_TIMEOUT', self.connection_timeout)
+        self.startup_connection_timeout = get_env_float('Ironcliw_DB_STARTUP_CONNECTION_TIMEOUT', self.startup_connection_timeout)
+        self.query_timeout = get_env_float('Ironcliw_DB_QUERY_TIMEOUT', self.query_timeout)
+        self.pool_creation_timeout = get_env_float('Ironcliw_DB_POOL_CREATION_TIMEOUT', self.pool_creation_timeout)
 
         # Connection lifecycle
-        self.max_queries_per_connection = get_env_int('JARVIS_DB_MAX_QUERIES_PER_CONN', self.max_queries_per_connection)
-        self.max_idle_time_seconds = get_env_float('JARVIS_DB_MAX_IDLE_TIME', self.max_idle_time_seconds)
+        self.max_queries_per_connection = get_env_int('Ironcliw_DB_MAX_QUERIES_PER_CONN', self.max_queries_per_connection)
+        self.max_idle_time_seconds = get_env_float('Ironcliw_DB_MAX_IDLE_TIME', self.max_idle_time_seconds)
 
         # Leak detection
-        self.checkout_warning_seconds = get_env_float('JARVIS_DB_CHECKOUT_WARNING', self.checkout_warning_seconds)
-        self.checkout_timeout_seconds = get_env_float('JARVIS_DB_CHECKOUT_TIMEOUT', self.checkout_timeout_seconds)
-        self.leak_check_interval_seconds = get_env_float('JARVIS_DB_LEAK_CHECK_INTERVAL', self.leak_check_interval_seconds)
-        self.leaked_idle_threshold_minutes = get_env_int('JARVIS_DB_LEAKED_IDLE_MINUTES', self.leaked_idle_threshold_minutes)
+        self.checkout_warning_seconds = get_env_float('Ironcliw_DB_CHECKOUT_WARNING', self.checkout_warning_seconds)
+        self.checkout_timeout_seconds = get_env_float('Ironcliw_DB_CHECKOUT_TIMEOUT', self.checkout_timeout_seconds)
+        self.leak_check_interval_seconds = get_env_float('Ironcliw_DB_LEAK_CHECK_INTERVAL', self.leak_check_interval_seconds)
+        self.leaked_idle_threshold_minutes = get_env_int('Ironcliw_DB_LEAKED_IDLE_MINUTES', self.leaked_idle_threshold_minutes)
 
         # Circuit breaker
-        self.failure_threshold = get_env_int('JARVIS_DB_FAILURE_THRESHOLD', self.failure_threshold)
-        self.recovery_timeout_seconds = get_env_float('JARVIS_DB_RECOVERY_TIMEOUT', self.recovery_timeout_seconds)
+        self.failure_threshold = get_env_int('Ironcliw_DB_FAILURE_THRESHOLD', self.failure_threshold)
+        self.recovery_timeout_seconds = get_env_float('Ironcliw_DB_RECOVERY_TIMEOUT', self.recovery_timeout_seconds)
 
         # Background tasks
-        self.enable_background_cleanup = get_env_bool('JARVIS_DB_ENABLE_CLEANUP', self.enable_background_cleanup)
-        self.cleanup_interval_seconds = get_env_float('JARVIS_DB_CLEANUP_INTERVAL', self.cleanup_interval_seconds)
+        self.enable_background_cleanup = get_env_bool('Ironcliw_DB_ENABLE_CLEANUP', self.enable_background_cleanup)
+        self.cleanup_interval_seconds = get_env_float('Ironcliw_DB_CLEANUP_INTERVAL', self.cleanup_interval_seconds)
 
         # Aggressive cleanup mode
-        self.aggressive_cleanup_on_leak = get_env_bool('JARVIS_DB_AGGRESSIVE_CLEANUP', self.aggressive_cleanup_on_leak)
+        self.aggressive_cleanup_on_leak = get_env_bool('Ironcliw_DB_AGGRESSIVE_CLEANUP', self.aggressive_cleanup_on_leak)
 
     # Pool sizing (conservative for db-f1-micro)
     min_connections: int = 1
@@ -4467,12 +4467,12 @@ class CircuitBreaker:
         v83.0 Fixes:
         - Uses get_proxy_manager() singleton instead of constructing with dict
         - Integrates with ProxyReadinessGate for coordinated starts
-        - Cooldown configurable from env (JARVIS_CIRCUIT_BREAKER_PROXY_COOLDOWN)
+        - Cooldown configurable from env (Ironcliw_CIRCUIT_BREAKER_PROXY_COOLDOWN)
         - Proper async scheduling with running loop detection
         """
         try:
             # Get cooldown from env (no hardcoding)
-            cooldown = float(os.getenv("JARVIS_CIRCUIT_BREAKER_PROXY_COOLDOWN", "60"))
+            cooldown = float(os.getenv("Ironcliw_CIRCUIT_BREAKER_PROXY_COOLDOWN", "60"))
 
             # Check cooldown
             if self._last_proxy_start_attempt:

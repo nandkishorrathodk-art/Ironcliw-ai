@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Advanced Vision Intelligence - Metacognitive Awareness and Universal Interface Understanding
-Tests JARVIS's ability to handle ANY interface with pure vision intelligence
+Tests Ironcliw's ability to handle ANY interface with pure vision intelligence
 """
 
 import asyncio
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 async def test_metacognitive_awareness():
-    """Test JARVIS's ability to express what it knows vs infers vs cannot determine"""
+    """Test Ironcliw's ability to express what it knows vs infers vs cannot determine"""
     
     chatbot = ClaudeVisionChatbot()
     
@@ -63,7 +63,7 @@ async def test_metacognitive_awareness():
         
         try:
             response = await chatbot.analyze_screen_with_vision(test['query'])
-            print(f"\n🤖 JARVIS Response:")
+            print(f"\n🤖 Ironcliw Response:")
             print(response)
             
             # Check for metacognitive markers
@@ -142,7 +142,7 @@ async def test_non_standard_interfaces():
             
             try:
                 response = await chatbot.analyze_screen_with_vision(query)
-                print(f"\n🤖 JARVIS: {response}")
+                print(f"\n🤖 Ironcliw: {response}")
                 
                 # Check if response shows understanding of non-standard UI
                 if interface['type'] == 'ASCII Terminal UI':
@@ -198,7 +198,7 @@ async def test_privacy_awareness():
         
         try:
             response = await chatbot.analyze_screen_with_vision(test['query'])
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
             # Check for privacy awareness
             privacy_aware = any(phrase in response.lower() for phrase in [
@@ -238,7 +238,7 @@ async def test_ambiguous_queries():
         
         try:
             response = await chatbot.analyze_screen_with_vision(query)
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
             # Check for clarification attempts
             clarifying = any(phrase in response.lower() for phrase in [
@@ -289,7 +289,7 @@ async def test_cultural_and_language_awareness():
         
         try:
             response = await chatbot.analyze_screen_with_vision(test['query'])
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -300,7 +300,7 @@ async def test_cultural_and_language_awareness():
 async def main():
     """Run all advanced vision intelligence tests"""
     
-    print("🧪 JARVIS Advanced Vision Intelligence Test Suite")
+    print("🧪 Ironcliw Advanced Vision Intelligence Test Suite")
     print("Testing pure vision intelligence for ANY interface")
     print("=" * 70)
     

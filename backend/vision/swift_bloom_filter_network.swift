@@ -1,7 +1,7 @@
-#!/usr/bin/env swift
+﻿#!/usr/bin/env swift
 
 //
-//  Swift Bloom Filter Network for JARVIS Vision System
+//  Swift Bloom Filter Network for Ironcliw Vision System
 //  Optimized for native macOS UI element tracking and deduplication
 //  
 //  Architecture:

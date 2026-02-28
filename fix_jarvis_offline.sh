@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🔧 Fixing JARVIS offline issue..."
+echo "🔧 Fixing Ironcliw offline issue..."
 
 # 1. Ensure API key is exported
 if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -35,22 +35,22 @@ else
     exit 1
 fi
 
-# 6. Activate JARVIS
-echo "🤖 Activating JARVIS..."
+# 6. Activate Ironcliw
+echo "🤖 Activating Ironcliw..."
 curl -X POST http://localhost:8010/voice/jarvis/activate -H "Content-Type: application/json" -d '{}' > /dev/null 2>&1
 
-# 7. Check JARVIS status
+# 7. Check Ironcliw status
 STATUS=$(curl -s http://localhost:8010/voice/jarvis/status | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', 'unknown'))")
-echo "📊 JARVIS status: $STATUS"
+echo "📊 Ironcliw status: $STATUS"
 
 if [ "$STATUS" = "online" ] || [ "$STATUS" = "standby" ]; then
-    echo "✅ JARVIS is ready!"
+    echo "✅ Ironcliw is ready!"
 else
-    echo "⚠️  JARVIS status is: $STATUS"
+    echo "⚠️  Ironcliw status is: $STATUS"
 fi
 
 echo ""
 echo "🎯 Next steps:"
 echo "1. Refresh the frontend (http://localhost:3000)"
-echo "2. JARVIS should now show as ONLINE"
-echo "3. Try: 'Hey JARVIS, start monitoring my screen'"
+echo "2. Ironcliw should now show as ONLINE"
+echo "3. Try: 'Hey Ironcliw, start monitoring my screen'"

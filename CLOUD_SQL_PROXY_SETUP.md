@@ -1,13 +1,13 @@
-# Cloud SQL Proxy Setup Guide
+﻿# Cloud SQL Proxy Setup Guide
 
-Advanced, dynamic, robust Cloud SQL proxy management for JARVIS voice biometric authentication.
+Advanced, dynamic, robust Cloud SQL proxy management for Ironcliw voice biometric authentication.
 
 ## Features
 
 ✅ **Zero Hardcoding** - All configuration from `~/.jarvis/gcp/database_config.json`
 ✅ **Auto-Discovery** - Finds proxy binary and config automatically
 ✅ **System Service** - Persists across reboots (launchd/systemd)
-✅ **Runtime Management** - Ensures proxy runs before JARVIS starts
+✅ **Runtime Management** - Ensures proxy runs before Ironcliw starts
 ✅ **Health Monitoring** - Auto-recovers if proxy crashes
 ✅ **Port Conflict Resolution** - Handles multiple proxy instances gracefully
 ✅ **Multi-Platform** - macOS, Linux, Windows support
@@ -19,12 +19,12 @@ Advanced, dynamic, robust Cloud SQL proxy management for JARVIS voice biometric 
 The proxy manager is **automatically integrated** into `start_system.py`:
 
 ```bash
-# Just start JARVIS normally - proxy auto-starts if needed
+# Just start Ironcliw normally - proxy auto-starts if needed
 python start_system.py
 python start_system.py --restart
 ```
 
-JARVIS will:
+Ironcliw will:
 1. Check if proxy is running
 2. Start it if needed (with health monitoring)
 3. Load voice profiles from Cloud SQL
@@ -136,7 +136,7 @@ All settings loaded from `~/.jarvis/gcp/database_config.json`:
    - Discovers proxy binary location
    - Reads config for connection details
    - Starts proxy with health monitoring
-4. **JARVIS backend starts:**
+4. **Ironcliw backend starts:**
    - Connects to Cloud SQL via proxy
    - Loads speaker profiles (voice biometrics)
    - Enables voice-authenticated unlock
@@ -150,7 +150,7 @@ Proxy manager runs health checks every 60 seconds:
 
 ### Graceful Degradation
 
-If Cloud SQL proxy fails, JARVIS automatically falls back to local SQLite:
+If Cloud SQL proxy fails, Ironcliw automatically falls back to local SQLite:
 - No crashes or errors
 - Voice features still work (limited profiles)
 - Warning logged for troubleshooting
@@ -217,7 +217,7 @@ PGPASSWORD=YOUR_DB_PASSWORD_HERE psql -h 127.0.0.1 -U jarvis -d jarvis_learning 
 tail -f /tmp/cloud-sql-proxy.log
 ```
 
-**JARVIS logs:**
+**Ironcliw logs:**
 ```bash
 tail -f backend/logs/jarvis_optimized_*.log | grep -E "Cloud SQL|Speaker|profiles"
 ```
@@ -287,7 +287,7 @@ cloud-sql-proxy (GCP binary)
     ↓
 Cloud SQL (jarvis-473803:us-central1:jarvis-learning-db)
     ↓
-JARVISLearningDatabase
+IroncliwLearningDatabase
     ↓
 Speaker Profiles (voice biometrics)
 ```
@@ -304,7 +304,7 @@ Speaker Profiles (voice biometrics)
 - ❌ Hardcoded connection strings
 
 ### After (Automated)
-- ✅ Proxy auto-starts with JARVIS
+- ✅ Proxy auto-starts with Ironcliw
 - ✅ Persists across reboots (if installed as service)
 - ✅ Self-healing with health monitor
 - ✅ Automatic conflict resolution
@@ -329,7 +329,7 @@ Speaker Profiles (voice biometrics)
 # Kill any existing proxy
 pkill -f cloud-sql-proxy
 
-# Start JARVIS - proxy should auto-start
+# Start Ironcliw - proxy should auto-start
 python start_system.py
 
 # Check logs for proxy startup
@@ -338,7 +338,7 @@ tail -f /tmp/cloud-sql-proxy.log
 
 ### Test Health Monitoring
 ```bash
-# Start JARVIS
+# Start Ironcliw
 python start_system.py
 
 # Kill proxy after 30 seconds
@@ -354,7 +354,7 @@ tail -f /tmp/cloud-sql-proxy.log
 cloud-sql-proxy jarvis-473803:us-central1:jarvis-learning-db --port 5432 &
 cloud-sql-proxy jarvis-473803:us-central1:jarvis-learning-db --port 5432 &
 
-# Start JARVIS - should kill conflicts and start clean
+# Start Ironcliw - should kill conflicts and start clean
 python start_system.py --restart
 ```
 
@@ -366,7 +366,7 @@ python start_system.py --restart
 A: No, runtime management works fine. System service is recommended for production (auto-start on boot).
 
 **Q: What happens if proxy fails to start?**
-A: JARVIS falls back to SQLite gracefully. Voice biometrics still work with local profiles.
+A: Ironcliw falls back to SQLite gracefully. Voice biometrics still work with local profiles.
 
 **Q: Can I use a different port?**
 A: Yes, change `port` in `database_config.json`. Proxy manager reads it dynamically.
@@ -375,11 +375,11 @@ A: Yes, change `port` in `database_config.json`. Proxy manager reads it dynamica
 A: Yes! Proxy manager detects platform and adjusts accordingly (no systemd/launchd on Windows).
 
 **Q: How do I check if voice profiles loaded?**
-A: Look for `✅ Speaker Verification Service ready (2 profiles loaded)` in JARVIS logs.
+A: Look for `✅ Speaker Verification Service ready (2 profiles loaded)` in Ironcliw logs.
 
 ---
 
 ## Credits
 
-Created by Claude Code for the JARVIS AI Agent project.
+Created by Claude Code for the Ironcliw AI Agent project.
 Advanced, dynamic, robust - no hardcoding!

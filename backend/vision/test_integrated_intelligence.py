@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for integrated intelligence systems:
 - Workflow Pattern Engine
 - Anomaly Detection Framework  
 - Intervention Decision Engine
 
-This demonstrates how the three components work together in JARVIS Vision.
+This demonstrates how the three components work together in Ironcliw Vision.
 """
 
 import asyncio
@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def test_integrated_intelligence():
     """Test the integrated intelligence systems"""
-    print("🤖 JARVIS Vision Intelligence System - Integrated Test")
+    print("🤖 Ironcliw Vision Intelligence System - Integrated Test")
     print("=" * 70)
     
     try:
@@ -128,7 +128,7 @@ async def test_integrated_intelligence():
         intervention = await analyzer.check_intervention_opportunity(situation)
         
         if intervention['intervention_recommended']:
-            print(f"\n   🤖 JARVIS should intervene!")
+            print(f"\n   🤖 Ironcliw should intervene!")
             print(f"   - Type: {intervention['type']}")
             print(f"   - Timing: {intervention['timing']}")
             print(f"   - Confidence: {intervention['confidence']:.2f}")
@@ -282,7 +282,7 @@ async def demonstrate_memory_management():
 
 
 if __name__ == "__main__":
-    print("Starting JARVIS Vision Intelligence System tests...\n")
+    print("Starting Ironcliw Vision Intelligence System tests...\n")
     
     # Run all tests
     asyncio.run(test_integrated_intelligence())
@@ -294,4 +294,4 @@ if __name__ == "__main__":
     print("- Learn and optimize user workflows")
     print("- Detect visual, behavioral, and system anomalies")
     print("- Decide when and how to offer proactive assistance")
-    print("- Work together to enhance JARVIS's understanding")
+    print("- Work together to enhance Ironcliw's understanding")

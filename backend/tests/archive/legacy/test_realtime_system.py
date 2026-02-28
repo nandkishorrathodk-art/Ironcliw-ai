@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test real-time system integration"""
 
 import asyncio
@@ -7,7 +7,7 @@ sys.path.append('.')
 
 from system_control.macos_system_integration import MacOSSystemIntegration
 from system_control.weather_bridge import WeatherBridge
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from voice.jarvis_agent_voice import IroncliwAgentVoice
 
 async def test_system():
     print("🔧 Testing Real-Time System Integration\n")
@@ -48,7 +48,7 @@ async def test_system():
     
     # Test 7: Time Query
     print("\n7️⃣ TIME QUERY TEST:")
-    jarvis = JARVISAgentVoice()
+    jarvis = IroncliwAgentVoice()
     time_response = await jarvis._handle_time_command("what time is it")
     print(f"   Time Response: {time_response}")
     

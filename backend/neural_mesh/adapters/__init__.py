@@ -1,7 +1,7 @@
-"""
-JARVIS Neural Mesh - Adapters Module
+﻿"""
+Ironcliw Neural Mesh - Adapters Module
 
-This module provides adapters to connect existing JARVIS agents
+This module provides adapters to connect existing Ironcliw agents
 to the Neural Mesh system with minimal code changes.
 
 Adapters allow legacy agents to participate in:

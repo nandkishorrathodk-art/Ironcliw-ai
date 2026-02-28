@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Space Response Generator - Natural language response generation for workspace intelligence
-Transforms workspace analysis into conversational JARVIS responses
+Transforms workspace analysis into conversational Ironcliw responses
 """
 
 import logging
@@ -24,13 +24,13 @@ class SpaceResponseGenerator:
     Generate natural language responses for workspace intelligence
 
     Features:
-    - JARVIS voice and personality
+    - Ironcliw voice and personality
     - Adaptive detail level based on context
     - Intelligent summarization
     - Contextual insights and suggestions
     """
 
-    # JARVIS personality phrases
+    # Ironcliw personality phrases
     GREETINGS = [
         "Sir, let me give you an overview",
         "Sir, here's what's happening",

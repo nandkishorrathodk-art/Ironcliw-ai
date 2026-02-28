@@ -1,4 +1,4 @@
-  # Enhanced VBIA System v6.2 - Complete Integration Guide
+﻿  # Enhanced VBIA System v6.2 - Complete Integration Guide
 
 **Voice Biometric Intelligent Authentication with Visual Security**
 
@@ -27,7 +27,7 @@ The Enhanced VBIA (Voice Biometric Intelligent Authentication) system v6.2 intro
 4. **Visual Confidence** - Screen state analysis, threat detection ✨ **NEW in v6.2**
 
 **Cross-Repo Integration**:
-- **JARVIS Prime** - Voice authentication delegation
+- **Ironcliw Prime** - Voice authentication delegation
 - **Reactor Core** - Event analytics and threat monitoring
 - **Unified State** - Shared via `~/.jarvis/cross_repo/`
 
@@ -98,12 +98,12 @@ tasks = [
 ]
 ```
 
-### 3. JARVIS Prime VBIA Delegation
+### 3. Ironcliw Prime VBIA Delegation
 
 **Location**: `jarvis_prime/core/vbia_delegate.py`
 
 **Features**:
-- Delegate voice authentication to main JARVIS
+- Delegate voice authentication to main Ironcliw
 - Request-result pattern via shared state files
 - Multi-factor security level configuration
 - Visual security and LangGraph reasoning flags
@@ -260,7 +260,7 @@ Voice Unlock Request
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  JARVIS (Main System)                                       │
+│  Ironcliw (Main System)                                       │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  VBIA System                                        │   │
@@ -283,7 +283,7 @@ Voice Unlock Request
         ┌─────────────────┴─────────────────┐
         ↓                                   ↓
 ┌───────────────────┐              ┌───────────────────┐
-│  JARVIS Prime     │              │  Reactor Core     │
+│  Ironcliw Prime     │              │  Reactor Core     │
 │                   │              │                   │
 │  ┌──────────────┐ │              │  ┌──────────────┐ │
 │  │ VBIA Delegate│ │              │  │ VBIA Connector│ │
@@ -306,7 +306,7 @@ Voice Unlock Request
 ### File Structure
 
 ```
-JARVIS-AI-Agent/
+Ironcliw-AI-Agent/
 ├── backend/
 │   ├── voice_unlock/
 │   │   ├── security/                        ✨ NEW
@@ -340,7 +340,7 @@ reactor-core/
 |-----------|----------|---------|-------------|
 | Visual Security Analyzer | `voice_unlock/security/visual_context_integration.py` | Screen analysis, threat detection | ✅ Yes |
 | Enhanced Evidence Collection | `voice_unlock/reasoning/voice_auth_nodes.py` | 4-stream parallel evidence gathering | ✅ Enhanced |
-| JARVIS Prime Delegate | `jarvis_prime/core/vbia_delegate.py` | Cross-repo delegation | ✅ Yes |
+| Ironcliw Prime Delegate | `jarvis_prime/core/vbia_delegate.py` | Cross-repo delegation | ✅ Yes |
 | Reactor Core Connector | `reactor_core/integration/vbia_connector.py` | Event analytics, threat monitoring | ✅ Yes |
 | Cost Tracker | `voice_unlock/observability/helicone_integration.py` | Cost optimization | ❌ Existing |
 | Pattern Memory | `voice_unlock/memory/voice_pattern_memory.py` | ChromaDB storage | ❌ Existing |
@@ -399,7 +399,7 @@ if evidence.threat_detected:
     print(f"Warning: {evidence.warning_message}")
 ```
 
-### JARVIS Prime Delegation
+### Ironcliw Prime Delegation
 
 ```python
 from jarvis_prime.core.vbia_delegate import delegate_voice_authentication
@@ -517,7 +517,7 @@ Alternatively, use `~/.jarvis/vbia_config.json`:
 ### Run Complete Test Suite
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 PYTHONPATH="$PWD:$PWD/backend" python3 backend/tests/test_vbia_enhanced_complete.py
 ```
 
@@ -547,7 +547,7 @@ python3 -m pytest backend/tests/test_vbia_enhanced_complete.py::test_2_evidence_
 
 **Cross-Repo Integration**:
 ```bash
-# Test JARVIS Prime delegation
+# Test Ironcliw Prime delegation
 python3 -m pytest backend/tests/test_vbia_enhanced_complete.py::test_3_jarvis_prime_delegation -v
 
 # Test Reactor Core events
@@ -564,10 +564,10 @@ All cross-repo communication happens via `~/.jarvis/cross_repo/`:
 
 ```
 ~/.jarvis/cross_repo/
-├── vbia_requests.json      # Requests from JARVIS Prime
-├── vbia_results.json       # Results from JARVIS
+├── vbia_requests.json      # Requests from Ironcliw Prime
+├── vbia_results.json       # Results from Ironcliw
 ├── vbia_events.json        # Real-time events
-└── vbia_state.json         # JARVIS capabilities
+└── vbia_state.json         # Ironcliw capabilities
 ```
 
 ### Event Format
@@ -633,11 +633,11 @@ All cross-repo communication happens via `~/.jarvis/cross_repo/`:
 
 3. **Dependencies**:
    ```bash
-   # JARVIS
-   cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+   # Ironcliw
+   cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
    pip install -r requirements.txt
 
-   # JARVIS Prime
+   # Ironcliw Prime
    cd /Users/djrussell23/Documents/repos/jarvis-prime
    pip install -r requirements.txt
 
@@ -648,7 +648,7 @@ All cross-repo communication happens via `~/.jarvis/cross_repo/`:
 
 4. **Run Tests**:
    ```bash
-   cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+   cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
    PYTHONPATH="$PWD:$PWD/backend" python3 backend/tests/test_vbia_enhanced_complete.py
    ```
 
@@ -723,10 +723,10 @@ All cross-repo communication happens via `~/.jarvis/cross_repo/`:
 
 ### Cross-Repo Communication Failing
 
-**Symptom**: JARVIS Prime delegation times out
+**Symptom**: Ironcliw Prime delegation times out
 
 **Check**:
-1. Is JARVIS running and VBIA enabled?
+1. Is Ironcliw running and VBIA enabled?
    ```bash
    cat ~/.jarvis/cross_repo/vbia_state.json | jq
    ```
@@ -835,7 +835,7 @@ Planned for v6.3+:
 **New Features**:
 - Visual security analyzer with 3-tier fallback
 - Enhanced EvidenceCollectionNode with 4-stream processing
-- JARVIS Prime VBIA delegation
+- Ironcliw Prime VBIA delegation
 - Reactor Core VBIA event connector
 - Comprehensive test suite
 

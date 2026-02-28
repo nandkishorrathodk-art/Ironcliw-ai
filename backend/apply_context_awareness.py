@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Apply Context Awareness to JARVIS
+Apply Context Awareness to Ironcliw
 =================================
 
-This script modifies the JARVIS backend to add context awareness
+This script modifies the Ironcliw backend to add context awareness
 for handling locked screen scenarios.
 """
 
@@ -200,7 +200,7 @@ def get_config(key: str, default: Any = None) -> Any:
 
 
 if __name__ == "__main__":
-    print("Applying context awareness to JARVIS...")
+    print("Applying context awareness to Ironcliw...")
     
     # Create config if needed
     create_example_config()
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     # Apply the patch
     if apply_context_awareness():
         print("\n✅ Context awareness successfully integrated!")
-        print("\nJARVIS will now:")
+        print("\nIroncliw will now:")
         print("- Detect when the screen is locked")
         print("- Inform you before unlocking")
         print("- Unlock the screen automatically when needed")

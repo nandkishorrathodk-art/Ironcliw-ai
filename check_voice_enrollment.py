@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Check Voice Biometric Enrollment Status
 """
@@ -6,7 +6,7 @@ import asyncio
 import sys
 import os
 
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 async def check_enrollment():
     print("\n" + "="*70)
@@ -79,7 +79,7 @@ async def check_enrollment():
     print("\nIf no voice samples found:")
     print("1. Run enrollment script:")
     print("   python3 backend/voice_unlock/setup_voice_unlock.py")
-    print("\n2. Or enroll via JARVIS:")
+    print("\n2. Or enroll via Ironcliw:")
     print('   Say: "Jarvis, enroll my voice"')
     print("\n3. Record 25+ voice samples for best accuracy")
     print("\nOnce enrolled, voice biometric unlock will work automatically!")

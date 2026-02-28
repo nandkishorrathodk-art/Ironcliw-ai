@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Helper Utilities
+﻿"""
+Ironcliw Neural Mesh - Helper Utilities
 
 Common utility functions used across the Neural Mesh system.
 """

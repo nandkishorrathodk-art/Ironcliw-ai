@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced macOS Integration for JARVIS
+Advanced macOS Integration for Ironcliw
 Provides deep system control and hardware management
 Powered by Anthropic's Claude API for intelligent decision making
 """
@@ -312,7 +312,7 @@ class AdvancedMacOSIntegration:
                 max_tokens=1000,
                 messages=[{
                     "role": "user",
-                    "content": f"""As JARVIS system optimizer, analyze this macOS state and identify optimization opportunities:
+                    "content": f"""As Ironcliw system optimizer, analyze this macOS state and identify optimization opportunities:
 
 System State:
 {json.dumps(context, indent=2)}
@@ -673,7 +673,7 @@ Be specific and safe."""
         
         if self.system_state:
             for app in self.system_state.active_apps:
-                if app not in essential_apps and app not in ['JARVIS', 'Python']:
+                if app not in essential_apps and app not in ['Ironcliw', 'Python']:
                     success = await self.control_application(app, 'quit')
                     if success:
                         actions_taken.append(f"Closed {app}")

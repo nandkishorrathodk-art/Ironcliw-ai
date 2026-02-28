@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 GCP Rate Limit & Quota Manager v1.0
 ====================================
@@ -48,7 +48,7 @@ Architecture:
 │           └─────────────────────────────────────────┘                       │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -962,7 +962,7 @@ async def get_intelligent_rate_manager():
     """
     Get the unified intelligent rate orchestrator.
     
-    This is the recommended way to access rate limiting in JARVIS v2.0+.
+    This is the recommended way to access rate limiting in Ironcliw v2.0+.
     It provides ML-powered forecasting and adaptive throttling.
     
     Usage:

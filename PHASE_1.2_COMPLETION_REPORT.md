@@ -1,4 +1,4 @@
-# ✅ Phase 1.2 Proximity-Aware Display Connection System - COMPLETION REPORT
+﻿# ✅ Phase 1.2 Proximity-Aware Display Connection System - COMPLETION REPORT
 
 ## 🎉 **STATUS: PHASE 1A + 1B COMPLETE - PRODUCTION READY** ✅
 
@@ -396,7 +396,7 @@ curl -X POST http://localhost:8000/api/proximity-display/decision
 4. Proximity zone classified: NEAR
 5. Proximity score for TV: 0.85 (high)
 6. Decision: PROMPT_USER
-7. JARVIS: "I see you're near the Living Room TV. Would you like to connect?"
+7. Ironcliw: "I see you're near the Living Room TV. Would you like to connect?"
 ```
 
 ### **Scenario 2: Moving Away from Display**
@@ -421,7 +421,7 @@ curl -X POST http://localhost:8000/api/proximity-display/decision
 5. Proximity score: 0.95 (very high)
 6. Confidence: 0.9
 7. Decision: AUTO_CONNECT (if enabled)
-8. JARVIS: "Automatically extending display to Living Room TV"
+8. Ironcliw: "Automatically extending display to Living Room TV"
 ```
 
 ---

@@ -1,8 +1,8 @@
-# IRONCLIW-AI / JARVIS — AI Agent Master Blueprint
+﻿# IRONCLIW-AI / Ironcliw — AI Agent Master Blueprint
 ## Complete Instructions for Fresh Install → Windows Build → Linux Port
 **Give this entire document to any AI agent to continue the work.**
 **Repo:** `https://github.com/nandkishorrathodk-art/Ironcliw-ai`
-**Original upstream:** `https://github.com/drussell23/JARVIS`
+**Original upstream:** `https://github.com/drussell23/Ironcliw`
 **Owner:** Nandkishor Rathod (`nandkishorrathodk-art`)
 **Current Phase:** 12 Complete — Whisper fixed, WebSocket loop fixed, ECAPA fast-fail 0.5s, startup 86s
 
@@ -10,7 +10,7 @@
 
 ## PART 1 — WHO YOU ARE AND WHAT THIS PROJECT IS
 
-You are an AI coding agent continuing the Windows port of JARVIS — an advanced personal AI assistant (like Iron Man's JARVIS). Your job is to:
+You are an AI coding agent continuing the Windows port of Ironcliw — an advanced personal AI assistant (like Iron Man's Ironcliw). Your job is to:
 
 1. **Help user do a fresh install** on their Windows laptop
 2. **Fix any remaining issues** on Windows
@@ -19,15 +19,15 @@ You are an AI coding agent continuing the Windows port of JARVIS — an advanced
 5. **Always commit and push to GitHub** after every fix
 
 ### Project Identity
-- **Name in GitHub:** `Ironcliw-ai` (also called JARVIS)
+- **Name in GitHub:** `Ironcliw-ai` (also called Ironcliw)
 - **What it does:** Voice-activated AI assistant with screen vision, autonomous browser control, neural TTS, hybrid cloud routing
 - **Tech stack:** Python 3.12 (FastAPI backend) + React 18 (frontend) + SQLite + ChromaDB
-- **Voice:** `en-GB-RyanNeural` via `edge-tts` (Microsoft Neural — sounds like Iron Man's JARVIS)
+- **Voice:** `en-GB-RyanNeural` via `edge-tts` (Microsoft Neural — sounds like Iron Man's Ironcliw)
 - **LLM:** Fireworks AI (primary) + Claude (fallback)
 - **STT:** OpenAI Whisper (local, CPU mode)
 
 ### Golden Rule
-> **JARVIS runs entirely on Windows 10/11 without any macOS tools.**
+> **Ironcliw runs entirely on Windows 10/11 without any macOS tools.**
 > No `osascript`, no `screencapture`, no `caffeinate`, no `yabai`, no CoreGraphics.
 > Use: `pyautogui`, `mss`, `pywin32`, `ctypes`, `edge-tts`, `plyer`
 
@@ -80,12 +80,12 @@ You are an AI coding agent continuing the Windows port of JARVIS — an advanced
 
 ## PART 3 — STEP 1: FRESH INSTALL INSTRUCTIONS
 
-### 3.1 Delete Old JARVIS
+### 3.1 Delete Old Ironcliw
 
 ```powershell
 # Open PowerShell as Administrator
 
-# Stop running JARVIS first (Ctrl+C in its terminal OR:)
+# Stop running Ironcliw first (Ctrl+C in its terminal OR:)
 taskkill /F /IM python.exe 2>$null
 taskkill /F /IM node.exe 2>$null
 
@@ -93,10 +93,10 @@ taskkill /F /IM node.exe 2>$null
 cd C:\Users\nandk
 
 # DELETE the old folder
-Remove-Item -Recurse -Force "C:\Users\nandk\JARVIS"
+Remove-Item -Recurse -Force "C:\Users\nandk\Ironcliw"
 
 # Verify gone:
-Test-Path "C:\Users\nandk\JARVIS"
+Test-Path "C:\Users\nandk\Ironcliw"
 # Must print: False
 ```
 
@@ -104,8 +104,8 @@ Test-Path "C:\Users\nandk\JARVIS"
 
 ```powershell
 cd C:\Users\nandk
-git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git JARVIS
-cd JARVIS
+git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git Ironcliw
+cd Ironcliw
 
 # Verify latest commit:
 git log --oneline -5
@@ -115,7 +115,7 @@ git log --oneline -5
 ### 3.3 Install Python Dependencies
 
 ```powershell
-# From C:\Users\nandk\JARVIS
+# From C:\Users\nandk\Ironcliw
 
 # Step 1 — Main requirements
 pip install -r requirements.txt
@@ -167,14 +167,14 @@ FIREWORKS_API_KEY=fw-YOUR_KEY_HERE
 
 **Everything else in .env.windows is already correct for Windows. Do NOT change:**
 ```env
-JARVIS_AUTO_BYPASS_WINDOWS=true
-JARVIS_VOICE_BIOMETRIC_ENABLED=false
-JARVIS_ML_DEVICE=cpu
-JARVIS_DYNAMIC_PORTS=false
-JARVIS_SKIP_GCP=true
-JARVIS_SKIP_DOCKER=true
+Ironcliw_AUTO_BYPASS_WINDOWS=true
+Ironcliw_VOICE_BIOMETRIC_ENABLED=false
+Ironcliw_ML_DEVICE=cpu
+Ironcliw_DYNAMIC_PORTS=false
+Ironcliw_SKIP_GCP=true
+Ironcliw_SKIP_DOCKER=true
 WHISPER_MODEL_SIZE=base
-JARVIS_PORT=8010
+Ironcliw_PORT=8010
 FRONTEND_PORT=3000
 ```
 
@@ -191,13 +191,13 @@ PASSED: 14/14
 
 If any test FAILS — see Part 7 (Troubleshooting) of this document.
 
-### 3.7 Start JARVIS
+### 3.7 Start Ironcliw
 
 ```powershell
 python start_system.py
 ```
 
-Open: http://localhost:3000 — Say "Hey JARVIS" to test.
+Open: http://localhost:3000 — Say "Hey Ironcliw" to test.
 
 ---
 
@@ -233,7 +233,7 @@ async def _notify_windows(title: str, body: str, urgency: str) -> bool:
             notification.notify(
                 title=title,
                 message=body,
-                app_name="JARVIS",
+                app_name="Ironcliw",
                 timeout=5,
             )
             return True
@@ -255,7 +255,7 @@ python -c "
 import asyncio, sys
 sys.path.insert(0, 'backend')
 from agi_os.notification_bridge import _notify_windows
-result = asyncio.run(_notify_windows('JARVIS Test', 'Windows notification works!', 'NORMAL'))
+result = asyncio.run(_notify_windows('Ironcliw Test', 'Windows notification works!', 'NORMAL'))
 print('Notification:', 'OK' if result else 'FAILED - install: pip install plyer win10toast')
 "
 ```
@@ -281,7 +281,7 @@ async def _load_ecapa_engine(self) -> Optional[Any]:
     # ... rest of existing code below ...
 ```
 
-**Test:** Startup should now reach "JARVIS is ready!" in < 60 seconds (was 90+ seconds).
+**Test:** Startup should now reach "Ironcliw is ready!" in < 60 seconds (was 90+ seconds).
 
 ---
 
@@ -422,7 +422,7 @@ def paste_from_clipboard() -> str:
 **Create new file:** `backend/system_tray/tray_manager.py`
 
 ```python
-"""Windows system tray icon for JARVIS."""
+"""Windows system tray icon for Ironcliw."""
 import sys
 import threading
 import logging
@@ -430,7 +430,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def start_tray_icon(on_show=None, on_quit=None):
-    """Start JARVIS system tray icon (Windows/Linux via pystray)."""
+    """Start Ironcliw system tray icon (Windows/Linux via pystray)."""
     if sys.platform not in ("win32", "linux"):
         logger.info("System tray not supported on this platform")
         return None
@@ -439,7 +439,7 @@ def start_tray_icon(on_show=None, on_quit=None):
         import pystray
         from PIL import Image, ImageDraw
 
-        # Create a simple icon (blue circle = JARVIS active)
+        # Create a simple icon (blue circle = Ironcliw active)
         def create_icon():
             img = Image.new('RGB', (64, 64), color=(0, 100, 200))
             draw = ImageDraw.Draw(img)
@@ -447,11 +447,11 @@ def start_tray_icon(on_show=None, on_quit=None):
             return img
 
         menu = pystray.Menu(
-            pystray.MenuItem('Open JARVIS', on_show or (lambda: None)),
+            pystray.MenuItem('Open Ironcliw', on_show or (lambda: None)),
             pystray.MenuItem('Quit', on_quit or (lambda: None)),
         )
 
-        icon = pystray.Icon("JARVIS", create_icon(), "JARVIS AI", menu)
+        icon = pystray.Icon("Ironcliw", create_icon(), "Ironcliw AI", menu)
 
         # Run in background thread
         tray_thread = threading.Thread(target=icon.run, daemon=True)
@@ -484,7 +484,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def authenticate_windows_hello(reason: str = "JARVIS authentication") -> bool:
+async def authenticate_windows_hello(reason: str = "Ironcliw authentication") -> bool:
     """
     Authenticate via Windows Hello (fingerprint, face, PIN).
     Returns True if authenticated, False otherwise.
@@ -505,7 +505,7 @@ async def authenticate_windows_hello(reason: str = "JARVIS authentication") -> b
 
     # Fallback: Accept if bypass mode is on
     import os
-    if os.environ.get("JARVIS_AUTO_BYPASS_WINDOWS") == "true":
+    if os.environ.get("Ironcliw_AUTO_BYPASS_WINDOWS") == "true":
         logger.info("Windows Hello unavailable — auth bypass active")
         return True
     return False
@@ -583,7 +583,7 @@ Linux port is easier than Windows because:
 
 ```python
 """
-Linux Platform Implementation for JARVIS.
+Linux Platform Implementation for Ironcliw.
 Uses xdotool, wmctrl, notify-send, pactl, and standard Unix tools.
 """
 
@@ -637,7 +637,7 @@ class LinuxPlatform(PlatformInterface):
             # fallback: plyer
             from plyer import notification
             notification.notify(title=title, message=message,
-                                app_name="JARVIS", timeout=timeout)
+                                app_name="Ironcliw", timeout=timeout)
             return True
         except Exception:
             return False
@@ -1089,7 +1089,7 @@ curl http://localhost:8010/health/startup
 ### 6.4 Voice Test
 
 ```python
-# test_voice.py — run while JARVIS is running
+# test_voice.py — run while Ironcliw is running
 import asyncio
 import sys
 sys.path.insert(0, 'backend')
@@ -1098,7 +1098,7 @@ async def test_tts():
     from agi_os.realtime_voice_communicator import RealtimeVoiceCommunicator
     comm = RealtimeVoiceCommunicator()
     # Should speak without error
-    await comm.speak("Integration test successful. JARVIS is working on Windows.")
+    await comm.speak("Integration test successful. Ironcliw is working on Windows.")
     print("TTS test complete")
 
 asyncio.run(test_tts())
@@ -1129,8 +1129,8 @@ pip install aiohttp --upgrade
 
 ```powershell
 # Check .env:
-JARVIS_DYNAMIC_PORTS=false
-JARVIS_PORT=8010
+Ironcliw_DYNAMIC_PORTS=false
+Ironcliw_PORT=8010
 
 # Kill stale processes:
 netstat -ano | findstr :8010
@@ -1211,7 +1211,7 @@ print(is_screen_locked())  # Must print True or False (not error)
 ### After Every Fix — Commit and Push
 
 ```powershell
-cd C:\Users\nandk\JARVIS
+cd C:\Users\nandk\Ironcliw
 
 # Stage the changed files
 git add <file1> <file2>
@@ -1236,7 +1236,7 @@ git push origin main
 4. Fix the code
 5. Commit and push again
 
-### Checking for upstream updates (drussell23/JARVIS)
+### Checking for upstream updates (drussell23/Ironcliw)
 
 ```powershell
 # See if original repo has new commits
@@ -1262,7 +1262,7 @@ git merge upstream/main --no-commit --no-ff -X patience
 | `pyautogui` for mouse/keyboard | Works on Win/Linux/Mac without extra tools |
 | `msvcrt` shim for `fcntl` | Windows file locking compatibility |
 | `plyer` for notifications | Cross-platform (Win/Linux/Mac) |
-| `JARVIS_DYNAMIC_PORTS=false` | Keep port 8010 stable — no port scanning |
+| `Ironcliw_DYNAMIC_PORTS=false` | Keep port 8010 stable — no port scanning |
 | Fallback chain: new → old → stub | Never crash, always degrade gracefully |
 | `try/except ImportError` everywhere | Missing package = warning, not crash |
 
@@ -1350,8 +1350,8 @@ Ironcliw-ai/
 
 ```powershell
 # Fresh clone
-git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git JARVIS
-cd JARVIS
+git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git Ironcliw
+cd Ironcliw
 
 # Install deps
 pip install -r requirements.txt
@@ -1384,8 +1384,8 @@ curl http://localhost:8010/health/startup
 sudo apt install -y xdotool wmctrl xclip libnotify-bin pulseaudio-utils mpg123 ffmpeg portaudio19-dev
 
 # Clone
-git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git JARVIS
-cd JARVIS
+git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git Ironcliw
+cd Ironcliw
 
 # Install deps
 pip3 install -r requirements.txt
@@ -1412,10 +1412,10 @@ python3 start_system.py
 **Copy-paste this as the first message:**
 
 ```
-You are continuing work on the JARVIS Windows port for user Nandkishor Rathod.
+You are continuing work on the Ironcliw Windows port for user Nandkishor Rathod.
 
 REPO: https://github.com/nandkishorrathodk-art/Ironcliw-ai
-LOCAL PATH: C:\Users\nandk\JARVIS (Windows) or ~/JARVIS (Linux)
+LOCAL PATH: C:\Users\nandk\Ironcliw (Windows) or ~/Ironcliw (Linux)
 BRANCH: main
 LATEST COMMIT: 0afb6259
 

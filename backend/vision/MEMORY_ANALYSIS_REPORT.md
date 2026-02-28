@@ -1,4 +1,4 @@
-# Claude Vision Analyzer - Memory Analysis Report
+﻿# Claude Vision Analyzer - Memory Analysis Report
 
 ## Executive Summary
 
@@ -40,7 +40,7 @@ config = {
 
 ### 2. Memory Safety Limits
 
-- **Process Memory Limit**: Keep under 2GB (leaves 14GB for system/JARVIS)
+- **Process Memory Limit**: Keep under 2GB (leaves 14GB for system/Ironcliw)
 - **Warning Threshold**: 1.5GB (alert when approaching limit)
 - **Minimum System RAM**: Maintain >2GB available
 
@@ -81,7 +81,7 @@ config = {
    - Compression for all images (reduces memory by 40-60%)
    - Cache limiting prevents unbounded growth
 
-## Specific Recommendations for JARVIS
+## Specific Recommendations for Ironcliw
 
 ### Configuration File (vision_config.json)
 ```json
@@ -118,7 +118,7 @@ export VISION_COMPRESSION_ENABLED=true
 
 ### Monitoring Script
 ```python
-# Add to JARVIS health monitoring
+# Add to Ironcliw health monitoring
 async def check_vision_health():
     stats = analyzer.memory_monitor.get_status()
     if not stats['is_safe']:
@@ -151,4 +151,4 @@ The Claude Vision Analyzer is **safe to use on a 16GB macOS system** with the re
 - [ ] Add memory monitoring to health checks
 - [ ] Test with your specific workload
 
-With these configurations, the vision analyzer will use at most 2GB of RAM, leaving plenty of headroom for other JARVIS components and preventing any crashes.
+With these configurations, the vision analyzer will use at most 2GB of RAM, leaving plenty of headroom for other Ironcliw components and preventing any crashes.

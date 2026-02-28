@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix Screen Lock Detection
 =========================
@@ -14,7 +14,7 @@ print("🔧 Fixing Screen Lock Detection")
 print("=" * 50)
 
 # Backup the original file
-handler_path = "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/api/direct_unlock_handler.py"
+handler_path = "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/api/direct_unlock_handler.py"
 backup_path = f"{handler_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 shutil.copy(handler_path, backup_path)
 print(f"✅ Created backup: {backup_path}")
@@ -102,4 +102,4 @@ else:
     print("\n❌ Could not find the exact function to replace")
     print("The function might have already been modified.")
 
-print("\n⚠️  You need to restart JARVIS for changes to take effect!")
+print("\n⚠️  You need to restart Ironcliw for changes to take effect!")

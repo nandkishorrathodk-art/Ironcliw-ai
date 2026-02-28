@@ -1,4 +1,4 @@
-# JARVIS Memory Management System - Complete Summary
+﻿# Ironcliw Memory Management System - Complete Summary
 
 ## 🎯 Quick Reference
 
@@ -25,7 +25,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  JARVIS Memory System v1.1                   │
+│                  Ironcliw Memory System v1.1                   │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
@@ -134,7 +134,7 @@
 
 ### Enable Lazy Loading (Default)
 ```bash
-export JARVIS_LAZY_INTELLIGENCE=true
+export Ironcliw_LAZY_INTELLIGENCE=true
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
 ```
 
@@ -142,7 +142,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8010
 
 ### Disable Lazy Loading (32GB+ systems)
 ```bash
-export JARVIS_LAZY_INTELLIGENCE=false
+export Ironcliw_LAZY_INTELLIGENCE=false
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
 ```
 
@@ -342,9 +342,9 @@ curl http://localhost:8010/api/components/status
 - **Tests:** `tests/test_memory_quantizer_lazy_loading.py`
 
 ### Environment Variables
-- `JARVIS_LAZY_INTELLIGENCE=true` - Enable lazy loading (default)
-- `JARVIS_LAZY_TIMEOUT=5.0` - Wait timeout in seconds (future)
-- `JARVIS_PRELOAD_INTELLIGENCE=false` - Background preload (future)
+- `Ironcliw_LAZY_INTELLIGENCE=true` - Enable lazy loading (default)
+- `Ironcliw_LAZY_TIMEOUT=5.0` - Wait timeout in seconds (future)
+- `Ironcliw_PRELOAD_INTELLIGENCE=false` - Background preload (future)
 
 ---
 
@@ -361,7 +361,7 @@ curl http://localhost:8010/api/components/status
 Do you have 32GB+ RAM?
 │
 ├─ YES → Disable lazy loading for instant responses
-│         export JARVIS_LAZY_INTELLIGENCE=false
+│         export Ironcliw_LAZY_INTELLIGENCE=false
 │
 └─ NO (16GB or less)
    │

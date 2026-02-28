@@ -1,13 +1,13 @@
-# JARVIS Screen Monitoring Command - FIXED ✅
+﻿# Ironcliw Screen Monitoring Command - FIXED ✅
 
 ## Summary
-The "start monitoring my screen" command has been successfully fixed. JARVIS now properly activates native macOS video capture and returns the correct response.
+The "start monitoring my screen" command has been successfully fixed. Ironcliw now properly activates native macOS video capture and returns the correct response.
 
 ## What Was Fixed
 
 ### 1. Command Routing
 - Monitoring commands are now correctly excluded from vision command routing
-- They properly flow through: JARVIS voice → Claude chatbot → monitoring handler
+- They properly flow through: Ironcliw voice → Claude chatbot → monitoring handler
 
 ### 2. Vision Action Learning
 - Cleared incorrect learned patterns that were intercepting monitoring commands
@@ -24,9 +24,9 @@ The "start monitoring my screen" command has been successfully fixed. JARVIS now
 
 ## Current Behavior
 
-When you say "start monitoring my screen", JARVIS will:
+When you say "start monitoring my screen", Ironcliw will:
 
-1. **Route correctly** through the JARVIS voice system
+1. **Route correctly** through the Ironcliw voice system
 2. **Initialize video streaming** with native macOS capture
 3. **Return proper response**:
    ```

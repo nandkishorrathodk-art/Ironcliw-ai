@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feedback-Aware Vision Intelligence Integration
 Connects ProactiveVisionIntelligence with FeedbackLearningLoop for adaptive notifications.
 
@@ -261,7 +261,7 @@ class FeedbackAwareVisionIntelligence:
 
     async def get_learning_insights(self) -> Dict[str, Any]:
         """
-        Get insights about what JARVIS has learned.
+        Get insights about what Ironcliw has learned.
 
         Returns:
             Dictionary with learning statistics and insights

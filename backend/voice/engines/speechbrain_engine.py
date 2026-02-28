@@ -644,10 +644,75 @@ def _patch_torch_load_for_speechbrain():
         logger.warning(f"⚠️ Could not apply torch.load patch: {e}")
 
 
+def _patch_speechbrain_symlink_behavior():
+    """
+    v130.0: Patch SpeechBrain fetching to fallback to copy on Windows.
+    
+    Windows requires Developer Mode or Administrator privileges to create symlinks.
+    If huggingface_hub uses symlinks, speechbrain.utils.fetching tries to symlink 
+    the cached file to the local directory, which fails with WinError 1314.
+    This patch wraps `link_with_strategy` to fallback to `shutil.copy`.
+    """
+    if sys.platform != "win32":
+        return
+        
+    try:
+        from speechbrain.utils import fetching
+        import shutil
+        import os
+        
+        _original_link_with_strategy = fetching.link_with_strategy
+        
+        def _patched_link_with_strategy(src, dst, local_strategy="symlink"):
+            try:
+                _original_link_with_strategy(src, dst, local_strategy)
+            except OSError as e:
+                # Catch WinError 1314 (A required privilege is not held by the client)
+                if getattr(e, 'winerror', None) == 1314:
+                    logger.debug(f"   [v130.0] Symlink failed (WinError 1314), falling back to copy for {src.name}")
+                    if dst.exists():
+                        # Either it's a file or a broken symlink, try to remove it
+                        try:
+                            dst.unlink()
+                        except OSError:
+                            pass
+                    shutil.copy(src, dst)
+                else:
+                    raise
+                    
+        fetching.link_with_strategy = _patched_link_with_strategy
+        logger.info("🔧 Applied SpeechBrain Windows symlink patch (copy fallback for WinError 1314)")
+    except ImportError:
+        logger.debug("   [v130.0] SpeechBrain fetching not available - symlink patch deferred")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not apply SpeechBrain symlink patch: {e}")
+
+
+def _patch_transformers_automodelwithlmhead():
+    """
+    v131.0: Patch transformers to restore AutoModelWithLMHead for SpeechBrain 1.0.3 compatibility.
+    
+    Transformers 5.x removed AutoModelWithLMHead, causing ImportError when
+    SpeechBrain tries to import it in huggingface_transformers modules.
+    We alias it to AutoModelForCausalLM to maintain compatibility.
+    """
+    try:
+        import transformers
+        if not hasattr(transformers, 'AutoModelWithLMHead'):
+            transformers.AutoModelWithLMHead = transformers.AutoModelForCausalLM
+            logger.info("🔧 Applied transformers patch (restored AutoModelWithLMHead for SpeechBrain)")
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"⚠️ Could not apply transformers patch: {e}")
+
+
 # Apply all meta tensor patches when module loads
 _patch_torch_load_for_speechbrain()
 _patch_speechbrain_parameter_transfer()
 _patch_speechbrain_meta_tensor_handling()
+_patch_speechbrain_symlink_behavior()
+_patch_transformers_automodelwithlmhead()
 
 
 # ============================================================================

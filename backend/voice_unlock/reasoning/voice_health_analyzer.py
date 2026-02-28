@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Health Analyzer - Detect Illness, Fatigue, and Stress from Voice.
 ========================================================================
 
@@ -19,7 +19,7 @@ Per CLAUDE.md:
     For security, I'd normally ask you to try again, but your speech
     patterns and timing match perfectly."
 
-Author: JARVIS Trinity v81.0 - Voice Health Intelligence
+Author: Ironcliw Trinity v81.0 - Voice Health Intelligence
 """
 
 from __future__ import annotations

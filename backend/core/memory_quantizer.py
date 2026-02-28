@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Memory Quantizer - Intelligent Memory Management for JARVIS
+Advanced Memory Quantizer - Intelligent Memory Management for Ironcliw
 =====================================================================
 
 Production-grade memory management system with UAE/SAI/Learning Database integration.

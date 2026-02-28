@@ -1,8 +1,8 @@
-# JARVIS Autonomous System - Quick Start Guide
+﻿# Ironcliw Autonomous System - Quick Start Guide
 
 ## ✅ System Status: WORKING
 
-The JARVIS Autonomous System has been successfully integrated and tested. Here's how to use it:
+The Ironcliw Autonomous System has been successfully integrated and tested. Here's how to use it:
 
 ## 🚀 Quick Test
 
@@ -14,27 +14,27 @@ python3 test_autonomous_simple.py
 
 ## 🎤 Voice Commands
 
-Enable autonomous mode through JARVIS:
+Enable autonomous mode through Ironcliw:
 ```
-"Hey JARVIS, enable autonomous mode"
-"Hey JARVIS, activate automatic mode"
+"Hey Ironcliw, enable autonomous mode"
+"Hey Ironcliw, activate automatic mode"
 ```
 
 Check status:
 ```
-"Hey JARVIS, what's your autonomous status?"
-"Hey JARVIS, show permission statistics"
+"Hey Ironcliw, what's your autonomous status?"
+"Hey Ironcliw, show permission statistics"
 ```
 
 Manage actions:
 ```
-"Hey JARVIS, rollback last action"
-"Hey JARVIS, disable autonomous mode"
+"Hey Ironcliw, rollback last action"
+"Hey Ironcliw, disable autonomous mode"
 ```
 
 ## 🤖 What It Does
 
-When enabled, JARVIS will autonomously:
+When enabled, Ironcliw will autonomously:
 
 1. **Monitor Your Workspace** - Continuously analyze open windows
 2. **Detect Actionable Situations**:
@@ -67,7 +67,7 @@ The system uses intelligent defaults but you can adjust:
 
 ### Scenario 1: Message Management
 ```
-JARVIS detects: "Discord (12 new messages)"
+Ironcliw detects: "Discord (12 new messages)"
 Context: You're not in a meeting, interruption score is good
 Permission: First time asks, learns your preference
 Action: Focuses Discord or marks as read based on past behavior
@@ -75,7 +75,7 @@ Action: Focuses Discord or marks as read based on past behavior
 
 ### Scenario 2: Meeting Preparation
 ```
-JARVIS detects: "Team Standup starts in 3 minutes"
+Ironcliw detects: "Team Standup starts in 3 minutes"
 Context: High priority, time-sensitive
 Action: Hides 1Password, banking apps, opens Zoom
 Rollback: Can restore previous state after meeting
@@ -83,7 +83,7 @@ Rollback: Can restore previous state after meeting
 
 ### Scenario 3: Workspace Organization
 ```
-JARVIS detects: 35 windows open across 15 apps
+Ironcliw detects: 35 windows open across 15 apps
 Context: You're available, not focused
 Action: Groups windows by project, minimizes distractions
 Learning: Remembers your preferred layouts
@@ -99,7 +99,7 @@ Learning: Remembers your preferred layouts
 
 ## 🐛 Troubleshooting
 
-If JARVIS isn't taking autonomous actions:
+If Ironcliw isn't taking autonomous actions:
 1. Ensure autonomous mode is enabled
 2. Check if monitoring is active (workspace intelligence must be on)
 3. Review context - might be waiting for better timing
@@ -107,9 +107,9 @@ If JARVIS isn't taking autonomous actions:
 
 ## 📈 Next Steps
 
-1. Enable autonomous mode and use JARVIS normally
+1. Enable autonomous mode and use Ironcliw normally
 2. When prompted for permissions, provide clear yes/no responses
-3. After ~5 similar decisions, JARVIS will start auto-approving
+3. After ~5 similar decisions, Ironcliw will start auto-approving
 4. Monitor execution stats to see what's being automated
 5. Use rollback if any action is unwanted
 

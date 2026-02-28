@@ -1,4 +1,4 @@
-"""
+﻿"""
 Proactive Command Detector - Intelligent Intent Detection for Parallel Workflows
 ================================================================================
 
@@ -17,7 +17,7 @@ v1.0 Features:
 - Learning from user feedback
 - Cross-repo integration ready
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Proactive Parallelism Integration
 """
 

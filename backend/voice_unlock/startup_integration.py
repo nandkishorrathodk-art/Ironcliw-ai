@@ -1,8 +1,8 @@
-"""
+﻿"""
 Voice Unlock Startup Integration
 ================================
 
-Integrates the Voice Unlock system into JARVIS's main startup process.
+Integrates the Voice Unlock system into Ironcliw's main startup process.
 
 ENHANCED v3.0: Comprehensive voice biometric validation at startup.
 """
@@ -650,7 +650,7 @@ class VoiceUnlockStartup:
                 return "jarvis_voiceunlock" in result.stdout.lower()
             except Exception:
                 # Fallback: check env-var or config file
-                return bool(os.getenv("JARVIS_UNLOCK_TOKEN"))
+                return bool(os.getenv("Ironcliw_UNLOCK_TOKEN"))
         else:
             try:
                 result = subprocess.run(
@@ -725,14 +725,14 @@ class VoiceUnlockStartup:
         """Start the Voice Unlock daemon if not running"""
         try:
             # Check if daemon is already running
-            result = subprocess.run(["pgrep", "-f", "JARVISVoiceUnlockDaemon"], capture_output=True)
+            result = subprocess.run(["pgrep", "-f", "IroncliwVoiceUnlockDaemon"], capture_output=True)
 
             if result.returncode == 0:
                 logger.info("Voice Unlock daemon already running")
                 return True
 
             # Start daemon
-            daemon_path = self.voice_unlock_dir / "objc" / "bin" / "JARVISVoiceUnlockDaemon"
+            daemon_path = self.voice_unlock_dir / "objc" / "bin" / "IroncliwVoiceUnlockDaemon"
             if not daemon_path.exists():
                 logger.error(f"Voice Unlock daemon not found: {daemon_path}")
                 logger.info("Build with: cd backend/voice_unlock/objc && make")
@@ -777,7 +777,7 @@ class VoiceUnlockStartup:
             )
         else:
             subprocess.run("pkill -f websocket_server.py", shell=True, capture_output=True)
-            subprocess.run("pkill -f JARVISVoiceUnlockDaemon", shell=True, capture_output=True)
+            subprocess.run("pkill -f IroncliwVoiceUnlockDaemon", shell=True, capture_output=True)
 
         logger.info("Voice Unlock system stopped")
 
@@ -832,7 +832,7 @@ voice_unlock_startup = VoiceUnlockStartup()
 
 
 async def initialize_voice_unlock_system():
-    """Initialize Voice Unlock system for JARVIS integration"""
+    """Initialize Voice Unlock system for Ironcliw integration"""
     global voice_unlock_startup
     return await voice_unlock_startup.start()
 

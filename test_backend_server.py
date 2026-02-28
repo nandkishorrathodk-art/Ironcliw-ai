@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify backend server endpoints work on Windows.
 """
@@ -17,7 +17,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 print("=" * 70)
-print("JARVIS Backend Server Test")
+print("Ironcliw Backend Server Test")
 print("=" * 70)
 
 async def test_health_endpoint():

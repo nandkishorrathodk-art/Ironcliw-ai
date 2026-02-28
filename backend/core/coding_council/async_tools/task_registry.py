@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Task Registry - Gaps #24, #27
 =====================================
 
@@ -9,7 +9,7 @@ Central task tracking and management:
 - Resource cleanup on failure
 - Progress tracking
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
-"""
-JARVIS Grand Integration Test - "The Boss Fight"
+﻿"""
+Ironcliw Grand Integration Test - "The Boss Fight"
 =================================================
 
 This is the Clinical-Grade verification test that proves all systems
@@ -10,7 +10,7 @@ work together:
 3. BRAIN (SOP Enforcer) - MetaGPT's discipline
 
 Test Scenario:
-    User Command: "JARVIS, refactor the ReactorCoreClient to add a
+    User Command: "Ironcliw, refactor the ReactorCoreClient to add a
                    new retry mechanism for 503 errors."
 
 Expected Behavior:
@@ -20,9 +20,9 @@ Expected Behavior:
     4. Design Plan is generated with proper structure
     5. Plan includes risk assessment for the refactor
 
-This is the "Boss Fight" - if this passes, JARVIS is Clinical-Grade.
+This is the "Boss Fight" - if this passes, Ironcliw is Clinical-Grade.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -49,7 +49,7 @@ logger = logging.getLogger("BOSS_FIGHT")
 # Test Configuration
 # =============================================================================
 
-TEST_COMMAND = """JARVIS, refactor the ReactorCoreClient to add a new retry
+TEST_COMMAND = """Ironcliw, refactor the ReactorCoreClient to add a new retry
 mechanism for 503 errors with exponential backoff."""
 
 EXPECTED_FILE = "reactor_core_client.py"
@@ -100,7 +100,7 @@ class BossFightResults:
         print(f"  Total: {self.tests_passed}/{total} passed in {duration:.2f}s")
 
         if self.tests_failed == 0:
-            print("\n  CLINICAL-GRADE VERIFIED - JARVIS IS READY")
+            print("\n  CLINICAL-GRADE VERIFIED - Ironcliw IS READY")
         else:
             print(f"\n  {self.tests_failed} tests failed - needs attention")
 
@@ -314,7 +314,7 @@ async def test_design_plan_structure(results: BossFightResults):
             DesignPlan, ProposedChange, RiskAssessment, TestPlan
         )
 
-        # Create a sample plan that JARVIS would generate
+        # Create a sample plan that Ironcliw would generate
         plan = DesignPlan(
             goal="Refactor ReactorCoreClient to add retry mechanism for 503 Service Unavailable errors with exponential backoff",
             context="""The ReactorCoreClient currently does not handle 503 errors gracefully.
@@ -371,9 +371,9 @@ async def test_design_plan_structure(results: BossFightResults):
         logger.info(f"  Has Rollback: {plan.rollback_plan is not None}")
 
         # Validate the plan
-        from backend.core.governance.sop_enforcer import JARVISThinkingProtocol
+        from backend.core.governance.sop_enforcer import IroncliwThinkingProtocol
 
-        protocol = JARVISThinkingProtocol()
+        protocol = IroncliwThinkingProtocol()
         is_valid, errors = await protocol.validate_plan(plan)
 
         if is_valid:
@@ -485,7 +485,7 @@ async def run_boss_fight():
     """Run the Grand Integration Test."""
     print("\n")
     print("=" * 70)
-    print("  JARVIS GRAND INTEGRATION TEST - 'THE BOSS FIGHT'")
+    print("  Ironcliw GRAND INTEGRATION TEST - 'THE BOSS FIGHT'")
     print("=" * 70)
     print(f"\n  Test Command: {TEST_COMMAND[:60]}...")
     print(f"  Expected: SAFETY BLOCK + Design Plan Required")

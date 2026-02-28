@@ -1,8 +1,8 @@
-# 🔄 Hot Reload Implementation for Voice Profiles
+﻿# 🔄 Hot Reload Implementation for Voice Profiles
 
 ## Problem Statement
 
-**Original Issue**: After completing voice enrollment with acoustic features, the JARVIS backend needed a manual restart to load the updated speaker profiles. This caused:
+**Original Issue**: After completing voice enrollment with acoustic features, the Ironcliw backend needed a manual restart to load the updated speaker profiles. This caused:
 
 - Low verification confidence (31% instead of 85-95%)
 - Poor user experience (manual restart required)
@@ -217,7 +217,7 @@ python3 backend/quick_voice_enhancement.py
 ps aux | grep "python.*main.py"
 kill <PID>
 
-# 3. Restart JARVIS
+# 3. Restart Ironcliw
 python start_system.py --restart
 
 # 4. Wait ~30s for full startup
@@ -281,7 +281,7 @@ await service.manual_reload_profiles()
 
 ### Test Scenario 1: Enrollment Update Detection
 
-1. Start JARVIS with existing profile
+1. Start Ironcliw with existing profile
 2. Run enrollment: `python3 backend/quick_voice_enhancement.py`
 3. Observe logs within 30 seconds:
    ```
@@ -308,7 +308,7 @@ curl -X POST http://localhost:8010/api/voice-unlock/profiles/reload
 
 ### Test Scenario 3: Startup Validation
 
-Start JARVIS and check logs:
+Start Ironcliw and check logs:
 
 **With acoustic features**:
 ```
@@ -330,7 +330,7 @@ Start JARVIS and check logs:
 
 1. **Configurable check interval** via environment variable
    ```bash
-   JARVIS_PROFILE_RELOAD_INTERVAL=15  # seconds
+   Ironcliw_PROFILE_RELOAD_INTERVAL=15  # seconds
    ```
 
 2. **Webhook notifications** on profile update

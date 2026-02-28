@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Unified Dynamic System - Integrates Dynamic Activation with Rust Performance
 Zero hardcoding, ML-driven optimization, graceful error handling
@@ -48,7 +48,7 @@ class SystemMetrics:
 class UnifiedDynamicSystem:
     """
     Combines Dynamic Activation + Rust Performance + Graceful Handling
-    Creates a bulletproof, high-performance JARVIS system
+    Creates a bulletproof, high-performance Ironcliw system
     """
     
     def __init__(self):
@@ -99,7 +99,7 @@ class UnifiedDynamicSystem:
     
     @graceful_endpoint({
         "status": "activated",
-        "message": "JARVIS activated with full optimization",
+        "message": "Ironcliw activated with full optimization",
         "mode": "unified_dynamic"
     })
     async def activate_jarvis_unified(self, request_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -149,7 +149,7 @@ class UnifiedDynamicSystem:
         
         return {
             "status": "activated",
-            "message": "JARVIS fully activated with unified dynamic optimization",
+            "message": "Ironcliw fully activated with unified dynamic optimization",
             "mode": "unified_dynamic",
             "capabilities": list(set(unified_capabilities)),
             "services": services_status,
@@ -211,7 +211,7 @@ class UnifiedDynamicSystem:
         return strategies[strategy_idx]
     
     async def _activate_dynamic_system(self, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """Activate the dynamic JARVIS system"""
+        """Activate the dynamic Ironcliw system"""
         return await self.dynamic_activation.activate_jarvis(context or {})
     
     async def _activate_rust_acceleration(self, strategy: str) -> Dict[str, Any]:
@@ -367,10 +367,10 @@ def get_unified_system() -> UnifiedDynamicSystem:
         _unified_system = UnifiedDynamicSystem()
     return _unified_system
 
-# Integration with existing JARVIS APIs
+# Integration with existing Ironcliw APIs
 async def activate_jarvis_ultimate(context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Ultimate JARVIS activation - combines everything
+    Ultimate Ironcliw activation - combines everything
     This is the recommended activation method
     """
     system = get_unified_system()
@@ -441,7 +441,7 @@ if __name__ == "__main__":
         # Quick activation test
         async def quick_test():
             result = await activate_jarvis_ultimate()
-            print(f"\nJARVIS Activated!")
+            print(f"\nIroncliw Activated!")
             print(f"Health: {result['health_score']:.0%}")
             print(f"Capabilities: {len(result['capabilities'])}")
             print(f"Time: {result['performance']['activation_time_ms']:.0f}ms")

@@ -1,14 +1,14 @@
-"""
-JARVIS-Prime Orchestrator - Tier 0 Local Brain Subprocess Manager
+﻿"""
+Ironcliw-Prime Orchestrator - Tier 0 Local Brain Subprocess Manager
 ==================================================================
 
-Manages JARVIS-Prime as a critical microservice subprocess within the
-JARVIS supervisor lifecycle. This ensures the local brain is always
+Manages Ironcliw-Prime as a critical microservice subprocess within the
+Ironcliw supervisor lifecycle. This ensures the local brain is always
 available before routing any commands.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
-    │  JARVISSupervisor                                               │
+    │  IroncliwSupervisor                                               │
     │  ├── JarvisPrimeOrchestrator (this file)                        │
     │  │   ├── Subprocess Management (start, stop, restart)           │
     │  │   ├── Health Monitoring (periodic checks)                    │
@@ -23,7 +23,7 @@ Integration:
         get_jarvis_prime_orchestrator,
     )
 
-Author: JARVIS v5.0 Living OS
+Author: Ironcliw v5.0 Living OS
 Version: 1.0.0
 """
 
@@ -71,30 +71,30 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class JarvisPrimeConfig:
-    """Configuration for JARVIS-Prime subprocess management."""
+    """Configuration for Ironcliw-Prime subprocess management."""
 
-    # JARVIS-Prime location
+    # Ironcliw-Prime location
     prime_repo_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             str(Path.home() / "Documents" / "repos" / "jarvis-prime")
         ))
     )
 
     # Server settings
     host: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "127.0.0.1")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_HOST", "127.0.0.1")
     )
     port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
     )
 
     # Model settings
     models_dir: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_MODELS_DIR", "./models")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_MODELS_DIR", "./models")
     )
     initial_model: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_INITIAL_MODEL")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_INITIAL_MODEL")
     )
 
     # Startup settings
@@ -102,107 +102,107 @@ class JarvisPrimeConfig:
     # Previous: 30s - caused premature timeouts and self-shutdown during model loading
     # The 600s (10 minutes) allows for heavy model loading operations
     startup_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_STARTUP_TIMEOUT", "600.0"))
     )
     health_check_interval_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_HEALTH_INTERVAL", "10.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_HEALTH_INTERVAL", "10.0"))
     )
     health_check_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_HEALTH_TIMEOUT", "10.0"))  # v10.8: Increased from 5s
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_HEALTH_TIMEOUT", "10.0"))  # v10.8: Increased from 5s
     )
 
     # v10.8: Adaptive Health System Configuration
     health_check_timeout_min_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_HEALTH_TIMEOUT_MIN", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_HEALTH_TIMEOUT_MIN", "5.0"))
     )
     health_check_timeout_max_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_HEALTH_TIMEOUT_MAX", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_HEALTH_TIMEOUT_MAX", "30.0"))
     )
     startup_grace_period_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_GRACE", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_STARTUP_GRACE", "60.0"))
     )
     health_recovery_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_RECOVERY_THRESHOLD", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_RECOVERY_THRESHOLD", "3"))
     )
     degradation_warning_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_DEGRADE_WARN", "2"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_DEGRADE_WARN", "2"))
     )
     degradation_critical_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_DEGRADE_CRIT", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_DEGRADE_CRIT", "5"))
     )
     restart_failure_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_RESTART_THRESHOLD", "8"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_RESTART_THRESHOLD", "8"))
     )
 
     # Recovery settings
     max_restart_attempts: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_MAX_RESTARTS", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_MAX_RESTARTS", "3"))
     )
     restart_backoff_base_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_RESTART_BACKOFF", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_RESTART_BACKOFF", "2.0"))
     )
     restart_backoff_max_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_RESTART_MAX_BACKOFF", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_RESTART_MAX_BACKOFF", "60.0"))
     )
 
     # Feature flags
     enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
     )
     auto_start: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_AUTO_START", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_AUTO_START", "true").lower() == "true"
     )
     debug_mode: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_DEBUG", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_DEBUG", "false").lower() == "true"
     )
 
     # Docker settings
     use_docker: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_USE_DOCKER", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_USE_DOCKER", "false").lower() == "true"
     )
     docker_image: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_DOCKER_IMAGE", "jarvis-prime:latest")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_DOCKER_IMAGE", "jarvis-prime:latest")
     )
     docker_container_name: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_CONTAINER_NAME", "jarvis-prime")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_CONTAINER_NAME", "jarvis-prime")
     )
     docker_memory_limit: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_DOCKER_MEMORY", "10g")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_DOCKER_MEMORY", "10g")
     )
     docker_cpus: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_DOCKER_CPUS", "4")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_DOCKER_CPUS", "4")
     )
     docker_volumes: Dict[str, str] = field(default_factory=dict)  # host:container mappings
 
     # v11.0: Intelligent Instance Adoption - reuse existing healthy instances
     adopt_existing_instances: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_ADOPT_EXISTING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_ADOPT_EXISTING", "true").lower() == "true"
     )
     adoption_health_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_ADOPT_TIMEOUT", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_ADOPT_TIMEOUT", "5.0"))
     )
     require_model_match_for_adoption: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_ADOPT_MODEL_MATCH", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_ADOPT_MODEL_MATCH", "false").lower() == "true"
     )
 
     # v11.0: Dynamic Port Fallback - try alternative ports if primary is unavailable
     enable_port_fallback: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_PORT_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_PORT_FALLBACK", "true").lower() == "true"
     )
     fallback_port_range_start: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_FALLBACK_PORT_START", "8003"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_FALLBACK_PORT_START", "8003"))
     )
     fallback_port_range_end: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_FALLBACK_PORT_END", "8010"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_FALLBACK_PORT_END", "8010"))
     )
     max_port_fallback_attempts: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_MAX_PORT_ATTEMPTS", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_MAX_PORT_ATTEMPTS", "5"))
     )
 
     # v11.0: Instance Ownership Tracking
     instance_ownership_file: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_OWNERSHIP_FILE",
+            "Ironcliw_PRIME_OWNERSHIP_FILE",
             str(Path.home() / ".jarvis" / "prime_instance.json")
         ))
     )
@@ -224,7 +224,7 @@ class JarvisPrimeConfig:
 
 
 class PrimeStatus(str, Enum):
-    """JARVIS-Prime subprocess status."""
+    """Ironcliw-Prime subprocess status."""
     STOPPED = "stopped"
     STARTING = "starting"
     RUNNING = "running"
@@ -236,7 +236,7 @@ class PrimeStatus(str, Enum):
 
 @dataclass
 class PrimeHealth:
-    """Health information for JARVIS-Prime."""
+    """Health information for Ironcliw-Prime."""
     status: PrimeStatus
     pid: Optional[int] = None
     uptime_seconds: float = 0.0
@@ -249,7 +249,7 @@ class PrimeHealth:
     error_message: Optional[str] = None
 
     def is_healthy(self) -> bool:
-        """Check if JARVIS-Prime is healthy."""
+        """Check if Ironcliw-Prime is healthy."""
         return self.status == PrimeStatus.RUNNING and self.consecutive_failures == 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -269,12 +269,12 @@ class PrimeHealth:
 
 
 # =============================================================================
-# JARVIS-Prime Orchestrator
+# Ironcliw-Prime Orchestrator
 # =============================================================================
 
 class JarvisPrimeOrchestrator:
     """
-    Manages JARVIS-Prime as a critical microservice subprocess.
+    Manages Ironcliw-Prime as a critical microservice subprocess.
 
     Features:
     - Subprocess lifecycle management (start, stop, restart)
@@ -289,7 +289,7 @@ class JarvisPrimeOrchestrator:
         >>> await orchestrator.start()
         >>> health = orchestrator.get_health()
         >>> if health.is_healthy():
-        ...     # Route to JARVIS-Prime
+        ...     # Route to Ironcliw-Prime
         >>> await orchestrator.stop()
     """
 
@@ -299,10 +299,10 @@ class JarvisPrimeOrchestrator:
         narrator_callback: Optional[Callable[[str], asyncio.coroutine]] = None,
     ):
         """
-        Initialize the JARVIS-Prime orchestrator.
+        Initialize the Ironcliw-Prime orchestrator.
 
         Args:
-            config: Configuration for JARVIS-Prime
+            config: Configuration for Ironcliw-Prime
             narrator_callback: Optional callback for voice announcements
         """
         self.config = config or JarvisPrimeConfig()
@@ -361,7 +361,7 @@ class JarvisPrimeOrchestrator:
                 primary_port=self.config.port,
                 fallback_port_start=self.config.fallback_port_range_start,
                 fallback_port_end=self.config.fallback_port_range_end,
-                max_cleanup_time_seconds=float(os.getenv("JARVIS_PRIME_CLEANUP_TIMEOUT", "10.0")),
+                max_cleanup_time_seconds=float(os.getenv("Ironcliw_PRIME_CLEANUP_TIMEOUT", "10.0")),
                 adopt_existing_instances=self.config.adopt_existing_instances,
                 health_probe_timeout=self.config.adoption_health_timeout_seconds,
             )
@@ -378,7 +378,7 @@ class JarvisPrimeOrchestrator:
 
     async def start(self) -> bool:
         """
-        Start JARVIS-Prime subprocess.
+        Start Ironcliw-Prime subprocess.
 
         Returns:
             True if started successfully, False otherwise
@@ -400,9 +400,9 @@ class JarvisPrimeOrchestrator:
                 # Update status
                 self._set_status(PrimeStatus.STARTING)
 
-                # Validate JARVIS-Prime repo exists
+                # Validate Ironcliw-Prime repo exists
                 if not self._validate_repo():
-                    self._health.error_message = f"JARVIS-Prime repo not found at {self.config.prime_repo_path}"
+                    self._health.error_message = f"Ironcliw-Prime repo not found at {self.config.prime_repo_path}"
                     self._set_status(PrimeStatus.FAILED)
                     return False
 
@@ -413,8 +413,8 @@ class JarvisPrimeOrchestrator:
                     )
 
                 # ROOT CAUSE FIX: Retry logic to handle race conditions
-                max_spawn_attempts = int(os.getenv("JARVIS_PRIME_SPAWN_RETRIES", "3"))
-                spawn_retry_delay = float(os.getenv("JARVIS_PRIME_SPAWN_RETRY_DELAY", "2.0"))
+                max_spawn_attempts = int(os.getenv("Ironcliw_PRIME_SPAWN_RETRIES", "3"))
+                spawn_retry_delay = float(os.getenv("Ironcliw_PRIME_SPAWN_RETRY_DELAY", "2.0"))
 
                 for attempt in range(max_spawn_attempts):
                     try:
@@ -504,7 +504,7 @@ class JarvisPrimeOrchestrator:
                 return False
 
     async def stop(self) -> None:
-        """Gracefully stop JARVIS-Prime subprocess."""
+        """Gracefully stop Ironcliw-Prime subprocess."""
         if self._stopping:
             return
 
@@ -541,7 +541,7 @@ class JarvisPrimeOrchestrator:
 
     async def restart(self) -> bool:
         """
-        Restart JARVIS-Prime subprocess.
+        Restart Ironcliw-Prime subprocess.
 
         Returns:
             True if restarted successfully
@@ -838,7 +838,7 @@ class JarvisPrimeOrchestrator:
     # =========================================================================
 
     def _validate_repo(self) -> bool:
-        """Validate JARVIS-Prime repository exists."""
+        """Validate Ironcliw-Prime repository exists."""
         repo_path = self.config.prime_repo_path
 
         if not repo_path.exists():
@@ -858,7 +858,7 @@ class JarvisPrimeOrchestrator:
 
     async def _try_adopt_existing_instance(self, port: int, pid: int) -> bool:
         """
-        Attempt to adopt an existing JARVIS Prime instance on the given port.
+        Attempt to adopt an existing Ironcliw Prime instance on the given port.
 
         This is the ROOT CAUSE FIX for port conflicts: instead of killing a healthy
         instance, we adopt it and reuse it. This is more efficient (no model reload)
@@ -876,11 +876,11 @@ class JarvisPrimeOrchestrator:
             return False
 
         logger.info(
-            f"[JarvisPrime] 🔍 Checking if PID {pid} on port {port} is an adoptable JARVIS Prime instance..."
+            f"[JarvisPrime] 🔍 Checking if PID {pid} on port {port} is an adoptable Ironcliw Prime instance..."
         )
 
         try:
-            # Step 1: Verify it's a JARVIS Prime instance via health endpoint
+            # Step 1: Verify it's a Ironcliw Prime instance via health endpoint
             health_info = await self._probe_instance_health(port)
 
             if health_info is None:
@@ -906,7 +906,7 @@ class JarvisPrimeOrchestrator:
 
             # Step 3: Create adoption wrapper
             logger.info(
-                f"[JarvisPrime] ✅ Adopting healthy JARVIS Prime instance on port {port} (PID {pid})"
+                f"[JarvisPrime] ✅ Adopting healthy Ironcliw Prime instance on port {port} (PID {pid})"
             )
 
             # Create a mock process wrapper for the adopted instance
@@ -984,7 +984,7 @@ class JarvisPrimeOrchestrator:
             await self._save_instance_ownership(port, pid, adopted=True)
 
             logger.info(
-                f"[JarvisPrime] 🎉 Successfully adopted JARVIS Prime instance: "
+                f"[JarvisPrime] 🎉 Successfully adopted Ironcliw Prime instance: "
                 f"PID={pid}, Port={port}, Model={health_info.get('model', 'unknown')}"
             )
 
@@ -996,13 +996,13 @@ class JarvisPrimeOrchestrator:
 
     async def _probe_instance_health(self, port: int) -> Optional[Dict[str, Any]]:
         """
-        Probe an instance's health endpoint to verify it's a JARVIS Prime server.
+        Probe an instance's health endpoint to verify it's a Ironcliw Prime server.
 
         Args:
             port: Port to probe
 
         Returns:
-            Health info dict if healthy JARVIS Prime, None otherwise
+            Health info dict if healthy Ironcliw Prime, None otherwise
         """
         health_url = f"http://{self.config.host}:{port}/health"
         timeout = aiohttp.ClientTimeout(total=self.config.adoption_health_timeout_seconds)
@@ -1013,8 +1013,8 @@ class JarvisPrimeOrchestrator:
                     if resp.status == 200:
                         data = await resp.json()
 
-                        # Verify it looks like a JARVIS Prime response
-                        # JARVIS Prime health endpoint typically returns:
+                        # Verify it looks like a Ironcliw Prime response
+                        # Ironcliw Prime health endpoint typically returns:
                         # {"status": "ok", "model": "...", "model_loaded": true, ...}
                         if isinstance(data, dict):
                             status = data.get("status", "").lower()
@@ -1025,7 +1025,7 @@ class JarvisPrimeOrchestrator:
                                 return data
 
                         logger.debug(
-                            f"[JarvisPrime] Health probe response not recognized as JARVIS Prime: {data}"
+                            f"[JarvisPrime] Health probe response not recognized as Ironcliw Prime: {data}"
                         )
                         return None
 
@@ -1202,7 +1202,7 @@ class JarvisPrimeOrchestrator:
             # Handle adoption
             if adopted_info is not None and adopted_info.should_adopt:
                 logger.info(
-                    f"[JarvisPrime] v11.1 Adopting existing JARVIS Prime "
+                    f"[JarvisPrime] v11.1 Adopting existing Ironcliw Prime "
                     f"(PID {adopted_info.pid} on port {port})"
                 )
 
@@ -1309,7 +1309,7 @@ class JarvisPrimeOrchestrator:
         # v11.0: TRY INSTANCE ADOPTION FIRST (ROOT CAUSE FIX)
         # =========================================================================
         # Before trying to kill anything, check if the existing instance is a
-        # healthy JARVIS Prime that we can simply adopt. This is MORE efficient
+        # healthy Ironcliw Prime that we can simply adopt. This is MORE efficient
         # than killing and restarting!
 
         if self.config.adopt_existing_instances:
@@ -1320,7 +1320,7 @@ class JarvisPrimeOrchestrator:
 
             if await self._try_adopt_existing_instance(port, pid):
                 logger.info(
-                    f"[JarvisPrime] ✅ Successfully adopted existing JARVIS Prime instance! "
+                    f"[JarvisPrime] ✅ Successfully adopted existing Ironcliw Prime instance! "
                     f"Skipping spawn - using PID {pid} on port {port}"
                 )
                 return True  # Adopted existing instance, no need to spawn
@@ -1339,7 +1339,7 @@ class JarvisPrimeOrchestrator:
                 f"This is a restart scenario - checking for existing Prime subprocess..."
             )
 
-            # Check if we have an existing JARVIS Prime subprocess we can reuse
+            # Check if we have an existing Ironcliw Prime subprocess we can reuse
             if PSUTIL_AVAILABLE:
                 try:
                     current_process = psutil.Process(current_pid)
@@ -1347,7 +1347,7 @@ class JarvisPrimeOrchestrator:
 
                     for child in children:
                         try:
-                            # Look for python processes with "jarvis_prime" in command (JARVIS Prime signature)
+                            # Look for python processes with "jarvis_prime" in command (Ironcliw Prime signature)
                             cmdline = child.cmdline()
                             cmdline_str = ' '.join(cmdline)
 
@@ -1514,7 +1514,7 @@ class JarvisPrimeOrchestrator:
                 f"Process: {process_info.get('name', 'unknown')}"
             )
             logger.info(
-                f"[JarvisPrime] This appears to be an old JARVIS Prime instance or "
+                f"[JarvisPrime] This appears to be an old Ironcliw Prime instance or "
                 f"related supervisor process. Attempting coordinated shutdown..."
             )
         else:
@@ -1523,7 +1523,7 @@ class JarvisPrimeOrchestrator:
                 f"Process: {process_info.get('name', 'unknown')}. Attempting cleanup..."
             )
 
-        # Strategy 1: Try graceful HTTP shutdown (works for JARVIS Prime instances)
+        # Strategy 1: Try graceful HTTP shutdown (works for Ironcliw Prime instances)
         shutdown_success = await self._try_graceful_http_shutdown(port, pid)
         if shutdown_success:
             # Wait for port to free up with verification
@@ -1556,7 +1556,7 @@ class JarvisPrimeOrchestrator:
             # Last resort for related processes: Check if it's truly orphaned
             if await self._is_orphaned_instance(pid, process_info):
                 logger.warning(
-                    f"[JarvisPrime] PID {pid} appears to be an orphaned JARVIS Prime instance. "
+                    f"[JarvisPrime] PID {pid} appears to be an orphaned Ironcliw Prime instance. "
                     f"Attempting force cleanup..."
                 )
                 try:
@@ -1627,7 +1627,7 @@ class JarvisPrimeOrchestrator:
         error_msg = (
             f"Port {port} is still in use by PID {pid} after {elapsed:.1f}s of cleanup attempts. "
             f"Process: {process_info.get('name', 'unknown')}. "
-            f"Cannot start JARVIS Prime - port is not available. "
+            f"Cannot start Ironcliw Prime - port is not available. "
             f"Manual intervention required: kill PID {pid} or use different port."
         )
         logger.error(f"[JarvisPrime] {error_msg}")
@@ -1865,7 +1865,7 @@ class JarvisPrimeOrchestrator:
 
     async def _try_graceful_http_shutdown(self, port: int, pid: int) -> bool:
         """
-        Attempt graceful HTTP shutdown of JARVIS Prime instance on given port.
+        Attempt graceful HTTP shutdown of Ironcliw Prime instance on given port.
 
         Args:
             port: Port number
@@ -1975,15 +1975,15 @@ class JarvisPrimeOrchestrator:
                 info["name"] = proc.name()
                 info["cmdline"] = " ".join(proc.cmdline())
 
-                # Check if it's a JARVIS Prime instance
+                # Check if it's a Ironcliw Prime instance
                 cmdline_lower = info["cmdline"].lower()
                 if "jarvis" in cmdline_lower and "prime" in cmdline_lower:
                     info["is_jarvis_prime"] = True
                 elif "jarvis-prime" in cmdline_lower:
                     info["is_jarvis_prime"] = True
-                elif "8000" in cmdline_lower:  # Current JARVIS Prime port
+                elif "8000" in cmdline_lower:  # Current Ironcliw Prime port
                     info["is_jarvis_prime"] = True
-                elif "8002" in cmdline_lower:  # Legacy JARVIS Prime port
+                elif "8002" in cmdline_lower:  # Legacy Ironcliw Prime port
                     info["is_jarvis_prime"] = True
 
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -2008,10 +2008,10 @@ class JarvisPrimeOrchestrator:
 
     async def _is_orphaned_instance(self, pid: int, process_info: Dict[str, Any]) -> bool:
         """
-        Determine if a process is an orphaned JARVIS Prime instance.
+        Determine if a process is an orphaned Ironcliw Prime instance.
 
         An instance is considered orphaned if:
-        1. It's a JARVIS Prime process (based on cmdline)
+        1. It's a Ironcliw Prime process (based on cmdline)
         2. It's been running for a while (>30s) without supervisor
         3. It's not responding to health checks
         4. It's in a zombie/stuck state
@@ -2021,13 +2021,13 @@ class JarvisPrimeOrchestrator:
             process_info: Process information dict
 
         Returns:
-            True if process appears to be orphaned JARVIS Prime instance
+            True if process appears to be orphaned Ironcliw Prime instance
         """
-        # Must be identified as JARVIS Prime
+        # Must be identified as Ironcliw Prime
         if not process_info.get("is_jarvis_prime", False):
             return False
 
-        logger.debug(f"[JarvisPrime] Checking if PID {pid} is orphaned JARVIS Prime instance...")
+        logger.debug(f"[JarvisPrime] Checking if PID {pid} is orphaned Ironcliw Prime instance...")
 
         # Check 1: Is it responding to health checks?
         try:
@@ -2066,20 +2066,20 @@ class JarvisPrimeOrchestrator:
 
         # If we can't determine health status and it's not responding, consider it orphaned
         logger.info(
-            f"[JarvisPrime] PID {pid} appears to be JARVIS Prime but not responding - "
+            f"[JarvisPrime] PID {pid} appears to be Ironcliw Prime but not responding - "
             f"treating as potentially orphaned"
         )
         return True
 
     async def _spawn_process(self) -> bool:
-        """Spawn the JARVIS-Prime subprocess (or Docker container)."""
+        """Spawn the Ironcliw-Prime subprocess (or Docker container)."""
         if self.config.use_docker:
             return await self._spawn_docker_container()
         else:
             return await self._spawn_subprocess()
 
     async def _spawn_subprocess(self) -> bool:
-        """Spawn the JARVIS-Prime subprocess."""
+        """Spawn the Ironcliw-Prime subprocess."""
         try:
             # Build command
             cmd = [
@@ -2124,7 +2124,7 @@ class JarvisPrimeOrchestrator:
             return False
 
     async def _spawn_docker_container(self) -> bool:
-        """Spawn JARVIS-Prime as a Docker container."""
+        """Spawn Ironcliw-Prime as a Docker container."""
         try:
             # First, stop any existing container with the same name
             await self._stop_docker_container()
@@ -2137,8 +2137,8 @@ class JarvisPrimeOrchestrator:
                 "-p", f"{self.config.port}:8000",
                 "--memory", self.config.docker_memory_limit,
                 "--cpus", self.config.docker_cpus,
-                "-e", f"JARVIS_PRIME_HOST=0.0.0.0",
-                "-e", f"JARVIS_PRIME_PORT=8000",
+                "-e", f"Ironcliw_PRIME_HOST=0.0.0.0",
+                "-e", f"Ironcliw_PRIME_PORT=8000",
                 "-e", f"LOG_LEVEL={'DEBUG' if self.config.debug_mode else 'INFO'}",
             ]
 
@@ -2279,7 +2279,7 @@ class JarvisPrimeOrchestrator:
             logger.debug(f"[JarvisPrime] stderr reader ended: {e}")
 
     async def _wait_for_healthy(self) -> bool:
-        """Wait for JARVIS-Prime to become healthy."""
+        """Wait for Ironcliw-Prime to become healthy."""
         start_time = time.perf_counter()
         check_interval = 0.5  # Start with fast checks
 
@@ -2312,7 +2312,7 @@ class JarvisPrimeOrchestrator:
         return False
 
     async def _terminate_process(self) -> None:
-        """Terminate the JARVIS-Prime process/container gracefully."""
+        """Terminate the Ironcliw-Prime process/container gracefully."""
         if self.config.use_docker:
             await self._stop_docker_container()
             return
@@ -2382,11 +2382,11 @@ class JarvisPrimeOrchestrator:
     # =========================================================================
 
     def is_running(self) -> bool:
-        """Check if JARVIS-Prime is running."""
+        """Check if Ironcliw-Prime is running."""
         return self._health.status == PrimeStatus.RUNNING
 
     def is_available(self) -> bool:
-        """Check if JARVIS-Prime is available for requests."""
+        """Check if Ironcliw-Prime is available for requests."""
         return self._health.status in (PrimeStatus.RUNNING, PrimeStatus.DEGRADED)
 
     def on_status_change(self, callback: Callable[[PrimeStatus], None]) -> None:
@@ -2415,7 +2415,7 @@ def get_jarvis_prime_orchestrator(
     narrator_callback: Optional[Callable[[str], asyncio.coroutine]] = None,
 ) -> JarvisPrimeOrchestrator:
     """
-    Get the global JARVIS-Prime orchestrator instance.
+    Get the global Ironcliw-Prime orchestrator instance.
 
     Args:
         config: Optional configuration (only used on first call)
@@ -2441,7 +2441,7 @@ async def get_jarvis_prime_orchestrator_async(
     auto_start: bool = True,
 ) -> JarvisPrimeOrchestrator:
     """
-    Get the global JARVIS-Prime orchestrator instance (async version).
+    Get the global Ironcliw-Prime orchestrator instance (async version).
 
     This version can optionally auto-start the orchestrator.
 

@@ -1,12 +1,12 @@
-"""
-JARVIS Orchestrator Package v1.0.0
+﻿"""
+Ironcliw Orchestrator Package v1.0.0
 ===================================
 
 Enterprise-grade cross-repository orchestration for the Trinity ecosystem.
 
 This package provides modular components for managing the lifecycle of:
-- JARVIS Body (main system - port 8010)
-- JARVIS Prime (ML inference - port 8001)
+- Ironcliw Body (main system - port 8010)
+- Ironcliw Prime (ML inference - port 8001)
 - Reactor Core (training/learning - port 8090)
 
 Package Structure:
@@ -27,7 +27,7 @@ Key Features:
 
 Trinity Architecture:
     ┌─────────────────────────────────────────────────────────────┐
-    │              JARVIS Orchestrator (Control Plane)             │
+    │              Ironcliw Orchestrator (Control Plane)             │
     ├─────────────────────────────────────────────────────────────┤
     │                                                             │
     │   Service Registry          Health Coordinator              │
@@ -47,7 +47,7 @@ Trinity Architecture:
     └─────────────────────────────────────────────────────────────┘
               │               │               │
     ┌─────────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐
-    │  JARVIS Body   │ │JARVIS Prime │ │Reactor Core │
+    │  Ironcliw Body   │ │Ironcliw Prime │ │Reactor Core │
     │  (port 8010)   │ │ (port 8001) │ │ (port 8090) │
     │  main.py       │ │run_server.py│ │run_reactor  │
     └────────────────┘ └─────────────┘ └─────────────┘
@@ -60,7 +60,7 @@ Migration Strategy:
     2. Legacy code can continue to import from cross_repo_startup_orchestrator
     3. Gradually move functionality to orchestrator modules
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -187,7 +187,7 @@ async def start_all_services(
     Start all Trinity services.
     
     Args:
-        skip_prime: Skip JARVIS Prime startup
+        skip_prime: Skip Ironcliw Prime startup
         skip_reactor: Skip Reactor Core startup
     
     Returns:

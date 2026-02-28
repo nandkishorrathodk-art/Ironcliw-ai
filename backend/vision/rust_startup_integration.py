@@ -1,5 +1,5 @@
-"""
-Rust startup integration for JARVIS backend.
+﻿"""
+Rust startup integration for Ironcliw backend.
 Handles automatic Rust component initialization and verification.
 """
 
@@ -16,7 +16,7 @@ import psutil
 logger = logging.getLogger(__name__)
 
 class RustStartupManager:
-    """Manages Rust component initialization during JARVIS startup."""
+    """Manages Rust component initialization during Ironcliw startup."""
     
     def __init__(self):
         self.vision_dir = Path(__file__).parent
@@ -34,7 +34,7 @@ class RustStartupManager:
             logger.info("Rust components not found, checking if we should build...")
             
             # Only build automatically in development mode
-            if os.getenv('JARVIS_DEV_MODE', 'false').lower() == 'true':
+            if os.getenv('Ironcliw_DEV_MODE', 'false').lower() == 'true':
                 logger.info("Development mode detected, building Rust components...")
                 success = await self._build_rust_components()
                 if not success:
@@ -219,7 +219,7 @@ class RustStartupManager:
         return {
             'enabled': True,
             'total_ram_gb': total_ram_gb,
-            'rust_pool_mb': int(total_ram_gb * 1024 * 0.4 * 0.5),  # 50% of JARVIS allocation
+            'rust_pool_mb': int(total_ram_gb * 1024 * 0.4 * 0.5),  # 50% of Ironcliw allocation
             'estimated_savings_percent': 25,  # 25% memory reduction
             'zero_copy_enabled': self.rust_components.get('zero_copy', False)
         }

@@ -1,5 +1,5 @@
-"""
-Centralized Secret Management for JARVIS
+﻿"""
+Centralized Secret Management for Ironcliw
 =========================================
 
 A robust, async-capable, multi-backend secret management system with:
@@ -365,7 +365,7 @@ class KeychainBackend(SecretBackend):
     name = "macos_keychain"
     priority = 50
 
-    def __init__(self, service_name: str = "JARVIS"):
+    def __init__(self, service_name: str = "Ironcliw"):
         self._service_name = service_name
         self._keyring = None
         self._initialized = False
@@ -457,7 +457,7 @@ class EnvironmentBackend(SecretBackend):
 
 class SecretManager:
     """
-    Centralized secret management for JARVIS with:
+    Centralized secret management for Ironcliw with:
       - Multi-backend support with automatic fallback
       - Async/await for non-blocking operations
       - Intelligent caching with TTL
@@ -470,14 +470,14 @@ class SecretManager:
     SECRET_ALIASES: Dict[str, List[str]] = {
         "anthropic-api-key": ["ANTHROPIC_API_KEY", "anthropic_api_key"],
         "jarvis-db-password": [
-            "JARVIS_DB_PASSWORD",
+            "Ironcliw_DB_PASSWORD",
             "jarvis_db_password",
             "DB_PASSWORD",
             "CLOUDSQL_DB_PASSWORD",  # v117.0: Unified with startup_barrier
             "CLOUD_SQL_PASSWORD",
         ],
         "jarvis-db-user": [
-            "JARVIS_DB_USER",
+            "Ironcliw_DB_USER",
             "jarvis_db_user",
             "DB_USER",
             "CLOUDSQL_DB_USER",  # v117.0: Unified with startup_barrier
@@ -917,7 +917,7 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
     )
 
-    print("🔐 JARVIS Secret Manager Test\n")
+    print("🔐 Ironcliw Secret Manager Test\n")
     print("=" * 60)
 
     mgr = get_secret_manager()

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Unified WebSocket Service v3.0 - Zero-Touch Edition
  * =====================================================
  * Uses DynamicWebSocketClient for all WebSocket operations
@@ -59,7 +59,7 @@ class UnifiedWebSocketService {
     
     // v8.0: Unified Speech State (Self-Voice Suppression)
     // This state is synchronized from the backend to prevent the frontend
-    // from transcribing JARVIS's own voice (feedback loop/hallucinations)
+    // from transcribing Ironcliw's own voice (feedback loop/hallucinations)
     this.speechState = {
       isSpeaking: false,           // Backend is currently speaking
       inCooldown: false,           // Post-speech cooldown active
@@ -248,7 +248,7 @@ class UnifiedWebSocketService {
       this._notifySubscribers('maintenance_mode', {
         active: true,
         reason: 'restarting',
-        message: data?.message || 'Restarting JARVIS core...',
+        message: data?.message || 'Restarting Ironcliw core...',
         estimatedTime: data?.estimated_time || 15,
       });
     });
@@ -274,7 +274,7 @@ class UnifiedWebSocketService {
       this._notifySubscribers('maintenance_mode', {
         active: false,
         reason: null,
-        message: data?.message || 'JARVIS is back online',
+        message: data?.message || 'Ironcliw is back online',
       });
     });
 
@@ -652,7 +652,7 @@ class UnifiedWebSocketService {
       this._notifySubscribers('maintenance_mode', {
         active: false,
         reason: null,
-        message: 'Hot reload complete - JARVIS is back online',
+        message: 'Hot reload complete - Ironcliw is back online',
       });
       
       // Clear status after a brief delay
@@ -680,7 +680,7 @@ class UnifiedWebSocketService {
     // ═══════════════════════════════════════════════════════════════════
     // These events are broadcast from the backend UnifiedSpeechStateManager
     // to keep the frontend in sync. This prevents the frontend from
-    // transcribing JARVIS's own voice output (feedback loop prevention).
+    // transcribing Ironcliw's own voice output (feedback loop prevention).
     // ═══════════════════════════════════════════════════════════════════
 
     // Handle speech state changes from backend
@@ -689,7 +689,7 @@ class UnifiedWebSocketService {
       const state = data?.state || {};
       
       if (event === 'speech_started') {
-        console.log('🔇 [SPEECH STATE] JARVIS started speaking');
+        console.log('🔇 [SPEECH STATE] Ironcliw started speaking');
         this.speechState = {
           isSpeaking: true,
           inCooldown: false,
@@ -701,7 +701,7 @@ class UnifiedWebSocketService {
         };
         this._notifySubscribers('speech_state', { ...this.speechState, event: 'started' });
       } else if (event === 'speech_ended') {
-        console.log('🔇 [SPEECH STATE] JARVIS stopped speaking, cooldown active');
+        console.log('🔇 [SPEECH STATE] Ironcliw stopped speaking, cooldown active');
         this.speechState = {
           ...this.speechState,
           isSpeaking: false,

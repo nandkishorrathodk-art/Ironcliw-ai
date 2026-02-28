@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Swift Performance Bridge Integration
 """
@@ -36,7 +36,7 @@ def test_swift_system_monitor():
         print(f"Memory: {metrics.memory_used_mb}MB / {metrics.memory_total_mb}MB ({metrics.memory_percent:.1f}%)")
         print(f"Available: {metrics.memory_available_mb}MB")
         print(f"Pressure: {metrics.memory_pressure}")
-        print(f"JARVIS Memory: {metrics.jarvis_memory_mb}MB")
+        print(f"Ironcliw Memory: {metrics.jarvis_memory_mb}MB")
         
         # Test performance
         print("\n⚡ Testing performance overhead...")
@@ -117,7 +117,7 @@ def test_swift_vision_processor():
 
 def main():
     """Run all Swift performance tests"""
-    print("🚀 JARVIS Swift Performance Bridge Test Suite")
+    print("🚀 Ironcliw Swift Performance Bridge Test Suite")
     print("=" * 60)
     
     # Set library path

@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Crew Multi-Agent Collaboration System
+﻿"""
+Ironcliw Neural Mesh - Crew Multi-Agent Collaboration System
 
 A CrewAI-inspired framework for orchestrating multi-agent collaboration.
 

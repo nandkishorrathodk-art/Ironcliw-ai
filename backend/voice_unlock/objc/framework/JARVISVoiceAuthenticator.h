@@ -1,6 +1,6 @@
-/**
- * JARVISVoiceAuthenticator.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwVoiceAuthenticator.h
+ * Ironcliw Voice Unlock System
  *
  * Core voice authentication engine that performs voiceprint matching
  * and anti-spoofing detection.
@@ -12,27 +12,27 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // Authentication result keys
-extern NSString *const JARVISAuthResultSuccessKey;
-extern NSString *const JARVISAuthResultConfidenceKey;
-extern NSString *const JARVISAuthResultUserIDKey;
-extern NSString *const JARVISAuthResultReasonKey;
-extern NSString *const JARVISAuthResultLivenessScoreKey;
-extern NSString *const JARVISAuthResultAntispoofingScoreKey;
+extern NSString *const IroncliwAuthResultSuccessKey;
+extern NSString *const IroncliwAuthResultConfidenceKey;
+extern NSString *const IroncliwAuthResultUserIDKey;
+extern NSString *const IroncliwAuthResultReasonKey;
+extern NSString *const IroncliwAuthResultLivenessScoreKey;
+extern NSString *const IroncliwAuthResultAntispoofingScoreKey;
 
 // Authentication failure reasons
-typedef NS_ENUM(NSInteger, JARVISAuthFailureReason) {
-    JARVISAuthFailureReasonUnknown = 0,
-    JARVISAuthFailureReasonNoMatch,
-    JARVISAuthFailureReasonLowConfidence,
-    JARVISAuthFailureReasonLivenessFailed,
-    JARVISAuthFailureReasonSpoofingDetected,
-    JARVISAuthFailureReasonNoiseLevel,
-    JARVISAuthFailureReasonAudioQuality,
-    JARVISAuthFailureReasonTimeout
+typedef NS_ENUM(NSInteger, IroncliwAuthFailureReason) {
+    IroncliwAuthFailureReasonUnknown = 0,
+    IroncliwAuthFailureReasonNoMatch,
+    IroncliwAuthFailureReasonLowConfidence,
+    IroncliwAuthFailureReasonLivenessFailed,
+    IroncliwAuthFailureReasonSpoofingDetected,
+    IroncliwAuthFailureReasonNoiseLevel,
+    IroncliwAuthFailureReasonAudioQuality,
+    IroncliwAuthFailureReasonTimeout
 };
 
 // Voiceprint model
-@interface JARVISVoiceprint : NSObject <NSSecureCoding>
+@interface IroncliwVoiceprint : NSObject <NSSecureCoding>
 
 @property (nonatomic, readonly) NSString *userID;
 @property (nonatomic, readonly) NSString *userName;
@@ -51,7 +51,7 @@ typedef NS_ENUM(NSInteger, JARVISAuthFailureReason) {
 @end
 
 // Main authenticator interface
-@interface JARVISVoiceAuthenticator : NSObject
+@interface IroncliwVoiceAuthenticator : NSObject
 
 // Configuration
 @property (nonatomic, assign) float confidenceThreshold;

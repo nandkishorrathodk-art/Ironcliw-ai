@@ -1,6 +1,6 @@
-//
+﻿//
 //  AppleWatchDetector.swift
-//  JARVISProximityAuth
+//  IroncliwProximityAuth
 //
 //  Detects Apple Watch proximity using Bluetooth LE
 //

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enroll Derek's Voice Profile for JARVIS Voice Unlock
+Enroll Derek's Voice Profile for Ironcliw Voice Unlock
 This script creates a voice profile for Derek to enable voice biometric authentication.
 """
 
@@ -35,7 +35,7 @@ async def enroll_derek():
         # Store the voice profile
         logger.info("Storing voice profile in database...")
         profile_id = await db.store_speaker_profile(
-            speaker_name="Derek",
+            speaker_name="Nandkishor",
             embedding=embedding,
             confidence=0.95,  # High confidence for owner
             is_primary_user=True,
@@ -54,7 +54,7 @@ async def enroll_derek():
                        f"Security={profile['security_level']}, Samples={profile['total_samples']}")
 
         await db.close()
-        logger.info("\n🎉 Derek's voice profile enrolled successfully!")
+        logger.info("\n🎉 Nandkishor's voice profile enrolled successfully!")
         logger.info("You can now use voice commands like 'unlock my screen'")
 
     except Exception as e:

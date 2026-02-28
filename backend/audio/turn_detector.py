@@ -1,4 +1,4 @@
-"""
+﻿"""
 Turn Detector (Layer 3)
 ========================
 
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class QuestionType(Enum):
-    """Type of the last question JARVIS asked, affects silence threshold."""
+    """Type of the last question Ironcliw asked, affects silence threshold."""
     YES_NO = "yes_no"
     OPEN_ENDED = "open_ended"
     DEFAULT = "default"
@@ -42,15 +42,15 @@ class QuestionType(Enum):
 
 # Silence thresholds (ms) — configurable via env vars
 _THRESHOLDS = {
-    QuestionType.YES_NO: int(os.getenv("JARVIS_TURN_SILENCE_YESNO_MS", "300")),
-    QuestionType.OPEN_ENDED: int(os.getenv("JARVIS_TURN_SILENCE_OPEN_MS", "900")),
-    QuestionType.DEFAULT: int(os.getenv("JARVIS_TURN_SILENCE_DEFAULT_MS", "600")),
-    QuestionType.COMMAND: int(os.getenv("JARVIS_TURN_SILENCE_COMMAND_MS", "500")),
-    QuestionType.FOLLOW_UP: int(os.getenv("JARVIS_TURN_SILENCE_FOLLOWUP_MS", "700")),
+    QuestionType.YES_NO: int(os.getenv("Ironcliw_TURN_SILENCE_YESNO_MS", "300")),
+    QuestionType.OPEN_ENDED: int(os.getenv("Ironcliw_TURN_SILENCE_OPEN_MS", "900")),
+    QuestionType.DEFAULT: int(os.getenv("Ironcliw_TURN_SILENCE_DEFAULT_MS", "600")),
+    QuestionType.COMMAND: int(os.getenv("Ironcliw_TURN_SILENCE_COMMAND_MS", "500")),
+    QuestionType.FOLLOW_UP: int(os.getenv("Ironcliw_TURN_SILENCE_FOLLOWUP_MS", "700")),
 }
 
 # Minimum speech duration before a turn can end (prevent false triggers)
-_MIN_SPEECH_MS = int(os.getenv("JARVIS_TURN_MIN_SPEECH_MS", "200"))
+_MIN_SPEECH_MS = int(os.getenv("Ironcliw_TURN_MIN_SPEECH_MS", "200"))
 
 
 class TurnDetector:

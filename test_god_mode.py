@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS God Mode End-to-End Test with Real-Time Voice Narration
+Ironcliw God Mode End-to-End Test with Real-Time Voice Narration
 ===============================================================
 
-This test verifies omnipresent multi-space surveillance with JARVIS
+This test verifies omnipresent multi-space surveillance with Ironcliw
 narrating the entire process in real-time using Daniel's British voice.
 
 Features:
@@ -12,14 +12,14 @@ Features:
 3. Monitors them in parallel (GPU-accelerated)
 4. Detects trigger on ANY space (even if you're looking elsewhere)
 5. Automatically switches to detected space
-6. JARVIS speaks throughout the process explaining what he's doing
+6. Ironcliw speaks throughout the process explaining what he's doing
 
 Prerequisites:
 - Space 1: Terminal window (idle)
 - Space 2: Terminal window (run: sleep 10 && echo "Deployment Complete")
 - Space 3: You are here, running this test
 
-Expected Result: JARVIS detects "Deployment Complete" on Space 2
+Expected Result: Ironcliw detects "Deployment Complete" on Space 2
                 while you're looking at Space 3 (God Mode!)
                 AND narrates the entire journey in real-time!
 """
@@ -46,12 +46,12 @@ from backend.core.unified_speech_state import get_speech_state_manager
 
 
 # =============================================================================
-# JARVIS VOICE (Daniel's British Voice - Real-Time TTS)
+# Ironcliw VOICE (Daniel's British Voice - Real-Time TTS)
 # =============================================================================
 
 async def jarvis_speak(message: str, rate: int = 200, blocking: bool = False) -> None:
     """
-    JARVIS speaks using Daniel's British voice.
+    Ironcliw speaks using Daniel's British voice.
 
     Args:
         message: Text to speak
@@ -94,19 +94,19 @@ async def jarvis_speak(message: str, rate: int = 200, blocking: bool = False) ->
             asyncio.create_task(_wait_and_cleanup())
 
         # Also print to console
-        print(f"🗣️  JARVIS: {message}")
+        print(f"🗣️  Ironcliw: {message}")
 
     except Exception as e:
         logger.warning(f"TTS error: {e}")
         # Fallback: just print
-        print(f"🗣️  JARVIS: {message}")
+        print(f"🗣️  Ironcliw: {message}")
 
 
 async def test_god_mode():
     """Run the God Mode omnipresent surveillance test with real-time voice narration."""
 
     print("\n" + "="*70)
-    print("🚀 JARVIS GOD MODE - OMNIPRESENT SURVEILLANCE TEST")
+    print("🚀 Ironcliw GOD MODE - OMNIPRESENT SURVEILLANCE TEST")
     print("="*70)
     print(f"⏰ Test started: {datetime.now().strftime('%H:%M:%S')}")
     print()
@@ -240,7 +240,7 @@ async def test_god_mode():
             if result.get('triggered_space'):
                 print("   ✓ Automatic space switching: WORKING")
             print()
-            print("🎉 JARVIS HAS ACHIEVED OMNIPRESENT SURVEILLANCE!")
+            print("🎉 Ironcliw HAS ACHIEVED OMNIPRESENT SURVEILLANCE!")
 
             # Final victory speech
             await jarvis_speak(

@@ -1,11 +1,11 @@
-"""
+﻿"""
 v77.1: Distributed Transaction Coordinator - Gap #44
 =====================================================
 
 Atomic multi-repo commits using Two-Phase Commit (2PC) protocol.
 
 Problem:
-    If evolution modifies JARVIS + J-Prime + Reactor-Core, we need:
+    If evolution modifies Ironcliw + J-Prime + Reactor-Core, we need:
     - Either ALL repos commit successfully (atomicity)
     - Or ALL rollback to previous state (consistency)
 
@@ -23,7 +23,7 @@ Features:
     - Distributed lock coordination
     - Network partition detection
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations
@@ -799,8 +799,8 @@ def get_distributed_transaction_coordinator(
     if _coordinator is None:
         if repos is None:
             repos = {
-                "jarvis": Path(os.getenv("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent"))),
-                "jarvis_prime": Path(os.getenv("JARVIS_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
+                "jarvis": Path(os.getenv("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent"))),
+                "jarvis_prime": Path(os.getenv("Ironcliw_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
                 "reactor_core": Path(os.getenv("REACTOR_CORE_REPO", str(Path.home() / "Documents/repos/reactor-core"))),
             }
         _coordinator = DistributedTransactionCoordinator(repos=repos)

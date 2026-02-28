@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Type Checker - Gap #21
 ==============================
 
@@ -8,7 +8,7 @@ Type checking integration with:
 - Basic type inference fallback
 - Stub file handling
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

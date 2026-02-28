@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Vision-Guided UI Navigator for Display Connection
 ==================================================
 
-Uses JARVIS Vision to navigate macOS Control Center and connect to displays.
+Uses Ironcliw Vision to navigate macOS Control Center and connect to displays.
 Bypasses all macOS Sequoia security restrictions by using visual recognition.
 
 This module provides a comprehensive vision-guided navigation system that can:
@@ -26,7 +26,7 @@ Features:
 - Async/await support throughout
 - Self-healing with retry logic
 - Comprehensive visual verification
-- Integration with existing JARVIS vision system
+- Integration with existing Ironcliw vision system
 - Works on macOS Sequoia without accessibility permissions
 - Adaptive confidence thresholds based on success history
 - Color analysis to distinguish similar icons (e.g., Siri vs Control Center)
@@ -805,7 +805,7 @@ class VisionUINavigator:
         """Get TTS callback for voice narration.
 
         Returns an async callback function for text-to-speech,
-        enabling JARVIS to narrate its actions transparently.
+        enabling Ironcliw to narrate its actions transparently.
         """
         try:
             tts = await self._get_tts()
@@ -850,7 +850,7 @@ class VisionUINavigator:
         Example:
             >>> navigator = VisionUINavigator()
             >>> result = await navigator.connect_to_display_with_computer_use("Living Room TV")
-            >>> # JARVIS will narrate: "Starting task: Connect to Living Room TV..."
+            >>> # Ironcliw will narrate: "Starting task: Connect to Living Room TV..."
             >>> # "Clicking on Control Center..."
             >>> # "Found Screen Mirroring, clicking..."
             >>> # "Successfully connected to Living Room TV"

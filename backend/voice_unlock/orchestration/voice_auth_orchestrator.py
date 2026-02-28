@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Authentication Orchestrator
 
 Enterprise-grade LangChain-based orchestration for multi-factor
@@ -156,21 +156,21 @@ class MultiFactorTransparencyGenerator:
     - Graceful degradation narratives
 
     Configuration:
-    - JARVIS_MULTI_FACTOR_TRANSPARENCY: Enable transparency (default: true)
-    - JARVIS_EXPLAIN_FUSION_MATH: Explain Bayesian fusion details (default: false)
-    - JARVIS_EXPLAIN_FALLBACK_CHAIN: Explain why fallbacks triggered (default: true)
+    - Ironcliw_MULTI_FACTOR_TRANSPARENCY: Enable transparency (default: true)
+    - Ironcliw_EXPLAIN_FUSION_MATH: Explain Bayesian fusion details (default: false)
+    - Ironcliw_EXPLAIN_FALLBACK_CHAIN: Explain why fallbacks triggered (default: true)
     """
 
     def __init__(self):
         self.logger = logger
         self.transparency_enabled = (
-            os.getenv("JARVIS_MULTI_FACTOR_TRANSPARENCY", "true").lower() == "true"
+            os.getenv("Ironcliw_MULTI_FACTOR_TRANSPARENCY", "true").lower() == "true"
         )
         self.explain_fusion_math = (
-            os.getenv("JARVIS_EXPLAIN_FUSION_MATH", "false").lower() == "true"
+            os.getenv("Ironcliw_EXPLAIN_FUSION_MATH", "false").lower() == "true"
         )
         self.explain_fallback_chain = (
-            os.getenv("JARVIS_EXPLAIN_FALLBACK_CHAIN", "true").lower() == "true"
+            os.getenv("Ironcliw_EXPLAIN_FALLBACK_CHAIN", "true").lower() == "true"
         )
 
     def explain_fusion_decision(

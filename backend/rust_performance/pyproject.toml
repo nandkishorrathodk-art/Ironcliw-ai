@@ -1,11 +1,11 @@
-[build-system]
+﻿[build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "jarvis_performance"
 version = "0.1.0"
-description = "High-performance Rust layer for JARVIS AI"
+description = "High-performance Rust layer for Ironcliw AI"
 requires-python = ">=3.8"
 
 [tool.maturin]

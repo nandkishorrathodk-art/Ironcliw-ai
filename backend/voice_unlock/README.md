@@ -1,16 +1,16 @@
-# JARVIS Voice Unlock System - The Apple Watch Alternative
+﻿# Ironcliw Voice Unlock System - The Apple Watch Alternative
 
 A sophisticated voice-based authentication system for macOS that provides hands-free screen unlocking through voice commands. Perfect for users who don't have an Apple Watch but want the same convenient unlock experience. Built with a hybrid Objective-C and Python architecture for optimal performance and security.
 
-> **Status**: ✅ Fully integrated with JARVIS startup. Voice Unlock starts automatically when you launch JARVIS and processes commands like "unlock my mac" directly without giving instructions.
+> **Status**: ✅ Fully integrated with Ironcliw startup. Voice Unlock starts automatically when you launch Ironcliw and processes commands like "unlock my mac" directly without giving instructions.
 
 ## Features
 
 - 🎤 **Voice Authentication**: Wake phrase detection with voice recognition - no Apple Watch needed!
-- 🔐 **Automatic Screen Unlock**: Say "Hey JARVIS, unlock my Mac" instead of typing passwords
+- 🔐 **Automatic Screen Unlock**: Say "Hey Ironcliw, unlock my Mac" instead of typing passwords
 - 🔒 **Secure Password Storage**: Passwords stored encrypted in macOS Keychain
 - 🔄 **Background Monitoring**: Always ready when your screen locks
-- 📱 **JARVIS Integration**: Seamless alternative to Apple Watch Unlock
+- 📱 **Ironcliw Integration**: Seamless alternative to Apple Watch Unlock
 - 🌐 **WebSocket Communication**: Real-time bridge between components
 - ⚡ **Native Performance**: Built with Objective-C for optimal macOS integration
 
@@ -18,7 +18,7 @@ A sophisticated voice-based authentication system for macOS that provides hands-
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    JARVIS Voice Unlock                       │
+│                    Ironcliw Voice Unlock                       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌─────────────────┐        ┌──────────────────┐          │
@@ -50,7 +50,7 @@ A sophisticated voice-based authentication system for macOS that provides hands-
 ### 1. Enable Screen Unlock (One-Time Setup)
 
 ```bash
-cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock
+cd ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock
 ./enable_screen_unlock.sh
 ```
 
@@ -59,26 +59,26 @@ This will:
 - Configure the system for actual screen unlocking
 - Set up voice enrollment data
 
-### 2. Start JARVIS (Includes Voice Unlock)
+### 2. Start Ironcliw (Includes Voice Unlock)
 
 ```bash
 # From the project root
 python start_system.py
 ```
 
-Voice Unlock starts automatically with JARVIS if you've completed step 1. No need to run `start_voice_unlock_system.sh` separately anymore!
+Voice Unlock starts automatically with Ironcliw if you've completed step 1. No need to run `start_voice_unlock_system.sh` separately anymore!
 
 ### 3. Using Voice Unlock (No Apple Watch Required!)
 
 **The Apple Watch Alternative in Action:**
-- "Hey JARVIS, unlock my mac" - Instantly unlocks without typing passwords
-- "Hey JARVIS, unlock my screen" - Works just like Apple Watch Unlock
-- "Hey JARVIS, unlock the mac" - No hardware required, just your voice!
+- "Hey Ironcliw, unlock my mac" - Instantly unlocks without typing passwords
+- "Hey Ironcliw, unlock my screen" - Works just like Apple Watch Unlock
+- "Hey Ironcliw, unlock the mac" - No hardware required, just your voice!
 
 **Direct unlock phrases (when screen is locked):**
-- "Hello JARVIS, unlock my Mac"
-- "JARVIS, this is [Your Name]"
-- "Open sesame, JARVIS"
+- "Hello Ironcliw, unlock my Mac"
+- "Ironcliw, this is [Your Name]"
+- "Open sesame, Ironcliw"
 
 > **Perfect for Non-Apple Watch Users**: Get the same hands-free unlock convenience without needing to buy an Apple Watch!
 
@@ -117,7 +117,7 @@ Grant these in System Settings > Privacy & Security
 
 ### Starting Voice Unlock
 
-Voice Unlock now starts automatically with JARVIS! Just run:
+Voice Unlock now starts automatically with Ironcliw! Just run:
 
 ```bash
 # From the project root
@@ -135,35 +135,35 @@ If you need to start Voice Unlock manually for debugging:
 python3 objc/server/websocket_server.py &
 
 # 2. Start daemon
-./objc/bin/JARVISVoiceUnlockDaemon
+./objc/bin/IroncliwVoiceUnlockDaemon
 
 # Check status
-./objc/bin/JARVISVoiceUnlockDaemon --status
+./objc/bin/IroncliwVoiceUnlockDaemon --status
 ```
 
 ### Stopping Voice Unlock
 
-Voice Unlock stops automatically when you stop JARVIS. If you need to stop it manually:
+Voice Unlock stops automatically when you stop Ironcliw. If you need to stop it manually:
 
 ```bash
 # Stop all components
 pkill -f websocket_server.py
-pkill -f JARVISVoiceUnlockDaemon
+pkill -f IroncliwVoiceUnlockDaemon
 ```
 
 ### Voice Commands
 
-**Through JARVIS (anytime):**
-- **"Hey JARVIS, unlock my mac"** - Immediately unlocks your screen
-- **"Hey JARVIS, unlock my screen"** - Alternative command  
-- **"Hey JARVIS, unlock the mac"** - Another variation
+**Through Ironcliw (anytime):**
+- **"Hey Ironcliw, unlock my mac"** - Immediately unlocks your screen
+- **"Hey Ironcliw, unlock my screen"** - Alternative command  
+- **"Hey Ironcliw, unlock the mac"** - Another variation
 
 **Direct to Voice Unlock (when screen is locked):**
-- **"Hello JARVIS, unlock my Mac"** - Standalone unlock command
-- **"JARVIS, this is [Your Name]"** - Personal identification
-- **"Open sesame, JARVIS"** - Alternative unlock phrase
+- **"Hello Ironcliw, unlock my Mac"** - Standalone unlock command
+- **"Ironcliw, this is [Your Name]"** - Personal identification
+- **"Open sesame, Ironcliw"** - Alternative unlock phrase
 
-> **Note**: When using JARVIS commands, the screen unlocks immediately without requiring additional phrases!
+> **Note**: When using Ironcliw commands, the screen unlocks immediately without requiring additional phrases!
 
 ### Setup and Enrollment
 
@@ -177,9 +177,9 @@ pkill -f JARVISVoiceUnlockDaemon
 The system uses a default voice profile. For enhanced security, you can enroll your specific voice:
 
 ```bash
-# Through JARVIS interface
-"Hey JARVIS, enable voice unlock"
-"Hey JARVIS, enroll my voice for unlock"
+# Through Ironcliw interface
+"Hey Ironcliw, enable voice unlock"
+"Hey Ironcliw, enroll my voice for unlock"
 ```
 
 ## Configuration
@@ -189,9 +189,9 @@ Configuration file: `~/.jarvis/voice_unlock/config.json`
 ```json
 {
   "unlockPhrases": [
-    "Hello JARVIS, unlock my Mac",
-    "JARVIS, this is Derek",
-    "Open sesame, JARVIS"
+    "Hello Ironcliw, unlock my Mac",
+    "Ironcliw, this is Derek",
+    "Open sesame, Ironcliw"
   ],
   "options": {
     "livenessDetection": true,
@@ -220,7 +220,7 @@ Configuration file: `~/.jarvis/voice_unlock/config.json`
 # Build and run unit tests
 cd objc
 make test
-./bin/JARVISVoiceUnlockTest all
+./bin/IroncliwVoiceUnlockTest all
 ```
 
 ### Debug Mode
@@ -256,10 +256,10 @@ This will show:
 
 ### Common Issues
 
-1. **"Voice Unlock didn't start with JARVIS"**
+1. **"Voice Unlock didn't start with Ironcliw"**
    - Check if password is stored: `security find-generic-password -s com.jarvis.voiceunlock -a unlock_token -g`
    - Run setup if needed: `./backend/voice_unlock/enable_screen_unlock.sh`
-   - Check JARVIS startup logs for "🔐 Voice Unlock system started"
+   - Check Ironcliw startup logs for "🔐 Voice Unlock system started"
 
 2. **"Voice commands not detected"**
    - Check microphone permissions in System Settings
@@ -270,18 +270,18 @@ This will show:
 3. **"Screen doesn't unlock when I say 'unlock my mac'"**
    - Verify Voice Unlock is running: `lsof -i :8765`
    - Check accessibility permissions in System Settings
-   - Look for errors in JARVIS logs
+   - Look for errors in Ironcliw logs
    - Re-run `./enable_screen_unlock.sh` if needed
 
-4. **"JARVIS gives instructions instead of unlocking"**
-   - This is the old behavior - restart JARVIS to get the updated integration
+4. **"Ironcliw gives instructions instead of unlocking"**
+   - This is the old behavior - restart Ironcliw to get the updated integration
    - Verify you have the latest code with integrated unlock commands
    - Check that Voice Unlock WebSocket server is running on port 8765
 
 5. **"WebSocket connection failed"**
    - Voice Unlock should handle port conflicts automatically
    - If issues persist, manually kill processes: `pkill -f websocket_server.py`
-   - Check JARVIS logs for Voice Unlock startup status
+   - Check Ironcliw logs for Voice Unlock startup status
 
 6. **"Daemon crashes or stops"**
    - Check system logs: `log show --predicate 'subsystem == "com.jarvis.voiceunlock"' --last 5m`
@@ -295,33 +295,33 @@ This will show:
 tail -f /tmp/websocket_debug.log /tmp/daemon_debug.log
 
 # Check if components are running
-ps aux | grep -E "(websocket_server|JARVISVoiceUnlockDaemon)"
+ps aux | grep -E "(websocket_server|IroncliwVoiceUnlockDaemon)"
 
 # Test individual components
-./objc/bin/JARVISVoiceUnlockDaemon --debug --test
+./objc/bin/IroncliwVoiceUnlockDaemon --debug --test
 ```
 
 ## Architecture Details
 
 ### Components
 
-1. **Objective-C Daemon** (`JARVISVoiceUnlockDaemon`)
+1. **Objective-C Daemon** (`IroncliwVoiceUnlockDaemon`)
    - Monitors screen lock/unlock events
    - Manages voice detection through Core Audio
    - Handles keyboard simulation for password entry
    - Communicates via WebSocket
 
 2. **Python WebSocket Server** (`websocket_server.py`)
-   - Bridge between JARVIS and the Objective-C daemon
+   - Bridge between Ironcliw and the Objective-C daemon
    - Handles command routing
    - Manages system status
 
-3. **Voice Monitor** (`JARVISVoiceMonitor`)
+3. **Voice Monitor** (`IroncliwVoiceMonitor`)
    - Continuous audio monitoring
    - Wake phrase detection
    - Audio preprocessing
 
-4. **Screen Unlock Manager** (`JARVISScreenUnlockManager`)
+4. **Screen Unlock Manager** (`IroncliwScreenUnlockManager`)
    - Detects screen states
    - Retrieves password from Keychain
    - Simulates keyboard input
@@ -333,7 +333,7 @@ User Voice → Microphone → Voice Monitor → Wake Phrase Detection
     ↓
 Authentication → Keychain Password Retrieval → Keyboard Simulation
     ↓
-Screen Unlock → Success Notification → JARVIS Integration
+Screen Unlock → Success Notification → Ironcliw Integration
 ```
 
 ## Development
@@ -392,8 +392,8 @@ voice_unlock/
 - Keyboard simulation for password entry
 - Wake phrase detection
 - Background monitoring service
-- JARVIS command integration with direct unlock
-- Automatic startup with JARVIS
+- Ironcliw command integration with direct unlock
+- Automatic startup with Ironcliw
 - Integrated lifecycle management
 - **🆕 LangGraph Adaptive Authentication** - Intelligent retry with reasoning
 - **🆕 LangChain Multi-Factor Fusion** - Voice + Behavioral + Context authentication
@@ -417,7 +417,7 @@ voice_unlock/
 
 ### LangGraph Adaptive Authentication
 
-The voice unlock system uses **LangGraph** for intelligent, multi-step authentication reasoning. Instead of simple pass/fail, JARVIS adapts to challenging conditions:
+The voice unlock system uses **LangGraph** for intelligent, multi-step authentication reasoning. Instead of simple pass/fail, Ironcliw adapts to challenging conditions:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -448,17 +448,17 @@ The voice unlock system uses **LangGraph** for intelligent, multi-step authentic
 ```
 You: "unlock my screen" (72% confidence - below threshold)
 
-JARVIS reasoning chain:
+Ironcliw reasoning chain:
 ├── Step 1: Partial match detected (72%)
 ├── Step 2: Analyze why confidence is low
 │   └── Background noise detected (SNR: 12 dB, normally 18 dB)
 ├── Step 3: Generate intelligent retry strategy
 │
-JARVIS: "I'm having trouble hearing you clearly - there's some
+Ironcliw: "I'm having trouble hearing you clearly - there's some
          background noise. Could you try again?"
 
 You: "unlock my screen" (91% confidence)
-JARVIS: "Much better! Unlocking for you now, Derek."
+Ironcliw: "Much better! Unlocking for you now, Derek."
 ```
 
 ### LangChain Multi-Factor Authentication
@@ -484,7 +484,7 @@ Context: 98% (EXCELLENT - home WiFi, known device)
 
 Weighted combination: 91% → PASS
 
-JARVIS: "Voice confidence was a bit lower than usual (you sound tired!),
+Ironcliw: "Voice confidence was a bit lower than usual (you sound tired!),
          but your behavioral patterns and context are perfect."
 ```
 
@@ -551,14 +551,14 @@ export LANGFUSE_SECRET_KEY="sk-lf-..."
 export LANGFUSE_HOST="https://us.cloud.langfuse.com"
 
 # Enable debug logging
-export JARVIS_LOG_LEVEL="DEBUG"
-export JARVIS_AUTH_LOG_LEVEL="DEBUG"
+export Ironcliw_LOG_LEVEL="DEBUG"
+export Ironcliw_AUTH_LOG_LEVEL="DEBUG"
 ```
 
 **Log Locations:**
 - **Langfuse Dashboard**: https://us.cloud.langfuse.com (real-time traces)
 - **Local Backup**: `/tmp/jarvis_auth_logs/auth_YYYYMMDD.jsonl`
-- **JARVIS Logs**: Standard JARVIS output
+- **Ironcliw Logs**: Standard Ironcliw output
 - **Daemon Logs**: `/tmp/daemon_debug.log`
 - **WebSocket Logs**: `/tmp/websocket_debug.log`
 
@@ -583,7 +583,7 @@ But ChromaDB detects anomalies:
 ├── Background noise: Exact same pattern (playback indicator)
 ├── Breathing pattern: Missing (recorded audio artifact)
 
-JARVIS: "Security alert: I detected characteristics consistent
+Ironcliw: "Security alert: I detected characteristics consistent
          with a recording playback. Access denied."
 ```
 
@@ -602,14 +602,14 @@ Confidence-aware responses that feel natural:
 **Environmental Awareness:**
 ```
 Noisy environment:
-JARVIS: "Give me a second - filtering out background noise...
+Ironcliw: "Give me a second - filtering out background noise...
          Got it - verified despite the coffee shop chatter."
 
 Late night:
-JARVIS: "Up late again? Unlocking quietly for you."
+Ironcliw: "Up late again? Unlocking quietly for you."
 
 Sick voice:
-JARVIS: "Your voice sounds different - hope you're feeling okay.
+Ironcliw: "Your voice sounds different - hope you're feeling okay.
          I can still verify it's you from your speech patterns."
 ```
 
@@ -672,7 +672,7 @@ audit.end_session(session_id, 'authenticated')
 
 ## License
 
-This project is part of the JARVIS AI Agent system. See main project license.
+This project is part of the Ironcliw AI Agent system. See main project license.
 
 ## Support
 
@@ -680,7 +680,7 @@ For issues and questions:
 - Check `FINAL_TEST_INSTRUCTIONS.md` for detailed testing steps
 - View logs in `/tmp/daemon_debug.log` and `/tmp/websocket_debug.log`
 - GitHub Issues: [Link to issues]
-- JARVIS Documentation: [Link to docs]
+- Ironcliw Documentation: [Link to docs]
 
 ---
 

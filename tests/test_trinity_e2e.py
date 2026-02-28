@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 PROJECT TRINITY End-to-End Test Suite
 ======================================
 
 Comprehensive test to verify Trinity integration across:
-- JARVIS Body (this repo)
+- Ironcliw Body (this repo)
 - J-Prime Mind (jarvis-prime)
 - Reactor Core Nerves (reactor-core)
 
@@ -19,7 +19,7 @@ Tests:
 Usage:
     PYTHONPATH=./backend python3 tests/test_trinity_e2e.py
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - PROJECT TRINITY Phase 3
 """
 
@@ -90,7 +90,7 @@ async def test_component_state_files() -> bool:
 
     trinity_dir = Path.home() / ".jarvis" / "trinity" / "components"
 
-    # Write JARVIS Body state (simulating startup)
+    # Write Ironcliw Body state (simulating startup)
     jarvis_state = {
         "component_type": "jarvis_body",
         "instance_id": f"jarvis-test-{os.getpid()}-{int(time.time())}",
@@ -106,9 +106,9 @@ async def test_component_state_files() -> bool:
     try:
         with open(jarvis_file, "w") as f:
             json.dump(jarvis_state, f, indent=2)
-        log_test("Write JARVIS Body state", True, f"Instance: {jarvis_state['instance_id'][:20]}...")
+        log_test("Write Ironcliw Body state", True, f"Instance: {jarvis_state['instance_id'][:20]}...")
     except Exception as e:
-        log_test("Write JARVIS Body state", False, str(e))
+        log_test("Write Ironcliw Body state", False, str(e))
         return False
 
     # Read it back
@@ -116,9 +116,9 @@ async def test_component_state_files() -> bool:
         with open(jarvis_file) as f:
             read_state = json.load(f)
         matches = read_state["instance_id"] == jarvis_state["instance_id"]
-        log_test("Read JARVIS Body state", matches, f"Timestamp: {read_state['timestamp']}")
+        log_test("Read Ironcliw Body state", matches, f"Timestamp: {read_state['timestamp']}")
     except Exception as e:
-        log_test("Read JARVIS Body state", False, str(e))
+        log_test("Read Ironcliw Body state", False, str(e))
         return False
 
     # Check for J-Prime state (may or may not exist)
@@ -198,13 +198,13 @@ async def test_trinity_initializer() -> bool:
         from system.trinity_initializer import (
             is_trinity_initialized,
             get_trinity_status,
-            JARVIS_INSTANCE_ID,
+            Ironcliw_INSTANCE_ID,
             TRINITY_ENABLED,
         )
 
         log_test("Import trinity_initializer", True, "All functions imported")
         log_test("TRINITY_ENABLED", True, f"Value: {TRINITY_ENABLED}")
-        log_test("JARVIS_INSTANCE_ID", True, f"ID: {JARVIS_INSTANCE_ID[:25]}...")
+        log_test("Ironcliw_INSTANCE_ID", True, f"ID: {Ironcliw_INSTANCE_ID[:25]}...")
 
         # Check status before init
         status = get_trinity_status()
@@ -282,7 +282,7 @@ async def test_cross_repo_communication() -> bool:
     trinity_dir = Path.home() / ".jarvis" / "trinity"
     commands_dir = trinity_dir / "commands"
 
-    # Simulate a command from J-Prime to JARVIS Body
+    # Simulate a command from J-Prime to Ironcliw Body
     test_command = {
         "id": f"test-cmd-{int(time.time() * 1000)}",
         "timestamp": time.time(),
@@ -402,7 +402,7 @@ async def test_trinity_auto_launch_config() -> bool:
 
     # Check repo paths
     jprime_path = Path(os.getenv(
-        "JARVIS_PRIME_PATH",
+        "Ironcliw_PRIME_PATH",
         str(Path.home() / "Documents" / "repos" / "jarvis-prime")
     ))
     reactor_path = Path(os.getenv(
@@ -449,7 +449,7 @@ async def run_all_tests():
     print()
     print("╔" + "═" * 58 + "╗")
     print("║" + "  PROJECT TRINITY - End-to-End Test Suite  ".center(58) + "║")
-    print("║" + "  Testing JARVIS Body ↔ J-Prime ↔ Reactor Core  ".center(58) + "║")
+    print("║" + "  Testing Ironcliw Body ↔ J-Prime ↔ Reactor Core  ".center(58) + "║")
     print("╚" + "═" * 58 + "╝")
 
     start_time = time.time()

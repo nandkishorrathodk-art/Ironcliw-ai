@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM Windows batch file for starting AI-Powered Chatbot System
 
 REM Set UTF-8 encoding for Python output (fixes emoji/Unicode errors on Windows)
@@ -127,12 +127,12 @@ echo Starting backend services...
 
 REM Start main API
 echo Starting main API on port 8000...
-start "JARVIS Main API" /B cmd /c "python -m backend.main > logs\main_api.log 2>&1"
+start "Ironcliw Main API" /B cmd /c "python -m backend.main > logs\main_api.log 2>&1"
 timeout /t 2 /nobreak >nul
 
 REM Start training API
 echo Starting training API on port 8001...
-start "JARVIS Training API" /B cmd /c "python -m backend.training_interface > logs\training_api.log 2>&1"
+start "Ironcliw Training API" /B cmd /c "python -m backend.training_interface > logs\training_api.log 2>&1"
 timeout /t 2 /nobreak >nul
 
 REM Start frontend if not backend-only

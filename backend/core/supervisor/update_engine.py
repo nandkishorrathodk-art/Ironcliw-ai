@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Update Engine v2.0 - Zero-Touch Edition
+Ironcliw Update Engine v2.0 - Zero-Touch Edition
 ================================================
 
 Async parallel update orchestration for the Self-Updating Lifecycle Manager.
@@ -11,12 +11,12 @@ v2.0 Features:
 - Staging area for safe update validation
 - Dry-run pip install before real installation
 - Python syntax and import validation
-- JARVIS busy-state checking before updates
+- Ironcliw busy-state checking before updates
 - Intelligent update classification (security/minor/major)
 - Parallel validation operations
 - Prime Directives enforcement
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -178,7 +178,7 @@ class UpdateEngine:
     - Timeout handling per step
     
     v2.0 Zero-Touch Features:
-    - Pre-flight safety checks (JARVIS busy state, system idle)
+    - Pre-flight safety checks (Ironcliw busy state, system idle)
     - Staging area for safe update validation
     - Dry-run pip installation
     - Python syntax and import validation
@@ -457,7 +457,7 @@ class UpdateEngine:
     
     async def check_jarvis_busy(self) -> tuple[bool, int]:
         """
-        Check if JARVIS is currently busy with active tasks.
+        Check if Ironcliw is currently busy with active tasks.
         
         Returns:
             Tuple of (is_busy, active_task_count)
@@ -538,7 +538,7 @@ class UpdateEngine:
         Run all pre-flight safety checks before update.
         
         Checks:
-        1. JARVIS not busy with active tasks
+        1. Ironcliw not busy with active tasks
         2. System idle (if required)
         3. Cooldown period since last update
         4. Protected files not modified
@@ -552,14 +552,14 @@ class UpdateEngine:
         result = PreFlightCheckResult()
         result.checks_performed = []
         
-        # Check 1: JARVIS busy state
+        # Check 1: Ironcliw busy state
         is_busy, active_tasks = await self.check_jarvis_busy()
         result.jarvis_busy = is_busy
         result.active_tasks = active_tasks
         result.checks_performed.append("jarvis_busy")
         
         if is_busy:
-            result.blocked_reason = f"JARVIS is busy ({active_tasks} active tasks)"
+            result.blocked_reason = f"Ironcliw is busy ({active_tasks} active tasks)"
             logger.info(f"⚠️ Pre-flight: {result.blocked_reason}")
             return result
         

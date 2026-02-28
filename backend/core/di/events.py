@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enterprise-Grade Lifecycle Event System for Dependency Injection
 
 This module provides a comprehensive event system for tracking service lifecycle
@@ -15,7 +15,7 @@ Features:
 - Thread-safe subscription management
 - Metrics and observability hooks
 
-Author: JARVIS DI Framework
+Author: Ironcliw DI Framework
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# Changelog: Unified Startup Progress System v2.0
+﻿# Changelog: Unified Startup Progress System v2.0
 
 **Date:** December 19, 2025
 **Version:** 2.0.0
@@ -23,7 +23,7 @@ Eliminated progress misalignment between backend, frontend, WebSocket clients, a
    - **Root Cause:** Three independent progress calculation systems
 
 2. **Premature Ready Announcements** ❌
-   - Voice narrator said "JARVIS is online!" at 45% progress
+   - Voice narrator said "Ironcliw is online!" at 45% progress
    - System not actually ready when announced
    - **Root Cause:** No centralized ready state check
 
@@ -182,7 +182,7 @@ await self._startup_narrator.announce_complete()  # Says "ready" too early ❌
 
 # AFTER (correct timing)
 if self._progress_hub:
-    await self._progress_hub.mark_complete(True, "JARVIS is online!")  # Mark hub ready
+    await self._progress_hub.mark_complete(True, "Ironcliw is online!")  # Mark hub ready
 await self._startup_narrator.announce_complete()  # Now announces correctly ✅
 ```
 
@@ -336,10 +336,10 @@ After mark_complete: Progress=100.0%, Ready=True
 ### 2. Correct Voice Timing ✅
 
 **Before:**
-- "JARVIS is online!" at 45% (too early)
+- "Ironcliw is online!" at 45% (too early)
 
 **After:**
-- "JARVIS is online!" only when `hub.is_ready() = True` (100% and all required components complete)
+- "Ironcliw is online!" only when `hub.is_ready() = True` (100% and all required components complete)
 
 ### 3. Flexibility ✅
 
@@ -409,7 +409,7 @@ print(state['components'])  # Check which component is stuck
 
 ### Issue: Voice Says "Ready" Too Early
 
-**Symptoms:** "JARVIS is online!" before system ready
+**Symptoms:** "Ironcliw is online!" before system ready
 
 **Diagnosis:**
 ```python
@@ -454,7 +454,7 @@ grep "HUB_AVAILABLE" backend/core/startup_progress_broadcaster.py
 
 ## Credits
 
-**Implemented by:** JARVIS System + Claude Sonnet 4.5
+**Implemented by:** Ironcliw System + Claude Sonnet 4.5
 **Date:** December 19, 2025
 **Pull Request:** #TBD
 **Issue:** Progress Misalignment (#TBD)

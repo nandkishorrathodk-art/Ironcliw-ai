@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Multi-Space Integration Example for JARVIS
+Multi-Space Integration Example for Ironcliw
 Shows how to integrate all the multi-space components together
 """
 
@@ -20,9 +20,9 @@ from backend.vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class JARVISMultiSpaceVision:
+class IroncliwMultiSpaceVision:
     """
-    Complete multi-space vision system for JARVIS
+    Complete multi-space vision system for Ironcliw
     Integrates all components for workspace-wide intelligence
     """
     
@@ -46,7 +46,7 @@ class JARVISMultiSpaceVision:
         
     async def initialize(self):
         """Initialize the multi-space vision system"""
-        logger.info("Initializing JARVIS Multi-Space Vision System...")
+        logger.info("Initializing Ironcliw Multi-Space Vision System...")
         
         # Start predictive caching
         await self.screenshot_cache.start_predictive_caching()
@@ -292,7 +292,7 @@ async def main():
     
     # Initialize system
     claude_client = MockClaudeClient()
-    jarvis = JARVISMultiSpaceVision(claude_client)
+    jarvis = IroncliwMultiSpaceVision(claude_client)
     await jarvis.initialize()
     
     # Example queries

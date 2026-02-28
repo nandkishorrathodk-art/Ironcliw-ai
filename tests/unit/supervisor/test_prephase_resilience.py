@@ -1,13 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 
 def test_cloud_only_fallback_never_escalates_to_local_full(monkeypatch):
     import unified_supervisor as us
 
-    monkeypatch.setenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0")
-    monkeypatch.setenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0")
-    monkeypatch.setenv("JARVIS_PLANNED_ML_GB", "4.6")
-    monkeypatch.setenv("JARVIS_MINIMAL_THRESHOLD_GB", "1.0")
+    monkeypatch.setenv("Ironcliw_CRITICAL_THRESHOLD_GB", "2.0")
+    monkeypatch.setenv("Ironcliw_OPTIMIZE_THRESHOLD_GB", "4.0")
+    monkeypatch.setenv("Ironcliw_PLANNED_ML_GB", "4.6")
+    monkeypatch.setenv("Ironcliw_MINIMAL_THRESHOLD_GB", "1.0")
 
     assert us._resolve_local_startup_mode_on_cloud_unavailable("cloud_only", 16.0) == "local_optimized"
     assert us._resolve_local_startup_mode_on_cloud_unavailable("cloud_only", 0.4) == "minimal"
@@ -17,10 +17,10 @@ def test_cloud_only_fallback_never_escalates_to_local_full(monkeypatch):
 def test_cloud_first_fallback_is_memory_aware(monkeypatch):
     import unified_supervisor as us
 
-    monkeypatch.setenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0")
-    monkeypatch.setenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0")
-    monkeypatch.setenv("JARVIS_PLANNED_ML_GB", "4.6")
-    monkeypatch.setenv("JARVIS_MINIMAL_THRESHOLD_GB", "1.0")
+    monkeypatch.setenv("Ironcliw_CRITICAL_THRESHOLD_GB", "2.0")
+    monkeypatch.setenv("Ironcliw_OPTIMIZE_THRESHOLD_GB", "4.0")
+    monkeypatch.setenv("Ironcliw_PLANNED_ML_GB", "4.6")
+    monkeypatch.setenv("Ironcliw_MINIMAL_THRESHOLD_GB", "1.0")
 
     assert us._resolve_local_startup_mode_on_cloud_unavailable("cloud_first", 16.0) == "local_full"
     assert us._resolve_local_startup_mode_on_cloud_unavailable("cloud_first", 6.0) == "sequential"
@@ -40,13 +40,13 @@ def test_startup_watchdog_invalid_env_values_fall_back_to_defaults(monkeypatch):
         def debug(self, *_args, **_kwargs):
             pass
 
-    monkeypatch.setenv("JARVIS_DMS_ENABLED", "not-a-bool")
-    monkeypatch.setenv("JARVIS_DMS_STALL_THRESHOLD", "bad-float")
-    monkeypatch.setenv("JARVIS_DMS_CHECK_INTERVAL", "bad-float")
-    monkeypatch.setenv("JARVIS_DMS_RECOVERY_MODE", "unknown-mode")
-    monkeypatch.setenv("JARVIS_DMS_ESCALATION_COOLDOWN", "NaN???")
-    monkeypatch.setenv("JARVIS_DMS_STALL_ESCALATION_COOLDOWN", "NaN???")
-    monkeypatch.setenv("JARVIS_DMS_PROGRESS_WINDOW", "NaN???")
+    monkeypatch.setenv("Ironcliw_DMS_ENABLED", "not-a-bool")
+    monkeypatch.setenv("Ironcliw_DMS_STALL_THRESHOLD", "bad-float")
+    monkeypatch.setenv("Ironcliw_DMS_CHECK_INTERVAL", "bad-float")
+    monkeypatch.setenv("Ironcliw_DMS_RECOVERY_MODE", "unknown-mode")
+    monkeypatch.setenv("Ironcliw_DMS_ESCALATION_COOLDOWN", "NaN???")
+    monkeypatch.setenv("Ironcliw_DMS_STALL_ESCALATION_COOLDOWN", "NaN???")
+    monkeypatch.setenv("Ironcliw_DMS_PROGRESS_WINDOW", "NaN???")
     monkeypatch.setenv("GCP_VM_STARTUP_TIMEOUT", "NaN???")
 
     watchdog = us.StartupWatchdog(logger=_Logger())

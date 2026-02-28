@@ -1,11 +1,11 @@
-"""
+﻿"""
 Unified AGI Orchestrator v100.0 - Cross-Repo Intelligence Coordination
 ========================================================================
 
-The ULTIMATE orchestration layer for JARVIS AGI system, providing:
+The ULTIMATE orchestration layer for Ironcliw AGI system, providing:
 - Unified message bus for cross-repo communication
 - Persistent intelligence storage across restarts
-- Learning pipeline (JARVIS -> Reactor Core -> JARVIS Prime)
+- Learning pipeline (Ironcliw -> Reactor Core -> Ironcliw Prime)
 - Cross-repo health aggregation with anomaly detection
 - Agent activation and lifecycle management
 - Distributed state synchronization
@@ -34,7 +34,7 @@ Architecture:
              |                    |                    |
              v                    v                    v
     +----------------+   +----------------+   +------------------+
-    |    JARVIS      |   | JARVIS Prime   |   |   Reactor Core   |
+    |    Ironcliw      |   | Ironcliw Prime   |   |   Reactor Core   |
     |    (Body)      |   |    (Brain)     |   | (Nervous System) |
     +----------------+   +----------------+   +------------------+
 
@@ -53,7 +53,7 @@ Environment Variables (ALL configurable):
     - AGI_LEARNING_BATCH_SIZE=100
     - AGI_MODEL_SYNC_INTERVAL_SEC=3600.0
 
-Author: JARVIS AGI System v100.0
+Author: Ironcliw AGI System v100.0
 """
 
 from __future__ import annotations
@@ -216,7 +216,7 @@ class AGIOrchestratorConfig:
     health_history_size: int = field(default_factory=lambda: _env_int("AGI_HEALTH_HISTORY_SIZE", 100))
 
     # ==========================================================================
-    # Model Sync (JARVIS <-> Prime <-> Reactor)
+    # Model Sync (Ironcliw <-> Prime <-> Reactor)
     # ==========================================================================
     model_sync_enabled: bool = field(default_factory=lambda: _env_bool("AGI_MODEL_SYNC_ENABLED", True))
     model_sync_interval_sec: float = field(default_factory=lambda: _env_float(
@@ -228,10 +228,10 @@ class AGIOrchestratorConfig:
     # Repository Paths (Dynamic Discovery with Fallbacks)
     # ==========================================================================
     jarvis_repo_path: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_REPO_PATH", "~/Documents/repos/JARVIS-AI-Agent"
+        "Ironcliw_REPO_PATH", "~/Documents/repos/Ironcliw-AI-Agent"
     ))
     prime_repo_path: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_PRIME_REPO_PATH", "~/Documents/repos/jarvis-prime"
+        "Ironcliw_PRIME_REPO_PATH", "~/Documents/repos/jarvis-prime"
     ))
     reactor_repo_path: Path = field(default_factory=lambda: _env_path(
         "REACTOR_CORE_REPO_PATH", "~/Documents/repos/reactor-core"
@@ -274,7 +274,7 @@ def get_agi_config() -> AGIOrchestratorConfig:
 
 class AGIComponent(str, Enum):
     """AGI system components."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     PRIME = "prime"
     REACTOR = "reactor"
     ORCHESTRATOR = "orchestrator"
@@ -872,7 +872,7 @@ class LearningPipeline:
     """
     v100.0: Manages the learning pipeline across repos.
 
-    Flow: JARVIS (experiences) -> Reactor Core (training) -> JARVIS Prime (model update)
+    Flow: Ironcliw (experiences) -> Reactor Core (training) -> Ironcliw Prime (model update)
 
     Features:
     - Experience collection and batching
@@ -1320,8 +1320,8 @@ class CrossRepoHealthAggregator:
         start_time = time.time()
 
         try:
-            if component == AGIComponent.JARVIS:
-                # Check JARVIS health
+            if component == AGIComponent.Ironcliw:
+                # Check Ironcliw health
                 health_file = Path.home() / ".jarvis" / "trinity" / "components" / "jarvis_body.json"
                 if health_file.exists():
                     data = json.loads(health_file.read_text())
@@ -1413,7 +1413,7 @@ class UnifiedAGIOrchestrator:
     Coordinates all subsystems:
     - Event Bus (cross-repo communication)
     - Persistent State (survives restarts)
-    - Learning Pipeline (JARVIS -> Reactor -> Prime)
+    - Learning Pipeline (Ironcliw -> Reactor -> Prime)
     - Agent Registry (lifecycle management)
     - Health Aggregator (monitoring)
     """

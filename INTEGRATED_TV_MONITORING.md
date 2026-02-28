@@ -1,14 +1,14 @@
-# ✅ **Living Room TV Monitoring - INTEGRATED into JARVIS**
+﻿# ✅ **Living Room TV Monitoring - INTEGRATED into Ironcliw**
 
 ## 🎉 **COMPLETE! TV Monitoring Now Starts Automatically**
 
-Your Living Room TV monitoring is now **fully integrated** into the main JARVIS system!
+Your Living Room TV monitoring is now **fully integrated** into the main Ironcliw system!
 
 ---
 
 ## 🚀 **How to Use (Simple)**
 
-### **Just start JARVIS normally:**
+### **Just start Ironcliw normally:**
 
 ```bash
 python3 start_system.py
@@ -20,15 +20,15 @@ python3 start_system.py
 
 ## 🎬 **What Happens Automatically**
 
-### **1. JARVIS Starts:**
+### **1. Ironcliw Starts:**
 ```
 python3 start_system.py
 
-[JARVIS logs]
+[Ironcliw logs]
 ✅ Simple Display Monitor API configured (no proximity detection)
    📺 Registered 'Living Room TV' for monitoring
    ✅ Display monitoring started - checking Screen Mirroring menu every 10s
-   📺 JARVIS will prompt when Living Room TV becomes available
+   📺 Ironcliw will prompt when Living Room TV becomes available
 ```
 
 ### **2. You Turn On Living Room TV:**
@@ -37,9 +37,9 @@ python3 start_system.py
 🔍 Display Monitor detected: Living Room TV is now available!
 ```
 
-### **3. JARVIS Prompts You:**
+### **3. Ironcliw Prompts You:**
 ```
-JARVIS: "Sir, I see Living Room TV is now available. 
+Ironcliw: "Sir, I see Living Room TV is now available. 
          Would you like to extend your display to it?"
 ```
 
@@ -47,7 +47,7 @@ JARVIS: "Sir, I see Living Room TV is now available.
 ```
 YOU: "Yes"
 
-JARVIS: "Extending to Living Room TV... Done, sir."
+Ironcliw: "Extending to Living Room TV... Done, sir."
 
 [Your MacBook display extends to Living Room TV]
 ```
@@ -57,7 +57,7 @@ JARVIS: "Extending to Living Room TV... Done, sir."
 ```
 YOU: "No"
 
-JARVIS: "Understood, sir. I won't ask about Living Room TV for the next hour."
+Ironcliw: "Understood, sir. I won't ask about Living Room TV for the next hour."
 
 [Won't ask for 1 hour]
 ```
@@ -68,7 +68,7 @@ JARVIS: "Understood, sir. I won't ask about Living Room TV for the next hour."
 
 ### **1. Backend Startup (main.py)**
 ```python
-# Auto-starts during JARVIS initialization
+# Auto-starts during Ironcliw initialization
 monitor = get_display_monitor()
 monitor.register_display("Living Room TV")
 await monitor.start_monitoring()
@@ -96,9 +96,9 @@ POST /api/display-monitor/stop       # Stop monitoring
 
 ## 🎤 **Voice Commands**
 
-### **When JARVIS Prompts:**
+### **When Ironcliw Prompts:**
 ```
-JARVIS: "Would you like to extend to Living Room TV?"
+Ironcliw: "Would you like to extend to Living Room TV?"
 
 ✅ "Yes"
 ✅ "Yeah"
@@ -234,7 +234,7 @@ curl -X POST "http://localhost:8000/api/display-monitor/connect?display_name=Liv
 - ✅ Simple availability detection
 - ✅ ~300 lines of clean code
 - ✅ `backend/display/` (new directory)
-- ✅ Fully integrated with JARVIS
+- ✅ Fully integrated with Ironcliw
 
 **Result: 87% code reduction + actually works!** 🎉
 
@@ -267,8 +267,8 @@ backend/
 
 1. ✅ **Just run:** `python3 start_system.py`
 2. ✅ **Turn on your Living Room TV**
-3. ✅ **JARVIS will detect it within 10 seconds**
-4. ✅ **JARVIS will prompt you to connect**
+3. ✅ **Ironcliw will detect it within 10 seconds**
+4. ✅ **Ironcliw will prompt you to connect**
 5. ✅ **Say "yes" or "no"**
 
 **Everything is automatic!** 🎉
@@ -293,11 +293,11 @@ backend/
 - ❌ Complex proximity system
 - ❌ Separate startup script needed
 - ❌ Apple Watch required
-- ❌ Not integrated with JARVIS
+- ❌ Not integrated with Ironcliw
 
 ### **After:**
 - ✅ Simple display monitoring
-- ✅ Starts automatically with JARVIS
+- ✅ Starts automatically with Ironcliw
 - ✅ No Apple Watch needed
 - ✅ Fully integrated
 
@@ -314,7 +314,7 @@ New: python3 start_system.py        # Just this!
 
 ## 🎊 **COMPLETE!**
 
-**Living Room TV monitoring is now fully integrated into JARVIS!**
+**Living Room TV monitoring is now fully integrated into Ironcliw!**
 
 Just run `start_system.py` and everything works automatically! 🚀
 

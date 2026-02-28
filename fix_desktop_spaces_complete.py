@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Complete fix for desktop spaces query routing and response generation
-Ensures JARVIS properly handles "What's happening across my desktop spaces?" with Claude API
+Ensures Ironcliw properly handles "What's happening across my desktop spaces?" with Claude API
 """
 
 import os
@@ -95,11 +95,11 @@ def test_intent_detection():
                 print(f"  ❌ '{query}' might not be detected")
 
 def cleanup_processes():
-    """Clean up any running JARVIS processes"""
+    """Clean up any running Ironcliw processes"""
 
-    print("\n🧹 Cleaning up existing JARVIS processes...")
+    print("\n🧹 Cleaning up existing Ironcliw processes...")
 
-    # Kill various JARVIS processes
+    # Kill various Ironcliw processes
     commands = [
         "pkill -f 'python.*start_system' 2>/dev/null",
         "pkill -f 'python.*main.py' 2>/dev/null",
@@ -121,24 +121,24 @@ def cleanup_processes():
 
     remaining = int(result.stdout.strip())
     if remaining == 0:
-        print("  ✓ All JARVIS processes cleaned up")
+        print("  ✓ All Ironcliw processes cleaned up")
     else:
         print(f"  ⚠️ {remaining} processes may still be running")
 
 def start_jarvis():
-    """Start JARVIS with proper configuration"""
+    """Start Ironcliw with proper configuration"""
 
-    print("\n🚀 Starting JARVIS...")
+    print("\n🚀 Starting Ironcliw...")
 
-    # Start JARVIS in background
+    # Start Ironcliw in background
     subprocess.Popen(
         ["python", "start_system.py"],
         stdout=open("jarvis_test.log", "w"),
         stderr=subprocess.STDOUT
     )
 
-    print("  ✓ JARVIS starting (check jarvis_test.log for output)")
-    print("\n⏳ Wait about 30 seconds for JARVIS to fully initialize")
+    print("  ✓ Ironcliw starting (check jarvis_test.log for output)")
+    print("\n⏳ Wait about 30 seconds for Ironcliw to fully initialize")
     print("📝 Then test with: 'What's happening across my desktop spaces?'")
     print("\n✨ Expected behavior:")
     print("  1. Command detected as 'vision' intent")
@@ -147,7 +147,7 @@ def start_jarvis():
     print("  4. Response includes actual workspace names (Cursor, Terminal, etc.)")
 
 def main():
-    """Apply all fixes and restart JARVIS"""
+    """Apply all fixes and restart Ironcliw"""
 
     print("=" * 60)
     print("🔧 Applying comprehensive desktop spaces fixes")

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Rate Limiter - Gap #10
 ==============================
 
@@ -9,7 +9,7 @@ Rate limiting implementations:
 - Burst handling
 - Priority-based limits
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

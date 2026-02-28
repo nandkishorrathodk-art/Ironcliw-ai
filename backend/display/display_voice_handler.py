@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Display Monitor Voice Handler
 ==============================
 
 Voice integration wrapper for display monitoring system.
-Bridges the display monitor with JARVIS voice system.
+Bridges the display monitor with Ironcliw voice system.
 
 This module provides voice output capabilities for the display monitoring system,
-integrating with JARVIS voice components while providing fallback to macOS say
+integrating with Ironcliw voice components while providing fallback to macOS say
 command for immediate audio feedback when displays are detected.
 
 Author: Derek Russell
@@ -43,12 +43,12 @@ class DisplayVoiceHandler:
     """
     Voice handler for display monitoring system.
 
-    Integrates with JARVIS voice systems and provides fallback mechanisms
+    Integrates with Ironcliw voice systems and provides fallback mechanisms
     for reliable voice output during display monitoring operations.
 
     Attributes:
-        voice_engine: JARVIS voice engine instance for text-to-speech
-        voice_integration: JARVIS voice integration handler instance
+        voice_engine: Ironcliw voice engine instance for text-to-speech
+        voice_integration: Ironcliw voice integration handler instance
         voice_enabled: Whether voice output is enabled
         voice_rate: Speech rate multiplier (1.0 = normal speed)
         voice_name: macOS voice name for say command
@@ -61,11 +61,11 @@ class DisplayVoiceHandler:
 
     def __init__(self, voice_engine: Optional[Any] = None, voice_integration: Optional[Any] = None) -> None:
         """
-        Initialize voice handler with optional JARVIS voice components.
+        Initialize voice handler with optional Ironcliw voice components.
 
         Args:
-            voice_engine: JARVIS voice engine instance for text-to-speech
-            voice_integration: JARVIS voice integration handler instance
+            voice_engine: Ironcliw voice engine instance for text-to-speech
+            voice_integration: Ironcliw voice integration handler instance
 
         Example:
             >>> handler = DisplayVoiceHandler()
@@ -78,9 +78,9 @@ class DisplayVoiceHandler:
         self.voice_integration = voice_integration
 
         # Voice settings from environment
-        self.voice_enabled = os.getenv('JARVIS_VOICE_ENABLED', 'true').lower() == 'true'
-        self.voice_rate = float(os.getenv('JARVIS_VOICE_RATE', '1.0'))
-        self.voice_name = os.getenv('JARVIS_VOICE_NAME', 'Daniel')  # British male voice
+        self.voice_enabled = os.getenv('Ironcliw_VOICE_ENABLED', 'true').lower() == 'true'
+        self.voice_rate = float(os.getenv('Ironcliw_VOICE_RATE', '1.0'))
+        self.voice_name = os.getenv('Ironcliw_VOICE_NAME', 'Daniel')  # British male voice
         self._voice_orchestrator = get_voice_orchestrator() if VOICE_ORCHESTRATOR_AVAILABLE else None
 
         logger.info(f"[DISPLAY VOICE] Initialized (enabled={self.voice_enabled})")
@@ -89,7 +89,7 @@ class DisplayVoiceHandler:
         """
         Speak a message using available voice systems.
 
-        Attempts to use JARVIS voice systems first, then falls back to macOS say
+        Attempts to use Ironcliw voice systems first, then falls back to macOS say
         command for immediate audio feedback. For display monitoring, prioritizes
         immediate response over queued notifications.
 
@@ -129,7 +129,7 @@ class DisplayVoiceHandler:
 
     async def _try_jarvis_voice(self, message: str, priority: str) -> bool:
         """
-        Attempt to use JARVIS voice systems for text-to-speech.
+        Attempt to use Ironcliw voice systems for text-to-speech.
 
         Tries voice_engine first if available. Skips voice_integration to avoid
         queued notifications and ensure immediate audio feedback for display events.
@@ -139,7 +139,7 @@ class DisplayVoiceHandler:
             priority: Priority level for voice output
 
         Returns:
-            True if JARVIS voice system was used successfully, False otherwise
+            True if Ironcliw voice system was used successfully, False otherwise
 
         Raises:
             Exception: Logs but doesn't raise exceptions from voice engine failures
@@ -336,7 +336,7 @@ class DisplayVoiceHandler:
             logger.error(f"[DISPLAY VOICE] Error getting voices: {e}")
             return []
 
-    async def test_voice(self, test_message: str = "JARVIS display monitoring is online, sir.") -> None:
+    async def test_voice(self, test_message: str = "Ironcliw display monitoring is online, sir.") -> None:
         """
         Test voice output with a sample message.
 
@@ -353,9 +353,9 @@ class DisplayVoiceHandler:
 
 def create_voice_handler(voice_engine: Optional[Any] = None, voice_integration: Optional[Any] = None) -> DisplayVoiceHandler:
     """
-    Create voice handler with automatic detection of JARVIS voice systems.
+    Create voice handler with automatic detection of Ironcliw voice systems.
 
-    Factory function that attempts to auto-detect and initialize JARVIS voice
+    Factory function that attempts to auto-detect and initialize Ironcliw voice
     components if not explicitly provided. For display monitoring, skips
     voice_integration to ensure immediate audio feedback.
 

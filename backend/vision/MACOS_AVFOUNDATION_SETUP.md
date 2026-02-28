@@ -1,8 +1,8 @@
-# ✅ macOS AVFoundation Video Capture - Production Ready (v10.6)
+﻿# ✅ macOS AVFoundation Video Capture - Production Ready (v10.6)
 
 ## Overview
 
-JARVIS now has **production-grade native macOS video capture** using AVFoundation via PyObjC. This eliminates the "macOS capture frameworks not available" warning and provides the highest quality screen capture with the purple indicator.
+Ironcliw now has **production-grade native macOS video capture** using AVFoundation via PyObjC. This eliminates the "macOS capture frameworks not available" warning and provides the highest quality screen capture with the purple indicator.
 
 ---
 
@@ -96,43 +96,43 @@ All settings are configurable via environment variables (NO HARDCODING):
 
 ### **Display Settings**
 ```bash
-export JARVIS_CAPTURE_DISPLAY_ID=0              # Display to capture (default: 0)
-export JARVIS_CAPTURE_RESOLUTION=1920x1080     # Resolution (default: 1920x1080)
-export JARVIS_CAPTURE_PIXEL_FORMAT=32BGRA      # Pixel format (default: 32BGRA)
+export Ironcliw_CAPTURE_DISPLAY_ID=0              # Display to capture (default: 0)
+export Ironcliw_CAPTURE_RESOLUTION=1920x1080     # Resolution (default: 1920x1080)
+export Ironcliw_CAPTURE_PIXEL_FORMAT=32BGRA      # Pixel format (default: 32BGRA)
 ```
 
 ### **Performance Settings**
 ```bash
-export JARVIS_CAPTURE_FPS=30                   # Target FPS (default: 30)
-export JARVIS_CAPTURE_MIN_FPS=10               # Minimum FPS (default: 10)
-export JARVIS_CAPTURE_MAX_FPS=60               # Maximum FPS (default: 60)
-export JARVIS_CAPTURE_ADAPTIVE=true            # Enable adaptive quality (default: true)
+export Ironcliw_CAPTURE_FPS=30                   # Target FPS (default: 30)
+export Ironcliw_CAPTURE_MIN_FPS=10               # Minimum FPS (default: 10)
+export Ironcliw_CAPTURE_MAX_FPS=60               # Maximum FPS (default: 60)
+export Ironcliw_CAPTURE_ADAPTIVE=true            # Enable adaptive quality (default: true)
 ```
 
 ### **Memory Settings**
 ```bash
-export JARVIS_CAPTURE_MAX_MEMORY_MB=500        # Max memory usage (default: 500MB)
-export JARVIS_CAPTURE_BUFFER_SIZE=10           # Frame buffer size (default: 10)
-export JARVIS_CAPTURE_MEMORY_MONITOR=true      # Enable memory monitoring (default: true)
+export Ironcliw_CAPTURE_MAX_MEMORY_MB=500        # Max memory usage (default: 500MB)
+export Ironcliw_CAPTURE_BUFFER_SIZE=10           # Frame buffer size (default: 10)
+export Ironcliw_CAPTURE_MEMORY_MONITOR=true      # Enable memory monitoring (default: true)
 ```
 
 ### **Capture Settings**
 ```bash
-export JARVIS_CAPTURE_CURSOR=false             # Capture cursor (default: false)
-export JARVIS_CAPTURE_MOUSE_CLICKS=false       # Capture mouse clicks (default: false)
-export JARVIS_CAPTURE_DISCARD_LATE=true        # Discard late frames (default: true)
+export Ironcliw_CAPTURE_CURSOR=false             # Capture cursor (default: false)
+export Ironcliw_CAPTURE_MOUSE_CLICKS=false       # Capture mouse clicks (default: false)
+export Ironcliw_CAPTURE_DISCARD_LATE=true        # Discard late frames (default: true)
 ```
 
 ### **Fallback Settings**
 ```bash
-export JARVIS_CAPTURE_FALLBACK=true            # Enable fallback chain (default: true)
-export JARVIS_CAPTURE_METHOD=avfoundation      # Preferred method (default: avfoundation)
+export Ironcliw_CAPTURE_FALLBACK=true            # Enable fallback chain (default: true)
+export Ironcliw_CAPTURE_METHOD=avfoundation      # Preferred method (default: avfoundation)
 ```
 
 ### **Diagnostics**
 ```bash
-export JARVIS_CAPTURE_DIAGNOSTICS=true         # Enable diagnostics (default: true)
-export JARVIS_CAPTURE_LOG_METRICS=false        # Log frame metrics (default: false)
+export Ironcliw_CAPTURE_DIAGNOSTICS=true         # Enable diagnostics (default: true)
+export Ironcliw_CAPTURE_LOG_METRICS=false        # Log frame metrics (default: false)
 ```
 
 ---

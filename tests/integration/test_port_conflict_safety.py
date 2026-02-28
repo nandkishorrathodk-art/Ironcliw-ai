@@ -1,4 +1,4 @@
-"""
+﻿"""
 v109.0: Integration Tests for Port Conflict Safety
 
 Tests that verify the supervisor never kills itself during port conflict resolution.
@@ -7,7 +7,7 @@ These tests validate:
 2. cleanup_port() refuses to kill self/parent PIDs
 3. _handle_port_conflict() has proper safety checks
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (January 2026)
 """
 

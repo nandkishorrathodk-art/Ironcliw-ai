@@ -1,9 +1,9 @@
-# Distributed Proxy Lifecycle Controller Design
+﻿# Distributed Proxy Lifecycle Controller Design
 
 **Date:** 2026-01-28
 **Version:** 1.0.0
 **Status:** Approved for Implementation
-**Author:** JARVIS System
+**Author:** Ironcliw System
 
 ## Executive Summary
 
@@ -17,7 +17,7 @@ This document describes the design for a production-grade, distributed Cloud SQL
 
 ## Problem Statement
 
-The JARVIS ecosystem (JARVIS, Prime, Reactor Core) experiences intermittent "Connection refused" errors when:
+The Ironcliw ecosystem (Ironcliw, Prime, Reactor Core) experiences intermittent "Connection refused" errors when:
 - The Cloud SQL proxy dies during sleep/wake cycles
 - Multiple repos race to start the proxy simultaneously
 - Components attempt database connections before proxy is verified ready
@@ -27,7 +27,7 @@ The JARVIS ecosystem (JARVIS, Prime, Reactor Core) experiences intermittent "Con
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS Unified Supervisor (run_supervisor.py)             │
+│                    Ironcliw Unified Supervisor (run_supervisor.py)             │
 │                         Single Entry Point for Everything                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Layer 1: CROSS-REPO LEADER ELECTION                                        │

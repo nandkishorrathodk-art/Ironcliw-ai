@@ -1,12 +1,12 @@
-"""
+﻿"""
 Intelligent Learning Goals Discovery System
 ============================================
 
-Autonomously discovers learning goals for JARVIS by analyzing:
+Autonomously discovers learning goals for Ironcliw by analyzing:
 - User queries that failed or had low confidence
 - Error logs revealing knowledge gaps
 - Trending topics in tech/AI space
-- Model performance metrics from JARVIS Prime
+- Model performance metrics from Ironcliw Prime
 - Knowledge base coverage analysis
 
 Architecture:
@@ -17,7 +17,7 @@ Architecture:
     │  │                      DATA SOURCES                                   │ │
     │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐│ │
     │  │  │ Query Logs   │ │ Error Logs   │ │ Trending API │ │ Prime      ││ │
-    │  │  │ (JARVIS)     │ │ (Gaps)       │ │ (External)   │ │ Feedback   ││ │
+    │  │  │ (Ironcliw)     │ │ (Gaps)       │ │ (External)   │ │ Feedback   ││ │
     │  │  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬─────┘│ │
     │  └─────────┼────────────────┼────────────────┼────────────────┼──────┘ │
     │            └────────────────┴────────────────┴────────────────┘        │
@@ -39,8 +39,8 @@ Architecture:
     └─────────────────────────────────────────────────────────────────────────┘
 
 Integration Points:
-- JARVIS-AI-Agent: Query logs, error analysis, ChromaDB memory
-- JARVIS-Prime: Model performance metrics, inference feedback
+- Ironcliw-AI-Agent: Query logs, error analysis, ChromaDB memory
+- Ironcliw-Prime: Model performance metrics, inference feedback
 - Reactor-Core: Scout system, web documentation synthesis
 
 Version: 1.0.0
@@ -145,13 +145,13 @@ class GoalsDiscoveryConfig:
     # Repository paths
     jarvis_repo: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_AI_AGENT_PATH",
-            Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent"
+            "Ironcliw_AI_AGENT_PATH",
+            Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent"
         ))
     )
     jarvis_prime_repo: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             Path.home() / "Documents" / "repos" / "jarvis-prime"
         ))
     )
@@ -165,37 +165,37 @@ class GoalsDiscoveryConfig:
     # Database path
     db_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_LEARNING_GOALS_DB",
+            "Ironcliw_LEARNING_GOALS_DB",
             Path.home() / ".jarvis" / "learning_goals.db"
         ))
     )
 
     # Discovery settings
     query_lookback_hours: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_QUERY_LOOKBACK_HOURS", "72"))
+        default_factory=lambda: int(os.getenv("Ironcliw_QUERY_LOOKBACK_HOURS", "72"))
     )
     error_lookback_hours: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_ERROR_LOOKBACK_HOURS", "168"))
+        default_factory=lambda: int(os.getenv("Ironcliw_ERROR_LOOKBACK_HOURS", "168"))
     )
     min_failure_count: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIN_FAILURE_COUNT", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIN_FAILURE_COUNT", "3"))
     )
     max_pending_goals: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MAX_PENDING_GOALS", "50"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MAX_PENDING_GOALS", "50"))
     )
 
     # Trending topics
     trending_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TRENDING_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TRENDING_ENABLED", "true").lower() == "true"
     )
     trending_refresh_hours: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_TRENDING_REFRESH_HOURS", "24"))
+        default_factory=lambda: int(os.getenv("Ironcliw_TRENDING_REFRESH_HOURS", "24"))
     )
 
     # Topic categories for focused learning
     focus_categories: List[str] = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_FOCUS_CATEGORIES",
+            "Ironcliw_FOCUS_CATEGORIES",
             "AI,ML,LLM,Python,macOS,automation,voice,vision"
         ).split(",")
     )
@@ -221,9 +221,9 @@ class GoalSourceAnalyzer(ABC):
 
 class FailedQueriesAnalyzer(GoalSourceAnalyzer):
     """
-    Analyzes failed JARVIS queries to discover knowledge gaps.
+    Analyzes failed Ironcliw queries to discover knowledge gaps.
 
-    Connects to JARVIS ChromaDB and query logs to find:
+    Connects to Ironcliw ChromaDB and query logs to find:
     - Queries with low confidence responses
     - Queries that resulted in errors
     - Repeated similar queries (user frustration signals)
@@ -240,7 +240,7 @@ class FailedQueriesAnalyzer(GoalSourceAnalyzer):
         goals = []
 
         try:
-            # Try to connect to JARVIS query logs
+            # Try to connect to Ironcliw query logs
             query_logs = await self._get_query_logs()
 
             # Group queries by topic/intent
@@ -256,7 +256,7 @@ class FailedQueriesAnalyzer(GoalSourceAnalyzer):
                     goal = LearningGoal(
                         id=f"query_{topic.lower().replace(' ', '_')}_{int(time.time())}",
                         topic=topic,
-                        description=f"Improve JARVIS responses for '{topic}' queries (failure rate: {failure_count}/{len(queries)})",
+                        description=f"Improve Ironcliw responses for '{topic}' queries (failure rate: {failure_count}/{len(queries)})",
                         source=GoalSource.FAILED_QUERIES,
                         priority=priority,
                         keywords=self._extract_keywords(queries),
@@ -278,7 +278,7 @@ class FailedQueriesAnalyzer(GoalSourceAnalyzer):
         return goals
 
     async def _get_query_logs(self) -> List[Dict[str, Any]]:
-        """Get query logs from JARVIS database."""
+        """Get query logs from Ironcliw database."""
         logs = []
 
         try:
@@ -413,7 +413,7 @@ class FailedQueriesAnalyzer(GoalSourceAnalyzer):
 
 class ErrorLogsAnalyzer(GoalSourceAnalyzer):
     """
-    Analyzes JARVIS error logs to discover knowledge gaps.
+    Analyzes Ironcliw error logs to discover knowledge gaps.
 
     Looks for:
     - Import errors (missing dependencies)
@@ -757,7 +757,7 @@ class TrendingTopicsAnalyzer(GoalSourceAnalyzer):
         logger.debug(f"[GoalsDiscovery] Refreshed trending topics: {len(self._cached_topics)} topics")
 
     def _is_relevant_topic(self, topic_data: Dict[str, Any]) -> bool:
-        """Check if a topic is relevant to JARVIS focus areas."""
+        """Check if a topic is relevant to Ironcliw focus areas."""
         topic = topic_data.get("topic", "").lower()
         keywords = [k.lower() for k in topic_data.get("keywords", [])]
 
@@ -773,9 +773,9 @@ class TrendingTopicsAnalyzer(GoalSourceAnalyzer):
 
 class PrimeFeedbackAnalyzer(GoalSourceAnalyzer):
     """
-    Analyzes JARVIS Prime model performance to discover improvement areas.
+    Analyzes Ironcliw Prime model performance to discover improvement areas.
 
-    Connects to JARVIS Prime metrics to find:
+    Connects to Ironcliw Prime metrics to find:
     - Low-confidence responses
     - High latency queries
     - Categories with poor performance
@@ -791,7 +791,7 @@ class PrimeFeedbackAnalyzer(GoalSourceAnalyzer):
         goals = []
 
         try:
-            # Try to connect to JARVIS Prime metrics
+            # Try to connect to Ironcliw Prime metrics
             metrics = await self._get_prime_metrics()
 
             if metrics:
@@ -801,7 +801,7 @@ class PrimeFeedbackAnalyzer(GoalSourceAnalyzer):
                         goal = LearningGoal(
                             id=f"prime_{category}_{int(time.time())}",
                             topic=f"Improve {category} responses",
-                            description=f"JARVIS Prime shows low confidence ({stats['avg_confidence']:.1%}) for {category} queries",
+                            description=f"Ironcliw Prime shows low confidence ({stats['avg_confidence']:.1%}) for {category} queries",
                             source=GoalSource.PRIME_FEEDBACK,
                             priority=GoalPriority.HIGH.value,
                             keywords=[category.lower()],
@@ -821,7 +821,7 @@ class PrimeFeedbackAnalyzer(GoalSourceAnalyzer):
         return goals
 
     async def _get_prime_metrics(self) -> Optional[Dict[str, Any]]:
-        """Get performance metrics from JARVIS Prime."""
+        """Get performance metrics from Ironcliw Prime."""
         try:
             # Try to read metrics file
             metrics_file = self.config.jarvis_prime_repo / "data" / "metrics" / "performance.json"
@@ -830,7 +830,7 @@ class PrimeFeedbackAnalyzer(GoalSourceAnalyzer):
                     return json.load(f)
 
             # Try to connect to Prime API
-            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
+            prime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
             # TODO: Implement API call when Prime metrics endpoint is available
 
         except Exception as e:

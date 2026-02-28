@@ -1,4 +1,4 @@
-# 🔧 Troubleshooting Guide - Claude AI Workflows
+﻿# 🔧 Troubleshooting Guide - Claude AI Workflows
 
 Complete troubleshooting reference for common issues and solutions.
 
@@ -144,7 +144,7 @@ timeout-minutes: 30  # from 15
 ## Support Channels
 
 1. Check [FAQ](./18-faq.md)
-2. Search [GitHub Issues](https://github.com/drussell23/JARVIS-AI-Agent/issues)
+2. Search [GitHub Issues](https://github.com/drussell23/Ironcliw-AI-Agent/issues)
 3. Create new issue with logs
 4. Contact on Discussions
 

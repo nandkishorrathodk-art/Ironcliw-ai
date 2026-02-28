@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test conversational responses for browser commands
 """
@@ -29,7 +29,7 @@ async def test_responses():
     for command in test_commands:
         print(f"\nYou: {command}")
         result = await processor.process_command(command)
-        print(f"JARVIS: {result.get('response')}")
+        print(f"Ironcliw: {result.get('response')}")
 
 if __name__ == "__main__":
     asyncio.run(test_responses())

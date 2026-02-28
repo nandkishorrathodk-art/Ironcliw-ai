@@ -1,7 +1,7 @@
-# Vision Capture Timeout Fix
+﻿# Vision Capture Timeout Fix
 
 ## Problem
-When asking "can you see my screen?", JARVIS would get stuck processing the vision command indefinitely, causing the interface to hang.
+When asking "can you see my screen?", Ironcliw would get stuck processing the vision command indefinitely, causing the interface to hang.
 
 ## Root Cause
 The screen capture operations in `backend/api/vision_command_handler.py` had **no timeout protection**, causing them to hang indefinitely when:
@@ -51,7 +51,7 @@ if error_type == "screenshot_failed":
         error_message = (
             "The screen capture is taking longer than expected, Sir. "
             "This might be due to system resource constraints or screen recording permissions. "
-            "Please ensure JARVIS has Screen Recording permissions in System Settings > Privacy & Security."
+            "Please ensure Ironcliw has Screen Recording permissions in System Settings > Privacy & Security."
         )
 ```
 

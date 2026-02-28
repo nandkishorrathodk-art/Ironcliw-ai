@@ -1,4 +1,4 @@
-"""
+﻿"""
 Safe Asyncio Utilities v1.0 - Defensive Asyncio Access
 
 This module provides guaranteed-safe access to asyncio functionality,
@@ -14,7 +14,7 @@ Usage:
     # Instead of: loop = asyncio.get_event_loop()
     loop = get_event_loop_safe()
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 1.0.0 (January 2026)
 """
 

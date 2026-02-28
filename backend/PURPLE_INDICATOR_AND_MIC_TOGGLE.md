@@ -1,9 +1,9 @@
-# 🟣 Purple Indicator & Microphone Toggle Implementation
+﻿# 🟣 Purple Indicator & Microphone Toggle Implementation
 
 ## Features Implemented
 
 ### 1. Stop Monitoring Command ✅
-The purple indicator now properly disappears when you tell JARVIS to stop monitoring.
+The purple indicator now properly disappears when you tell Ironcliw to stop monitoring.
 
 **Supported Commands:**
 - "stop monitoring my screen"
@@ -14,10 +14,10 @@ The purple indicator now properly disappears when you tell JARVIS to stop monito
 - "end monitoring"
 
 **How it works:**
-- When you say any stop command, JARVIS calls `stop_video_streaming()`
+- When you say any stop command, Ironcliw calls `stop_video_streaming()`
 - This stops the direct Swift capture process
 - The purple indicator immediately disappears
-- JARVIS confirms: "I've stopped monitoring your screen..."
+- Ironcliw confirms: "I've stopped monitoring your screen..."
 
 ### 2. Microphone Toggle Button ✅
 The microphone now stays on indefinitely when you click "Start Listening"
@@ -29,7 +29,7 @@ The microphone now stays on indefinitely when you click "Start Listening"
 **Features:**
 - Microphone stays on until you click stop
 - Automatically restarts after "no-speech" timeouts
-- Shows status: "LISTENING FOR 'HEY JARVIS'"
+- Shows status: "LISTENING FOR 'HEY Ironcliw'"
 - Robust error recovery
 
 ## Testing
@@ -43,18 +43,18 @@ python test_purple_indicator_and_monitoring.py
 ### Manual Testing
 
 #### Test 1: Purple Indicator Stop
-1. Say: "Hey JARVIS, start monitoring my screen"
+1. Say: "Hey Ironcliw, start monitoring my screen"
 2. Purple indicator appears in menu bar
-3. Say: "Hey JARVIS, stop monitoring my screen"
+3. Say: "Hey Ironcliw, stop monitoring my screen"
 4. Purple indicator disappears immediately
 
 #### Test 2: Microphone Toggle
 1. Open http://localhost:3000
-2. Click "Activate JARVIS" if needed
+2. Click "Activate Ironcliw" if needed
 3. Click "🎤 Start Listening"
    - Button changes to "🔴 Stop Listening"
-   - Status shows "LISTENING FOR 'HEY JARVIS'"
-4. Say "Hey JARVIS" multiple times
+   - Status shows "LISTENING FOR 'HEY Ironcliw'"
+4. Say "Hey Ironcliw" multiple times
    - Should respond every time
    - No need to click button again
 5. Click "🔴 Stop Listening"
@@ -91,12 +91,12 @@ python test_purple_indicator_and_monitoring.py
 
 ### Voice Commands
 ```
-User: "Hey JARVIS, start monitoring my screen"
-JARVIS: "I've started monitoring your screen..."
+User: "Hey Ironcliw, start monitoring my screen"
+Ironcliw: "I've started monitoring your screen..."
 [Purple indicator appears]
 
-User: "Hey JARVIS, stop monitoring my screen"
-JARVIS: "I've stopped monitoring your screen..."
+User: "Hey Ironcliw, stop monitoring my screen"
+Ironcliw: "I've stopped monitoring your screen..."
 [Purple indicator disappears]
 ```
 
@@ -106,4 +106,4 @@ JARVIS: "I've stopped monitoring your screen..."
 - Status text shows current listening mode
 - No timeouts - stays on until manually stopped
 
-The implementation provides a seamless experience where the purple indicator properly reflects monitoring status and the microphone can be kept on for extended conversations with JARVIS!
+The implementation provides a seamless experience where the purple indicator properly reflects monitoring status and the microphone can be kept on for extended conversations with Ironcliw!

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Enhanced Multi-Space Integration
-Integrates all improvements into the existing JARVIS vision system
+Integrates all improvements into the existing Ironcliw vision system
 """
 
 import logging

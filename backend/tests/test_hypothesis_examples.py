@@ -1,5 +1,5 @@
-"""
-Property-based testing examples with Hypothesis for JARVIS
+﻿"""
+Property-based testing examples with Hypothesis for Ironcliw
 
 These tests use Hypothesis to automatically generate test cases,
 finding edge cases that manual tests might miss.

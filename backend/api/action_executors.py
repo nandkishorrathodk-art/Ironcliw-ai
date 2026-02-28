@@ -1,5 +1,5 @@
-"""
-JARVIS Action Executors - Configuration-Driven Execution Functions
+﻿"""
+Ironcliw Action Executors - Configuration-Driven Execution Functions
 Implements individual action executors for workflow steps
 """
 
@@ -338,8 +338,8 @@ class NavigationExecutor(BaseActionExecutor):
     """Executor for navigation targets (URLs, repositories, local paths)."""
 
     _REPO_ENV_KEYS = (
-        "JARVIS_REPO_PATH",
-        "JARVIS_PRIME_PATH",
+        "Ironcliw_REPO_PATH",
+        "Ironcliw_PRIME_PATH",
         "REACTOR_CORE_PATH",
     )
 
@@ -370,7 +370,7 @@ class NavigationExecutor(BaseActionExecutor):
         if expanded_path.exists():
             return await self._open_path(expanded_path, context)
 
-        # Repository-aware navigation (JARVIS / Prime / Reactor / dynamic repo names)
+        # Repository-aware navigation (Ironcliw / Prime / Reactor / dynamic repo names)
         resolved_repo = self._resolve_repository(target)
         if resolved_repo:
             remote_url = self._get_git_remote_url(resolved_repo)
@@ -392,7 +392,7 @@ class NavigationExecutor(BaseActionExecutor):
         if lower_target.startswith(("http://", "https://")):
             return True
 
-        # Accept domain-like targets (e.g., github.com/drussell23/JARVIS-AI-Agent).
+        # Accept domain-like targets (e.g., github.com/drussell23/Ironcliw-AI-Agent).
         return "." in lower_target and " " not in lower_target
 
     def _normalize_url(self, target: str) -> str:
@@ -402,7 +402,7 @@ class NavigationExecutor(BaseActionExecutor):
         return f"https://{stripped}"
 
     async def _open_url(self, url: str, context: ExecutionContext) -> Dict[str, Any]:
-        browser = context.get_variable("preferred_browser", os.getenv("JARVIS_DEFAULT_BROWSER", "Safari"))
+        browser = context.get_variable("preferred_browser", os.getenv("Ironcliw_DEFAULT_BROWSER", "Safari"))
 
         try:
             subprocess.run(["open", "-a", browser, url], check=True)
@@ -475,7 +475,7 @@ class NavigationExecutor(BaseActionExecutor):
         if "repo" in normalized_target or "repository" in normalized_target:
             score += 1
 
-        # Prefer the current JARVIS repo for generic "jarvis repo" requests.
+        # Prefer the current Ironcliw repo for generic "jarvis repo" requests.
         if "jarvis" in normalized_target and "prime" not in normalized_target and "reactor" not in normalized_target:
             current_repo = self._find_git_root(Path(__file__).resolve())
             if current_repo and repo_path == current_repo:

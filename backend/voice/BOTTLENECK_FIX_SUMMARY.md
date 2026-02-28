@@ -1,8 +1,8 @@
-# Bottleneck Fix Summary - JARVIS Voice System
+﻿# Bottleneck Fix Summary - Ironcliw Voice System
 
 ## The Problem 🔴
 
-When asking JARVIS questions like "can you see my screen", the system was getting stuck and providing slow responses.
+When asking Ironcliw questions like "can you see my screen", the system was getting stuck and providing slow responses.
 
 ### Root Cause
 **Line 1215** in `jarvis_voice.py`:
@@ -10,14 +10,14 @@ When asking JARVIS questions like "can you see my screen", the system was gettin
 cpu_usage = psutil.cpu_percent(interval=0.1)  # ← BLOCKS FOR 100ms!
 ```
 
-This line **blocked the entire async event loop** for 100 milliseconds every time JARVIS needed to check CPU usage before making a Claude API call.
+This line **blocked the entire async event loop** for 100 milliseconds every time Ironcliw needed to check CPU usage before making a Claude API call.
 
 ## The Impact ⏱️
 
 ```
 User asks: "can you see my screen"
    ↓
-JARVIS recognizes query (50ms)
+Ironcliw recognizes query (50ms)
    ↓
 Checks CPU usage → BLOCKS FOR 100ms ❌
    ↓
@@ -155,10 +155,10 @@ async def _optimize_voice_command(self, command, context_info, recent_context):
 ### 1. Quick Response Test
 ```python
 import asyncio
-from backend.voice.jarvis_voice import EnhancedJARVISVoiceAssistant
+from backend.voice.jarvis_voice import EnhancedIroncliwVoiceAssistant
 
 async def test():
-    jarvis = EnhancedJARVISVoiceAssistant(api_key="your-key")
+    jarvis = EnhancedIroncliwVoiceAssistant(api_key="your-key")
     await jarvis.start()
 
     # Ask question
@@ -203,7 +203,7 @@ response = await jarvis.process_command("test query")
 
 ## Next Steps
 
-1. **Test the changes**: Run JARVIS and ask "can you see my screen"
+1. **Test the changes**: Run Ironcliw and ask "can you see my screen"
 2. **Monitor performance**: Check logs for `[SYSTEM-MONITOR]` entries
 3. **Verify no blocking**: Responses should feel snappier
 4. **Check alerts**: Watch for high CPU/memory warnings
@@ -216,4 +216,4 @@ We've eliminated **ALL blocking operations** in the voice processing pipeline by
 3. Converting threads to async tasks
 4. Adding proper lifecycle management
 
-**Result**: JARVIS now responds 100ms faster with zero blocking! 🚀
+**Result**: Ironcliw now responds 100ms faster with zero blocking! 🚀

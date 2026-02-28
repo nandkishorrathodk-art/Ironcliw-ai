@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Focus Tracker & Productivity Insights
+﻿"""
+Ironcliw macOS Helper - Focus Tracker & Productivity Insights
 
 Tracks user focus patterns, measures productivity, and generates
 actionable insights to help users understand and improve their work habits.

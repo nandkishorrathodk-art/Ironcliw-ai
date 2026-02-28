@@ -1,4 +1,4 @@
-"""
+﻿"""
 Memory-Efficient Claude Vision Analyzer - Optimized for 16GB RAM systems
 Features: Intelligent compression, caching, batch processing, and resource management
 Fully configurable with NO hardcoded values
@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
 # Base64 inflates by ~33%, so the effective raw limit is API_limit * 3/4.
 _API_MAX_BYTES = 5 * 1024 * 1024  # 5MB API limit on base64 string
 _RAW_MAX_BYTES = _API_MAX_BYTES * 3 // 4  # ~3.75MB raw threshold
-_DEFAULT_MAX_DIM = int(os.getenv("JARVIS_VISION_MAX_DIM", "1536"))
-_DEFAULT_JPEG_QUALITY = int(os.getenv("JARVIS_VISION_JPEG_QUALITY", "85"))
+_DEFAULT_MAX_DIM = int(os.getenv("Ironcliw_VISION_MAX_DIM", "1536"))
+_DEFAULT_JPEG_QUALITY = int(os.getenv("Ironcliw_VISION_JPEG_QUALITY", "85"))
 
 
 def ensure_image_under_api_limit(

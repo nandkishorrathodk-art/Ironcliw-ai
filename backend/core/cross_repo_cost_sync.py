@@ -1,8 +1,8 @@
-"""
+﻿"""
 Cross-Repo Cost Synchronization v2.0 - Production Hardened
 ===========================================================
 
-Enables unified cost tracking across JARVIS, JARVIS Prime, and Reactor Core repos.
+Enables unified cost tracking across Ironcliw, Ironcliw Prime, and Reactor Core repos.
 
 HARDENED VERSION (v2.0) with:
 - ResilientRedisClient for auto-reconnecting Redis connection
@@ -18,7 +18,7 @@ Architecture:
            │                         │                         │
            ▼                         ▼                         ▼
     ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
-    │   JARVIS    │          │JARVIS Prime │          │Reactor Core │
+    │   Ironcliw    │          │Ironcliw Prime │          │Reactor Core │
     │ Cost Report │          │ Cost Report │          │ Cost Report │
     └─────────────┘          └─────────────┘          └─────────────┘
 
@@ -80,8 +80,8 @@ CROSS_REPO_COST_DIR = Path(os.getenv(
 ))
 
 # Configuration from environment
-UNIFIED_DAILY_BUDGET = float(os.getenv("JARVIS_UNIFIED_DAILY_BUDGET", "5.00"))
-COST_SYNC_INTERVAL = float(os.getenv("JARVIS_COST_SYNC_INTERVAL", "30.0"))
+UNIFIED_DAILY_BUDGET = float(os.getenv("Ironcliw_UNIFIED_DAILY_BUDGET", "5.00"))
+COST_SYNC_INTERVAL = float(os.getenv("Ironcliw_COST_SYNC_INTERVAL", "30.0"))
 COST_REPORT_TTL = 120  # Seconds before a repo's cost report is considered stale
 
 
@@ -201,7 +201,7 @@ class UnifiedCostState:
 
 class CrossRepoCostSync:
     """
-    Synchronizes cost tracking across all JARVIS repos.
+    Synchronizes cost tracking across all Ironcliw repos.
 
     This enables:
     - Unified budget enforcement (single budget for all repos)

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Simplified Live Test - Avoids circular import issues
 Tests our new systems without importing the whole backend
 """
@@ -150,7 +150,7 @@ async def test_terminal_intelligence():
 async def main():
     """Run tests."""
     print("\n" + "="*60)
-    print(" JARVIS Feedback & Safety - Simple Test")
+    print(" Ironcliw Feedback & Safety - Simple Test")
     print("="*60)
 
     results = {}

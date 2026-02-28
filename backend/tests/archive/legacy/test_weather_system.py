@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test the weather system to ensure it works correctly with Toronto location"""
 
 import asyncio
@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO,
 
 async def test_weather_system():
     """Test the weather system"""
-    print("=== Testing JARVIS Weather System ===\n")
+    print("=== Testing Ironcliw Weather System ===\n")
     
     try:
         # Import the weather bridge

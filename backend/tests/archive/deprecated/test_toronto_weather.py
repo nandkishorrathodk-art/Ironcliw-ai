@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test that JARVIS stays on Toronto (My Location) and doesn't switch to New York
+Test that Ironcliw stays on Toronto (My Location) and doesn't switch to New York
 """
 
 import asyncio
@@ -90,5 +90,5 @@ async def test_toronto_weather():
 
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_toronto_weather())

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test the exact flow JARVIS uses to see if coordinates get doubled
+Test the exact flow Ironcliw uses to see if coordinates get doubled
 """
 import sys
 import os
@@ -10,7 +10,7 @@ import pyautogui
 sys.path.insert(0, os.path.dirname(__file__))
 
 print("\n" + "="*80)
-print("TESTING EXACT JARVIS FLOW")
+print("TESTING EXACT Ironcliw FLOW")
 print("="*80 + "\n")
 
 # Test direct PyAutoGUI first

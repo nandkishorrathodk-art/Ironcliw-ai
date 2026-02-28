@@ -1,4 +1,4 @@
-# 🎉 Proactive Parallelism Integration COMPLETE
+﻿# 🎉 Proactive Parallelism Integration COMPLETE
 
 ## ✅ Integration Status: 100% Ready
 
@@ -179,7 +179,7 @@ Standard mode (5% confidence) → Uses Computer Use → Sequential
    │  └─ Task 5 (Jira)    ─┘
    └─ Returns results
    ↓
-9. JARVIS narrates: "All 5 tasks completed in 2.3 seconds (4.1x speedup)!"
+9. Ironcliw narrates: "All 5 tasks completed in 2.3 seconds (4.1x speedup)!"
 ```
 
 ### Detection Logic:
@@ -214,9 +214,9 @@ if 0.5 < confidence < 0.8:
 
 ## 🧪 Testing Steps
 
-### 1. Start JARVIS
+### 1. Start Ironcliw
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -225,7 +225,7 @@ python3 run_supervisor.py
 Console: "✓ Neural Mesh Coordinator started"
 Console: "✓ 60 production agents registered"
 Console: "✓ PredictivePlanningAgent: healthy"
-JARVIS (voice): "All systems operational. I'm ready, Derek."
+Ironcliw (voice): "All systems operational. I'm ready, Derek."
 ```
 
 ### 3. Say a Test Command
@@ -310,7 +310,7 @@ https://cloud.langfuse.com/project/jarvis-voice-auth
 
 ## 🔗 Cross-Repo Integration Status
 
-### ✅ JARVIS (Main Repo)
+### ✅ Ironcliw (Main Repo)
 **Status:** 100% Complete and Integrated
 
 **Components:**
@@ -325,7 +325,7 @@ https://cloud.langfuse.com/project/jarvis-voice-auth
 
 ---
 
-### ⚠️ JARVIS Prime
+### ⚠️ Ironcliw Prime
 **Status:** Needs Integration (15% complete)
 
 **What Exists:**
@@ -342,7 +342,7 @@ https://cloud.langfuse.com/project/jarvis-voice-auth
 **TODO:**
 1. Add PredictivePlanningAgent to Prime's agent registry
 2. Create `/proactive/expand` endpoint
-3. Integrate with JARVIS main via cross-repo events
+3. Integrate with Ironcliw main via cross-repo events
 4. Share intent detection results via `~/.jarvis/cross_repo/`
 
 **Priority:** Medium (Prime is optional fallback for Tier 0)
@@ -366,7 +366,7 @@ https://cloud.langfuse.com/project/jarvis-voice-auth
 1. Add cross-repo event listener for parallel task results
 2. Store intent expansions as training data
 3. Train models on successful multi-task workflows
-4. Share learned patterns back to JARVIS
+4. Share learned patterns back to Ironcliw
 
 **Priority:** Low (Reactor Core is for future training)
 
@@ -394,7 +394,7 @@ https://cloud.langfuse.com/project/jarvis-voice-auth
 
 ### ⚠️ Pending (Future Work)
 
-- [ ] JARVIS Prime integration (PredictivePlanningAgent)
+- [ ] Ironcliw Prime integration (PredictivePlanningAgent)
 - [ ] Reactor Core integration (training data capture)
 - [ ] Cross-repo event broadcasting for parallel results
 - [ ] Visual authentication context (from CLAUDE.md)
@@ -444,8 +444,8 @@ https://cloud.langfuse.com/project/jarvis-voice-auth
 - Full observability (Langfuse + Helicone)
 
 ✅ **Cross-repo connectivity mapped**
-- JARVIS: 100% complete
-- JARVIS Prime: 15% complete (roadmap provided)
+- Ironcliw: 100% complete
+- Ironcliw Prime: 15% complete (roadmap provided)
 - Reactor Core: 10% complete (roadmap provided)
 
 ---
@@ -460,7 +460,7 @@ Wait for: `"All systems operational. I'm ready, Derek."`
 
 Then say: `"Start my day"`
 
-Watch JARVIS:
+Watch Ironcliw:
 1. Detect proactive intent (95% confidence)
 2. Expand to 5 parallel tasks
 3. Execute all in 2.3 seconds (4x speedup)

@@ -1,13 +1,13 @@
-# 🎯 Manual Control Center Position Setup
+﻿# 🎯 Manual Control Center Position Setup
 
 ## The Problem
-JARVIS is not clicking on the Control Center icon (the one you circled in red).
+Ironcliw is not clicking on the Control Center icon (the one you circled in red).
 
 ## Quick Fix (Choose ONE option)
 
 ### Option A: Visual Setup (Easiest)
 1. A screenshot has been opened showing your menu bar
-2. The RED circle shows where JARVIS currently clicks at **(1370, 12)**
+2. The RED circle shows where Ironcliw currently clicks at **(1370, 12)**
 3. **Is the RED circle on the Control Center icon?**
    - **YES** → Perfect! No changes needed. Skip to "Restart Backend" below.
    - **NO** → Continue to Option B
@@ -50,7 +50,7 @@ I'll update the config and restart the backend. Then:
 
 ```
 You: "connect to my living room tv"
-JARVIS: *clicks the RIGHT spot* → Opens Control Center → Connects TV
+Ironcliw: *clicks the RIGHT spot* → Opens Control Center → Connects TV
 ```
 
 ## Quick Test (Try Different Position)
@@ -69,4 +69,4 @@ Did Control Center open? If yes, tell me: **"Use position 1340, 12"**
 
 I'll save it to `config/vision_navigator_config.json` and restart the backend.
 
-Then JARVIS will click the **exact correct spot** every time! 🎯
+Then Ironcliw will click the **exact correct spot** every time! 🎯

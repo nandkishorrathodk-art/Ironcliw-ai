@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Google Workspace OAuth Setup for JARVIS.
+Google Workspace OAuth Setup for Ironcliw.
 
 Triggers the one-time OAuth authorization flow to create
 ~/.jarvis/google_workspace_token.json with full workspace scopes.
@@ -42,14 +42,14 @@ SCOPES = [
     'https://www.googleapis.com/auth/contacts.readonly',
 ]
 
-JARVIS_DIR = Path.home() / '.jarvis'
-CREDENTIALS_PATH = JARVIS_DIR / 'google_credentials.json'
-TOKEN_PATH = JARVIS_DIR / 'google_workspace_token.json'
+Ironcliw_DIR = Path.home() / '.jarvis'
+CREDENTIALS_PATH = Ironcliw_DIR / 'google_credentials.json'
+TOKEN_PATH = Ironcliw_DIR / 'google_workspace_token.json'
 
 
 def main():
     print("=" * 60)
-    print("  JARVIS Google Workspace OAuth Setup")
+    print("  Ironcliw Google Workspace OAuth Setup")
     print("=" * 60)
     print()
 
@@ -110,7 +110,7 @@ def main():
 
 def _save_token(creds):
     """Save credentials to token file."""
-    os.makedirs(str(JARVIS_DIR), exist_ok=True)
+    os.makedirs(str(Ironcliw_DIR), exist_ok=True)
     with open(str(TOKEN_PATH), 'w') as f:
         f.write(creds.to_json())
 

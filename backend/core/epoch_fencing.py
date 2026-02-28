@@ -1,7 +1,7 @@
-"""
+﻿"""
 Epoch Fencing v2.0 — Split-brain prevention for the Trinity ecosystem.
 
-When the supervisor crashes mid-operation, the three repos (JARVIS, JARVIS Prime,
+When the supervisor crashes mid-operation, the three repos (Ironcliw, Ironcliw Prime,
 Reactor Core) can disagree on system state. This module provides epoch-based
 fencing to detect and resolve split-brain scenarios.
 
@@ -115,8 +115,8 @@ if sys.platform == "win32":
 # =============================================================================
 
 _DEFAULT_EPOCH_FILE = os.path.expanduser("~/.jarvis/trinity/epoch.json")
-_EPOCH_FILE_PATH: str = os.getenv("JARVIS_EPOCH_FILE", _DEFAULT_EPOCH_FILE)
-_MAX_HISTORY: int = int(os.getenv("JARVIS_EPOCH_MAX_HISTORY", "10"))
+_EPOCH_FILE_PATH: str = os.getenv("Ironcliw_EPOCH_FILE", _DEFAULT_EPOCH_FILE)
+_MAX_HISTORY: int = int(os.getenv("Ironcliw_EPOCH_MAX_HISTORY", "10"))
 
 
 # =============================================================================
@@ -198,7 +198,7 @@ class EpochManager:
     Uses ``fcntl.flock()`` for cross-process atomic access and a
     ``threading.Lock`` for intra-process thread safety.
 
-    The epoch file is stored at the path specified by the ``JARVIS_EPOCH_FILE``
+    The epoch file is stored at the path specified by the ``Ironcliw_EPOCH_FILE``
     environment variable (default: ``~/.jarvis/trinity/epoch.json``).
 
     Graceful degradation: if file operations fail (permissions, disk full, etc.),
@@ -220,7 +220,7 @@ class EpochManager:
         self._cache_time: float = 0.0
         # How long the in-memory cache is trusted (seconds)
         self._cache_ttl: float = float(
-            os.getenv("JARVIS_EPOCH_CACHE_TTL", "1.0")
+            os.getenv("Ironcliw_EPOCH_CACHE_TTL", "1.0")
         )
 
     # --------------------------------------------------------------------- #
@@ -355,7 +355,7 @@ class EpochManager:
         """Read and return the current epoch number.
 
         Uses an in-memory cache with a configurable TTL
-        (``JARVIS_EPOCH_CACHE_TTL``, default 1 s) to avoid excessive disk I/O
+        (``Ironcliw_EPOCH_CACHE_TTL``, default 1 s) to avoid excessive disk I/O
         on rapid consecutive calls.  Falls back to epoch 0 on failure.
         """
         with self._thread_lock:
@@ -404,7 +404,7 @@ class EpochManager:
             2. Reads the current epoch data.
             3. Increments the epoch number.
             4. Records PID, timestamp, reason, and previous epoch.
-            5. Appends to bounded history (max ``JARVIS_EPOCH_MAX_HISTORY``).
+            5. Appends to bounded history (max ``Ironcliw_EPOCH_MAX_HISTORY``).
             6. Writes back and releases the lock.
 
         Falls back to epoch 0 on failure (with a logged error).

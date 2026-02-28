@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 QUICK TEST: Voice Command Parsing for God Mode
 ===============================================
@@ -147,7 +147,7 @@ def test_parsing():
         "Alert me when Chrome shows ready",
         "Watch for Error in Terminal",
         "Track Terminal for 5 minutes when it says finished",
-        "JARVIS, watch all Chrome windows for BOUNCE COUNT",
+        "Ironcliw, watch all Chrome windows for BOUNCE COUNT",
     ]
 
     for cmd in test_commands:

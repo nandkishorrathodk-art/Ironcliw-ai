@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Cloud ECAPA Speaker Embedding Service v20.4.0
 ==============================================
@@ -150,11 +150,11 @@ def _configure_third_party_log_noise() -> None:
     This keeps SpeechBrain debug chatter from polluting startup/control-plane logs.
     """
     third_party_level = _parse_log_level(
-        os.getenv("JARVIS_THIRD_PARTY_LOG_LEVEL", "WARNING"),
+        os.getenv("Ironcliw_THIRD_PARTY_LOG_LEVEL", "WARNING"),
         logging.WARNING,
     )
     speechbrain_level = _parse_log_level(
-        os.getenv("JARVIS_SPEECHBRAIN_LOG_LEVEL", "ERROR"),
+        os.getenv("Ironcliw_SPEECHBRAIN_LOG_LEVEL", "ERROR"),
         logging.ERROR,
     )
 
@@ -174,7 +174,7 @@ def _configure_third_party_log_noise() -> None:
         else:
             noisy_logger.setLevel(third_party_level)
 
-    if _env_flag("JARVIS_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", True):
+    if _env_flag("Ironcliw_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", True):
         checkpoint_filter = _RegisteredCheckpointFilter()
         for target_logger in (
             logging.getLogger(),
@@ -219,7 +219,7 @@ def _isolated_model_load(cache_dir: str, device: str = "cpu") -> Dict[str, Any]:
     import sys as _sys
     
     # Set process marker for identification
-    _os.environ['JARVIS_ML_LOADER'] = 'ecapa_subprocess'
+    _os.environ['Ironcliw_ML_LOADER'] = 'ecapa_subprocess'
     
     result = {
         'success': False,

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Diagnose why Toronto isn't being selected"""
 
 import asyncio
@@ -90,5 +90,5 @@ async def diagnose_selection():
     print("3. Verify it stays selected and shows Toronto weather")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(diagnose_selection())

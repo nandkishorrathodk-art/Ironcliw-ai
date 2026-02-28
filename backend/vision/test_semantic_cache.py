@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for Semantic Cache with LSH
 Demonstrates multi-level caching and similarity matching
@@ -535,7 +535,7 @@ def visualize_results(all_results: Dict[str, List[Dict]]):
 async def main():
     """Main test runner"""
     print("=" * 60)
-    print("JARVIS Vision - Semantic Cache with LSH Test Suite")
+    print("Ironcliw Vision - Semantic Cache with LSH Test Suite")
     print("=" * 60)
     
     all_results = {}

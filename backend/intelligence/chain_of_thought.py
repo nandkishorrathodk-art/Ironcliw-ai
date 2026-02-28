@@ -1,5 +1,5 @@
-"""
-LangGraph Chain-of-Thought Reasoning for JARVIS Intelligence Systems
+﻿"""
+LangGraph Chain-of-Thought Reasoning for Ironcliw Intelligence Systems
 
 This module provides advanced chain-of-thought (CoT) reasoning capabilities
 that integrate with UAE, SAI, and CAI to enable:
@@ -16,7 +16,7 @@ The CoT system uses LangGraph state machines to provide:
 - Evidence-based decision making
 - Continuous learning from outcomes
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

@@ -1,4 +1,4 @@
-# Design: Emergency Offload Path Rewrite
+﻿# Design: Emergency Offload Path Rewrite
 
 **Date:** 2026-02-22
 **Status:** Approved
@@ -33,7 +33,7 @@ Step 2: If RAM still high after verification
   → Attempt GCP VM provisioning (if available + budget allows)
 
 Step 3: RAM >= 95% AND unload failed AND GCP unavailable
-  → SIGSTOP (one-shot, JARVIS-owned PIDs only)
+  → SIGSTOP (one-shot, Ironcliw-owned PIDs only)
   → If no recovery in 60s → TERMINATE
   → No cycling, no SIGCONT → re-SIGSTOP loop
 ```
@@ -68,7 +68,7 @@ Changes:
 
 The `_emergency_offload_hysteresis_armed` flag stays — it's useful for preventing immediate re-trigger after any emergency action, not just SIGSTOP.
 
-## Fix 4: SIGSTOP Scoped to JARVIS-Owned PIDs
+## Fix 4: SIGSTOP Scoped to Ironcliw-Owned PIDs
 
 **Location:** `backend/core/gcp_hybrid_prime_router.py`, `_pause_local_llm_processes()` (~line 1510)
 
@@ -108,6 +108,6 @@ New behavior:
 | Emergency response at CRITICAL | SIGSTOP (freezes memory) | Clean unload (frees 4-8GB) |
 | Death spiral risk | 3-cycle SIGSTOP→SIGCONT loop → TERMINATE | Eliminated — unload frees memory |
 | Cooldown gap | 120s unprotected | Only applies to SIGSTOP (rare) |
-| SIGSTOP scope | Pattern-based (broad) | JARVIS-owned PIDs first |
+| SIGSTOP scope | Pattern-based (broad) | Ironcliw-owned PIDs first |
 | False positive unloads | At 80% RAM (normal stress) | At 85%+ sustained (CRITICAL) |
 | SIGSTOP occurrence | Primary response (every emergency) | Last resort only (95%+ after unload fails) |

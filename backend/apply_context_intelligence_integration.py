@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Apply Context Intelligence Integration
 =====================================
 
-This script updates the existing JARVIS files to use the new
+This script updates the existing Ironcliw files to use the new
 Context Intelligence System.
 """
 
@@ -122,7 +122,7 @@ async def test_integration():
         print("\\n4. Checking components...")
         print(f"   - Context Manager: {'✓' if handler.context_manager else '✗'}")
         print(f"   - Feedback Manager: {'✓' if handler.feedback_manager else '✗'}")
-        print(f"   - JARVIS Integration: {'✓' if handler.jarvis_integration else '✗'}")
+        print(f"   - Ironcliw Integration: {'✓' if handler.jarvis_integration else '✗'}")
         
         print("\\n✓ All tests passed!")
         
@@ -163,7 +163,7 @@ async def simulate_locked_screen_scenario():
     """
     Simulate the exact scenario from the PRD:
     - Screen is locked
-    - User says "JARVIS, open Safari and search for dogs"
+    - User says "Ironcliw, open Safari and search for dogs"
     - System handles it intelligently
     """
     
@@ -179,7 +179,7 @@ async def simulate_locked_screen_scenario():
     
     # Simulate the command
     command = "open Safari and search for dogs"
-    print(f"User: 'JARVIS, {command}'")
+    print(f"User: 'Ironcliw, {command}'")
     print()
     
     # Process through context intelligence
@@ -205,11 +205,11 @@ async def simulate_locked_screen_scenario():
         print(f"- Type: {result['intent'].get('type')}")
     
     print("\\nExpected Flow:")
-    print("1. ✓ JARVIS detects screen is locked")
+    print("1. ✓ Ironcliw detects screen is locked")
     print("2. ✓ Queues request with action: 'search dogs in Safari'")
     print("3. ✓ Feedback: 'Your screen is locked, I'll unlock it now...'")
     print("4. → Unlock Manager runs")
-    print("5. → On success: JARVIS resumes queued request")
+    print("5. → On success: Ironcliw resumes queued request")
     print("6. → Opens Safari and searches for 'dogs'")
     print("7. → Feedback: 'I've unlocked your screen, opened Safari, and searched for dogs'")
     

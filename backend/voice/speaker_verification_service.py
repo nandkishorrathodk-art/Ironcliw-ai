@@ -1,5 +1,5 @@
-"""
-Speaker Verification Service for JARVIS
+﻿"""
+Speaker Verification Service for Ironcliw
 Provides voice biometric verification for security-sensitive operations
 
 Features:
@@ -135,7 +135,7 @@ logger = logging.getLogger(__name__)
 # Lazy loading state
 _torch = None
 _torchaudio = None
-_JARVISLearningDatabase = None
+_IroncliwLearningDatabase = None
 _SpeechBrainEngine = None
 _ModelConfig = None
 _STTEngine = None
@@ -149,7 +149,7 @@ def _init_ml_components():
     Lazily initialize all ML components on first use.
     This moves 12+ seconds of import time from startup to first request.
     """
-    global _torch, _torchaudio, _JARVISLearningDatabase, _SpeechBrainEngine
+    global _torch, _torchaudio, _IroncliwLearningDatabase, _SpeechBrainEngine
     global _ModelConfig, _STTEngine, _audio_converter_funcs, _ML_INITIALIZED
 
     if _ML_INITIALIZED:
@@ -199,7 +199,7 @@ def _init_ml_components():
                 logger.info("🔧 Patched torchaudio for SpeechBrain compatibility")
 
             # Import SpeechBrain and related components
-            from intelligence.learning_database import JARVISLearningDatabase as _LDB
+            from intelligence.learning_database import IroncliwLearningDatabase as _LDB
             from voice.engines.speechbrain_engine import SpeechBrainEngine as _SBE
             from voice.stt_config import ModelConfig as _MC, STTEngine as _SE
             from voice.audio_format_converter import (
@@ -209,7 +209,7 @@ def _init_ml_components():
                 AudioConverterConfig,
             )
 
-            _JARVISLearningDatabase = _LDB
+            _IroncliwLearningDatabase = _LDB
             _SpeechBrainEngine = _SBE
             _ModelConfig = _MC
             _STTEngine = _SE
@@ -231,9 +231,9 @@ def _init_ml_components():
 
 
 def get_learning_database_class():
-    """Get JARVISLearningDatabase class, initializing ML if needed."""
+    """Get IroncliwLearningDatabase class, initializing ML if needed."""
     _init_ml_components()
-    return _JARVISLearningDatabase
+    return _IroncliwLearningDatabase
 
 
 def get_speechbrain_engine_class():
@@ -493,47 +493,47 @@ class EdgeNativeConfig:
     - ADAPTIVE: Auto-adjusts based on local resource availability
 
     Environment Variables (all optional, have smart defaults):
-    - JARVIS_EDGE_NATIVE_MODE: 'true' to enable (default: true)
-    - JARVIS_LOCAL_DB_PATH: Path to local SQLite (default: ~/.jarvis/learning/jarvis_learning.db)
-    - JARVIS_CLOUD_SYNC_ENABLED: 'true' to enable async backup (default: true)
-    - JARVIS_CLOUD_SYNC_INTERVAL: Seconds between cloud syncs (default: 300)
-    - JARVIS_LOCAL_ECAPA_ONLY: 'true' to force local-only ECAPA (default: true)
-    - JARVIS_NEURAL_ENGINE_PRIORITY: 'true' to prioritize Apple Neural Engine (default: true)
+    - Ironcliw_EDGE_NATIVE_MODE: 'true' to enable (default: true)
+    - Ironcliw_LOCAL_DB_PATH: Path to local SQLite (default: ~/.jarvis/learning/jarvis_learning.db)
+    - Ironcliw_CLOUD_SYNC_ENABLED: 'true' to enable async backup (default: true)
+    - Ironcliw_CLOUD_SYNC_INTERVAL: Seconds between cloud syncs (default: 300)
+    - Ironcliw_LOCAL_ECAPA_ONLY: 'true' to force local-only ECAPA (default: true)
+    - Ironcliw_NEURAL_ENGINE_PRIORITY: 'true' to prioritize Apple Neural Engine (default: true)
     """
 
     # Core Edge-Native Mode
-    enabled: bool = field(default_factory=lambda: os.environ.get('JARVIS_EDGE_NATIVE_MODE', 'true').lower() == 'true')
+    enabled: bool = field(default_factory=lambda: os.environ.get('Ironcliw_EDGE_NATIVE_MODE', 'true').lower() == 'true')
 
     # Local Database Configuration
     local_db_path: str = field(default_factory=lambda: os.path.normpath(os.path.expanduser(
-        os.environ.get('JARVIS_LOCAL_DB_PATH', '~/.jarvis/learning/jarvis_learning.db')
+        os.environ.get('Ironcliw_LOCAL_DB_PATH', '~/.jarvis/learning/jarvis_learning.db')
     )))
-    local_db_timeout: float = field(default_factory=lambda: float(os.environ.get('JARVIS_LOCAL_DB_TIMEOUT', '2.0')))
+    local_db_timeout: float = field(default_factory=lambda: float(os.environ.get('Ironcliw_LOCAL_DB_TIMEOUT', '2.0')))
 
     # Cloud Backup Configuration (async-only, never blocks)
-    cloud_sync_enabled: bool = field(default_factory=lambda: os.environ.get('JARVIS_CLOUD_SYNC_ENABLED', 'true').lower() == 'true')
-    cloud_sync_interval_seconds: float = field(default_factory=lambda: float(os.environ.get('JARVIS_CLOUD_SYNC_INTERVAL', '300')))
-    cloud_sync_max_retries: int = field(default_factory=lambda: int(os.environ.get('JARVIS_CLOUD_SYNC_RETRIES', '3')))
-    cloud_sync_batch_size: int = field(default_factory=lambda: int(os.environ.get('JARVIS_CLOUD_SYNC_BATCH', '10')))
+    cloud_sync_enabled: bool = field(default_factory=lambda: os.environ.get('Ironcliw_CLOUD_SYNC_ENABLED', 'true').lower() == 'true')
+    cloud_sync_interval_seconds: float = field(default_factory=lambda: float(os.environ.get('Ironcliw_CLOUD_SYNC_INTERVAL', '300')))
+    cloud_sync_max_retries: int = field(default_factory=lambda: int(os.environ.get('Ironcliw_CLOUD_SYNC_RETRIES', '3')))
+    cloud_sync_batch_size: int = field(default_factory=lambda: int(os.environ.get('Ironcliw_CLOUD_SYNC_BATCH', '10')))
 
     # ECAPA Model Configuration (local-first)
-    local_ecapa_only: bool = field(default_factory=lambda: os.environ.get('JARVIS_LOCAL_ECAPA_ONLY', 'true').lower() == 'true')
-    ecapa_extraction_timeout: float = field(default_factory=lambda: float(os.environ.get('JARVIS_ECAPA_TIMEOUT', '10.0')))
-    neural_engine_priority: bool = field(default_factory=lambda: os.environ.get('JARVIS_NEURAL_ENGINE_PRIORITY', 'true').lower() == 'true')
+    local_ecapa_only: bool = field(default_factory=lambda: os.environ.get('Ironcliw_LOCAL_ECAPA_ONLY', 'true').lower() == 'true')
+    ecapa_extraction_timeout: float = field(default_factory=lambda: float(os.environ.get('Ironcliw_ECAPA_TIMEOUT', '10.0')))
+    neural_engine_priority: bool = field(default_factory=lambda: os.environ.get('Ironcliw_NEURAL_ENGINE_PRIORITY', 'true').lower() == 'true')
 
     # Fallback Behavior
-    fallback_to_cloud_on_local_failure: bool = field(default_factory=lambda: os.environ.get('JARVIS_CLOUD_FALLBACK', 'false').lower() == 'true')
-    max_local_retries: int = field(default_factory=lambda: int(os.environ.get('JARVIS_LOCAL_RETRIES', '2')))
+    fallback_to_cloud_on_local_failure: bool = field(default_factory=lambda: os.environ.get('Ironcliw_CLOUD_FALLBACK', 'false').lower() == 'true')
+    max_local_retries: int = field(default_factory=lambda: int(os.environ.get('Ironcliw_LOCAL_RETRIES', '2')))
 
     # Performance Tuning
     cache_profiles_in_memory: bool = True
-    profile_cache_ttl_seconds: float = field(default_factory=lambda: float(os.environ.get('JARVIS_PROFILE_CACHE_TTL', '600')))
+    profile_cache_ttl_seconds: float = field(default_factory=lambda: float(os.environ.get('Ironcliw_PROFILE_CACHE_TTL', '600')))
     embedding_cache_enabled: bool = True
-    embedding_cache_max_size: int = field(default_factory=lambda: int(os.environ.get('JARVIS_EMBEDDING_CACHE_SIZE', '100')))
+    embedding_cache_max_size: int = field(default_factory=lambda: int(os.environ.get('Ironcliw_EMBEDDING_CACHE_SIZE', '100')))
 
     # Profile Reload Configuration
-    profile_reload_timeout: float = field(default_factory=lambda: float(os.environ.get('JARVIS_PROFILE_RELOAD_TIMEOUT', '30.0')))
-    profile_reload_check_interval: float = field(default_factory=lambda: float(os.environ.get('JARVIS_PROFILE_RELOAD_INTERVAL', '60.0')))
+    profile_reload_timeout: float = field(default_factory=lambda: float(os.environ.get('Ironcliw_PROFILE_RELOAD_TIMEOUT', '30.0')))
+    profile_reload_check_interval: float = field(default_factory=lambda: float(os.environ.get('Ironcliw_PROFILE_RELOAD_INTERVAL', '60.0')))
 
     # Async Cloud Sync Queue
     pending_cloud_syncs: List[Dict[str, Any]] = field(default_factory=list)
@@ -718,7 +718,7 @@ class VoicePatternStore:
 
             self._collection = self._client.get_or_create_collection(
                 name="voice_patterns",
-                metadata={"description": "JARVIS voice behavioral patterns"}
+                metadata={"description": "Ironcliw voice behavioral patterns"}
             )
 
             self._initialized = True
@@ -2625,7 +2625,7 @@ class MultiFactorAuthFusionEngine:
 # 2. Fetches stored voice samples from database
 # 3. Computes features using AdvancedFeatureExtractor
 # 4. Updates the database with computed features
-# 5. Syncs features across repos (JARVIS, J-Prime, Reactor-Core)
+# 5. Syncs features across repos (Ironcliw, J-Prime, Reactor-Core)
 # =============================================================================
 
 
@@ -2655,7 +2655,7 @@ class AutoAcousticFeatureEnhancer:
     BATCH_SIZE = 5  # Process 5 samples concurrently
     FEATURE_VERSION = "v81.0"  # Track which version computed features
 
-    def __init__(self, learning_db: Optional["JARVISLearningDatabase"] = None):
+    def __init__(self, learning_db: Optional["IroncliwLearningDatabase"] = None):
         self.learning_db = learning_db
         self._feature_extractor = None
         self._executor = get_verification_executor()
@@ -3086,7 +3086,7 @@ class AutoAcousticFeatureEnhancer:
         """
         v81.0: Broadcast enhanced acoustic features to Trinity components.
 
-        Syncs features across JARVIS, J-Prime, and Reactor-Core via:
+        Syncs features across Ironcliw, J-Prime, and Reactor-Core via:
         - Trinity file-based message passing
         - Cross-repo state system
         - Direct API calls (if components are online)
@@ -3131,7 +3131,7 @@ class AutoAcousticFeatureEnhancer:
             # Method 2: Direct API call to J-Prime (if available)
             try:
                 import aiohttp
-                jprime_port = int(os.environ.get("JARVIS_PRIME_PORT", "8002"))
+                jprime_port = int(os.environ.get("Ironcliw_PRIME_PORT", "8002"))
 
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
                     async with session.post(
@@ -3173,7 +3173,7 @@ class AutoAcousticFeatureEnhancer:
 _acoustic_enhancer: Optional[AutoAcousticFeatureEnhancer] = None
 
 
-async def get_acoustic_enhancer(learning_db: Optional["JARVISLearningDatabase"] = None) -> AutoAcousticFeatureEnhancer:
+async def get_acoustic_enhancer(learning_db: Optional["IroncliwLearningDatabase"] = None) -> AutoAcousticFeatureEnhancer:
     """Get or create the global acoustic feature enhancer."""
     global _acoustic_enhancer
     if _acoustic_enhancer is None:
@@ -3185,14 +3185,14 @@ async def get_acoustic_enhancer(learning_db: Optional["JARVISLearningDatabase"] 
 
 class SpeakerVerificationService:
     """
-    Speaker verification service for JARVIS
+    Speaker verification service for Ironcliw
 
     Verifies speaker identity using voice biometrics
     """
 
     def __init__(
         self,
-        learning_db: Optional[JARVISLearningDatabase] = None,
+        learning_db: Optional[IroncliwLearningDatabase] = None,
         owns_learning_db: Optional[bool] = None,
     ):
         """
@@ -3272,7 +3272,7 @@ class SpeakerVerificationService:
 
         # Dynamic timeout configuration from Edge-Native config
         self._db_operation_timeout = self._edge_config.local_db_timeout
-        self._db_connection_timeout = float(os.environ.get('JARVIS_DB_CONNECT_TIMEOUT', '2.0'))
+        self._db_connection_timeout = float(os.environ.get('Ironcliw_DB_CONNECT_TIMEOUT', '2.0'))
 
         # Local-first strategy - from edge config
         self._use_local_first = self._edge_config.enabled  # Always true in edge-native mode
@@ -3424,7 +3424,7 @@ class SpeakerVerificationService:
         Fast initialization with background encoder pre-loading.
 
         Loads profiles immediately, defers SpeechBrain loading to background.
-        JARVIS starts fast (~2s), encoder ready in ~10s total.
+        Ironcliw starts fast (~2s), encoder ready in ~10s total.
 
         CRITICAL FIX: Also triggers ECAPA loading from ML Engine Registry!
         """
@@ -3549,7 +3549,10 @@ class SpeakerVerificationService:
             if self._local_db_available:
                 logger.info(f"📂 Local SQLite database ready: {self._local_db_path}")
             else:
-                logger.warning(f"⚠️ Local SQLite database not found: {self._local_db_path}")
+                if os.path.exists(self._local_db_path):
+                    logger.debug(f"📂 Local SQLite DB exists but has no enrolled voice profiles yet: {self._local_db_path}")
+                else:
+                    logger.debug(f"📂 Local SQLite DB not yet created: {self._local_db_path}")
 
         # 🚀 UNIFIED CACHE: Connect for instant recognition fast-path
         try:
@@ -3572,8 +3575,8 @@ class SpeakerVerificationService:
 
             cpu_now = psutil.cpu_percent(interval=None)
             mem_now = psutil.virtual_memory().percent
-            cpu_threshold = float(os.getenv("JARVIS_ENCODER_PRELOAD_CPU_MAX", "92.0"))
-            mem_threshold = float(os.getenv("JARVIS_ENCODER_PRELOAD_MEM_MAX", "88.0"))
+            cpu_threshold = float(os.getenv("Ironcliw_ENCODER_PRELOAD_CPU_MAX", "92.0"))
+            mem_threshold = float(os.getenv("Ironcliw_ENCODER_PRELOAD_MEM_MAX", "88.0"))
             return cpu_now >= cpu_threshold or mem_now >= mem_threshold
         except Exception as e:
             logger.debug(f"Preload pressure check unavailable: {e}")
@@ -3582,7 +3585,7 @@ class SpeakerVerificationService:
     async def _defer_and_retry_preload(self) -> None:
         """Retry background preload after a configurable delay."""
         try:
-            delay = float(os.getenv("JARVIS_ENCODER_PRELOAD_RETRY_SECONDS", "20.0"))
+            delay = float(os.getenv("Ironcliw_ENCODER_PRELOAD_RETRY_SECONDS", "20.0"))
             await asyncio.sleep(max(1.0, delay))
             if self._shutdown_event.is_set() or self._encoder_preloaded or self._encoder_preloading:
                 return
@@ -3626,21 +3629,41 @@ class SpeakerVerificationService:
 
         async def preload_worker() -> None:
             try:
-                logger.info("🔄 Background: Initializing SpeechBrain engine...")
-                await self.speechbrain_engine.initialize()
-                logger.info("✅ Background: SpeechBrain engine initialized")
+                # Late check: if ML registry has ECAPA loaded now (even if initialize_fast()
+                # didn't detect it), skip the redundant SpeechBrain ECAPA load to save RAM.
+                if not self._use_registry_encoder and ML_REGISTRY_AVAILABLE:
+                    try:
+                        _reg = get_ml_registry_sync(auto_create=False)
+                        if _reg is not None:
+                            _wrap = _reg.get_wrapper("ecapa_tdnn")
+                            if _wrap is not None and _wrap.is_loaded:
+                                self._use_registry_encoder = True
+                                logger.info("⏭️ Background: Late registry check — ECAPA already loaded, skipping SpeechBrain preload")
+                    except Exception:
+                        pass
+
+                if not self._use_registry_encoder:
+                    logger.info("🔄 Background: Initializing SpeechBrain engine...")
+                    await self.speechbrain_engine.initialize()
+                    logger.info("✅ Background: SpeechBrain engine initialized")
+                else:
+                    logger.info("⏭️ Background: Skipping wav2vec2 ASR init (registry ECAPA active)")
 
                 if self._shutdown_event.is_set():
                     logger.info("⏹️ Background preload cancelled during shutdown")
                     return
 
-                logger.info("🔄 Background: Pre-loading speaker encoder...")
-                await self.speechbrain_engine.ensure_speaker_encoder_ready()
-                if self.speechbrain_engine.speaker_encoder_loaded:
+                if self._use_registry_encoder:
                     self._encoder_preloaded = True
-                    logger.info("✅ Speaker encoder ready - voice biometric unlock now instant!")
+                    logger.info("⏭️ Background: Skipping local ECAPA preload (registry singleton active, already loaded)")
                 else:
-                    logger.warning("⚠️ Background preload completed but encoder is not ready")
+                    logger.info("🔄 Background: Pre-loading speaker encoder...")
+                    await self.speechbrain_engine.ensure_speaker_encoder_ready()
+                    if self.speechbrain_engine.speaker_encoder_loaded:
+                        self._encoder_preloaded = True
+                        logger.info("✅ Speaker encoder ready - voice biometric unlock now instant!")
+                    else:
+                        logger.warning("⚠️ Background preload completed but encoder is not ready")
             except asyncio.CancelledError:
                 logger.info("⏹️ Background preload task cancelled")
                 raise
@@ -4065,11 +4088,10 @@ class SpeakerVerificationService:
 
             if ecapa_loaded:
                 # ECAPA is ready - use registry encoder
-                # Still create SpeechBrain engine for other features (ASR, etc)
-                # but skip the encoder preload since registry already has it
+                # Skip wav2vec2 ASR initialize() - saves 1.2GB RAM + 90s startup
                 if model_config is not None:
                     self.speechbrain_engine = _SpeechBrainEngine(model_config)
-                    await self.speechbrain_engine.initialize()
+                    # DO NOT call initialize() - wav2vec2 ASR not needed when registry ECAPA active
                 else:
                     self.speechbrain_engine = None
                 # Load speaker profiles
@@ -4093,7 +4115,7 @@ class SpeakerVerificationService:
             self._ecapa_load_source = "registry"
             if model_config is not None:
                 self.speechbrain_engine = _SpeechBrainEngine(model_config)
-                await self.speechbrain_engine.initialize()
+                # Skip wav2vec2 ASR initialize() - registry handles embeddings
             else:
                 self.speechbrain_engine = None
             await self._load_speaker_profiles()
@@ -4221,6 +4243,11 @@ class SpeakerVerificationService:
         Makes system adaptive to any model without hardcoding dimensions.
         """
         if self.current_model_dimension is not None:
+            return self.current_model_dimension
+
+        if self._use_registry_encoder:
+            self.current_model_dimension = 192
+            logger.info("✅ Current model dimension: 192D (ECAPA-TDNN via ML Registry - no inference needed)")
             return self.current_model_dimension
 
         if self.speechbrain_engine is None:
@@ -5824,7 +5851,7 @@ class SpeakerVerificationService:
             logger.info(f"   Full name: {full_name}")
             logger.info(f"   Profile marked as is_primary_user=True")
             logger.info("   ⚠️  Note: Voiceprint enrollment required for full voice authentication")
-            logger.info("   💡 Say 'JARVIS, learn my voice' to complete enrollment")
+            logger.info("   💡 Say 'Ironcliw, learn my voice' to complete enrollment")
 
         except Exception as e:
             logger.error(f"❌ Failed to auto-create owner profile: {e}")
@@ -6297,7 +6324,7 @@ class SpeakerVerificationService:
                 # Check if this is an auto-created profile requiring enrollment
                 if profile.get("requires_enrollment", False) or known_embedding is None:
                     logger.info(f"🔄 Profile {speaker_name} requires voice enrollment (auto-created from macOS)")
-                    logger.info(f"   💡 Say 'JARVIS, learn my voice' to complete enrollment")
+                    logger.info(f"   💡 Say 'Ironcliw, learn my voice' to complete enrollment")
                     return {
                         "verified": False,
                         "confidence": 0.0,
@@ -6305,7 +6332,7 @@ class SpeakerVerificationService:
                         "is_owner": profile.get("is_primary_user", False),
                         "security_level": profile.get("security_level", "standard"),
                         "requires_enrollment": True,
-                        "enrollment_hint": f"Hello {speaker_name}! I recognize you as the device owner, but I need to learn your voice first. Say 'JARVIS, learn my voice' to complete enrollment.",
+                        "enrollment_hint": f"Hello {speaker_name}! I recognize you as the device owner, but I need to learn your voice first. Say 'Ironcliw, learn my voice' to complete enrollment.",
                         "error": "enrollment_required",
                         "error_detail": "Voiceprint enrollment required - profile created from system user"
                     }
@@ -6923,7 +6950,7 @@ class SpeakerVerificationService:
 
         # ====================================================================
         # LEGACY MODE: Use existing local-first with Cloud SQL fallback
-        # (Only used when JARVIS_EDGE_NATIVE_MODE=false)
+        # (Only used when Ironcliw_EDGE_NATIVE_MODE=false)
         # ====================================================================
         # Strategy 1: Local-first - always try local SQLite first (instant)
         if self._use_local_first:
@@ -7288,7 +7315,7 @@ class SpeakerVerificationService:
                             except asyncio.TimeoutError:
                                 logger.warning(
                                     f"⏱️ Profile reload timeout ({self._edge_config.profile_reload_timeout}s) - "
-                                    f"will retry next cycle. Consider increasing JARVIS_PROFILE_RELOAD_TIMEOUT"
+                                    f"will retry next cycle. Consider increasing Ironcliw_PROFILE_RELOAD_TIMEOUT"
                                 )
 
                     except asyncio.TimeoutError:
@@ -8103,7 +8130,7 @@ _global_speaker_service: Optional[SpeakerVerificationService] = None  # Pre-load
 
 
 async def get_speaker_verification_service(
-    learning_db: Optional[JARVISLearningDatabase] = None,
+    learning_db: Optional[IroncliwLearningDatabase] = None,
 ) -> SpeakerVerificationService:
     """
     Get global speaker verification service instance

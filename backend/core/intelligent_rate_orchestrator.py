@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Intelligent Rate Limit Orchestrator v2.0 - ML-Powered Forecasting & Adaptive Throttling
 =========================================================================================
@@ -43,7 +43,7 @@ Architecture:
 │  └─────────────────┘  └────────────────────┘  └─────────────────┘                      │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -456,7 +456,7 @@ class AdaptiveThrottleController:
         self.adjustment_interval = adjustment_interval
         
         # Dynamic config from environment
-        prefix = f"JARVIS_THROTTLE_{service_type.value.upper()}_"
+        prefix = f"Ironcliw_THROTTLE_{service_type.value.upper()}_"
         self.base_rate_limit = _env_float(f"{prefix}RATE", base_rate_limit)
         self.burst_capacity = _env_float(f"{prefix}BURST", burst_capacity)
         

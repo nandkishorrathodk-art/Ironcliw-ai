@@ -1,15 +1,15 @@
-# 🏎️ Ferrari Engine Quick Start Guide
+﻿# 🏎️ Ferrari Engine Quick Start Guide
 
 ## What is Ferrari Engine?
 
-Ferrari Engine is JARVIS's GPU-accelerated window capture system, using Apple's ScreenCaptureKit for **60 FPS real-time surveillance** with sub-60ms latency.
+Ferrari Engine is Ironcliw's GPU-accelerated window capture system, using Apple's ScreenCaptureKit for **60 FPS real-time surveillance** with sub-60ms latency.
 
 ## ✅ Verification Test
 
 Run this to confirm Ferrari Engine is working:
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 PYTHONPATH="$PWD:$PWD/backend" python3 test_ferrari_integration_simple.py
 ```
 

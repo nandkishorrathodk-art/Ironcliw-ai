@@ -1,5 +1,5 @@
-"""
-CoreML-Powered Intent Classification for JARVIS v117.0
+﻿"""
+CoreML-Powered Intent Classification for Ironcliw v117.0
 =======================================================
 
 Neural Engine-accelerated intent prediction using CoreML on Apple Silicon M1.
@@ -26,7 +26,7 @@ v117.0 FIXES:
 - PyTorch-first architecture with CoreML as optional acceleration
 - Cross-repo ML state coordination
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 117.0.0
 Date: 2026-01-28
 """
@@ -352,7 +352,7 @@ class CoreMLIntentClassifier:
         """
         v117.0: Write CoreML/Neural Engine state for cross-repo coordination.
 
-        This allows JARVIS Prime and Reactor Core to know whether to offload
+        This allows Ironcliw Prime and Reactor Core to know whether to offload
         intent classification to this instance or handle it themselves.
         """
         try:
@@ -559,8 +559,8 @@ class CoreMLIntentClassifier:
             )
 
             # Add metadata
-            coreml_model.short_description = "JARVIS Intent Classification Model"
-            coreml_model.author = "JARVIS AI System"
+            coreml_model.short_description = "Ironcliw Intent Classification Model"
+            coreml_model.author = "Ironcliw AI System"
             coreml_model.license = "Proprietary"
             coreml_model.version = "117.0.0"
 

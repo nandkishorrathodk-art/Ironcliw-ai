@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 import sys
 from pathlib import Path
@@ -8,19 +8,19 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
-Test JARVIS closing apps functionality
+Test Ironcliw closing apps functionality
 """
 
 import asyncio
-from backend.voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
 
 
 async def test_close_apps():
-    """Test closing apps through JARVIS"""
-    print("🤖 Testing JARVIS App Closing\n")
+    """Test closing apps through Ironcliw"""
+    print("🤖 Testing Ironcliw App Closing\n")
     
-    # Initialize JARVIS
-    jarvis = JARVISAgentVoice(user_name="Sir")
+    # Initialize Ironcliw
+    jarvis = IroncliwAgentVoice(user_name="Sir")
     
     if not jarvis.system_control_enabled:
         print("❌ System control is not enabled. Please set ANTHROPIC_API_KEY.")
@@ -41,7 +41,7 @@ async def test_close_apps():
         try:
             # Process as system command
             response = await jarvis._handle_system_command(command)
-            print(f"🤖 JARVIS: {response}")
+            print(f"🤖 Ironcliw: {response}")
             
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -77,10 +77,10 @@ async def test_direct_controller():
 async def main():
     """Run all tests"""
     print("=" * 60)
-    print("Testing JARVIS App Closing Functionality")
+    print("Testing Ironcliw App Closing Functionality")
     print("=" * 60)
     
-    # Test through JARVIS
+    # Test through Ironcliw
     await test_close_apps()
     
     # Test controller directly

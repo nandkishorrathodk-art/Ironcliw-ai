@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Verify JARVIS Autonomy Status
+Verify Ironcliw Autonomy Status
 Checks all systems and provides clear status
 """
 
@@ -12,7 +12,7 @@ from datetime import datetime
 
 async def check_autonomy_status():
     """Check complete autonomy status"""
-    print("🤖 JARVIS Autonomy Status Check")
+    print("🤖 Ironcliw Autonomy Status Check")
     print("=" * 50)
     
     base_url = "http://localhost:8000"
@@ -29,12 +29,12 @@ async def check_autonomy_status():
                     print(f"❌ Backend Status: Error {resp.status}")
                     return
             
-            # 2. Check JARVIS status
+            # 2. Check Ironcliw status
             async with session.get(f"{base_url}/voice/jarvis/status") as resp:
                 if resp.status == 200:
                     jarvis = await resp.json()
                     status = jarvis.get('status', 'unknown')
-                    print(f"\n📊 JARVIS Voice System:")
+                    print(f"\n📊 Ironcliw Voice System:")
                     print(f"  Status: {status}")
                     print(f"  User: {jarvis.get('user_name', 'Not set')}")
                     
@@ -115,8 +115,8 @@ async def test_speech():
     if platform.system() == 'Darwin':
         import os
         # Test macOS speech
-        os.system('say "JARVIS speech test. Full autonomy activated."')
-        print("✅ Speech command sent. Did you hear JARVIS?")
+        os.system('say "Ironcliw speech test. Full autonomy activated."')
+        print("✅ Speech command sent. Did you hear Ironcliw?")
     else:
         print("⚠️  Speech test only available on macOS")
 
@@ -129,7 +129,7 @@ async def main():
     print(f"\n📋 Quick Fixes:")
     print(f"1. If no speech: Check System Preferences → Sound → Output Volume")
     print(f"2. If vision disconnected: Restart backend with ./start_jarvis_backend.sh")
-    print(f"3. If partial autonomy: Say 'Hey JARVIS, activate full autonomy' again")
+    print(f"3. If partial autonomy: Say 'Hey Ironcliw, activate full autonomy' again")
     print(f"4. Check browser console for errors")
 
 

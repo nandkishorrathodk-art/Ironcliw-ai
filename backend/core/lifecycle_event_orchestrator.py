@@ -1,4 +1,4 @@
-"""
+﻿"""
 Lifecycle Event Orchestrator v1.0 - Unified Lifecycle Management
 ================================================================
 
@@ -27,7 +27,7 @@ Architecture:
     │    ┌────────────────────────────┼────────────────────────────┐     │
     │    │                            │                            │     │
     │    ▼                            ▼                            ▼     │
-    │  JARVIS                     Prime                      Reactor     │
+    │  Ironcliw                     Prime                      Reactor     │
     │  (Body)                     (Mind)                    (Nerves)     │
     └─────────────────────────────────────────────────────────────────────┘
 
@@ -41,7 +41,7 @@ Event Types Published:
 - lifecycle.system.degraded     - Some components unhealthy (graceful degradation)
 - lifecycle.system.failed       - Critical failure, cannot continue
 
-Author: JARVIS Trinity v95.0 - Lifecycle Event Orchestration
+Author: Ironcliw Trinity v95.0 - Lifecycle Event Orchestration
 """
 
 from __future__ import annotations
@@ -282,7 +282,7 @@ class LifecycleEventPublisher:
         # Get event bus (lazy import to avoid circular deps)
         try:
             from backend.core.trinity_event_bus import get_trinity_event_bus, RepoType
-            self._event_bus = await get_trinity_event_bus(RepoType.JARVIS)
+            self._event_bus = await get_trinity_event_bus(RepoType.Ironcliw)
             logger.info("[LifecyclePublisher] Connected to Trinity Event Bus")
         except Exception as e:
             logger.warning(f"[LifecyclePublisher] Event bus not available: {e}")
@@ -389,7 +389,7 @@ class LifecycleEventPublisher:
 
             trinity_event = TrinityEvent(
                 topic=event.event_type,
-                source=RepoType.JARVIS,
+                source=RepoType.Ironcliw,
                 target=RepoType.BROADCAST,
                 priority=priority_map.get(event.priority, BusPriority.NORMAL),
                 payload=event.to_dict(),

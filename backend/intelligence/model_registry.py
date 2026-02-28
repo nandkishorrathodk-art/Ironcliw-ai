@@ -1,4 +1,4 @@
-"""
+﻿"""
 Model Registry - Comprehensive Model Capability & Resource Tracking
 =================================================================
 
@@ -417,7 +417,7 @@ class ModelRegistry:
     def _load_component_ram_estimates(self, estimates: dict):
         """Load RAM estimates for existing components"""
         # These are tracked for monitoring but not managed by lifecycle manager
-        # (they're part of the core JARVIS system)
+        # (they're part of the core Ironcliw system)
 
     def _load_default_models(self):
         """Fallback: load minimal default models if config fails"""

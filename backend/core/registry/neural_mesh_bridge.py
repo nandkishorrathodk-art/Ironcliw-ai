@@ -1,4 +1,4 @@
-"""
+﻿"""
 Neural Mesh Registry Bridge v100.0
 ===================================
 
@@ -27,7 +27,7 @@ Architecture:
                          | - Event routing   |
                          +--------------------+
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations

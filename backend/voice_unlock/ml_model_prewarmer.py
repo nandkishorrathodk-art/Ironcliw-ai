@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 ML Model Prewarmer for Voice Unlock
 ===================================
@@ -53,12 +53,12 @@ logger = logging.getLogger(__name__)
 # 1. First-time model downloads from HuggingFace can be slow
 # 2. Model loading is CPU-intensive and varies by hardware
 # 3. This happens once at startup, not on user requests
-PREWARM_TIMEOUT = float(os.environ.get("JARVIS_PREWARM_TIMEOUT", "120.0"))
-WHISPER_PREWARM_TIMEOUT = float(os.environ.get("JARVIS_WHISPER_PREWARM_TIMEOUT", "60.0"))
-ECAPA_PREWARM_TIMEOUT = float(os.environ.get("JARVIS_ECAPA_PREWARM_TIMEOUT", "60.0"))
+PREWARM_TIMEOUT = float(os.environ.get("Ironcliw_PREWARM_TIMEOUT", "120.0"))
+WHISPER_PREWARM_TIMEOUT = float(os.environ.get("Ironcliw_WHISPER_PREWARM_TIMEOUT", "60.0"))
+ECAPA_PREWARM_TIMEOUT = float(os.environ.get("Ironcliw_ECAPA_PREWARM_TIMEOUT", "60.0"))
 
 # Environment variable to skip prewarming (for faster dev restarts)
-SKIP_PREWARM_ENV = "JARVIS_SKIP_MODEL_PREWARM"
+SKIP_PREWARM_ENV = "Ironcliw_SKIP_MODEL_PREWARM"
 
 # Flag to use new parallel loader (set to True for enhanced performance)
 USE_PARALLEL_LOADER = True
@@ -375,7 +375,7 @@ async def prewarm_voice_unlock_models(
 
     # Check if prewarming should be skipped
     if os.getenv(SKIP_PREWARM_ENV, "").lower() in ("true", "1", "yes"):
-        logger.info("⏭️ [PREWARM] Skipping model prewarm (JARVIS_SKIP_MODEL_PREWARM=true)")
+        logger.info("⏭️ [PREWARM] Skipping model prewarm (Ironcliw_SKIP_MODEL_PREWARM=true)")
         return _prewarm_status
 
     async with _prewarm_lock:

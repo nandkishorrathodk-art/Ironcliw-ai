@@ -1,6 +1,6 @@
-/**
- * JARVISScreenUnlockManager.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwScreenUnlockManager.h
+ * Ironcliw Voice Unlock System
  *
  * Manages screen lock detection and unlock operations using
  * macOS Security Framework and private APIs.
@@ -13,44 +13,44 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // Screen state
-typedef NS_ENUM(NSInteger, JARVISScreenState) {
-    JARVISScreenStateUnknown = 0,
-    JARVISScreenStateUnlocked,
-    JARVISScreenStateLocked,
-    JARVISScreenStateScreensaver,
-    JARVISScreenStateSleeping
+typedef NS_ENUM(NSInteger, IroncliwScreenState) {
+    IroncliwScreenStateUnknown = 0,
+    IroncliwScreenStateUnlocked,
+    IroncliwScreenStateLocked,
+    IroncliwScreenStateScreensaver,
+    IroncliwScreenStateSleeping
 };
 
 // Unlock method
-typedef NS_ENUM(NSInteger, JARVISUnlockMethod) {
-    JARVISUnlockMethodPassword = 0,
-    JARVISUnlockMethodBiometric,
-    JARVISUnlockMethodVoice,
-    JARVISUnlockMethodEmergency
+typedef NS_ENUM(NSInteger, IroncliwUnlockMethod) {
+    IroncliwUnlockMethodPassword = 0,
+    IroncliwUnlockMethodBiometric,
+    IroncliwUnlockMethodVoice,
+    IroncliwUnlockMethodEmergency
 };
 
 // Unlock result
-@interface JARVISUnlockResult : NSObject
+@interface IroncliwUnlockResult : NSObject
 @property (nonatomic, readonly) BOOL success;
-@property (nonatomic, readonly) JARVISUnlockMethod method;
+@property (nonatomic, readonly) IroncliwUnlockMethod method;
 @property (nonatomic, readonly) NSTimeInterval duration;
 @property (nonatomic, readonly, nullable) NSError *error;
 @end
 
 // Screen unlock delegate
-@protocol JARVISScreenUnlockDelegate <NSObject>
+@protocol IroncliwScreenUnlockDelegate <NSObject>
 @optional
-- (void)screenStateDidChange:(JARVISScreenState)newState;
+- (void)screenStateDidChange:(IroncliwScreenState)newState;
 - (void)screenUnlockDidBegin;
-- (void)screenUnlockDidComplete:(JARVISUnlockResult *)result;
+- (void)screenUnlockDidComplete:(IroncliwUnlockResult *)result;
 - (void)screenUnlockDidFail:(NSError *)error;
 @end
 
 // Main screen unlock manager
-@interface JARVISScreenUnlockManager : NSObject
+@interface IroncliwScreenUnlockManager : NSObject
 
-@property (nonatomic, weak, nullable) id<JARVISScreenUnlockDelegate> delegate;
-@property (nonatomic, readonly) JARVISScreenState currentScreenState;
+@property (nonatomic, weak, nullable) id<IroncliwScreenUnlockDelegate> delegate;
+@property (nonatomic, readonly) IroncliwScreenState currentScreenState;
 @property (nonatomic, readonly) BOOL canUnlockScreen;
 @property (nonatomic, readonly) BOOL hasSecureToken;
 
@@ -58,7 +58,7 @@ typedef NS_ENUM(NSInteger, JARVISUnlockMethod) {
 - (BOOL)isScreenLocked;
 - (BOOL)isScreensaverActive;
 - (BOOL)isSystemSleeping;
-- (JARVISScreenState)detectScreenState;
+- (IroncliwScreenState)detectScreenState;
 
 // Lock operations
 - (BOOL)lockScreen;
@@ -66,7 +66,7 @@ typedef NS_ENUM(NSInteger, JARVISUnlockMethod) {
 
 // Unlock operations
 - (BOOL)unlockScreenWithError:(NSError **)error;
-- (void)unlockScreenAsync:(void (^)(JARVISUnlockResult *result))completion;
+- (void)unlockScreenAsync:(void (^)(IroncliwUnlockResult *result))completion;
 - (BOOL)unlockScreenWithPassword:(NSString *)password error:(NSError **)error;
 
 // Authentication

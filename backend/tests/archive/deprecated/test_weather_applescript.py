@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test Weather app with various AppleScript approaches"""
 
 import asyncio
@@ -151,5 +151,5 @@ async def test_weather_applescript():
 
 if __name__ == "__main__":
     import os
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_weather_applescript())

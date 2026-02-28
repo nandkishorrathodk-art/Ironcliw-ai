@@ -1,9 +1,9 @@
-"""
-JARVIS Dependency Injection Protocols Module v2.0
+﻿"""
+Ironcliw Dependency Injection Protocols Module v2.0
 ==================================================
 
 Enterprise-grade protocols, enums, data classes, and base classes for the
-JARVIS dependency injection container. This module provides the foundational
+Ironcliw dependency injection container. This module provides the foundational
 abstractions and contracts that enable type-safe, lifecycle-managed service
 composition.
 
@@ -33,7 +33,7 @@ CRITICAL: This module uses lazy lock initialization patterns.
     Never create asyncio.Lock() or asyncio.Event() in __init__ or at module level.
     Always use the lazy initialization pattern demonstrated in BaseAsyncService.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0 (January 2026)
 """
 

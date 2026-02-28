@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Create a proper CoreML Speaker Verification Model from voice samples
 This replaces the placeholder with a real model trained on Derek's voice data
@@ -69,12 +69,12 @@ async def load_voice_data_from_db():
             """
             SELECT speaker_id, voiceprint_embedding
             FROM speaker_profiles
-            WHERE speaker_name = 'Derek'
+            WHERE speaker_name = 'Nandkishor'
         """
         )
 
         if not profile:
-            logger.error("Derek's profile not found!")
+            logger.error("Nandkishor's profile not found!")
             return None, None
 
         # Get MFCC features from voice samples
@@ -141,14 +141,14 @@ def create_coreml_model(features, embedding):
     )
 
     # Add metadata
-    coreml_model.author = "JARVIS Voice Authentication"
-    coreml_model.short_description = "Speaker verification model for Derek"
+    coreml_model.author = "Ironcliw Voice Authentication"
+    coreml_model.short_description = "Speaker verification model for Nandkishor"
     coreml_model.version = "1.0"
 
     # Add speaker labels
-    labels = ["Unknown", "Derek"]
+    labels = ["Unknown", "Nandkishor"]
     coreml_model.user_defined_metadata["speaker_labels"] = ",".join(labels)
-    coreml_model.user_defined_metadata["primary_speaker"] = "Derek"
+    coreml_model.user_defined_metadata["primary_speaker"] = "Nandkishor"
     coreml_model.user_defined_metadata["confidence_threshold"] = "0.75"
 
     return coreml_model

@@ -1,4 +1,4 @@
-// JARVIS Landing Page - Main JavaScript
+﻿// Ironcliw Landing Page - Main JavaScript
 
 document.addEventListener('DOMContentLoaded', function() {
     // Smooth scrolling for navigation links
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const commandPreview = document.querySelector('.command-preview');
     if (commandPreview) {
         const commands = [
-            '> "Hey JARVIS, open Chrome"',
+            '> "Hey Ironcliw, open Chrome"',
             '> "Set volume to 50%"',
             '> "Take a screenshot"',
             '> "Start morning routine"',
@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.body.classList.add('jarvis-mode');
         const message = document.createElement('div');
         message.className = 'jarvis-message';
-        message.textContent = 'JARVIS Protocol Activated';
+        message.textContent = 'Ironcliw Protocol Activated';
         document.body.appendChild(message);
         
         setTimeout(() => {

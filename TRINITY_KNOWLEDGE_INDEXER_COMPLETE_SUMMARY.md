@@ -1,4 +1,4 @@
-# Trinity Knowledge Indexer v88.0 - Complete Implementation Summary
+﻿# Trinity Knowledge Indexer v88.0 - Complete Implementation Summary
 
 **Status:** ✅ **PRODUCTION READY**
 **Date:** 2026-01-10
@@ -9,7 +9,7 @@
 
 ## 🎉 Mission Accomplished!
 
-You now have a **fully implemented, ultra-robust, async, parallel, intelligent, and dynamic knowledge indexing system** with **ZERO hardcoding** that bridges the critical gap between web scraping and JARVIS's brain!
+You now have a **fully implemented, ultra-robust, async, parallel, intelligent, and dynamic knowledge indexing system** with **ZERO hardcoding** that bridges the critical gap between web scraping and Ironcliw's brain!
 
 ---
 
@@ -263,10 +263,10 @@ python -m spacy download en_core_web_sm
 - Without `chromadb`: No persistent vector storage (uses FAISS only)
 - Without `faiss`: No fast similarity search (uses ChromaDB only)
 
-### Step 2: Start JARVIS (Single Command!)
+### Step 2: Start Ironcliw (Single Command!)
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -351,8 +351,8 @@ export TRINITY_KNOWLEDGE_INDEXER_ENABLED=true
 export TRINITY_INDEXER_ENABLED=true
 
 # Database Paths
-export JARVIS_TRAINING_DB_PATH="~/.jarvis/data/training_db/jarvis_training.db"
-export JARVIS_VECTOR_DB_PATH="~/.jarvis/data/vector_db"
+export Ironcliw_TRAINING_DB_PATH="~/.jarvis/data/training_db/jarvis_training.db"
+export Ironcliw_VECTOR_DB_PATH="~/.jarvis/data/vector_db"
 
 # Embedding Model (sentence-transformers)
 export TRINITY_EMBEDDING_MODEL="all-MiniLM-L6-v2"  # Default: fast & good
@@ -485,7 +485,7 @@ export TRINITY_REACTOR_EXPORT_PATH="~/.jarvis/reactor/training_data"
 ### ✅ Fully Integrated
 - Single command startup: `python3 run_supervisor.py`
 - Auto-starts with supervisor
-- Connects JARVIS + J-Prime + Reactor
+- Connects Ironcliw + J-Prime + Reactor
 - Graceful shutdown on exit
 - Complete lifecycle management
 
@@ -516,7 +516,7 @@ export TRINITY_REACTOR_EXPORT_PATH="~/.jarvis/reactor/training_data"
 # Step 1: Install dependencies (optional but recommended)
 pip install sentence-transformers chromadb faiss-cpu
 
-# Step 2: Start JARVIS (everything auto-starts!)
+# Step 2: Start Ironcliw (everything auto-starts!)
 python3 run_supervisor.py
 
 # Step 3: Verify it's running
@@ -543,7 +543,7 @@ Training Export (JSONL to Reactor)
   ↓
 Model Fine-tuning (Reactor Core)
   ↓
-Improved JARVIS Intelligence
+Improved Ironcliw Intelligence
   ↓
 Better Responses & More Knowledge
   ↓

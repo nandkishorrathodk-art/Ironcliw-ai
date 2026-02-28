@@ -1,7 +1,7 @@
-"""
+﻿"""
 Tests for default_components module.
 
-Tests the predefined component definitions for JARVIS system.
+Tests the predefined component definitions for Ironcliw system.
 """
 import os
 from pathlib import Path
@@ -21,7 +21,7 @@ from backend.core.component_registry import (
 )
 from backend.core.default_components import (
     CROSS_REPO_COMPONENTS,
-    JARVIS_CORE_COMPONENTS,
+    Ironcliw_CORE_COMPONENTS,
     register_default_components,
     get_all_default_components,
     _resolve_repo_path,
@@ -81,7 +81,7 @@ class TestCrossRepoComponents:
         assert jarvis_prime.startup_timeout == 120.0
         assert jarvis_prime.fallback_strategy == FallbackStrategy.RETRY_THEN_CONTINUE
         assert jarvis_prime.fallback_for_capabilities == {"inference": "claude-api", "embeddings": "openai-api"}
-        assert jarvis_prime.disable_env_var == "JARVIS_PRIME_ENABLED"
+        assert jarvis_prime.disable_env_var == "Ironcliw_PRIME_ENABLED"
         assert jarvis_prime.conservative_skip_priority == 80
 
     def test_jarvis_prime_dependencies(self):
@@ -125,25 +125,25 @@ class TestCrossRepoComponents:
 
 
 class TestJarvisCoreComponents:
-    """Tests for JARVIS_CORE_COMPONENTS list."""
+    """Tests for Ironcliw_CORE_COMPONENTS list."""
 
     def test_jarvis_core_components_is_list(self):
-        """JARVIS_CORE_COMPONENTS should be a list."""
-        assert isinstance(JARVIS_CORE_COMPONENTS, list)
+        """Ironcliw_CORE_COMPONENTS should be a list."""
+        assert isinstance(Ironcliw_CORE_COMPONENTS, list)
 
     def test_jarvis_core_components_not_empty(self):
-        """JARVIS_CORE_COMPONENTS should contain components."""
-        assert len(JARVIS_CORE_COMPONENTS) > 0
+        """Ironcliw_CORE_COMPONENTS should contain components."""
+        assert len(Ironcliw_CORE_COMPONENTS) > 0
 
     def test_all_jarvis_core_are_component_definitions(self):
-        """All items in JARVIS_CORE_COMPONENTS should be ComponentDefinition."""
-        for component in JARVIS_CORE_COMPONENTS:
+        """All items in Ironcliw_CORE_COMPONENTS should be ComponentDefinition."""
+        for component in Ironcliw_CORE_COMPONENTS:
             assert isinstance(component, ComponentDefinition)
 
     def test_jarvis_core_component(self):
         """jarvis-core component should be correctly defined."""
         jarvis_core = next(
-            (c for c in JARVIS_CORE_COMPONENTS if c.name == "jarvis-core"), None
+            (c for c in Ironcliw_CORE_COMPONENTS if c.name == "jarvis-core"), None
         )
         assert jarvis_core is not None
         assert jarvis_core.criticality == Criticality.REQUIRED
@@ -156,7 +156,7 @@ class TestJarvisCoreComponents:
     def test_redis_component(self):
         """redis component should be correctly defined."""
         redis = next(
-            (c for c in JARVIS_CORE_COMPONENTS if c.name == "redis"), None
+            (c for c in Ironcliw_CORE_COMPONENTS if c.name == "redis"), None
         )
         assert redis is not None
         assert redis.criticality == Criticality.OPTIONAL
@@ -173,7 +173,7 @@ class TestJarvisCoreComponents:
     def test_cloud_sql_component(self):
         """cloud-sql component should be correctly defined."""
         cloud_sql = next(
-            (c for c in JARVIS_CORE_COMPONENTS if c.name == "cloud-sql"), None
+            (c for c in Ironcliw_CORE_COMPONENTS if c.name == "cloud-sql"), None
         )
         assert cloud_sql is not None
         assert cloud_sql.criticality == Criticality.DEGRADED_OK
@@ -189,7 +189,7 @@ class TestJarvisCoreComponents:
     def test_voice_unlock_component(self):
         """voice-unlock component should be correctly defined."""
         voice_unlock = next(
-            (c for c in JARVIS_CORE_COMPONENTS if c.name == "voice-unlock"), None
+            (c for c in Ironcliw_CORE_COMPONENTS if c.name == "voice-unlock"), None
         )
         assert voice_unlock is not None
         assert voice_unlock.criticality == Criticality.DEGRADED_OK
@@ -215,8 +215,8 @@ class TestRegisterDefaultComponents:
         """register_default_components should populate the registry with all components."""
         register_default_components(fresh_registry)
 
-        # All JARVIS_CORE_COMPONENTS should be registered
-        for component in JARVIS_CORE_COMPONENTS:
+        # All Ironcliw_CORE_COMPONENTS should be registered
+        for component in Ironcliw_CORE_COMPONENTS:
             assert fresh_registry.has(component.name)
 
         # All CROSS_REPO_COMPONENTS should be registered
@@ -226,7 +226,7 @@ class TestRegisterDefaultComponents:
     def test_register_default_components_correct_count(self, fresh_registry):
         """Registry should have correct number of components after registration."""
         register_default_components(fresh_registry)
-        total_expected = len(JARVIS_CORE_COMPONENTS) + len(CROSS_REPO_COMPONENTS)
+        total_expected = len(Ironcliw_CORE_COMPONENTS) + len(CROSS_REPO_COMPONENTS)
         assert len(fresh_registry.all_definitions()) == total_expected
 
     def test_registered_components_have_capabilities(self, fresh_registry):
@@ -261,13 +261,13 @@ class TestGetAllDefaultComponents:
     def test_returns_all_components(self):
         """get_all_default_components should return all components from both lists."""
         result = get_all_default_components()
-        expected_count = len(JARVIS_CORE_COMPONENTS) + len(CROSS_REPO_COMPONENTS)
+        expected_count = len(Ironcliw_CORE_COMPONENTS) + len(CROSS_REPO_COMPONENTS)
         assert len(result) == expected_count
 
     def test_contains_jarvis_core_components(self):
-        """Result should contain all JARVIS_CORE_COMPONENTS."""
+        """Result should contain all Ironcliw_CORE_COMPONENTS."""
         result = get_all_default_components()
-        for component in JARVIS_CORE_COMPONENTS:
+        for component in Ironcliw_CORE_COMPONENTS:
             assert component in result
 
     def test_contains_cross_repo_components(self):

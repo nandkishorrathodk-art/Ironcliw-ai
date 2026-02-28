@@ -1,5 +1,5 @@
-"""
-JARVIS Core - Advanced Architecture for Scale & Memory Efficiency
+﻿"""
+Ironcliw Core - Advanced Architecture for Scale & Memory Efficiency
 
 LAZY LOADING: Heavy modules (task_router with nltk, jarvis_core) are imported
 on-demand to prevent 3+ second startup delays from nltk/scipy imports.
@@ -15,8 +15,8 @@ __all__ = [
     "TaskRouter",
     "TaskType",
     "TaskAnalysis",
-    "JARVISCore",
-    "JARVISAssistant",
+    "IroncliwCore",
+    "IroncliwAssistant",
     # v16.0: Optional Dependency Manager
     "OptionalDependencyManager",
     "get_dependency_manager",
@@ -48,8 +48,8 @@ _lazy_modules = {
     "TaskRouter": (".task_router", "TaskRouter"),
     "TaskType": (".task_router", "TaskType"),
     "TaskAnalysis": (".task_router", "TaskAnalysis"),
-    "JARVISCore": (".jarvis_core", "JARVISCore"),
-    "JARVISAssistant": (".jarvis_core", "JARVISAssistant"),
+    "IroncliwCore": (".jarvis_core", "IroncliwCore"),
+    "IroncliwAssistant": (".jarvis_core", "IroncliwAssistant"),
     # v16.0: Optional Dependency Manager
     "OptionalDependencyManager": (".optional_dependencies", "OptionalDependencyManager"),
     "get_dependency_manager": (".optional_dependencies", "get_dependency_manager"),

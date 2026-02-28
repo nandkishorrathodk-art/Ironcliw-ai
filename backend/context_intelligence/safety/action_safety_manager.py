@@ -1,5 +1,5 @@
-"""
-Action Safety Manager for JARVIS
+﻿"""
+Action Safety Manager for Ironcliw
 =================================
 
 Manages safety confirmations and risk assessment for actions
@@ -11,7 +11,7 @@ Features:
 - Extra warnings for risky actions
 - Trusted action allowlist
 - Cross-repo event emission to Reactor Core (v10.3)
-- Safety context for JARVIS Prime routing (v10.3)
+- Safety context for Ironcliw Prime routing (v10.3)
 
 Author: Derek Russell
 Date: 2025-10-19
@@ -63,7 +63,7 @@ class SafetyContext:
     """
     Current safety context for cross-repo sharing (v10.3).
 
-    This context is written to disk for JARVIS Prime to read,
+    This context is written to disk for Ironcliw Prime to read,
     enabling safety-aware routing and reasoning.
     """
     kill_switch_active: bool = False
@@ -94,8 +94,8 @@ class SafetyContext:
         }
 
     def to_prime_context_string(self) -> str:
-        """Generate context string for JARVIS Prime prompt injection."""
-        lines = ["[JARVIS SAFETY CONTEXT]"]
+        """Generate context string for Ironcliw Prime prompt injection."""
+        lines = ["[Ironcliw SAFETY CONTEXT]"]
 
         if self.kill_switch_active:
             lines.append("- KILL SWITCH ACTIVE: All actions paused")
@@ -118,7 +118,7 @@ class SafetyContext:
         if len(lines) == 1:
             lines.append("- All clear, normal operation")
 
-        lines.append("[/JARVIS SAFETY CONTEXT]")
+        lines.append("[/Ironcliw SAFETY CONTEXT]")
         return "\n".join(lines)
 
 
@@ -136,7 +136,7 @@ class ActionSafetyManager:
     - Trusted action patterns
     - Safety level evaluation
     - Cross-repo event emission (v10.3)
-    - Safety context for JARVIS Prime (v10.3)
+    - Safety context for Ironcliw Prime (v10.3)
     """
 
     def __init__(
@@ -186,7 +186,7 @@ class ActionSafetyManager:
             logger.warning(f"[SAFETY-MANAGER] Failed to init cross-repo state: {e}")
 
     def _write_safety_context(self) -> None:
-        """Write safety context to disk for JARVIS Prime."""
+        """Write safety context to disk for Ironcliw Prime."""
         if not self.enable_cross_repo:
             return
 
@@ -474,7 +474,7 @@ class ActionSafetyManager:
 
     def get_safety_context_for_prime(self) -> str:
         """
-        Get safety context formatted for JARVIS Prime prompt injection.
+        Get safety context formatted for Ironcliw Prime prompt injection.
 
         Returns:
             Formatted string to inject into Prime's context

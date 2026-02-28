@@ -1,4 +1,4 @@
-"""
+﻿"""
 Context Engine v1.0 - Full Codebase Context Window Management
 =============================================================
 
@@ -39,7 +39,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -109,7 +109,7 @@ class ContextEngineConfig:
     DEPENDENCY_WEIGHT: float = get_env_float("CONTEXT_DEPENDENCY_WEIGHT", 0.2)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    Ironcliw_REPO: Path = Path(get_env_str("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
     PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
     REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
@@ -1269,12 +1269,12 @@ class CrossRepoContextAggregator:
     """
     Aggregates context across multiple repositories.
 
-    Coordinates between JARVIS, JARVIS-Prime, and Reactor-Core.
+    Coordinates between Ironcliw, Ironcliw-Prime, and Reactor-Core.
     """
 
     def __init__(self):
         self._repos: Dict[str, Path] = {
-            "jarvis": ContextEngineConfig.JARVIS_REPO,
+            "jarvis": ContextEngineConfig.Ironcliw_REPO,
             "prime": ContextEngineConfig.PRIME_REPO,
             "reactor": ContextEngineConfig.REACTOR_REPO,
         }

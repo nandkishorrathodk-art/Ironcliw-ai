@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Network Context Provider for JARVIS Voice Authentication
+Network Context Provider for Ironcliw Voice Authentication
 ==========================================================
 
 Provides network-based contextual intelligence for multi-factor authentication:

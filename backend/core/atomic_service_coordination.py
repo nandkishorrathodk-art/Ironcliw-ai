@@ -1,4 +1,4 @@
-"""
+﻿"""
 Atomic Service Coordination - Race-Free Registry & IPC Operations
 ==================================================================
 
@@ -20,7 +20,7 @@ Architecture:
     |  +-- AtomicRegistryCoordinator (PID-validated atomic updates)       |
     |  +-- RobustIPCConnector (retry logic + path validation)             |
     |  +-- MemoryAwareStartupSequencer (sequential loading + monitoring)  |
-    |  +-- CrossRepoSynchronizer (JARVIS + Prime + Reactor coordination)  |
+    |  +-- CrossRepoSynchronizer (Ironcliw + Prime + Reactor coordination)  |
     +---------------------------------------------------------------------+
 
 Race Condition Fix Strategy:
@@ -29,7 +29,7 @@ Race Condition Fix Strategy:
 - Use file-based distributed locking with stale lock detection
 - Implement compare-and-swap semantics for updates
 
-Author: JARVIS Trinity v95.3 - Atomic Service Coordination
+Author: Ironcliw Trinity v95.3 - Atomic Service Coordination
 """
 
 from __future__ import annotations
@@ -781,7 +781,7 @@ class RobustIPCConnector:
         """Setup default Trinity component endpoints."""
         trinity_dir = self.config.ipc_dir
 
-        # JARVIS Body
+        # Ironcliw Body
         self._endpoints["jarvis_body"] = IPCEndpoint(
             component_name="jarvis_body",
             heartbeat_file=trinity_dir / "heartbeats" / "jarvis_body.json",
@@ -789,7 +789,7 @@ class RobustIPCConnector:
             port=8010,
         )
 
-        # JARVIS Prime
+        # Ironcliw Prime
         self._endpoints["jarvis_prime"] = IPCEndpoint(
             component_name="jarvis_prime",
             heartbeat_file=trinity_dir / "heartbeats" / "jarvis_prime.json",
@@ -1182,7 +1182,7 @@ class MemoryAwareStartupSequencer:
 
 class CrossRepoSynchronizer:
     """
-    Coordinates startup across JARVIS, Prime, and Reactor Core.
+    Coordinates startup across Ironcliw, Prime, and Reactor Core.
 
     Ensures proper startup order with memory awareness.
     """

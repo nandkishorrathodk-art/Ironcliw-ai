@@ -1,8 +1,8 @@
-#!/bin/bash
-# Start JARVIS with Voice Feedback Support
+﻿#!/bin/bash
+# Start Ironcliw with Voice Feedback Support
 # ========================================
 
-echo "🚀 Starting JARVIS Complete System"
+echo "🚀 Starting Ironcliw Complete System"
 echo "=================================="
 
 # Colors for output
@@ -28,7 +28,7 @@ check_service() {
 cleanup() {
     echo -e "\n${YELLOW}🧹 Cleaning up existing processes...${NC}"
     
-    # Kill JARVIS
+    # Kill Ironcliw
     pkill -f "python main.py" 2>/dev/null
     
     # Kill WebSocket server
@@ -57,15 +57,15 @@ start_services() {
         fi
     fi
     
-    # Start JARVIS
-    if ! check_service 8000 "JARVIS Backend"; then
-        echo "Starting JARVIS backend..."
+    # Start Ironcliw
+    if ! check_service 8000 "Ironcliw Backend"; then
+        echo "Starting Ironcliw backend..."
         python main.py > /tmp/jarvis.log 2>&1 &
         
-        echo "Waiting for JARVIS to initialize..."
+        echo "Waiting for Ironcliw to initialize..."
         for i in {1..10}; do
-            if check_service 8000 "JARVIS Backend"; then
-                echo -e "${GREEN}✅ JARVIS backend started${NC}"
+            if check_service 8000 "Ironcliw Backend"; then
+                echo -e "${GREEN}✅ Ironcliw backend started${NC}"
                 break
             fi
             echo -n "."
@@ -79,7 +79,7 @@ show_status() {
     echo -e "\n${YELLOW}📊 System Status${NC}"
     echo "=================="
     
-    check_service 8000 "JARVIS Backend"
+    check_service 8000 "Ironcliw Backend"
     check_service 8765 "Voice Unlock WebSocket"
     
     # Check if frontend is running
@@ -93,22 +93,22 @@ show_status() {
 
 # Show instructions
 show_instructions() {
-    echo -e "\n${GREEN}✅ JARVIS is ready!${NC}"
+    echo -e "\n${GREEN}✅ Ironcliw is ready!${NC}"
     echo -e "\n📝 ${YELLOW}Voice Feedback Test Instructions:${NC}"
     echo "1. Open the React app at http://localhost:3000"
     echo "2. Lock your screen (Cmd+Ctrl+Q)"
-    echo "3. Click the microphone and say: 'JARVIS, open Safari and search for dogs'"
-    echo "4. Listen for JARVIS to say:"
+    echo "3. Click the microphone and say: 'Ironcliw, open Safari and search for dogs'"
+    echo "4. Listen for Ironcliw to say:"
     echo "   'I see your screen is locked. I'll unlock it now by typing in your password so I can search for dogs.'"
     echo ""
     echo -e "${YELLOW}🔊 Key improvements:${NC}"
-    echo "- JARVIS now detects when your screen is locked"
+    echo "- Ironcliw now detects when your screen is locked"
     echo "- Provides voice feedback BEFORE unlocking"
     echo "- Explains what it's about to do"
     echo "- Then unlocks and executes your command"
     echo ""
     echo -e "${YELLOW}📋 Logs:${NC}"
-    echo "- JARVIS: tail -f /tmp/jarvis.log"
+    echo "- Ironcliw: tail -f /tmp/jarvis.log"
     echo "- WebSocket: tail -f /tmp/voice_unlock_ws.log"
 }
 

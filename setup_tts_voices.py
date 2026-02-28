@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Interactive CLI Setup Wizard for JARVIS TTS Voice Integration
+Interactive CLI Setup Wizard for Ironcliw TTS Voice Integration
 
 Automatically configures:
 - ElevenLabs API key (FREE tier)
@@ -99,7 +99,7 @@ class TTSSetupWizard:
 
     async def run(self):
         """Run the complete setup wizard"""
-        print_header("🎙️  JARVIS TTS Voice Setup Wizard")
+        print_header("🎙️  Ironcliw TTS Voice Setup Wizard")
 
         print(f"{Colors.BOLD}This wizard will help you set up ElevenLabs TTS integration.{Colors.END}")
         print("We'll configure diverse accent voices for comprehensive security testing.\n")
@@ -189,7 +189,7 @@ class TTSSetupWizard:
             return
 
         with open(shell_profile, 'a') as f:
-            f.write(f"\n# ElevenLabs API Key (added by JARVIS setup)\n")
+            f.write(f"\n# ElevenLabs API Key (added by Ironcliw setup)\n")
             f.write(f"export ELEVENLABS_API_KEY='{self.api_key}'\n")
 
         print_success(f"API key saved to {shell_profile}")

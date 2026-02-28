@@ -1,4 +1,4 @@
-"""
+﻿"""
 Mac Unlock Service
 ==================
 
@@ -81,7 +81,7 @@ class MacUnlockService:
         # Trigger callbacks
         self._trigger_event('service_started')
         
-        # JARVIS announcement
+        # Ironcliw announcement
         if self.config.system.jarvis_responses:
             await self._speak("Voice unlock service activated, Sir")
             
@@ -110,7 +110,7 @@ class MacUnlockService:
         # Trigger callbacks
         self._trigger_event('service_stopped')
         
-        # JARVIS announcement
+        # Ironcliw announcement
         if self.config.system.jarvis_responses:
             await self._speak("Voice unlock service deactivated, Sir")
             
@@ -123,7 +123,7 @@ class MacUnlockService:
             """Handle screen lock event"""
             logger.info("Screen locked - voice unlock ready")
             if self.config.system.show_notifications:
-                self._show_notification("JARVIS Voice Unlock", "Say your phrase to unlock")
+                self._show_notification("Ironcliw Voice Unlock", "Say your phrase to unlock")
                 
         def on_unlock_success(details):
             """Handle successful unlock"""
@@ -335,7 +335,7 @@ class MacUnlockService:
             logger.error(f"Notification error: {e}")
             
     async def _speak(self, text: str):
-        """Speak using JARVIS voice"""
+        """Speak using Ironcliw voice"""
         try:
             # DISABLED: Audio is now handled by frontend to avoid duplicate voices
             # The WebSocket response includes speak:true flag for frontend TTS

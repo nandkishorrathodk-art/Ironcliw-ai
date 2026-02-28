@@ -1,4 +1,4 @@
-"""
+﻿"""
 Shared fixtures for Ghost Mode Display (GMD) + Ferrari Engine tests.
 
 Provides:
@@ -9,7 +9,7 @@ Provides:
 - OCR bounce count extraction utility
 - Skip conditions for headless/CI environments
 
-All fixtures are env-var configurable and follow JARVIS patterns.
+All fixtures are env-var configurable and follow Ironcliw patterns.
 """
 
 import asyncio

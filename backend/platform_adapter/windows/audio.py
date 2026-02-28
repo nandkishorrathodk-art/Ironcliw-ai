@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Audio Engine Implementation
+﻿"""
+Ironcliw Windows Audio Engine Implementation
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows implementation of audio processing using C# AudioEngine DLL with WASAPI.
@@ -20,7 +20,7 @@ C# DLL Methods Used:
     - AudioEngine.StopRecording()
     - AudioEngine.PlayAudio(audioData, sampleRate, bitDepth)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations

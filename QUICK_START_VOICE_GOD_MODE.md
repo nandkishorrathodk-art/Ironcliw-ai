@@ -1,13 +1,13 @@
-# 🎤 Quick Start: Voice-Activated God Mode
+﻿# 🎤 Quick Start: Voice-Activated God Mode
 
 ## What You Can Do Now
 
 **Say this:**
 ```
-"JARVIS, watch all Chrome windows for bouncing ball"
+"Ironcliw, watch all Chrome windows for bouncing ball"
 ```
 
-**JARVIS will:**
+**Ironcliw will:**
 1. Parse your command (extract: Chrome, "bouncing ball", all_spaces=True)
 2. Initialize VisualMonitorAgent (if first time)
 3. Scan entire workspace via Yabai
@@ -24,24 +24,24 @@
 
 ### 1. Single Window Mode
 ```
-"JARVIS, watch Terminal for Build Complete"
-"JARVIS, monitor Chrome for Error"
-"JARVIS, notify me when Terminal says DONE"
+"Ironcliw, watch Terminal for Build Complete"
+"Ironcliw, monitor Chrome for Error"
+"Ironcliw, notify me when Terminal says DONE"
 ```
 → Watches first matching window only
 
 ### 2. God Mode (All Spaces)
 ```
-"JARVIS, watch all Terminal windows for DONE"
-"JARVIS, monitor Chrome across all spaces for Error"
-"JARVIS, watch every Chrome window for SUCCESS"
+"Ironcliw, watch all Terminal windows for DONE"
+"Ironcliw, monitor Chrome across all spaces for Error"
+"Ironcliw, watch every Chrome window for SUCCESS"
 ```
 → Watches EVERY matching window across ALL desktop spaces in parallel
 
 ### 3. With Timeout
 ```
-"JARVIS, watch Terminal for 5 minutes when it says finished"
-"JARVIS, monitor Chrome for 2 hours for ready"
+"Ironcliw, watch Terminal for 5 minutes when it says finished"
+"Ironcliw, monitor Chrome for 2 hours for ready"
 ```
 → Auto-stops after specified duration
 
@@ -60,18 +60,18 @@
 
 ### Run Command:
 ```
-"JARVIS, watch all Chrome windows for BOUNCE COUNT"
+"Ironcliw, watch all Chrome windows for BOUNCE COUNT"
 ```
 
 ### Expected Result:
 ```
-🗣️  JARVIS: "Understood, Derek. Activating God Mode surveillance -
+🗣️  Ironcliw: "Understood, Derek. Activating God Mode surveillance -
              I'll watch ALL Chrome windows across every desktop space
              for 'BOUNCE COUNT'."
 
 [2-3 seconds later]
 
-🗣️  JARVIS: "Success! I detected 'BOUNCE COUNT' in Chrome on Space 2.
+🗣️  Ironcliw: "Success! I detected 'BOUNCE COUNT' in Chrome on Space 2.
              Confidence: 94%. I was monitoring 2 Chrome windows in parallel.
              This one triggered first."
 ```
@@ -133,7 +133,7 @@ Return results to Voice Handler
 _format_surveillance_response()
     → Generates human-friendly response
     ↓
-JARVIS speaks result
+Ironcliw speaks result
 ```
 
 ---
@@ -189,13 +189,13 @@ JARVIS speaks result
 
 2. **Test Full Integration:**
    - Open bouncing ball HTML files
-   - Say: "JARVIS, watch all Chrome windows for BOUNCE COUNT"
+   - Say: "Ironcliw, watch all Chrome windows for BOUNCE COUNT"
    - Verify: Ferrari Engines spawn and detect text
 
 3. **Use in Daily Workflow:**
-   - "JARVIS, watch Terminal for Build Complete"
-   - "JARVIS, monitor Chrome for Error"
-   - "JARVIS, notify me when tests say PASSED"
+   - "Ironcliw, watch Terminal for Build Complete"
+   - "Ironcliw, monitor Chrome for Error"
+   - "Ironcliw, notify me when tests say PASSED"
 
 ---
 
@@ -226,7 +226,7 @@ JARVIS speaks result
 ### After "The Final Wire"
 ✅ Voice-activated God Mode: "Watch all Chrome for Error"
 ✅ Natural language parsing: Multiple phrasings supported
-✅ Automatic window discovery: JARVIS finds windows himself
+✅ Automatic window discovery: Ironcliw finds windows himself
 ✅ Parallel monitoring: N windows simultaneously
 ✅ Auto space switching: Jumps to window with trigger
 ✅ Voice feedback: Human-like responses throughout
@@ -237,5 +237,5 @@ JARVIS speaks result
 
 Now go ahead and say:
 ```
-"JARVIS, watch all Chrome windows for bouncing ball"
+"Ironcliw, watch all Chrome windows for bouncing ball"
 ```

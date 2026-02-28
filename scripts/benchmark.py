@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Performance Benchmark Suite
+﻿"""
+Ironcliw Windows Performance Benchmark Suite
 Phase 10: Comprehensive performance testing
 
 Benchmarks:
@@ -226,7 +226,7 @@ class BenchmarkRunner:
     def run_all_benchmarks(self) -> Dict:
         """Run all benchmarks and return results"""
         print("\n" + "="*80)
-        print(" JARVIS Windows Performance Benchmark Suite".center(80))
+        print(" Ironcliw Windows Performance Benchmark Suite".center(80))
         print("="*80)
         
         # System info

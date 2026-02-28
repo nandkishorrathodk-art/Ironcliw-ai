@@ -1,5 +1,5 @@
-#!/bin/bash
-# Build Swift Performance Libraries for JARVIS
+﻿#!/bin/bash
+# Build Swift Performance Libraries for Ironcliw
 # Optimized for Apple Silicon with no hardcoding
 
 set -e

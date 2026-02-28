@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Find Toronto/My Location in Weather app sidebar"""
 
 import asyncio
@@ -75,5 +75,5 @@ async def find_toronto():
             print("\n⚠️  Still need to adjust coordinates")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(find_toronto())

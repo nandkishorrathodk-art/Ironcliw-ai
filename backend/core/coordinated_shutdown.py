@@ -1,4 +1,4 @@
-"""
+﻿"""
 Coordinated Shutdown Manager - Phased Shutdown Orchestration.
 ==============================================================
 
@@ -30,7 +30,7 @@ Shutdown Phases:
     TERMINATE  → Send signals to processes (SIGTERM → SIGKILL)
     VERIFY     → Confirm all processes terminated
 
-Author: JARVIS Trinity v81.0 - Coordinated Shutdown Orchestration
+Author: Ironcliw Trinity v81.0 - Coordinated Shutdown Orchestration
 """
 
 from __future__ import annotations
@@ -466,7 +466,7 @@ class CoordinatedShutdownManager:
         """
         self.ipc_bus = ipc_bus
         self.state_dir = state_dir or Path(os.environ.get(
-            "JARVIS_STATE_DIR",
+            "Ironcliw_STATE_DIR",
             str(Path.home() / ".jarvis" / "state")
         ))
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -954,7 +954,7 @@ class CoordinatedShutdownManager:
             # Broadcast shutdown announcement to each Trinity component
             # Using CRITICAL priority to ensure immediate processing
             targets = [
-                ComponentType.JARVIS_PRIME,
+                ComponentType.Ironcliw_PRIME,
                 ComponentType.REACTOR_CORE,
                 ComponentType.CODING_COUNCIL,
             ]
@@ -963,7 +963,7 @@ class CoordinatedShutdownManager:
             for target in targets:
                 command = TrinityCommand(
                     command_id=str(uuid.uuid4()),
-                    source=ComponentType.JARVIS_BODY,
+                    source=ComponentType.Ironcliw_BODY,
                     target=target,
                     action="shutdown_announce",
                     payload={
@@ -1306,7 +1306,7 @@ class OrphanProcess:
 
 class OrphanProcessDetector:
     """
-    Detects and cleans up orphan JARVIS processes.
+    Detects and cleans up orphan Ironcliw processes.
 
     Orphan processes can occur when:
     - Supervisor crashes without cleanup
@@ -1320,7 +1320,7 @@ class OrphanProcessDetector:
     - Safe termination with verification
     """
 
-    # Process name patterns for JARVIS components
+    # Process name patterns for Ironcliw components
     COMPONENT_PATTERNS = {
         "jarvis_body": ["backend.main", "jarvis_supervisor", "run_supervisor"],
         "jarvis_prime": ["jarvis_prime", "jarvis-prime", "jprime"],
@@ -1343,7 +1343,7 @@ class OrphanProcessDetector:
 
     async def detect_orphans(self) -> List[OrphanProcess]:
         """
-        v95.3: Detect orphan JARVIS processes with orchestrator shutdown check.
+        v95.3: Detect orphan Ironcliw processes with orchestrator shutdown check.
 
         Returns:
             List of detected orphan processes
@@ -1390,7 +1390,7 @@ class OrphanProcessDetector:
         # Method 1: Check PID files for stale PIDs
         await self._check_stale_pid_files()
 
-        # Method 2: Check for processes matching JARVIS patterns
+        # Method 2: Check for processes matching Ironcliw patterns
         await self._check_process_patterns()
 
         # Method 3: Check heartbeat files for dead processes
@@ -1426,7 +1426,7 @@ class OrphanProcessDetector:
 
                 # Check if process is still running
                 if self._process_exists(pid):
-                    # Process exists, but is it a JARVIS process?
+                    # Process exists, but is it a Ironcliw process?
                     cmdline = self._get_process_cmdline(pid)
                     if not self._matches_jarvis_pattern(cmdline):
                         # PID was reused by OS - file is stale
@@ -1445,7 +1445,7 @@ class OrphanProcessDetector:
                 continue
 
     async def _check_process_patterns(self) -> None:
-        """Check for running processes matching JARVIS patterns."""
+        """Check for running processes matching Ironcliw patterns."""
         try:
             import subprocess
 
@@ -1478,7 +1478,7 @@ class OrphanProcessDetector:
 
                 cmdline = parts[10] if len(parts) > 10 else ""
 
-                # Check if this matches any JARVIS pattern
+                # Check if this matches any Ironcliw pattern
                 component_type = None
                 for comp, patterns in self.COMPONENT_PATTERNS.items():
                     if any(p in cmdline.lower() for p in patterns):
@@ -1745,7 +1745,7 @@ class OrphanProcessDetector:
         return "unknown"
 
     def _matches_jarvis_pattern(self, cmdline: str) -> bool:
-        """Check if command line matches any JARVIS pattern."""
+        """Check if command line matches any Ironcliw pattern."""
         cmdline_lower = cmdline.lower()
         for patterns in self.COMPONENT_PATTERNS.values():
             if any(p in cmdline_lower for p in patterns):
@@ -1753,7 +1753,7 @@ class OrphanProcessDetector:
         return False
 
     # v93.0: HTTP port configuration for each component
-    # Configurable via environment variables: JARVIS_BODY_PORTS, JARVIS_PRIME_PORTS, etc.
+    # Configurable via environment variables: Ironcliw_BODY_PORTS, Ironcliw_PRIME_PORTS, etc.
     @staticmethod
     def _get_component_ports() -> Dict[str, List[int]]:
         """Get component HTTP ports from environment or defaults."""
@@ -1767,8 +1767,8 @@ class OrphanProcessDetector:
             return defaults
 
         return {
-            "jarvis_body": parse_ports("JARVIS_BODY_PORTS", [8080, 8000, 5000]),
-            "jarvis_prime": parse_ports("JARVIS_PRIME_PORTS", [8091, 8001, 5001]),
+            "jarvis_body": parse_ports("Ironcliw_BODY_PORTS", [8080, 8000, 5000]),
+            "jarvis_prime": parse_ports("Ironcliw_PRIME_PORTS", [8091, 8001, 5001]),
             "reactor_core": parse_ports("REACTOR_CORE_PORTS", [8090, 8002, 5002]),
         }
 
@@ -2076,7 +2076,7 @@ class EnhancedShutdownManager(CoordinatedShutdownManager):
         """
         Clean up orphan processes on startup.
 
-        Should be called before starting JARVIS components.
+        Should be called before starting Ironcliw components.
 
         Returns:
             Tuple of (terminated, failed) counts
@@ -2163,7 +2163,7 @@ class EnhancedShutdownManager(CoordinatedShutdownManager):
 
 
 async def detect_orphan_processes() -> List[OrphanProcess]:
-    """Detect orphan JARVIS processes."""
+    """Detect orphan Ironcliw processes."""
     detector = OrphanProcessDetector()
     return await detector.detect_orphans()
 

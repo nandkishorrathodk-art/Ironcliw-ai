@@ -1,4 +1,4 @@
-# Physics-Aware Voice Authentication v2.5
+﻿# Physics-Aware Voice Authentication v2.5
 
 ## A Mathematical Framework for Security-Grade Voice Biometrics
 
@@ -564,7 +564,7 @@ Bayesian Result:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS Voice Authentication Pipeline                  │
+│                    Ironcliw Voice Authentication Pipeline                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  Audio Input (16-bit PCM, 16kHz)                                        │
@@ -898,5 +898,5 @@ print(f"Baseline VTL: {stats['physics']['baseline_vtl_cm']}")
 
 ---
 
-*Documentation generated for JARVIS AI Assistant v17.9.5*
+*Documentation generated for Ironcliw AI Assistant v17.9.5*
 *Physics-Aware Voice Authentication Framework v2.5*

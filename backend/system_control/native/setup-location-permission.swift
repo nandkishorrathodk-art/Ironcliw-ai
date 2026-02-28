@@ -1,4 +1,4 @@
-#!/usr/bin/env swift
+﻿#!/usr/bin/env swift
 
 import Foundation
 import CoreLocation
@@ -18,12 +18,12 @@ class LocationPermissionSetup: NSObject, CLLocationManagerDelegate, NSApplicatio
             defer: false
         )
         
-        window.title = "JARVIS Weather Location Permission"
+        window.title = "Ironcliw Weather Location Permission"
         window.center()
         
         // Create info label
         let label = NSTextField(labelWithString: """
-            JARVIS Weather needs location permission.
+            Ironcliw Weather needs location permission.
             
             Click 'Request Permission' and allow location access
             in the system dialog that appears.

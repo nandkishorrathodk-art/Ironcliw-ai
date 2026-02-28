@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🛠️ Building JARVIS Weather Tools"
+echo "🛠️ Building Ironcliw Weather Tools"
 
 # Use Python fallback as main tool for now
 echo "Setting up weather tools..."

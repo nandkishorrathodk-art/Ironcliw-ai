@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS voice WebSocket with vision command
+Test Ironcliw voice WebSocket with vision command
 """
 
 import asyncio
@@ -8,12 +8,12 @@ import websockets
 import json
 
 async def test_jarvis_voice_vision():
-    """Test vision command through JARVIS voice WebSocket"""
+    """Test vision command through Ironcliw voice WebSocket"""
     uri = "ws://localhost:8010/voice/jarvis/stream"
     
     try:
         async with websockets.connect(uri) as websocket:
-            print("✅ Connected to JARVIS Voice WebSocket")
+            print("✅ Connected to Ironcliw Voice WebSocket")
             
             # Wait for connection message
             msg = await websocket.recv()
@@ -34,7 +34,7 @@ async def test_jarvis_voice_vision():
             print(f"\n📥 Received: {json.dumps(response_data, indent=2)}")
             
             if response_data.get("text"):
-                print(f"\n✅ JARVIS Response: {response_data['text'][:200]}...")
+                print(f"\n✅ Ironcliw Response: {response_data['text'][:200]}...")
             else:
                 print(f"\n❌ Unexpected response format")
                 
@@ -44,7 +44,7 @@ async def test_jarvis_voice_vision():
         traceback.print_exc()
 
 async def main():
-    print("🔍 Testing JARVIS Voice Vision Command")
+    print("🔍 Testing Ironcliw Voice Vision Command")
     print("=" * 50)
     await test_jarvis_voice_vision()
 

@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 
 from backend.core.voice_sidecar_contract import (
     VoiceSidecarClient,
@@ -9,12 +9,12 @@ from backend.core.voice_sidecar_contract import (
 
 
 def test_contract_config_from_env_parses_command(monkeypatch):
-    monkeypatch.setenv("JARVIS_VOICE_SIDECAR_ENABLED", "true")
-    monkeypatch.setenv("JARVIS_VOICE_SIDECAR_REQUIRED", "true")
-    monkeypatch.setenv("JARVIS_VOICE_SIDECAR_TRANSPORT", "http")
-    monkeypatch.setenv("JARVIS_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9999")
+    monkeypatch.setenv("Ironcliw_VOICE_SIDECAR_ENABLED", "true")
+    monkeypatch.setenv("Ironcliw_VOICE_SIDECAR_REQUIRED", "true")
+    monkeypatch.setenv("Ironcliw_VOICE_SIDECAR_TRANSPORT", "http")
+    monkeypatch.setenv("Ironcliw_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9999")
     monkeypatch.setenv(
-        "JARVIS_VOICE_SIDECAR_COMMAND",
+        "Ironcliw_VOICE_SIDECAR_COMMAND",
         'python3 -m backend.voice.voice_worker_service --flag "quoted value"',
     )
 

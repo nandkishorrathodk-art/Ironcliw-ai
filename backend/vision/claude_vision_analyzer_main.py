@@ -1,4 +1,4 @@
-"""
+﻿"""
 Claude Vision Analyzer - Advanced screen understanding using Claude's vision capabilities
 Fully dynamic and configurable - NO HARDCODING
 Optimized for macOS with 16GB RAM - includes caching, compression, and memory management
@@ -868,7 +868,7 @@ class MemorySafetyMonitor:
         status = self.check_memory_safety()
 
         # Consult OOM bridge for cloud-aware decision
-        _oom_timeout = float(os.getenv("JARVIS_VISION_OOM_CHECK_TIMEOUT", "2.0"))
+        _oom_timeout = float(os.getenv("Ironcliw_VISION_OOM_CHECK_TIMEOUT", "2.0"))
         try:
             from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
             oom_result = await asyncio.wait_for(
@@ -1141,9 +1141,9 @@ class ClaudeVisionAnalyzer:
         self._capture_circuit_open_since: float = 0.0
         self._capture_last_permission_check: float = 0.0
         self._capture_permission_denied: bool = False
-        self._CAPTURE_CIRCUIT_THRESHOLD = int(os.environ.get("JARVIS_CAPTURE_CIRCUIT_THRESHOLD", "5"))
-        self._CAPTURE_CIRCUIT_PROBE_INTERVAL = float(os.environ.get("JARVIS_CAPTURE_CIRCUIT_PROBE_SECONDS", "60.0"))
-        self._CAPTURE_PERMISSION_CHECK_TTL = float(os.environ.get("JARVIS_CAPTURE_PERMISSION_TTL", "30.0"))
+        self._CAPTURE_CIRCUIT_THRESHOLD = int(os.environ.get("Ironcliw_CAPTURE_CIRCUIT_THRESHOLD", "5"))
+        self._CAPTURE_CIRCUIT_PROBE_INTERVAL = float(os.environ.get("Ironcliw_CAPTURE_CIRCUIT_PROBE_SECONDS", "60.0"))
+        self._CAPTURE_PERMISSION_CHECK_TTL = float(os.environ.get("Ironcliw_CAPTURE_PERMISSION_TTL", "30.0"))
 
         # v236.0: Vision provider dispatch state
         self._vision_provider = VisionProvider(self.config.vision_provider)
@@ -4050,7 +4050,7 @@ class ClaudeVisionAnalyzer:
         jpeg_bytes = buffer.getvalue()
 
         # v241.0: Progressive compression if over API limit
-        _max_dim = int(os.getenv("JARVIS_VISION_MAX_DIM", "1536"))
+        _max_dim = int(os.getenv("Ironcliw_VISION_MAX_DIM", "1536"))
         if len(jpeg_bytes) > _raw_max:
             image.thumbnail((_max_dim, _max_dim), Image.Resampling.LANCZOS)
             buffer = io.BytesIO()
@@ -4492,7 +4492,7 @@ class ClaudeVisionAnalyzer:
                 )
             ):
                 enhanced_prompt = (
-                    f"You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities.\n\n"
+                    f"You are Ironcliw, Tony Stark's AI assistant with advanced vision capabilities.\n\n"
                     f"{enhancement}"
                     f"{monitor_context}"
                     f"{app_context}"
@@ -4507,7 +4507,7 @@ class ClaudeVisionAnalyzer:
             for word in ["see", "screen", "display", "showing", "open", "running"]
         ):
             enhanced_prompt = (
-                f"You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities.\n\n"
+                f"You are Ironcliw, Tony Stark's AI assistant with advanced vision capabilities.\n\n"
                 f"{intelligence_framework}\n\n"
                 "TASK: Analyze the screen comprehensively.\n"
                 "APPROACH: Use your vision intelligence to provide a complete understanding of what's visible, "
@@ -5363,7 +5363,7 @@ class ClaudeVisionAnalyzer:
         self, image: Any, prompt: str, **kwargs
     ) -> Dict[str, Any]:
         """
-        Pure intelligence interface for JARVIS - analyze image with custom prompt.
+        Pure intelligence interface for Ironcliw - analyze image with custom prompt.
         Returns only the response content for natural language generation.
 
         Args:
@@ -6205,7 +6205,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 # v253.8: Use async version to avoid blocking event loop (was 8s sync)
                 if hasattr(self.multi_space_detector, 'get_all_windows_across_spaces_async'):
                     try:
-                        _ms_timeout = float(os.getenv("JARVIS_MULTI_SPACE_TIMEOUT", "10"))
+                        _ms_timeout = float(os.getenv("Ironcliw_MULTI_SPACE_TIMEOUT", "10"))
                         window_data = await asyncio.wait_for(
                             self.multi_space_detector.get_all_windows_across_spaces_async(),
                             timeout=_ms_timeout,
@@ -6359,7 +6359,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             )
 
         # Build the enhanced prompt
-        prompt = f"""You are JARVIS, analyzing a multi-space desktop environment.
+        prompt = f"""You are Ironcliw, analyzing a multi-space desktop environment.
 
 USER QUERY: "{query}"
 
@@ -7437,7 +7437,7 @@ For this query, provide a helpful response that leverages the multi-space inform
     async def start_real_time_monitoring(
         self, callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
-        """Start real-time screen monitoring for JARVIS to see continuously"""
+        """Start real-time screen monitoring for Ironcliw to see continuously"""
         try:
             # Check memory before starting
             memory_status = self.memory_monitor.check_memory_safety()
@@ -7490,7 +7490,7 @@ For this query, provide a helpful response that leverages the multi-space inform
             return {"success": False, "error": str(e)}
 
     async def get_real_time_context(self) -> Dict[str, Any]:
-        """Get current screen context in real-time (what JARVIS sees right now)"""
+        """Get current screen context in real-time (what Ironcliw sees right now)"""
         try:
             # Capture current screen
             screenshot = await self.capture_screen()
@@ -7718,7 +7718,7 @@ For this query, provide a helpful response that leverages the multi-space inform
             logger.error(f"Autonomous behavior error: {e}")
             return {"success": False, "behavior": behavior_type, "error": str(e)}
 
-    # JARVIS Integration Methods (from wrapper)
+    # Ironcliw Integration Methods (from wrapper)
 
     async def analyze_screenshot_clean(self, image_array, prompt, **kwargs):
         """
@@ -7763,8 +7763,8 @@ For this query, provide a helpful response that leverages the multi-space inform
     async def start_jarvis_vision(
         self, callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
-        """Start JARVIS real-time vision - see everything happening on screen"""
-        logger.info("🤖 Starting JARVIS real-time vision...")
+        """Start Ironcliw real-time vision - see everything happening on screen"""
+        logger.info("🤖 Starting Ironcliw real-time vision...")
 
         # Define internal callback to handle vision events
         async def vision_callback(event):
@@ -7787,7 +7787,7 @@ For this query, provide a helpful response that leverages the multi-space inform
         result = await self.start_real_time_monitoring(vision_callback)
 
         if result["success"]:
-            logger.info(f"✅ JARVIS vision active in {result['mode']} mode")
+            logger.info(f"✅ Ironcliw vision active in {result['mode']} mode")
         else:
             logger.error(
                 f"❌ Failed to start vision: {result.get('error', 'Unknown error')}"
@@ -7796,8 +7796,8 @@ For this query, provide a helpful response that leverages the multi-space inform
         return result
 
     async def stop_jarvis_vision(self) -> Dict[str, Any]:
-        """Stop JARVIS real-time vision"""
-        logger.info("🛑 Stopping JARVIS vision...")
+        """Stop Ironcliw real-time vision"""
+        logger.info("🛑 Stopping Ironcliw vision...")
 
         # Stop video streaming if active
         if (
@@ -7818,11 +7818,11 @@ For this query, provide a helpful response that leverages the multi-space inform
         # Clear callbacks
         self._realtime_callbacks.clear()
 
-        return {"success": True, "message": "JARVIS vision stopped"}
+        return {"success": True, "message": "Ironcliw vision stopped"}
 
     async def see_and_respond(self, user_command: str) -> Dict[str, Any]:
         """
-        JARVIS sees the screen and responds to user commands with visual context
+        Ironcliw sees the screen and responds to user commands with visual context
         This is the main method for vision-aware command handling
         """
         try:
@@ -8012,7 +8012,7 @@ For this query, provide a helpful response that leverages the multi-space inform
         """Main proactive monitoring loop - continuously analyze screen for changes"""
         # v257.0: Failure tracking + adaptive backoff for persistent capture failures
         _monitor_capture_failures = 0
-        _MONITOR_MAX_CAPTURE_FAILURES = int(os.environ.get("JARVIS_MONITOR_MAX_CAPTURE_FAILURES", "10"))
+        _MONITOR_MAX_CAPTURE_FAILURES = int(os.environ.get("Ironcliw_MONITOR_MAX_CAPTURE_FAILURES", "10"))
         _MONITOR_FAILURE_CAP = 100  # Prevent unbounded counter
 
         while self._proactive_monitoring_active:
@@ -8105,7 +8105,7 @@ For this query, provide a helpful response that leverages the multi-space inform
     def _build_proactive_analysis_prompt(self, has_previous: bool) -> str:
         """Build prompt for proactive change detection"""
         if has_previous:
-            return """You are JARVIS, monitoring the user's screen for important changes.
+            return """You are Ironcliw, monitoring the user's screen for important changes.
 Compare what you see now to what was there before.
 
 Look for:
@@ -8121,7 +8121,7 @@ Respond with specific observations about what changed.
 Be precise and only mention genuinely important changes.
 For each change, assess its importance (high/medium/low) and suggest what to tell the user."""
         else:
-            return """You are JARVIS, starting to monitor the user's screen.
+            return """You are Ironcliw, starting to monitor the user's screen.
 Analyze what you see to establish a baseline.
 
 Identify:

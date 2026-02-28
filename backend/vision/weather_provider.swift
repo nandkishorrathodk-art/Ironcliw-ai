@@ -1,4 +1,4 @@
-#!/usr/bin/env swift
+﻿#!/usr/bin/env swift
 
 import Foundation
 import CoreLocation
@@ -9,7 +9,7 @@ import os.log
 @available(macOS 10.12, *)
 let logger = Logger(subsystem: "com.jarvis.weather", category: "WeatherProvider")
 
-// Weather Provider for JARVIS using macOS WeatherKit
+// Weather Provider for Ironcliw using macOS WeatherKit
 @available(macOS 13.0, *)
 class WeatherProvider: NSObject {
     private let weatherService = WeatherService.shared

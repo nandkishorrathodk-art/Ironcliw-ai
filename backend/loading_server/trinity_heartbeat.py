@@ -1,5 +1,5 @@
-"""
-Trinity Heartbeat Reader for JARVIS Loading Server v212.0
+﻿"""
+Trinity Heartbeat Reader for Ironcliw Loading Server v212.0
 ==========================================================
 
 Direct Trinity heartbeat file monitoring for component health.
@@ -19,7 +19,7 @@ Usage:
     heartbeat = await reader.read_component_heartbeat("jarvis_body")
     all_heartbeats = await reader.get_all_heartbeats()
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

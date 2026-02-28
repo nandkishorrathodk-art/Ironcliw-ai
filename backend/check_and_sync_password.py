@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Check and Sync Password Between Voice Unlock and Context Intelligence
 ====================================================================
@@ -36,7 +36,7 @@ def check_voice_unlock_password():
 def check_context_intelligence_password():
     """Check if password exists in Context Intelligence keychain"""
     try:
-        password = keyring.get_password("JARVIS_Screen_Unlock", "jarvis_user")
+        password = keyring.get_password("Ironcliw_Screen_Unlock", "jarvis_user")
         return password is not None
     except Exception:
         return False
@@ -73,7 +73,7 @@ def main():
         if response == 'y':
             try:
                 # Store in Context Intelligence keychain
-                keyring.set_password("JARVIS_Screen_Unlock", "jarvis_user", voice_unlock_pw)
+                keyring.set_password("Ironcliw_Screen_Unlock", "jarvis_user", voice_unlock_pw)
                 print("✅ Password copied successfully!")
                 print("Context Intelligence can now unlock your screen.")
             except Exception as e:

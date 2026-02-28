@@ -1,4 +1,4 @@
-# ✅ Phase 1.1 Multi-Monitor Support - Implementation Complete
+﻿# ✅ Phase 1.1 Multi-Monitor Support - Implementation Complete
 
 ## 🎉 **STATUS: CORE FUNCTIONALITY IMPLEMENTED (80% Complete)**
 
@@ -417,7 +417,7 @@ print(f'Spaces by display: {spaces_by_display}')
 "
 
 # 3. Test query routing (after Task 5 complete)
-# Restart JARVIS backend, then ask:
+# Restart Ironcliw backend, then ask:
 # "What's on my second monitor?"
 # "Show me all my displays"
 ```
@@ -449,7 +449,7 @@ print(f'Spaces by display: {spaces_by_display}')
 
 1. **Copy-paste the code from Tasks 4-7** above into the respective files
 2. **Test with:** `python3 backend/vision/multi_monitor_detector.py`
-3. **Restart JARVIS backend**
+3. **Restart Ironcliw backend**
 4. **Test queries:**
    - "What's on my second monitor?"
    - "Show me all my displays"

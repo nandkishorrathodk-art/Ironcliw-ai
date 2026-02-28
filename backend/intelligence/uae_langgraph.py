@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enhanced Unified Awareness Engine with LangGraph Chain-of-Thought Reasoning
 
 This module extends the UAE with advanced LangGraph-based reasoning capabilities:
@@ -14,7 +14,7 @@ The enhanced UAE provides:
 - Cross-layer reasoning fusion
 - Predictive decision making with uncertainty quantification
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.1.0 - LangGraph Integration
 """
 

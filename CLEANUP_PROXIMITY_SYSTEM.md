@@ -1,4 +1,4 @@
-# 🗑️ Cleanup Plan: Remove Overcomplicated Proximity System
+﻿# 🗑️ Cleanup Plan: Remove Overcomplicated Proximity System
 
 ## Executive Summary
 
@@ -291,7 +291,7 @@ Total: ~200 lines of simple code
 ### What's Safe to Remove
 
 ✅ **100% Safe**:
-- `backend/proximity/` - Not used by core JARVIS
+- `backend/proximity/` - Not used by core Ironcliw
 - `backend/voice_unlock/proximity_voice_auth/` - Separate module
 - `apple_watch_proximity.py` - Standalone module
 - `proximity_display_api.py` - Separate API
@@ -334,7 +334,7 @@ Test that basic multi-monitor features still work:
 ### 4. Voice Unlock (Without Proximity)
 
 Test that voice unlock still works:
-- "Hey JARVIS, unlock my screen"
+- "Hey Ironcliw, unlock my screen"
 - Basic voice authentication
 - Screen unlock functionality
 

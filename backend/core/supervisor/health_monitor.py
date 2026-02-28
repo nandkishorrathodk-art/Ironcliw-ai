@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Health Monitor with Parallel Probing
+Ironcliw Health Monitor with Parallel Probing
 =============================================
 
 Boot health and stability monitoring for the Self-Updating Lifecycle Manager.
@@ -14,7 +14,7 @@ Features:
 - Circuit breaker for flaky endpoints
 - Integration with Dead Man's Switch
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0 - Parallel Probing Edition
 """
 
@@ -452,7 +452,7 @@ class HealthMonitor:
         }
         
         # Only add frontend if not in headless mode
-        if os.environ.get("JARVIS_HEADLESS", "false").lower() != "true":
+        if os.environ.get("Ironcliw_HEADLESS", "false").lower() != "true":
             endpoints["frontend"] = f"http://localhost:{frontend_port}"
         
         return endpoints

@@ -1,5 +1,5 @@
-"""
-macOS System Integration for JARVIS
+﻿"""
+macOS System Integration for Ironcliw
 Direct real-time system data access with NO caching or hardcoding
 """
 

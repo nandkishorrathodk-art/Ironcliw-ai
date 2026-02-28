@@ -1,5 +1,5 @@
-"""
-Claude Vision-enabled Chatbot for JARVIS
+﻿"""
+Claude Vision-enabled Chatbot for Ironcliw
 Extends the basic Claude chatbot with vision capabilities for screen analysis
 """
 
@@ -84,7 +84,7 @@ class ClaudeVisionChatbot:
         self.temperature = temperature
         self.use_intelligent_selection = use_intelligent_selection
 
-        # Dynamic JARVIS system prompt with real-time context
+        # Dynamic Ironcliw system prompt with real-time context
         self._initialize_dynamic_system_prompt(system_prompt)
 
         # Initialize client
@@ -521,7 +521,7 @@ class ClaudeVisionChatbot:
 
         # Build dynamic prompt components
         base_components = [
-            "You are JARVIS, an intelligent AI assistant inspired by Tony Stark's AI from Iron Man.",
+            "You are Ironcliw, an intelligent AI assistant inspired by Tony Stark's AI from Iron Man.",
             "You have advanced vision capabilities and can see and analyze the user's screen when asked.",
             "You are helpful, witty, and highly capable.",
             "You speak with a refined, professional tone while being personable and occasionally adding subtle humor.",
@@ -956,9 +956,9 @@ class ClaudeVisionChatbot:
         current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
         user_lower = user_input.lower()
 
-        # Base JARVIS prompt
+        # Base Ironcliw prompt
         base = (
-            "You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities. "
+            "You are Ironcliw, Tony Stark's AI assistant with advanced vision capabilities. "
             f"Current date and time: {current_datetime}. "
             "When analyzing screens, be specific and precise - read actual values, not generic descriptions. "
         )
@@ -1552,7 +1552,7 @@ class ClaudeVisionChatbot:
 
             # Base intelligence framework for real-time monitoring
             monitoring_intelligence = (
-                "You are JARVIS, Tony Stark's AI assistant, actively monitoring the screen in real-time.\n"
+                "You are Ironcliw, Tony Stark's AI assistant, actively monitoring the screen in real-time.\n"
                 "Use your advanced vision intelligence to:\n"
                 "- UNDERSTAND the complete visual context including window relationships\n"
                 "- DISTINGUISH between system UI and application content\n"
@@ -1713,7 +1713,7 @@ class ClaudeVisionChatbot:
                     max_tokens=300,
                     temperature=0.7,
                     messages=messages,
-                    system="You are JARVIS, an AI assistant with real-time screen monitoring capabilities. Provide natural, conversational responses about what you observe on the user's screen.",
+                    system="You are Ironcliw, an AI assistant with real-time screen monitoring capabilities. Provide natural, conversational responses about what you observe on the user's screen.",
                 )
 
                 if response and hasattr(response, "content") and len(response.content) > 0:

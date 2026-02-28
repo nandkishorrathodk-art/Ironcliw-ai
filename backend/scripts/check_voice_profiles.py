@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Profile Diagnostics Script
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 async def check_profiles():
     """Check all voice profiles for issues"""
     print("\n" + "=" * 80)
-    print("🔍 JARVIS Voice Profile Diagnostics")
+    print("🔍 Ironcliw Voice Profile Diagnostics")
     print("=" * 80)
 
     try:

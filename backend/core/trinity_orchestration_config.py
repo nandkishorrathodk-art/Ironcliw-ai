@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Orchestration Configuration v108.0 - Unified Configuration Hub
 ========================================================================
 
@@ -33,7 +33,7 @@ Architecture:
     │              (environment-based, no hardcoding)                      │
     └──────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 108.0.0 (January 2026)
 """
 
@@ -73,8 +73,8 @@ def _env_bool(key: str, default: bool) -> bool:
 
 class ComponentType(str, Enum):
     """Component types with different timeout characteristics."""
-    JARVIS_BODY = "jarvis_body"      # Fast startup (10-30s)
-    JARVIS_PRIME = "jarvis_prime"    # Slow startup (ML models, 60-300s)
+    Ironcliw_BODY = "jarvis_body"      # Fast startup (10-30s)
+    Ironcliw_PRIME = "jarvis_prime"    # Slow startup (ML models, 60-300s)
     REACTOR_CORE = "reactor_core"    # Medium startup (30-60s)
     CODING_COUNCIL = "coding_council"  # Fast startup (10-20s)
 
@@ -116,26 +116,26 @@ class ComponentTimeoutProfile:
 # =============================================================================
 
 DEFAULT_PROFILES: Dict[ComponentType, ComponentTimeoutProfile] = {
-    ComponentType.JARVIS_BODY: ComponentTimeoutProfile(
-        startup_timeout=_env_float("JARVIS_BODY_STARTUP_TIMEOUT", 60.0),
-        health_check_timeout=_env_float("JARVIS_BODY_HEALTH_TIMEOUT", 10.0),
-        heartbeat_stale=_env_float("JARVIS_BODY_HEARTBEAT_STALE", 45.0),
-        heartbeat_dead=_env_float("JARVIS_BODY_HEARTBEAT_DEAD", 90.0),
-        startup_grace_period=_env_float("JARVIS_BODY_STARTUP_GRACE", 120.0),
-        retry_attempts=_env_int("JARVIS_BODY_RETRY_ATTEMPTS", 3),
-        retry_delay=_env_float("JARVIS_BODY_RETRY_DELAY", 2.0),
+    ComponentType.Ironcliw_BODY: ComponentTimeoutProfile(
+        startup_timeout=_env_float("Ironcliw_BODY_STARTUP_TIMEOUT", 60.0),
+        health_check_timeout=_env_float("Ironcliw_BODY_HEALTH_TIMEOUT", 10.0),
+        heartbeat_stale=_env_float("Ironcliw_BODY_HEARTBEAT_STALE", 45.0),
+        heartbeat_dead=_env_float("Ironcliw_BODY_HEARTBEAT_DEAD", 90.0),
+        startup_grace_period=_env_float("Ironcliw_BODY_STARTUP_GRACE", 120.0),
+        retry_attempts=_env_int("Ironcliw_BODY_RETRY_ATTEMPTS", 3),
+        retry_delay=_env_float("Ironcliw_BODY_RETRY_DELAY", 2.0),
     ),
-    ComponentType.JARVIS_PRIME: ComponentTimeoutProfile(
+    ComponentType.Ironcliw_PRIME: ComponentTimeoutProfile(
         # J-Prime loads ML models, needs much longer timeouts
         # v150.0: UNIFIED TIMEOUT - 600s (10 minutes) for heavy model loading
         # Previous: 300s - caused premature timeouts with 70B+ models
-        startup_timeout=_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 600.0),
-        health_check_timeout=_env_float("JARVIS_PRIME_HEALTH_TIMEOUT", 15.0),
-        heartbeat_stale=_env_float("JARVIS_PRIME_HEARTBEAT_STALE", 120.0),
-        heartbeat_dead=_env_float("JARVIS_PRIME_HEARTBEAT_DEAD", 900.0),  # 1.5x startup (600*1.5=900)
-        startup_grace_period=_env_float("JARVIS_PRIME_STARTUP_GRACE", 660.0),  # startup + 60s buffer
-        retry_attempts=_env_int("JARVIS_PRIME_RETRY_ATTEMPTS", 5),
-        retry_delay=_env_float("JARVIS_PRIME_RETRY_DELAY", 5.0),
+        startup_timeout=_env_float("Ironcliw_PRIME_STARTUP_TIMEOUT", 600.0),
+        health_check_timeout=_env_float("Ironcliw_PRIME_HEALTH_TIMEOUT", 15.0),
+        heartbeat_stale=_env_float("Ironcliw_PRIME_HEARTBEAT_STALE", 120.0),
+        heartbeat_dead=_env_float("Ironcliw_PRIME_HEARTBEAT_DEAD", 900.0),  # 1.5x startup (600*1.5=900)
+        startup_grace_period=_env_float("Ironcliw_PRIME_STARTUP_GRACE", 660.0),  # startup + 60s buffer
+        retry_attempts=_env_int("Ironcliw_PRIME_RETRY_ATTEMPTS", 5),
+        retry_delay=_env_float("Ironcliw_PRIME_RETRY_DELAY", 5.0),
     ),
     ComponentType.REACTOR_CORE: ComponentTimeoutProfile(
         # v153.0: ML model loading takes 10-15 min. Previous 120s startup_timeout
@@ -189,10 +189,10 @@ class TrinityOrchestrationConfig:
     # Port Configuration (SINGLE SOURCE OF TRUTH)
     # =========================================================================
     jarvis_body_port: int = field(
-        default_factory=lambda: _env_int("JARVIS_BODY_PORT", 8010)
+        default_factory=lambda: _env_int("Ironcliw_BODY_PORT", 8010)
     )
     jarvis_prime_port: int = field(
-        default_factory=lambda: _env_int("JARVIS_PRIME_PORT", 8000)
+        default_factory=lambda: _env_int("Ironcliw_PRIME_PORT", 8000)
     )
     reactor_core_port: int = field(
         default_factory=lambda: _env_int("REACTOR_CORE_PORT", 8090)
@@ -339,25 +339,25 @@ class TrinityOrchestrationConfig:
 
     def get_profile(self, component_type: ComponentType) -> ComponentTimeoutProfile:
         """Get timeout profile for a component type."""
-        return self.profiles.get(component_type, self.profiles[ComponentType.JARVIS_BODY])
+        return self.profiles.get(component_type, self.profiles[ComponentType.Ironcliw_BODY])
 
     def get_profile_by_name(self, name: str) -> ComponentTimeoutProfile:
         """Get timeout profile by component name string."""
         name_map = {
-            "jarvis": ComponentType.JARVIS_BODY,
-            "jarvis_body": ComponentType.JARVIS_BODY,
-            "jarvis-body": ComponentType.JARVIS_BODY,
-            "jarvis_prime": ComponentType.JARVIS_PRIME,
-            "jarvis-prime": ComponentType.JARVIS_PRIME,
-            "j-prime": ComponentType.JARVIS_PRIME,
-            "jprime": ComponentType.JARVIS_PRIME,
+            "jarvis": ComponentType.Ironcliw_BODY,
+            "jarvis_body": ComponentType.Ironcliw_BODY,
+            "jarvis-body": ComponentType.Ironcliw_BODY,
+            "jarvis_prime": ComponentType.Ironcliw_PRIME,
+            "jarvis-prime": ComponentType.Ironcliw_PRIME,
+            "j-prime": ComponentType.Ironcliw_PRIME,
+            "jprime": ComponentType.Ironcliw_PRIME,
             "reactor_core": ComponentType.REACTOR_CORE,
             "reactor-core": ComponentType.REACTOR_CORE,
             "reactor": ComponentType.REACTOR_CORE,
             "coding_council": ComponentType.CODING_COUNCIL,
             "coding-council": ComponentType.CODING_COUNCIL,
         }
-        comp_type = name_map.get(name.lower(), ComponentType.JARVIS_BODY)
+        comp_type = name_map.get(name.lower(), ComponentType.Ironcliw_BODY)
         return self.get_profile(comp_type)
 
     def is_in_startup_grace_period(
@@ -443,13 +443,13 @@ def reset_orchestration_config() -> None:
 # =============================================================================
 
 # Minimum healthy providers before allowing EMERGENCY degradation
-MIN_HEALTHY_PROVIDERS_BEFORE_EMERGENCY = _env_int("JARVIS_MIN_HEALTHY_PROVIDERS", 1)
+MIN_HEALTHY_PROVIDERS_BEFORE_EMERGENCY = _env_int("Ironcliw_MIN_HEALTHY_PROVIDERS", 1)
 
 # Consecutive failures before triggering emergency mode
-EMERGENCY_DEGRADATION_THRESHOLD = _env_int("JARVIS_EMERGENCY_THRESHOLD", 3)
+EMERGENCY_DEGRADATION_THRESHOLD = _env_int("Ironcliw_EMERGENCY_THRESHOLD", 3)
 
 # Startup phase duration (global system startup, not per-component)
-GLOBAL_STARTUP_PHASE_DURATION = _env_float("JARVIS_GLOBAL_STARTUP_DURATION", 180.0)
+GLOBAL_STARTUP_PHASE_DURATION = _env_float("Ironcliw_GLOBAL_STARTUP_DURATION", 180.0)
 
 
 def get_adaptive_timeout(

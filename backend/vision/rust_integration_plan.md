@@ -1,7 +1,7 @@
-# Rust Integration Plan for JARVIS Proactive Monitoring System
+﻿# Rust Integration Plan for Ironcliw Proactive Monitoring System
 
 ## Overview
-This plan outlines the integration of high-performance Rust components into JARVIS's proactive monitoring system for real-time video capture on macOS with 16GB RAM.
+This plan outlines the integration of high-performance Rust components into Ironcliw's proactive monitoring system for real-time video capture on macOS with 16GB RAM.
 
 ## Current State Analysis
 
@@ -487,7 +487,7 @@ class RustAcceleratedVisionAnalyzer:
 # Updated memory configuration for 16GB system
 MEMORY_CONFIG = {
     'total_ram_gb': 16,
-    'jarvis_allocation_percent': 40,  # 6.4GB for JARVIS
+    'jarvis_allocation_percent': 40,  # 6.4GB for Ironcliw
     'component_budgets': {
         'rust_memory_pool': 2048,  # 2GB for Rust pool
         'frame_buffer': 1024,      # 1GB for frame history

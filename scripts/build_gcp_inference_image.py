@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS GCP Inference Image Builder v1.0.0
+Ironcliw GCP Inference Image Builder v1.0.0
 ==========================================
 
 Enterprise-grade script for building and deploying the pre-baked ML dependency
@@ -280,7 +280,7 @@ def push_to_registry(config: BuildConfig) -> bool:
         "gcloud", "artifacts", "repositories", "create", repo_name,
         "--repository-format=docker",
         f"--location={config.region}",
-        "--description=JARVIS AI Agent Docker images",
+        "--description=Ironcliw AI Agent Docker images",
         "--quiet",
     ]
     
@@ -358,10 +358,10 @@ def create_instance_template(config: BuildConfig) -> bool:
                 "name": "jarvis-inference",
                 "image": config.latest_image_name,
                 "env": [
-                    {"name": "JARVIS_DEPS_PREBAKED", "value": "true"},
-                    {"name": "JARVIS_SKIP_ML_DEPS_INSTALL", "value": "true"},
-                    {"name": "JARVIS_GCP_INFERENCE", "value": "true"},
-                    {"name": "JARVIS_PORT", "value": "8000"},
+                    {"name": "Ironcliw_DEPS_PREBAKED", "value": "true"},
+                    {"name": "Ironcliw_SKIP_ML_DEPS_INSTALL", "value": "true"},
+                    {"name": "Ironcliw_GCP_INFERENCE", "value": "true"},
+                    {"name": "Ironcliw_PORT", "value": "8000"},
                 ],
                 "ports": [{"containerPort": 8000}],
             }],
@@ -381,10 +381,10 @@ def create_instance_template(config: BuildConfig) -> bool:
         "--maintenance-policy=TERMINATE",
         "--provisioning-model=SPOT",
         "--instance-termination-action=DELETE",
-        "--container-env=JARVIS_DEPS_PREBAKED=true",
-        "--container-env=JARVIS_SKIP_ML_DEPS_INSTALL=true",
-        "--container-env=JARVIS_GCP_INFERENCE=true",
-        "--container-env=JARVIS_PORT=8000",
+        "--container-env=Ironcliw_DEPS_PREBAKED=true",
+        "--container-env=Ironcliw_SKIP_ML_DEPS_INSTALL=true",
+        "--container-env=Ironcliw_GCP_INFERENCE=true",
+        "--container-env=Ironcliw_PORT=8000",
         "--tags=jarvis-inference,http-server",
         "--metadata=jarvis-port=8000",
         f"--scopes=cloud-platform",
@@ -434,7 +434,7 @@ def print_usage_instructions(config: BuildConfig) -> None:
     
     logger.info("5. INTEGRATION WITH gcp_vm_manager.py:")
     logger.info("   Set environment variable:")
-    logger.info(f"   export JARVIS_GCP_CONTAINER_IMAGE=\"{config.latest_image_name if config.push else config.image_name + ':latest'}\"")
+    logger.info(f"   export Ironcliw_GCP_CONTAINER_IMAGE=\"{config.latest_image_name if config.push else config.image_name + ':latest'}\"")
     logger.info("")
     
     logger.info("6. EXPECTED STARTUP TIME IMPROVEMENT:")
@@ -451,7 +451,7 @@ def print_usage_instructions(config: BuildConfig) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Build and deploy JARVIS GCP inference Docker image",
+        description="Build and deploy Ironcliw GCP inference Docker image",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -536,7 +536,7 @@ def main() -> int:
     # Print banner
     logger.info("")
     logger.info("=" * 70)
-    logger.info("JARVIS GCP Inference Image Builder v1.0.0")
+    logger.info("Ironcliw GCP Inference Image Builder v1.0.0")
     logger.info("=" * 70)
     logger.info(f"  Project ID:     {config.project_id or '(not set)'}")
     logger.info(f"  Region:         {config.region}")

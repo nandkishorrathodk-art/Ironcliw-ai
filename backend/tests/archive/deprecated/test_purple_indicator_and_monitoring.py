@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify:
 1. Purple indicator appears when monitoring starts
@@ -74,7 +74,7 @@ async def test_monitoring_commands():
             await asyncio.sleep(1)
 
 async def main():
-    print("\n🎯 JARVIS Purple Indicator & Monitoring Test")
+    print("\n🎯 Ironcliw Purple Indicator & Monitoring Test")
     print("=" * 60)
     print("\n📋 This test will:")
     print("1. Start screen monitoring (purple indicator should appear)")
@@ -82,7 +82,7 @@ async def main():
     print("3. Test various stop commands")
     
     print("\n⚠️  Prerequisites:")
-    print("- JARVIS backend must be running (python start_system.py)")
+    print("- Ironcliw backend must be running (python start_system.py)")
     print("- Screen recording permission must be granted")
     
     input("\nPress Enter to begin test...")
@@ -92,14 +92,14 @@ async def main():
         print("\n✅ Test completed!")
         print("\n📝 Frontend Microphone Toggle:")
         print("1. Open http://localhost:3000")
-        print("2. Click 'Activate JARVIS'")
+        print("2. Click 'Activate Ironcliw'")
         print("3. Click '🎤 Start Listening' - mic should stay on")
-        print("4. Say 'Hey JARVIS' multiple times - should always respond")
+        print("4. Say 'Hey Ironcliw' multiple times - should always respond")
         print("5. Click '🔴 Stop Listening' - mic should turn off")
         
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
-        print("Make sure JARVIS backend is running!")
+        print("Make sure Ironcliw backend is running!")
 
 if __name__ == "__main__":
     asyncio.run(main())

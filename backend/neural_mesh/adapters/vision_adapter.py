@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Vision Cognitive Adapter
+﻿"""
+Ironcliw Neural Mesh - Vision Cognitive Adapter
 
 Adapts the Vision Cognitive Loop and Yabai Multi-Space systems for seamless
 integration with the Neural Mesh, enabling visual awareness across agents.
@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class VisionComponentType(str, Enum):
-    """Types of vision components in JARVIS."""
+    """Types of vision components in Ironcliw."""
     COGNITIVE_LOOP = "cognitive_loop"  # Vision Cognitive Loop
     YABAI_DETECTOR = "yabai_detector"  # Yabai Space Detector
     SCREENSHOT_CAPTURE = "screenshot_capture"  # Screenshot Capture
@@ -129,7 +129,7 @@ VISION_CAPABILITIES: Dict[VisionComponentType, VisionCapabilities] = {
 
 class VisionCognitiveAdapter(BaseNeuralMeshAgent):
     """
-    Adapter for JARVIS Vision Cognitive Loop to work with Neural Mesh.
+    Adapter for Ironcliw Vision Cognitive Loop to work with Neural Mesh.
 
     This adapter wraps the Vision Cognitive Loop, enabling visual awareness
     and multi-space coordination across the Neural Mesh ecosystem.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive test case for screen monitoring command verification
 Tests the complete flow from command input to video capture activation
@@ -37,7 +37,7 @@ class MonitoringCommandTest:
         # Test 1: Check backend health
         await self.test_backend_health()
         
-        # Test 2: Check JARVIS status
+        # Test 2: Check Ironcliw status
         await self.test_jarvis_status()
         
         # Test 3: Test direct API monitoring command
@@ -90,8 +90,8 @@ class MonitoringCommandTest:
             self.test_results["summary"]["failed"] += 1
             
     async def test_jarvis_status(self):
-        """Test 2: Check JARVIS status"""
-        test_name = "JARVIS Status Check"
+        """Test 2: Check Ironcliw status"""
+        test_name = "Ironcliw Status Check"
         print(f"\n🔍 Test 2: {test_name}")
         
         try:
@@ -106,11 +106,11 @@ class MonitoringCommandTest:
                 }
                 
                 if passed:
-                    print(f"✅ PASSED: JARVIS is online")
+                    print(f"✅ PASSED: Ironcliw is online")
                     print(f"   - Features: {', '.join(data.get('features', []))}")
                     self.test_results["summary"]["passed"] += 1
                 else:
-                    print(f"❌ FAILED: JARVIS is not online (status: {data.get('status')})")
+                    print(f"❌ FAILED: Ironcliw is not online (status: {data.get('status')})")
                     self.test_results["summary"]["failed"] += 1
                     
         except Exception as e:

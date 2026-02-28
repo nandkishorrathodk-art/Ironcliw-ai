@@ -1,4 +1,4 @@
-# Async Startup Robustness Implementation Plan
+﻿# Async Startup Robustness Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -18,7 +18,7 @@ The "stuck at 5%" issue occurs because blocking calls in the startup path preven
 2. **Blocking `subprocess.run()` calls** - 7 locations with 3-5 second timeouts each
 3. **Blocking socket operations** - 7 locations for port checks and IPC
 4. **Blocking file I/O** - Multiple heartbeat/state file reads
-5. **Cross-repo coordination** - Locks and state files shared with JARVIS Prime and Reactor Core
+5. **Cross-repo coordination** - Locks and state files shared with Ironcliw Prime and Reactor Core
 
 ---
 
@@ -134,7 +134,7 @@ class TestAsyncSocketConnect:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/utils/test_async_subprocess.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/utils/test_async_subprocess.py -v`
 Expected: FAIL with "ModuleNotFoundError: No module named 'backend.utils.async_subprocess'"
 
 **Step 3: Write minimal implementation**
@@ -436,7 +436,7 @@ async def async_json_write(path: Union[str, Path], data: dict) -> None:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/utils/test_async_subprocess.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/utils/test_async_subprocess.py -v`
 Expected: PASS
 
 **Step 5: Commit**
@@ -528,7 +528,7 @@ class TestGracefulTerminateNonBlocking:
 
 **Step 2: Run test to verify current behavior blocks**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/test_graceful_terminate.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/test_graceful_terminate.py -v`
 Expected: Test should demonstrate current blocking behavior (or pass if already non-blocking)
 
 **Step 3: Modify run_supervisor.py _graceful_terminate**
@@ -607,7 +607,7 @@ Find the function at lines 3640-3672 and replace the blocking `proc.wait()` call
 
 **Step 4: Run tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/test_graceful_terminate.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/test_graceful_terminate.py -v`
 Expected: PASS
 
 **Step 5: Commit**
@@ -700,7 +700,7 @@ Apply the same pattern to `_stop_reactor_core_orchestrator`.
 
 **Step 3: Run tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/ -k "orchestrator or trinity" -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/ -k "orchestrator or trinity" -v`
 Expected: PASS
 
 **Step 4: Commit**
@@ -929,10 +929,10 @@ Prevents 3-5 seconds of blocking per call."
 
                 if result == 0:
                     in_use.append(port)
-                    # Check if it's a JARVIS process (will be recycled by cleanup)
+                    # Check if it's a Ironcliw process (will be recycled by cleanup)
                     is_jarvis = await self._is_jarvis_port(port)
                     if is_jarvis:
-                        actions.append(f"Port {port}: JARVIS process detected (will recycle)")
+                        actions.append(f"Port {port}: Ironcliw process detected (will recycle)")
                 else:
                     available.append(port)
             except Exception:
@@ -952,7 +952,7 @@ Prevents 3-5 seconds of blocking per call."
                 in_use.append(port)
                 is_jarvis = await self._is_jarvis_port(port)
                 if is_jarvis:
-                    actions.append(f"Port {port}: JARVIS process detected (will recycle)")
+                    actions.append(f"Port {port}: Ironcliw process detected (will recycle)")
             else:
                 available.append(port)
 ```
@@ -1208,7 +1208,7 @@ Async Lock Utilities for Cross-Repo Coordination
 =================================================
 
 Non-blocking file-based locks for coordinating between
-JARVIS, JARVIS Prime, and Reactor Core.
+Ironcliw, Ironcliw Prime, and Reactor Core.
 
 All lock operations use asyncio.to_thread() to prevent
 blocking the event loop.
@@ -1340,7 +1340,7 @@ class AsyncFileLock:
 
 class CrossRepoLockManager:
     """
-    Manager for coordinating locks across JARVIS, Prime, and Reactor.
+    Manager for coordinating locks across Ironcliw, Prime, and Reactor.
 
     Provides a central registry of lock paths and utilities for
     acquiring multiple locks atomically.
@@ -1401,7 +1401,7 @@ class CrossRepoLockManager:
 
 **Step 3: Run tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/utils/test_async_locks.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/utils/test_async_locks.py -v`
 Expected: PASS
 
 **Step 4: Commit**
@@ -1411,7 +1411,7 @@ git add backend/utils/async_locks.py tests/unit/utils/test_async_locks.py
 git commit -m "feat(locks): Add async file lock utilities for cross-repo coordination
 
 Introduces AsyncFileLock and CrossRepoLockManager for non-blocking
-lock operations between JARVIS, JARVIS Prime, and Reactor Core.
+lock operations between Ironcliw, Ironcliw Prime, and Reactor Core.
 
 Features:
 - Non-blocking lock acquisition with timeout
@@ -1500,21 +1500,21 @@ Update run_supervisor.py imports for new async utilities."
 
 ---
 
-## Task 10: Cross-Repo Integration - JARVIS Prime
+## Task 10: Cross-Repo Integration - Ironcliw Prime
 
 **Files:**
 - Create: `/Users/djrussell23/Documents/repos/jarvis-prime/jarvis_prime/utils/async_startup.py`
 
-**Step 1: Create shared async utilities for JARVIS Prime**
+**Step 1: Create shared async utilities for Ironcliw Prime**
 
 ```python
 # jarvis-prime/jarvis_prime/utils/async_startup.py
 """
-Async Startup Utilities for JARVIS Prime
+Async Startup Utilities for Ironcliw Prime
 =========================================
 
-Shared utilities for coordinating startup with JARVIS Body.
-These mirror the utilities in JARVIS Body to ensure consistent
+Shared utilities for coordinating startup with Ironcliw Body.
+These mirror the utilities in Ironcliw Body to ensure consistent
 non-blocking behavior across repos.
 """
 
@@ -1532,9 +1532,9 @@ async def wait_for_jarvis_body(
     poll_interval: float = 1.0,
 ) -> bool:
     """
-    Wait for JARVIS Body to be ready before starting Prime.
+    Wait for Ironcliw Body to be ready before starting Prime.
 
-    Checks the Trinity heartbeat file for JARVIS Body status.
+    Checks the Trinity heartbeat file for Ironcliw Body status.
 
     Args:
         timeout: Maximum wait time in seconds
@@ -1654,14 +1654,14 @@ async def acquire_startup_lock(timeout: float = 30.0) -> bool:
     return False
 ```
 
-**Step 2: Commit in JARVIS Prime repo**
+**Step 2: Commit in Ironcliw Prime repo**
 
 ```bash
 cd /Users/djrussell23/Documents/repos/jarvis-prime
 git add jarvis_prime/utils/async_startup.py
 git commit -m "feat(startup): Add async startup utilities for Trinity coordination
 
-Introduces utilities for coordinating startup with JARVIS Body:
+Introduces utilities for coordinating startup with Ironcliw Body:
 - wait_for_jarvis_body: Non-blocking wait for Body readiness
 - write_heartbeat: Atomic heartbeat file updates
 - acquire_startup_lock: Cross-repo startup lock
@@ -1685,7 +1685,7 @@ startup coordination."
 Async Startup Utilities for Reactor Core
 =========================================
 
-Shared utilities for coordinating startup with JARVIS Body and Prime.
+Shared utilities for coordinating startup with Ironcliw Body and Prime.
 Reactor depends on both Body and Prime being ready.
 """
 
@@ -1702,7 +1702,7 @@ async def wait_for_dependencies(
     poll_interval: float = 2.0,
 ) -> Tuple[bool, bool]:
     """
-    Wait for JARVIS Body and Prime to be ready.
+    Wait for Ironcliw Body and Prime to be ready.
 
     Reactor Core depends on both components for full functionality.
 
@@ -1783,7 +1783,7 @@ async def write_heartbeat(
 
 async def notify_body_ready() -> None:
     """
-    Notify JARVIS Body that Reactor is ready.
+    Notify Ironcliw Body that Reactor is ready.
 
     Writes to cross-repo state file for Body to pick up.
     """
@@ -1819,7 +1819,7 @@ cd /Users/djrussell23/Documents/repos/reactor-core
 git add reactor_core/utils/async_startup.py
 git commit -m "feat(startup): Add async startup utilities for Trinity coordination
 
-Introduces utilities for coordinating startup with JARVIS Body and Prime:
+Introduces utilities for coordinating startup with Ironcliw Body and Prime:
 - wait_for_dependencies: Non-blocking wait for Body + Prime
 - write_heartbeat: Atomic heartbeat file updates
 - notify_body_ready: Cross-repo ready notification
@@ -1857,37 +1857,37 @@ class StartupTimeouts:
     """Centralized timeout configuration for startup operations."""
 
     # Process termination timeouts
-    SIGINT_TIMEOUT = _get_timeout("JARVIS_SIGINT_TIMEOUT", 10.0)
-    SIGTERM_TIMEOUT = _get_timeout("JARVIS_SIGTERM_TIMEOUT", 10.0)
-    SIGKILL_TIMEOUT = _get_timeout("JARVIS_SIGKILL_TIMEOUT", 2.0)
+    SIGINT_TIMEOUT = _get_timeout("Ironcliw_SIGINT_TIMEOUT", 10.0)
+    SIGTERM_TIMEOUT = _get_timeout("Ironcliw_SIGTERM_TIMEOUT", 10.0)
+    SIGKILL_TIMEOUT = _get_timeout("Ironcliw_SIGKILL_TIMEOUT", 2.0)
 
     # Port and network timeouts
-    PORT_CHECK_TIMEOUT = _get_timeout("JARVIS_PORT_CHECK_TIMEOUT", 0.5)
-    PORT_RELEASE_WAIT = _get_timeout("JARVIS_PORT_RELEASE_WAIT", 5.0)
-    IPC_SOCKET_TIMEOUT = _get_timeout("JARVIS_IPC_SOCKET_TIMEOUT", 2.0)
+    PORT_CHECK_TIMEOUT = _get_timeout("Ironcliw_PORT_CHECK_TIMEOUT", 0.5)
+    PORT_RELEASE_WAIT = _get_timeout("Ironcliw_PORT_RELEASE_WAIT", 5.0)
+    IPC_SOCKET_TIMEOUT = _get_timeout("Ironcliw_IPC_SOCKET_TIMEOUT", 2.0)
 
     # Subprocess timeouts
-    LSOF_TIMEOUT = _get_timeout("JARVIS_LSOF_TIMEOUT", 5.0)
-    DOCKER_CHECK_TIMEOUT = _get_timeout("JARVIS_DOCKER_CHECK_TIMEOUT", 3.0)
+    LSOF_TIMEOUT = _get_timeout("Ironcliw_LSOF_TIMEOUT", 5.0)
+    DOCKER_CHECK_TIMEOUT = _get_timeout("Ironcliw_DOCKER_CHECK_TIMEOUT", 3.0)
 
     # Health check timeouts
-    BACKEND_HEALTH_TIMEOUT = _get_timeout("JARVIS_BACKEND_HEALTH_TIMEOUT", 3.0)
-    FRONTEND_HEALTH_TIMEOUT = _get_timeout("JARVIS_FRONTEND_HEALTH_TIMEOUT", 2.0)
+    BACKEND_HEALTH_TIMEOUT = _get_timeout("Ironcliw_BACKEND_HEALTH_TIMEOUT", 3.0)
+    FRONTEND_HEALTH_TIMEOUT = _get_timeout("Ironcliw_FRONTEND_HEALTH_TIMEOUT", 2.0)
 
     # Loading server timeouts
-    LOADING_SERVER_HEALTH_TIMEOUT = _get_timeout("JARVIS_LOADING_SERVER_HEALTH_TIMEOUT", 30.0)
+    LOADING_SERVER_HEALTH_TIMEOUT = _get_timeout("Ironcliw_LOADING_SERVER_HEALTH_TIMEOUT", 30.0)
 
     # Heartbeat configuration
-    HEARTBEAT_INTERVAL = _get_timeout("JARVIS_HEARTBEAT_INTERVAL", 3.0)
-    HEARTBEAT_STALE_THRESHOLD = _get_timeout("JARVIS_HEARTBEAT_STALE_THRESHOLD", 15.0)
+    HEARTBEAT_INTERVAL = _get_timeout("Ironcliw_HEARTBEAT_INTERVAL", 3.0)
+    HEARTBEAT_STALE_THRESHOLD = _get_timeout("Ironcliw_HEARTBEAT_STALE_THRESHOLD", 15.0)
 
     # Trinity component timeouts
-    JPRIME_STARTUP_TIMEOUT = _get_timeout("JARVIS_PRIME_STARTUP_TIMEOUT", 600.0)
-    REACTOR_STARTUP_TIMEOUT = _get_timeout("JARVIS_REACTOR_STARTUP_TIMEOUT", 120.0)
+    JPRIME_STARTUP_TIMEOUT = _get_timeout("Ironcliw_PRIME_STARTUP_TIMEOUT", 600.0)
+    REACTOR_STARTUP_TIMEOUT = _get_timeout("Ironcliw_REACTOR_STARTUP_TIMEOUT", 120.0)
 
     # Lock timeouts
-    STARTUP_LOCK_TIMEOUT = _get_timeout("JARVIS_STARTUP_LOCK_TIMEOUT", 30.0)
-    TAKEOVER_HANDOVER_TIMEOUT = _get_timeout("JARVIS_TAKEOVER_HANDOVER_TIMEOUT", 30.0)
+    STARTUP_LOCK_TIMEOUT = _get_timeout("Ironcliw_STARTUP_LOCK_TIMEOUT", 30.0)
+    TAKEOVER_HANDOVER_TIMEOUT = _get_timeout("Ironcliw_TAKEOVER_HANDOVER_TIMEOUT", 30.0)
 
 
 # Log timeout configuration at startup
@@ -2058,7 +2058,7 @@ class TestStartupNonBlocking:
 
 **Step 2: Run integration tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/integration/test_startup_nonblocking.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/integration/test_startup_nonblocking.py -v`
 Expected: PASS
 
 **Step 3: Commit**
@@ -2078,7 +2078,7 @@ Verifies that:
 
 ## Summary
 
-This plan converts all blocking calls in the JARVIS startup path to async:
+This plan converts all blocking calls in the Ironcliw startup path to async:
 
 | Blocking Call | Location | Fix |
 |--------------|----------|-----|
@@ -2092,7 +2092,7 @@ This plan converts all blocking calls in the JARVIS startup path to async:
 
 **Total blocking time eliminated:** Up to 44+ seconds
 
-**Cross-repo integration:** Shared async utilities in JARVIS Prime and Reactor Core
+**Cross-repo integration:** Shared async utilities in Ironcliw Prime and Reactor Core
 
 **Configuration:** All timeouts env-driven via `StartupTimeouts` class
 

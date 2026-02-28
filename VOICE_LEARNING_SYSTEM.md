@@ -1,4 +1,4 @@
-# 🎓 JARVIS Continuous Voice Learning System
+﻿# 🎓 Ironcliw Continuous Voice Learning System
 
 ## Overview
 A comprehensive, self-improving voice recognition system with **Reinforcement Learning from Human Feedback (RLHF)**, **Retrieval-Augmented Generation (RAG)**, and **automatic sample freshness management**.
@@ -27,7 +27,7 @@ python backend/voice/enroll_voice.py --refresh --samples 10
 ## ✨ Features Implemented
 
 ### 1. **Automatic Voice Sample Storage**
-Every interaction with JARVIS is automatically stored:
+Every interaction with Ironcliw is automatically stored:
 - Raw audio data (WAV format)
 - Speaker embeddings (192D ECAPA-TDNN)
 - Confidence scores
@@ -206,7 +206,7 @@ Day 61+:    STALE    (Archived unless high-quality)
    - Immediate confidence boost to 50-70%
    - Captures voice diversity
 
-2. **Use JARVIS regularly**
+2. **Use Ironcliw regularly**
    - Every "unlock my screen" improves the model
    - Automatic learning kicks in after 10 attempts
 
@@ -329,7 +329,7 @@ await manage_sample_freshness(
 
 ## 🎉 Summary
 
-Your JARVIS voice recognition system now:
+Your Ironcliw voice recognition system now:
 
 ✅ **Stores every interaction** in database (audio + embeddings)
 ✅ **Learns automatically** after every 10 samples
@@ -339,6 +339,6 @@ Your JARVIS voice recognition system now:
 ✅ **Adapts to voice changes** over time
 ✅ **Gets smarter the more you use it**
 
-**The more you interact with JARVIS, the better it recognizes you!**
+**The more you interact with Ironcliw, the better it recognizes you!**
 
 Start with 30 fresh samples, then let continuous learning take over. You should reach 85%+ confidence within 30-50 regular uses.

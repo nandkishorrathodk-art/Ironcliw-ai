@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Fast Screen Capture Engine Implementation - Modern macOS APIs
  * Uses ScreenCaptureKit (macOS 12.3+) for high-performance, async screen capture
  *
@@ -38,13 +38,13 @@
  * Modern ScreenCaptureKit-based capture delegate for one-shot captures
  * Replaces deprecated CGWindowListCreateImage
  */
-@interface JARVISOneshotDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
+@interface IroncliwOneshotDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
 @property (nonatomic, assign) dispatch_semaphore_t frameSemaphore;
 @property (nonatomic, assign) CMSampleBufferRef latestFrame;  // Use assign for CF types
 @property (nonatomic, assign) BOOL hasNewFrame;
 @end
 
-@implementation JARVISOneshotDelegate
+@implementation IroncliwOneshotDelegate
 
 - (instancetype)init {
     self = [super init];
@@ -257,7 +257,7 @@ public:
             }
 
             // Create capture delegate
-            JARVISOneshotDelegate *delegate = [[JARVISOneshotDelegate alloc] init];
+            IroncliwOneshotDelegate *delegate = [[IroncliwOneshotDelegate alloc] init];
 
             // Create stream
             NSError *error = nil;

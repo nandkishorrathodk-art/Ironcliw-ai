@@ -1,8 +1,8 @@
-# 🚀 JARVIS Vision - Bloom Filter Network (4.4)
+﻿# 🚀 Ironcliw Vision - Bloom Filter Network (4.4)
 
 ## Purpose: Prevent Redundant Processing Through Efficient Duplicate Detection
 
-The Bloom Filter Network is part of the Efficient Processing System (EPS) in JARVIS Vision's Performance Optimization Layer. It uses hierarchical bloom filters to efficiently detect and prevent duplicate processing of screenshots, regions, and UI elements.
+The Bloom Filter Network is part of the Efficient Processing System (EPS) in Ironcliw Vision's Performance Optimization Layer. It uses hierarchical bloom filters to efficiently detect and prevent duplicate processing of screenshots, regions, and UI elements.
 
 ## 🎯 Key Capabilities
 
@@ -335,10 +335,10 @@ print(json.dumps(metrics, indent=2))
 
 1. **Adaptive Hash Functions**: Dynamically adjust based on saturation
 2. **Learned Reset Schedules**: ML-based reset timing
-3. **Distributed Bloom Filters**: Share across multiple JARVIS instances
+3. **Distributed Bloom Filters**: Share across multiple Ironcliw instances
 4. **Compression Integration**: Combine with other EPS components
 5. **GPU Acceleration**: CUDA/Metal for massive parallel checks
 
 ---
 
-The Bloom Filter Network ensures JARVIS Vision operates efficiently by preventing redundant processing at multiple levels, saving computational resources while maintaining high accuracy.
+The Bloom Filter Network ensures Ironcliw Vision operates efficiently by preventing redundant processing at multiple levels, saving computational resources while maintaining high accuracy.

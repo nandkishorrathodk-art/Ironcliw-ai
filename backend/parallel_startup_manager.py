@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Parallel Startup Manager for JARVIS Backend
+Parallel Startup Manager for Ironcliw Backend
 Speeds up initialization by running services concurrently
 No hardcoding - all configurable via environment variables
 """
@@ -49,7 +49,7 @@ class ServiceConfig:
     env_vars: Dict[str, str] = None
 
 class ParallelStartupManager:
-    """Manages parallel startup of all JARVIS services"""
+    """Manages parallel startup of all Ironcliw services"""
     
     def __init__(self):
         # Load configuration from environment
@@ -505,7 +505,7 @@ class ComponentLoader:
 
 async def optimized_startup():
     """Main optimized startup function"""
-    logger.info("🚀 JARVIS Optimized Parallel Startup")
+    logger.info("🚀 Ironcliw Optimized Parallel Startup")
     logger.info("=" * 60)
     
     overall_start = time.time()
@@ -543,7 +543,7 @@ async def optimized_startup():
     overall_elapsed = time.time() - overall_start
     
     logger.info("\n" + "=" * 60)
-    logger.info(f"✨ JARVIS Startup Complete in {overall_elapsed:.1f}s!")
+    logger.info(f"✨ Ironcliw Startup Complete in {overall_elapsed:.1f}s!")
     logger.info(f"✅ Services: {len(successful_services)}/{len(startup_manager.services)}")
     logger.info(f"✅ Components: {len(loaded_components)}/5")
     logger.info("=" * 60)

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Config-Aware Startup Handler v2.0
  * ==================================
  * Advanced startup orchestration with:
@@ -41,7 +41,7 @@ class ConfigAwareStartup {
     this.state = {
       phase: STARTUP_PHASE.INITIALIZING,
       progress: 0,
-      message: 'Initializing JARVIS...',
+      message: 'Initializing Ironcliw...',
       backendConnected: false,
       backendReady: false,
       lastError: null,
@@ -87,7 +87,7 @@ class ConfigAwareStartup {
       // Wait for backend to be fully ready
       await this._waitForBackendReady(30000);
 
-      this._updateState(STARTUP_PHASE.READY, 100, 'JARVIS is ready!');
+      this._updateState(STARTUP_PHASE.READY, 100, 'Ironcliw is ready!');
       this.initialized = true;
 
       // Process any queued requests
@@ -127,7 +127,7 @@ class ConfigAwareStartup {
     onBackendReady((state) => {
       this.state.backendReady = true;
       if (this.state.phase !== STARTUP_PHASE.READY) {
-        this._updateState(STARTUP_PHASE.READY, 100, 'JARVIS is ready!');
+        this._updateState(STARTUP_PHASE.READY, 100, 'Ironcliw is ready!');
       }
     });
 

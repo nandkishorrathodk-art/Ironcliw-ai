@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Quick start script to get JARVIS backend running immediately
+Quick start script to get Ironcliw backend running immediately
 Includes the 503 fix for voice activation
 """
 
@@ -15,13 +15,13 @@ os.environ['USE_TORCH'] = '1'
 os.environ['USE_TF'] = '0'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-print("🚀 Starting JARVIS Backend with Voice 503 Fix...")
+print("🚀 Starting Ironcliw Backend with Voice 503 Fix...")
 print("=" * 60)
 
 # Check if we're in the right directory
 if not os.path.exists("main.py"):
     print("❌ Error: Please run this from the backend directory")
-    print("   cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend")
+    print("   cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend")
     sys.exit(1)
 
 # Start the backend

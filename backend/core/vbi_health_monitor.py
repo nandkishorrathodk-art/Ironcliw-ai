@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS VBI Health Monitor v2.0.0
+Ironcliw VBI Health Monitor v2.0.0
 ================================
 
 Advanced hybrid health monitoring system for Voice Biometric Intelligence (VBI).
@@ -40,7 +40,7 @@ Architecture:
                 +-- DatabaseFallbackChain
                 +-- AuthenticationFallbackChain
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations

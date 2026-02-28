@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Swift video capture permissions and functionality
 """
@@ -9,7 +9,7 @@ import sys
 import os
 
 # Add backend to path
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from vision.swift_video_bridge import SwiftVideoBridge, SwiftCaptureConfig
 

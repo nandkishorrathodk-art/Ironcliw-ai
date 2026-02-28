@@ -1,8 +1,8 @@
-# Unified Monolith Refactor - v111.0
+﻿# Unified Monolith Refactor - v111.0
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Transform JARVIS from subprocess-spawning architecture to a unified in-process orchestration model where `run_supervisor.py` is the single entry point that imports and manages all components within one Python process.
+**Goal:** Transform Ironcliw from subprocess-spawning architecture to a unified in-process orchestration model where `run_supervisor.py` is the single entry point that imports and manages all components within one Python process.
 
 **Architecture:** Single asyncio event loop orchestrating FastAPI (Uvicorn in-process), cross-repo services, and system management - no subprocess spawning, shared memory, graceful shutdown.
 
@@ -62,9 +62,9 @@ v111.0: Unified Monolith - AsyncSystemManager
 =============================================
 
 Extracted from start_system.py to enable import without execution.
-This class manages the JARVIS backend system lifecycle.
+This class manages the Ironcliw backend system lifecycle.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 111.0.0 (January 2026)
 """
 
@@ -331,7 +331,7 @@ if __name__ == "__main__":
         is_running, existing_state = is_supervisor_running()
         if is_running and existing_state:
             print("\n" + "="*60)
-            print("❌ JARVIS SUPERVISOR ALREADY RUNNING!")
+            print("❌ Ironcliw SUPERVISOR ALREADY RUNNING!")
             print("="*60)
             print(f"  Entry point: {existing_state.get('entry_point', 'unknown')}")
             print(f"  PID: {existing_state.get('pid', 'unknown')}")
@@ -461,7 +461,7 @@ class SupervisorBootstrapper:
 
     async def _start_backend_in_process(self) -> bool:
         """
-        v111.0: Start the JARVIS backend in-process using Uvicorn.
+        v111.0: Start the Ironcliw backend in-process using Uvicorn.
 
         This replaces subprocess spawning with direct in-process execution,
         enabling shared memory and coordinated shutdown.
@@ -559,7 +559,7 @@ async def run(self) -> None:
             await start_supervisor_heartbeat()
 
         logger.info("="*60)
-        logger.info("🚀 JARVIS Unified Supervisor v111.0")
+        logger.info("🚀 Ironcliw Unified Supervisor v111.0")
         logger.info("="*60)
 
         # Phase 1: Start backend in-process
@@ -1004,7 +1004,7 @@ python3 run_supervisor.py
 **Expected output:**
 ```
 ==================================================
-🚀 JARVIS Unified Supervisor v111.0
+🚀 Ironcliw Unified Supervisor v111.0
 ==================================================
 [v111.0] Signal handlers installed
 [v111.0] Starting backend in-process...

@@ -1,8 +1,8 @@
-"""
-Default component definitions for JARVIS system.
+﻿"""
+Default component definitions for Ironcliw system.
 
 This module provides predefined ComponentDefinition instances for:
-- JARVIS_CORE_COMPONENTS: Core system components (jarvis-core, redis, cloud-sql, voice-unlock)
+- Ironcliw_CORE_COMPONENTS: Core system components (jarvis-core, redis, cloud-sql, voice-unlock)
 - CROSS_REPO_COMPONENTS: Cross-repository components (gcp-prewarm, jarvis-prime, reactor-core)
 
 These definitions serve as the canonical source for component configuration,
@@ -41,7 +41,7 @@ def _resolve_health_endpoint(host: str, port_env: str, port_default: str, path: 
     return f"http://{host}:{port}{path}"
 
 
-# Cross-repository components that interact with other JARVIS repos
+# Cross-repository components that interact with other Ironcliw repos
 CROSS_REPO_COMPONENTS: List[ComponentDefinition] = [
     ComponentDefinition(
         name="gcp-prewarm",
@@ -55,18 +55,18 @@ CROSS_REPO_COMPONENTS: List[ComponentDefinition] = [
         name="jarvis-prime",
         criticality=Criticality.DEGRADED_OK,
         process_type=ProcessType.SUBPROCESS,
-        repo_path=_resolve_repo_path("JARVIS_PRIME_PATH", "jarvis-prime"),
+        repo_path=_resolve_repo_path("Ironcliw_PRIME_PATH", "jarvis-prime"),
         provides_capabilities=["local-inference", "llm", "embeddings"],
         dependencies=[
             "jarvis-core",
             Dependency("gcp-prewarm", soft=True),
         ],
         health_check_type=HealthCheckType.HTTP,
-        health_endpoint=_resolve_health_endpoint("localhost", "JARVIS_PRIME_PORT", "8000", "/health"),
+        health_endpoint=_resolve_health_endpoint("localhost", "Ironcliw_PRIME_PORT", "8000", "/health"),
         startup_timeout=120.0,
         fallback_strategy=FallbackStrategy.RETRY_THEN_CONTINUE,
         fallback_for_capabilities={"inference": "claude-api", "embeddings": "openai-api"},
-        disable_env_var="JARVIS_PRIME_ENABLED",
+        disable_env_var="Ironcliw_PRIME_ENABLED",
         conservative_skip_priority=80,
     ),
     ComponentDefinition(
@@ -86,8 +86,8 @@ CROSS_REPO_COMPONENTS: List[ComponentDefinition] = [
 ]
 
 
-# Core JARVIS components that form the foundation of the system
-JARVIS_CORE_COMPONENTS: List[ComponentDefinition] = [
+# Core Ironcliw components that form the foundation of the system
+Ironcliw_CORE_COMPONENTS: List[ComponentDefinition] = [
     ComponentDefinition(
         name="jarvis-core",
         criticality=Criticality.REQUIRED,
@@ -136,14 +136,14 @@ def register_default_components(registry: ComponentRegistry) -> None:
     """
     Register all default components with the registry.
 
-    This function registers both JARVIS_CORE_COMPONENTS and CROSS_REPO_COMPONENTS
+    This function registers both Ironcliw_CORE_COMPONENTS and CROSS_REPO_COMPONENTS
     with the provided ComponentRegistry instance. Components are registered in order,
     with core components first followed by cross-repo components.
 
     Args:
         registry: The ComponentRegistry instance to populate with component definitions.
     """
-    for component in JARVIS_CORE_COMPONENTS:
+    for component in Ironcliw_CORE_COMPONENTS:
         registry.register(component)
     for component in CROSS_REPO_COMPONENTS:
         registry.register(component)
@@ -153,10 +153,10 @@ def get_all_default_components() -> List[ComponentDefinition]:
     """
     Get all default component definitions.
 
-    Returns a combined list of all JARVIS_CORE_COMPONENTS and CROSS_REPO_COMPONENTS.
+    Returns a combined list of all Ironcliw_CORE_COMPONENTS and CROSS_REPO_COMPONENTS.
     This is useful for iteration, reporting, or bulk operations on all components.
 
     Returns:
         List of all ComponentDefinition instances from both component lists.
     """
-    return JARVIS_CORE_COMPONENTS + CROSS_REPO_COMPONENTS
+    return Ironcliw_CORE_COMPONENTS + CROSS_REPO_COMPONENTS

@@ -1,4 +1,4 @@
-# JARVIS Windows Port - Release Notes
+﻿# Ironcliw Windows Port - Release Notes
 
 ## v1.0.0-MVP (February 2026)
 
@@ -6,7 +6,7 @@
 
 ### Overview
 
-This is the first public release of JARVIS for Windows. The Windows port maintains feature parity with the macOS version for core functionality, using Windows-native APIs and technologies.
+This is the first public release of Ironcliw for Windows. The Windows port maintains feature parity with the macOS version for core functionality, using Windows-native APIs and technologies.
 
 **Release Date:** February 22, 2026  
 **Target Platform:** Windows 10 (1809+), Windows 11, Windows Server 2019/2022  
@@ -20,7 +20,7 @@ This is the first public release of JARVIS for Windows. The Windows port maintai
 
 ### Platform Abstraction Layer
 
-Created a comprehensive platform abstraction layer that enables JARVIS to run on multiple operating systems:
+Created a comprehensive platform abstraction layer that enables Ironcliw to run on multiple operating systems:
 
 - **`backend/platform/` module** - Abstract base classes for all platform-specific implementations
 - **Platform detector** - Runtime detection of Windows/macOS/Linux with hardware capability detection
@@ -218,7 +218,7 @@ The following features are **theoretically cross-platform** but **not fully test
 
 - ⏸️ GCP VM provisioning and management
 - ⏸️ Cloud SQL proxy startup
-- ⏸️ Trinity coordination (JARVIS-Prime + Reactor-Core on Windows)
+- ⏸️ Trinity coordination (Ironcliw-Prime + Reactor-Core on Windows)
 - ⏸️ Spot VM preemption handling
 - ⏸️ Invincible Node recovery
 
@@ -234,8 +234,8 @@ The following features are **theoretically cross-platform** but **not fully test
 
 ```powershell
 # Clone repository
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Run installation script
 powershell -ExecutionPolicy Bypass -File scripts\windows\install_windows.ps1
@@ -243,7 +243,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\install_windows.ps1
 # Activate virtual environment
 .\.venv\Scripts\Activate.ps1
 
-# Start JARVIS
+# Start Ironcliw
 python unified_supervisor.py
 ```
 
@@ -267,7 +267,7 @@ See [Setup Guide](./setup_guide.md) for detailed installation instructions.
 
 ### Environment Variables
 
-Create `.env` file in JARVIS root directory:
+Create `.env` file in Ironcliw root directory:
 
 ```bash
 # Required API keys
@@ -275,11 +275,11 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 OPENAI_API_KEY=sk-proj-your-key-here
 
 # Platform
-JARVIS_PLATFORM=windows
+Ironcliw_PLATFORM=windows
 
 # Basic settings
-JARVIS_BACKEND_PORT=8010
-JARVIS_FRONTEND_PORT=3000
+Ironcliw_BACKEND_PORT=8010
+Ironcliw_FRONTEND_PORT=3000
 LOG_LEVEL=INFO
 PYTHONIOENCODING=utf-8
 ```
@@ -428,8 +428,8 @@ See [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines.
 - [Configuration Examples](./configuration_examples.md)
 
 **Community:**
-- [GitHub Issues](https://github.com/drussell23/JARVIS/issues)
-- [GitHub Discussions](https://github.com/drussell23/JARVIS/discussions)
+- [GitHub Issues](https://github.com/drussell23/Ironcliw/issues)
+- [GitHub Discussions](https://github.com/drussell23/Ironcliw/discussions)
 - [Discord](https://discord.gg/jarvis-ai) (planned)
 
 **Reporting Issues:**
@@ -445,13 +445,13 @@ When reporting Windows-specific issues, include:
 
 ## 📜 License
 
-JARVIS is released under the same license as the original macOS version. See [LICENSE](../../LICENSE) for details.
+Ironcliw is released under the same license as the original macOS version. See [LICENSE](../../LICENSE) for details.
 
 ---
 
 ## 🙏 Acknowledgments
 
-**Original JARVIS Author:** [drussell23](https://github.com/drussell23)
+**Original Ironcliw Author:** [drussell23](https://github.com/drussell23)
 
 **Windows Port Team:**
 - Platform abstraction layer design and implementation
@@ -471,7 +471,7 @@ JARVIS is released under the same license as the original macOS version. See [LI
 - Microsoft for Windows APIs and documentation
 - NAudio project for WASAPI wrapper
 - pythonnet community for Python.NET bridge
-- JARVIS community for testing and feedback
+- Ironcliw community for testing and feedback
 
 ---
 
@@ -516,4 +516,4 @@ After installation:
 **Build:** windows-port-mvp-20260222  
 **Stability:** Beta (MVP - Minimum Viable Product)
 
-**Download:** [GitHub Releases](https://github.com/drussell23/JARVIS/releases/tag/v1.0.0-windows-mvp)
+**Download:** [GitHub Releases](https://github.com/drussell23/Ironcliw/releases/tag/v1.0.0-windows-mvp)

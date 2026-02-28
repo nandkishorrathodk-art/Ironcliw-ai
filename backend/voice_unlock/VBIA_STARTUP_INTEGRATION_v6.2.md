@@ -1,4 +1,4 @@
-# JARVIS Enhanced VBIA v6.2 - Startup Integration Guide
+﻿# Ironcliw Enhanced VBIA v6.2 - Startup Integration Guide
 
 **Version**: 6.2.0
 **Date**: 2025-12-26
@@ -10,8 +10,8 @@
 
 This document describes the complete startup integration for the Enhanced VBIA (Voice Biometric Intelligent Authentication) System v6.2 across all three repositories:
 
-1. **JARVIS (Main)** - Visual security integration and cross-repo orchestration
-2. **JARVIS Prime** - VBIA delegation and event consumption
+1. **Ironcliw (Main)** - Visual security integration and cross-repo orchestration
+2. **Ironcliw Prime** - VBIA delegation and event consumption
 3. **Reactor Core** - Event analytics and threat monitoring
 
 ---
@@ -20,7 +20,7 @@ This document describes the complete startup integration for the Enhanced VBIA (
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│  JARVIS (Main) - Enhanced VBIA v6.2                                  │
+│  Ironcliw (Main) - Enhanced VBIA v6.2                                  │
 │  ├─ Visual Security Analyzer (OmniParser/Claude Vision/OCR)         │
 │  ├─ TieredVBIAAdapter (Voice + Visual + Liveness)                   │
 │  ├─ CrossRepoStateInitializer (Event emission)                      │
@@ -30,16 +30,16 @@ This document describes the complete startup integration for the Enhanced VBIA (
 ┌──────────────────────────────────────────────────────────────────────┐
 │  ~/.jarvis/cross_repo/ (Cross-Repo Communication Hub)               │
 │  ├─ vbia_events.json (real-time event stream)                       │
-│  ├─ vbia_requests.json (Prime → JARVIS requests)                    │
-│  ├─ vbia_results.json (JARVIS → Prime results)                      │
-│  ├─ vbia_state.json (JARVIS state broadcast)                        │
-│  ├─ prime_state.json (JARVIS Prime status)                          │
+│  ├─ vbia_requests.json (Prime → Ironcliw requests)                    │
+│  ├─ vbia_results.json (Ironcliw → Prime results)                      │
+│  ├─ vbia_state.json (Ironcliw state broadcast)                        │
+│  ├─ prime_state.json (Ironcliw Prime status)                          │
 │  ├─ reactor_state.json (Reactor Core status)                        │
 │  └─ heartbeat.json (cross-repo health monitoring)                   │
 └──────────────┬───────────────────────┬──────────────────────────────┘
                ↓                        ↓
     ┌─────────────────────┐  ┌──────────────────────────┐
-    │  JARVIS Prime       │  │  Reactor Core            │
+    │  Ironcliw Prime       │  │  Reactor Core            │
     │  ├─ VBIAStartup     │  │  ├─ VBIAStartup          │
     │  ├─ Event Consumer  │  │  ├─ Event Ingestion      │
     │  └─ Delegation      │  │  ├─ Threat Analytics     │
@@ -51,7 +51,7 @@ This document describes the complete startup integration for the Enhanced VBIA (
 
 ## Files Created/Modified
 
-### 1. JARVIS (Main Repository)
+### 1. Ironcliw (Main Repository)
 
 #### Created Files
 
@@ -114,15 +114,15 @@ This document describes the complete startup integration for the Enhanced VBIA (
   - Added 6 visual security fields to `VoiceAuthReasoningState`
   - Fields: `visual_confidence`, `visual_threat_detected`, `visual_security_status`, etc.
 
-### 2. JARVIS Prime Repository
+### 2. Ironcliw Prime Repository
 
 #### Created Files
 
 **`jarvis_prime/core/vbia_startup.py`** (485 lines)
-- **Purpose**: JARVIS Prime startup integration with cross-repo VBIA system
+- **Purpose**: Ironcliw Prime startup integration with cross-repo VBIA system
 - **Features**:
   - Cross-repo state file initialization (`prime_state.json`)
-  - Event consumer for VBIA events from JARVIS
+  - Event consumer for VBIA events from Ironcliw
   - Heartbeat registration
   - Event handler registration system
   - Background tasks (heartbeat, state update, event consumption)
@@ -131,14 +131,14 @@ This document describes the complete startup integration for the Enhanced VBIA (
   ```python
   from jarvis_prime.core.vbia_startup import initialize_vbia_startup
 
-  # During JARVIS Prime startup
+  # During Ironcliw Prime startup
   success = await initialize_vbia_startup()
   if success:
       print("✅ VBIA cross-repo connection established")
   ```
 
 **`jarvis_prime/core/vbia_delegate.py`** (450 lines) - ✅ Already created in v6.2
-- **Purpose**: Voice authentication delegation to main JARVIS
+- **Purpose**: Voice authentication delegation to main Ironcliw
 - **Features**:
   - Task delegation via `~/.jarvis/cross_repo/`
   - Multi-factor security result handling
@@ -180,7 +180,7 @@ This document describes the complete startup integration for the Enhanced VBIA (
 
 ## Startup Sequence
 
-### JARVIS (Main) Startup
+### Ironcliw (Main) Startup
 
 **Location**: `run_supervisor.py` → `_initialize_agentic_security()`
 
@@ -201,7 +201,7 @@ from core.cross_repo_state_initializer import initialize_cross_repo_state
 cross_repo_success = await initialize_cross_repo_state()
 if cross_repo_success:
     logger.info("🌐 Cross-Repo State System initialized")
-    logger.info("   • JARVIS ↔ JARVIS Prime ↔ Reactor Core connected")
+    logger.info("   • Ironcliw ↔ Ironcliw Prime ↔ Reactor Core connected")
     logger.info("   • VBIA events: Real-time sharing enabled")
     logger.info("   • Visual security: Event emission ready")
 ```
@@ -211,9 +211,9 @@ if cross_repo_success:
 - Progress: 86%
 - Message: "Cross-repository communication established"
 
-### JARVIS Prime Startup
+### Ironcliw Prime Startup
 
-**Add to JARVIS Prime main entry point**:
+**Add to Ironcliw Prime main entry point**:
 
 ```python
 # jarvis_prime/main.py or equivalent startup file
@@ -313,53 +313,53 @@ if __name__ == "__main__":
 
 ## Environment Variables
 
-### JARVIS (Main)
+### Ironcliw (Main)
 
 ```bash
 # Cross-Repo State
-export JARVIS_CROSS_REPO_DIR="~/.jarvis/cross_repo"
-export JARVIS_MAX_EVENTS_PER_FILE=1000
-export JARVIS_EVENT_ROTATION=true
-export JARVIS_STATE_UPDATE_INTERVAL=5.0
-export JARVIS_HEARTBEAT_INTERVAL=10.0
-export JARVIS_HEARTBEAT_TIMEOUT=30.0
+export Ironcliw_CROSS_REPO_DIR="~/.jarvis/cross_repo"
+export Ironcliw_MAX_EVENTS_PER_FILE=1000
+export Ironcliw_EVENT_ROTATION=true
+export Ironcliw_STATE_UPDATE_INTERVAL=5.0
+export Ironcliw_HEARTBEAT_INTERVAL=10.0
+export Ironcliw_HEARTBEAT_TIMEOUT=30.0
 
 # Visual Security
-export JARVIS_VISUAL_SECURITY_ENABLED=true
-export JARVIS_VISUAL_SECURITY_MODE=auto  # auto, omniparser, claude_vision, ocr
-export JARVIS_SCREENSHOT_METHOD=screencapture
-export JARVIS_VISUAL_SECURITY_TIER2_ONLY=true
+export Ironcliw_VISUAL_SECURITY_ENABLED=true
+export Ironcliw_VISUAL_SECURITY_MODE=auto  # auto, omniparser, claude_vision, ocr
+export Ironcliw_SCREENSHOT_METHOD=screencapture
+export Ironcliw_VISUAL_SECURITY_TIER2_ONLY=true
 
 # VBIA
-export JARVIS_TIER1_VBIA_THRESHOLD=0.70
-export JARVIS_TIER2_VBIA_THRESHOLD=0.85
-export JARVIS_VBIA_CACHE_TTL=30.0
+export Ironcliw_TIER1_VBIA_THRESHOLD=0.70
+export Ironcliw_TIER2_VBIA_THRESHOLD=0.85
+export Ironcliw_VBIA_CACHE_TTL=30.0
 ```
 
-### JARVIS Prime
+### Ironcliw Prime
 
 ```bash
 # Cross-Repo Connection
-export JARVIS_CROSS_REPO_DIR="~/.jarvis/cross_repo"
+export Ironcliw_CROSS_REPO_DIR="~/.jarvis/cross_repo"
 
 # Event Consumption
-export JARVIS_PRIME_CONSUME_VBIA_EVENTS=true
-export JARVIS_PRIME_EVENT_POLL_INTERVAL=2.0
+export Ironcliw_PRIME_CONSUME_VBIA_EVENTS=true
+export Ironcliw_PRIME_EVENT_POLL_INTERVAL=2.0
 
 # Heartbeat
-export JARVIS_PRIME_HEARTBEAT_INTERVAL=10.0
-export JARVIS_PRIME_STATE_UPDATE_INTERVAL=5.0
+export Ironcliw_PRIME_HEARTBEAT_INTERVAL=10.0
+export Ironcliw_PRIME_STATE_UPDATE_INTERVAL=5.0
 
 # Capabilities
-export JARVIS_PRIME_VBIA_DELEGATION=true
-export JARVIS_PRIME_VISUAL_SECURITY_AWARE=true
+export Ironcliw_PRIME_VBIA_DELEGATION=true
+export Ironcliw_PRIME_VISUAL_SECURITY_AWARE=true
 ```
 
 ### Reactor Core
 
 ```bash
 # Cross-Repo Connection
-export JARVIS_CROSS_REPO_DIR="~/.jarvis/cross_repo"
+export Ironcliw_CROSS_REPO_DIR="~/.jarvis/cross_repo"
 
 # Event Ingestion
 export REACTOR_CORE_INGEST_VBIA_EVENTS=true
@@ -387,7 +387,7 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
 ```
 1. User: "unlock my screen" (voice command)
 
-2. JARVIS TieredVBIAAdapter:
+2. Ironcliw TieredVBIAAdapter:
    - Performs speaker verification → 92% confidence ✅
    - Performs liveness check → LIVE ✅
    - Performs visual security check:
@@ -396,7 +396,7 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
      * Detects fake lock screen (ransomware)
      * visual_threat_detected = True
 
-3. JARVIS emits event to ~/.jarvis/cross_repo/vbia_events.json:
+3. Ironcliw emits event to ~/.jarvis/cross_repo/vbia_events.json:
    {
      "event_id": "abc123",
      "event_type": "vbia_visual_threat",
@@ -410,11 +410,11 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
      }
    }
 
-4. JARVIS blocks access despite good voice match:
+4. Ironcliw blocks access despite good voice match:
    - VBIAResult.passed = False
    - Warning: "Visual security threat detected - access denied"
 
-5. JARVIS Prime (if running):
+5. Ironcliw Prime (if running):
    - Event consumer reads new event
    - Calls registered handler
    - Logs threat for delegation awareness
@@ -431,12 +431,12 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
 ```
 1. User: "unlock my screen" (voice command)
 
-2. JARVIS TieredVBIAAdapter:
+2. Ironcliw TieredVBIAAdapter:
    - Speaker verification → 93% ✅
    - Liveness check → LIVE ✅
    - Visual security check → SAFE (85% confidence) ✅
 
-3. JARVIS emits multiple events:
+3. Ironcliw emits multiple events:
 
    Event 1 - Visual Security:
    {
@@ -459,7 +459,7 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
      }
    }
 
-4. JARVIS grants access:
+4. Ironcliw grants access:
    - VBIAResult.passed = True
    - Screen unlocks
 
@@ -475,7 +475,7 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
 
 ### ~/.jarvis/cross_repo/vbia_state.json
 
-**JARVIS state broadcast**:
+**Ironcliw state broadcast**:
 ```json
 {
   "repo_type": "jarvis",
@@ -500,7 +500,7 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
 
 ### ~/.jarvis/cross_repo/prime_state.json
 
-**JARVIS Prime status**:
+**Ironcliw Prime status**:
 ```json
 {
   "repo_type": "jarvis_prime",
@@ -588,15 +588,15 @@ export REACTOR_CORE_VISUAL_THREAT_MONITORING=true
 ### 1. Manual Startup Test
 
 ```bash
-# Terminal 1 - Start JARVIS
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+# Terminal 1 - Start Ironcliw
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 
 # Expected output:
 # 🛡️ Agentic Watchdog initialized
 # 🔐 Tiered VBIA Adapter initialized
 # 🌐 Cross-Repo State System initialized
-#    • JARVIS ↔ JARVIS Prime ↔ Reactor Core connected
+#    • Ironcliw ↔ Ironcliw Prime ↔ Reactor Core connected
 #    • VBIA events: Real-time sharing enabled
 #    • Visual security: Event emission ready
 # ✓ Cross-Repo: VBIA v6.2 event sharing active
@@ -613,7 +613,7 @@ ls -la ~/.jarvis/cross_repo/
 # reactor_state.json (offline)
 # heartbeat.json
 
-# Terminal 3 - Start JARVIS Prime (if available)
+# Terminal 3 - Start Ironcliw Prime (if available)
 cd /Users/djrussell23/Documents/repos/jarvis-prime
 python3 main.py  # (assuming main.py has startup integration)
 
@@ -632,7 +632,7 @@ python3 main.py  # (assuming main.py has startup integration)
 ### 2. Event Emission Test
 
 ```python
-# In JARVIS (after startup)
+# In Ironcliw (after startup)
 from core.cross_repo_state_initializer import get_cross_repo_initializer
 from core.cross_repo_state_initializer import VBIAEvent, EventType, RepoType
 
@@ -641,7 +641,7 @@ initializer = await get_cross_repo_initializer()
 # Emit a test event
 await initializer.emit_event(VBIAEvent(
     event_type=EventType.VBIA_VISUAL_SAFE,
-    source_repo=RepoType.JARVIS,
+    source_repo=RepoType.Ironcliw,
     payload={
         "test": True,
         "message": "Test visual security event"
@@ -669,7 +669,7 @@ with open(os.path.expanduser("~/.jarvis/cross_repo/vbia_events.json")) as f:
 # 4. Emit visual security event
 # 5. Make multi-factor decision
 
-# Say: "Hey JARVIS, unlock my screen"
+# Say: "Hey Ironcliw, unlock my screen"
 # Or programmatically:
 from core.tiered_vbia_adapter import get_tiered_vbia_adapter
 
@@ -694,7 +694,7 @@ print(f"Visual security status: {result.visual_security_status}")
 - [x] TieredVBIAAdapter enhanced with visual security
 - [x] CrossRepoHub updated with VBIA event types
 - [x] run_supervisor.py integrated with cross-repo initialization
-- [x] JARVIS Prime startup integration created
+- [x] Ironcliw Prime startup integration created
 - [x] Reactor Core startup integration created
 - [x] Environment variables documented
 - [x] Event flow examples provided
@@ -723,17 +723,17 @@ mkdir -p ~/.jarvis/cross_repo
 # Check permissions
 ls -la ~/.jarvis/
 
-# Restart JARVIS
+# Restart Ironcliw
 ```
 
-### Issue: JARVIS Prime not consuming events
+### Issue: Ironcliw Prime not consuming events
 
-**Symptom**: Events emitted by JARVIS but not processed by JARVIS Prime
+**Symptom**: Events emitted by Ironcliw but not processed by Ironcliw Prime
 
 **Solution**:
-1. Check JARVIS Prime startup logs for initialization errors
+1. Check Ironcliw Prime startup logs for initialization errors
 2. Verify event file exists: `cat ~/.jarvis/cross_repo/vbia_events.json`
-3. Check environment variable: `echo $JARVIS_PRIME_CONSUME_VBIA_EVENTS`
+3. Check environment variable: `echo $Ironcliw_PRIME_CONSUME_VBIA_EVENTS`
 4. Ensure event consumer task is running (check logs for "Event consumer loop started")
 
 ### Issue: Visual security disabled
@@ -743,12 +743,12 @@ ls -la ~/.jarvis/
 **Solution**:
 ```bash
 # Check environment variable
-echo $JARVIS_VISUAL_SECURITY_ENABLED
+echo $Ironcliw_VISUAL_SECURITY_ENABLED
 
 # Enable visual security
-export JARVIS_VISUAL_SECURITY_ENABLED=true
+export Ironcliw_VISUAL_SECURITY_ENABLED=true
 
-# Restart JARVIS
+# Restart Ironcliw
 ```
 
 ### Issue: Heartbeat timeouts
@@ -757,8 +757,8 @@ export JARVIS_VISUAL_SECURITY_ENABLED=true
 
 **Solution**:
 1. Check if repos are actually running
-2. Verify heartbeat interval: `echo $JARVIS_HEARTBEAT_INTERVAL`
-3. Increase timeout if needed: `export JARVIS_HEARTBEAT_TIMEOUT=60.0`
+2. Verify heartbeat interval: `echo $Ironcliw_HEARTBEAT_INTERVAL`
+3. Increase timeout if needed: `export Ironcliw_HEARTBEAT_TIMEOUT=60.0`
 4. Check disk space: `df -h ~/.jarvis/`
 
 ---
@@ -783,7 +783,7 @@ export JARVIS_VISUAL_SECURITY_ENABLED=true
 | CrossRepoStateInitializer | ~15 MB |
 | VisualSecurityAnalyzer | ~50 MB (OmniParser loaded) |
 | TieredVBIAAdapter | ~10 MB |
-| JARVIS Prime VBIAStartup | ~8 MB |
+| Ironcliw Prime VBIAStartup | ~8 MB |
 | Reactor Core VBIAStartup | ~12 MB |
 
 ---
@@ -794,7 +794,7 @@ The Enhanced VBIA v6.2 Startup Integration provides a **robust, advanced, async,
 
 **Key Features**:
 - ✅ Visual security integration (OmniParser/Claude Vision/OCR)
-- ✅ Cross-repo event sharing (JARVIS ↔ Prime ↔ Reactor Core)
+- ✅ Cross-repo event sharing (Ironcliw ↔ Prime ↔ Reactor Core)
 - ✅ Real-time threat monitoring and analytics
 - ✅ Multi-factor authentication (Voice + Liveness + Visual)
 - ✅ Environment-driven configuration (no hardcoding)

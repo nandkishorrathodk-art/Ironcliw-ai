@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test v198.2: Trinity Timeout Synchronization Fix
 
@@ -137,19 +137,19 @@ def test_dms_timeout_exceeds_component_timeout():
 
 
 def test_explicit_timeout_override():
-    """Test that explicit JARVIS_TRINITY_TIMEOUT overrides calculated value."""
+    """Test that explicit Ironcliw_TRINITY_TIMEOUT overrides calculated value."""
     print("\n=== Test 5: Explicit Timeout Override ===")
 
     try:
         # Set explicit timeout
         explicit_timeout = "900.0"  # 15 minutes
 
-        # In the actual code, if JARVIS_TRINITY_TIMEOUT is set, it takes precedence
+        # In the actual code, if Ironcliw_TRINITY_TIMEOUT is set, it takes precedence
         effective_timeout = float(explicit_timeout)
         assert effective_timeout == 900.0, \
             f"Explicit timeout should be 900.0, got {effective_timeout}"
 
-        print(f"✓ Explicit timeout override: JARVIS_TRINITY_TIMEOUT={effective_timeout}s")
+        print(f"✓ Explicit timeout override: Ironcliw_TRINITY_TIMEOUT={effective_timeout}s")
         print("=== Test 5: PASSED ===\n")
         return True
 

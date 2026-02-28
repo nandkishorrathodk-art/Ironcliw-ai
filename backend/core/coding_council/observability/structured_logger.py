@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Structured Logger - Gap #28
 ===================================
 
@@ -9,7 +9,7 @@ Structured logging with rich context:
 - Async-safe logging
 - Log rotation and retention
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

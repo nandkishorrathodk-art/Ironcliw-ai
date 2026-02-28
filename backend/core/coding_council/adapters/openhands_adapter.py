@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: OpenHands Framework Adapter
 ==================================
 
@@ -16,7 +16,7 @@ Installation:
     git clone https://github.com/All-Hands-AI/OpenHands
     pip install -e ./OpenHands
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 Version: 1.0.0
 """
 

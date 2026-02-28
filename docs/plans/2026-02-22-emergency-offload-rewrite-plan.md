@@ -1,4 +1,4 @@
-# Emergency Offload Path Rewrite — Implementation Plan
+﻿# Emergency Offload Path Rewrite — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -427,7 +427,7 @@ Replace the entire method `_check_emergency_offload_release` (lines 1604-1700) w
             self.logger.critical(
                 f"[v266.1] LAST RESORT: RAM at {current_used_percent:.1f}% "
                 f"(>={EMERGENCY_SIGSTOP_RAM_PERCENT}%) after unload + GCP failed. "
-                f"One-shot SIGSTOP on JARVIS-owned PIDs."
+                f"One-shot SIGSTOP on Ironcliw-owned PIDs."
             )
             self._sigstop_active = True
             paused_count = await self._pause_local_llm_processes()
@@ -508,7 +508,7 @@ EOF
 
 ---
 
-### Task 6: Scope SIGSTOP to JARVIS-Owned PIDs First
+### Task 6: Scope SIGSTOP to Ironcliw-Owned PIDs First
 
 **Files:**
 - Modify: `backend/core/gcp_hybrid_prime_router.py:1510-1574` (`_pause_local_llm_processes`)
@@ -522,7 +522,7 @@ Replace the entire method (lines 1510-1574) with:
         """v266.1: Pause local LLM processes via SIGSTOP (last resort only).
 
         Priority order:
-        1. JARVIS-owned tracked PIDs (_local_llm_pids) — always preferred
+        1. Ironcliw-owned tracked PIDs (_local_llm_pids) — always preferred
         2. ProcessIsolatedMLLoader PIDs — if available
         3. Pattern-based scan — fallback only when no tracked PIDs found
 
@@ -534,10 +534,10 @@ Replace the entire method (lines 1510-1574) with:
         try:
             import psutil
 
-            # Priority 1: Use tracked JARVIS-owned PIDs
+            # Priority 1: Use tracked Ironcliw-owned PIDs
             if self._local_llm_pids:
                 self.logger.info(
-                    f"[v266.1] SIGSTOP targeting {len(self._local_llm_pids)} tracked JARVIS PID(s)"
+                    f"[v266.1] SIGSTOP targeting {len(self._local_llm_pids)} tracked Ironcliw PID(s)"
                 )
                 for pid in list(self._local_llm_pids):
                     if pid not in self._paused_processes and self._pause_process(pid, "tracked_llm"):
@@ -612,7 +612,7 @@ Expected: `OK`
 ```bash
 git add backend/core/gcp_hybrid_prime_router.py
 git commit -m "$(cat <<'EOF'
-feat(router): scope SIGSTOP to JARVIS-owned PIDs first
+feat(router): scope SIGSTOP to Ironcliw-owned PIDs first
 
 Prioritizes tracked PIDs (_local_llm_pids) over pattern-based
 scanning. Pattern scan is now fallback only when no tracked PIDs

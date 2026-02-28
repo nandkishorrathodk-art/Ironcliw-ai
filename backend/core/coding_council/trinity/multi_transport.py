@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Multi-Transport Communication - Gap #1
 ==============================================
 
@@ -15,7 +15,7 @@ Features:
 - Priority-based transport selection
 - v193.1: Fast-reconnect during startup (retries every 2s for 30s)
 
-Author: JARVIS v77.0, v193.1
+Author: Ironcliw v77.0, v193.1
 """
 
 from __future__ import annotations
@@ -215,7 +215,7 @@ class RedisTransport(BaseTransport):
         try:
             self._client = redis.from_url(self.url, decode_responses=True)
             # v253.7: Added timeout to ping() — can hang if Redis is partially reachable
-            _redis_timeout = float(os.getenv("JARVIS_CC_REDIS_CONNECT_TIMEOUT", "5"))
+            _redis_timeout = float(os.getenv("Ironcliw_CC_REDIS_CONNECT_TIMEOUT", "5"))
             await asyncio.wait_for(self._client.ping(), timeout=_redis_timeout)
             self._pubsub = self._client.pubsub()
             self._connected = True

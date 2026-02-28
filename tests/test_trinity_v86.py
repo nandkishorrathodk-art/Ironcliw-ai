@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity v86.0 Enhancement Tests
 ==============================
 
@@ -565,7 +565,7 @@ class TestIntegration:
         """Test full startup sequence with all v86.0 features."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Setup
-            os.environ["JARVIS_STATE_DIR"] = tmpdir
+            os.environ["Ironcliw_STATE_DIR"] = tmpdir
 
             # Get coordinator
             coord = await UnifiedStateCoordinator.get_instance()
@@ -595,7 +595,7 @@ class TestIntegration:
             assert decision.reason != "Missing dependencies"
 
             # Cleanup
-            del os.environ["JARVIS_STATE_DIR"]
+            del os.environ["Ironcliw_STATE_DIR"]
 
 
 if __name__ == "__main__":

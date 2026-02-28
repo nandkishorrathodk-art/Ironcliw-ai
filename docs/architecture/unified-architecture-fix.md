@@ -1,4 +1,4 @@
-# Unified Architecture Fix - Root Cause Solutions
+﻿# Unified Architecture Fix - Root Cause Solutions
 
 ## Problems Fixed
 
@@ -97,7 +97,7 @@ python main.py  # Runs on port 8000 by default
 2. Check WebSocket:
 ```bash
 curl http://localhost:8000/
-# Should show JARVIS API running
+# Should show Ironcliw API running
 ```
 
 3. Frontend automatically connects to correct port

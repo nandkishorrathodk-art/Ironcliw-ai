@@ -1,4 +1,4 @@
-"""
+﻿"""
 Correlation Context for Cross-Repo Request Tracing
 ==================================================
 
@@ -12,7 +12,7 @@ Features:
     - Integration with file-based RPC and Redis pub/sub
     - Structured logging support
 
-Author: JARVIS Cross-Repo Resilience
+Author: Ironcliw Cross-Repo Resilience
 """
 
 from __future__ import annotations

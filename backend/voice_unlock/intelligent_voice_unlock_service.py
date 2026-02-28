@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligent Voice Unlock Service
 =================================
 
@@ -10,7 +10,7 @@ Advanced voice-authenticated screen unlock with:
 - SAI (Scenario-Aware Intelligence) integration
 - Owner profile detection and password management
 
-JARVIS learns the owner's voice over time and automatically rejects
+Ironcliw learns the owner's voice over time and automatically rejects
 non-owner unlock attempts without hardcoding.
 
 PERFORMANCE OPTIMIZATIONS (v2.0):
@@ -78,28 +78,28 @@ def _get_timeout(env_var: str, default: float) -> float:
         return default
 
 # Core timeouts - INCREASED for model warmup scenarios
-TOTAL_UNLOCK_TIMEOUT = _get_timeout("JARVIS_UNLOCK_TOTAL_TIMEOUT", 35.0)
-TRANSCRIPTION_TIMEOUT = _get_timeout("JARVIS_TRANSCRIPTION_TIMEOUT", 20.0)  # Increased from 10s
-SPEAKER_ID_TIMEOUT = _get_timeout("JARVIS_SPEAKER_ID_TIMEOUT", 15.0)  # Increased from 8s
-BIOMETRIC_TIMEOUT = _get_timeout("JARVIS_BIOMETRIC_TIMEOUT", 15.0)  # Increased from 10s
+TOTAL_UNLOCK_TIMEOUT = _get_timeout("Ironcliw_UNLOCK_TOTAL_TIMEOUT", 35.0)
+TRANSCRIPTION_TIMEOUT = _get_timeout("Ironcliw_TRANSCRIPTION_TIMEOUT", 20.0)  # Increased from 10s
+SPEAKER_ID_TIMEOUT = _get_timeout("Ironcliw_SPEAKER_ID_TIMEOUT", 15.0)  # Increased from 8s
+BIOMETRIC_TIMEOUT = _get_timeout("Ironcliw_BIOMETRIC_TIMEOUT", 15.0)  # Increased from 10s
 
 # Quick operation timeouts
-HALLUCINATION_CHECK_TIMEOUT = _get_timeout("JARVIS_HALLUCINATION_TIMEOUT", 3.0)
-INTENT_VERIFY_TIMEOUT = _get_timeout("JARVIS_INTENT_TIMEOUT", 2.0)
-OWNER_CHECK_TIMEOUT = _get_timeout("JARVIS_OWNER_CHECK_TIMEOUT", 3.0)
-VAD_PREPROCESS_TIMEOUT = _get_timeout("JARVIS_VAD_TIMEOUT", 5.0)
+HALLUCINATION_CHECK_TIMEOUT = _get_timeout("Ironcliw_HALLUCINATION_TIMEOUT", 3.0)
+INTENT_VERIFY_TIMEOUT = _get_timeout("Ironcliw_INTENT_TIMEOUT", 2.0)
+OWNER_CHECK_TIMEOUT = _get_timeout("Ironcliw_OWNER_CHECK_TIMEOUT", 3.0)
+VAD_PREPROCESS_TIMEOUT = _get_timeout("Ironcliw_VAD_TIMEOUT", 5.0)
 
 # Additional timeout constants for complete coverage
-SECURITY_ANALYSIS_TIMEOUT = _get_timeout("JARVIS_SECURITY_ANALYSIS_TIMEOUT", 5.0)
-SECURITY_RESPONSE_TIMEOUT = _get_timeout("JARVIS_SECURITY_RESPONSE_TIMEOUT", 3.0)
-FAILURE_ANALYSIS_TIMEOUT = _get_timeout("JARVIS_FAILURE_ANALYSIS_TIMEOUT", 5.0)
-RECORD_ATTEMPT_TIMEOUT = _get_timeout("JARVIS_RECORD_ATTEMPT_TIMEOUT", 3.0)
-PERFORM_UNLOCK_TIMEOUT = _get_timeout("JARVIS_PERFORM_UNLOCK_TIMEOUT", 20.0)
-CONTEXT_ANALYSIS_TIMEOUT = _get_timeout("JARVIS_CONTEXT_ANALYSIS_TIMEOUT", 8.0)
-PROFILE_UPDATE_TIMEOUT = _get_timeout("JARVIS_PROFILE_UPDATE_TIMEOUT", 3.0)
+SECURITY_ANALYSIS_TIMEOUT = _get_timeout("Ironcliw_SECURITY_ANALYSIS_TIMEOUT", 5.0)
+SECURITY_RESPONSE_TIMEOUT = _get_timeout("Ironcliw_SECURITY_RESPONSE_TIMEOUT", 3.0)
+FAILURE_ANALYSIS_TIMEOUT = _get_timeout("Ironcliw_FAILURE_ANALYSIS_TIMEOUT", 5.0)
+RECORD_ATTEMPT_TIMEOUT = _get_timeout("Ironcliw_RECORD_ATTEMPT_TIMEOUT", 3.0)
+PERFORM_UNLOCK_TIMEOUT = _get_timeout("Ironcliw_PERFORM_UNLOCK_TIMEOUT", 20.0)
+CONTEXT_ANALYSIS_TIMEOUT = _get_timeout("Ironcliw_CONTEXT_ANALYSIS_TIMEOUT", 8.0)
+PROFILE_UPDATE_TIMEOUT = _get_timeout("Ironcliw_PROFILE_UPDATE_TIMEOUT", 3.0)
 
 # Dynamic timeout multiplier for cold start scenarios
-COLD_START_TIMEOUT_MULTIPLIER = _get_timeout("JARVIS_COLD_START_MULTIPLIER", 2.0)
+COLD_START_TIMEOUT_MULTIPLIER = _get_timeout("Ironcliw_COLD_START_MULTIPLIER", 2.0)
 
 # Track model warmup state for adaptive timeouts
 _models_warmed_up = False
@@ -494,7 +494,7 @@ class ProgressiveConfidenceMessenger:
     """
     Generates personalized, context-aware authentication messages.
 
-    Based on JARVIS Enhancement Strategy for voice realism:
+    Based on Ironcliw Enhancement Strategy for voice realism:
     - High Confidence (>90%): Natural, confident tone
     - Good Confidence (85-90%): Slight acknowledgment
     - Borderline (80-85%): Shows brief verification process
@@ -888,7 +888,7 @@ class IntelligentVoiceUnlockService:
 
             # 🎯 CONTINUOUS LEARNING: Set up database recorder callback
             # This allows the cache to record ALL authentication attempts to SQLite
-            # so JARVIS can continuously improve voice recognition
+            # so Ironcliw can continuously improve voice recognition
             try:
                 metrics_db = MetricsDatabase()
                 self.voice_biometric_cache.set_voice_sample_recorder(
@@ -1068,10 +1068,9 @@ class IntelligentVoiceUnlockService:
     async def _initialize_learning_db(self):
         """Initialize Learning Database"""
         try:
-            from intelligence.learning_database import JARVISLearningDatabase
+            from intelligence.learning_database import get_learning_database
 
-            self.learning_db = JARVISLearningDatabase()
-            await self.learning_db.initialize()
+            self.learning_db = await get_learning_database()
             logger.info("✅ Learning Database connected")
         except Exception as e:
             logger.error(f"Failed to initialize Learning Database: {e}")
@@ -1343,7 +1342,7 @@ class IntelligentVoiceUnlockService:
                 if registry_status.get("cloud_mode") and not registry_status.get("cloud_verified"):
                     return (
                         "Cloud mode is active but cloud backend is not reachable. "
-                        "Check network connectivity or set JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED=true "
+                        "Check network connectivity or set Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED=true "
                         "to allow local ECAPA fallback."
                     )
                 if registry_status.get("local_error"):
@@ -1513,9 +1512,9 @@ class IntelligentVoiceUnlockService:
                 return False
 
             # Check if cloud is configured
-            cloud_endpoint = os.getenv("JARVIS_CLOUD_ML_ENDPOINT")
+            cloud_endpoint = os.getenv("Ironcliw_CLOUD_ML_ENDPOINT")
             if not cloud_endpoint:
-                logger.debug("   Cloud ECAPA not configured (JARVIS_CLOUD_ML_ENDPOINT not set)")
+                logger.debug("   Cloud ECAPA not configured (Ironcliw_CLOUD_ML_ENDPOINT not set)")
                 return False
 
             # Verify cloud ECAPA with extraction test
@@ -3386,9 +3385,9 @@ class IntelligentVoiceUnlockService:
                 # Get metrics for debugging
                 metrics = keychain_service.get_metrics()
                 logger.error("Password not found in keychain")
-                logger.error("Tried services: com.jarvis.voiceunlock, jarvis_voice_unlock, JARVIS_Screen_Unlock")
+                logger.error("Tried services: com.jarvis.voiceunlock, jarvis_voice_unlock, Ironcliw_Screen_Unlock")
                 logger.error(f"Keychain metrics: lookups={metrics['total_lookups']}, failures={metrics['failures']}")
-                logger.error("Run: ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/fix_keychain_password.sh")
+                logger.error("Run: ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock/fix_keychain_password.sh")
                 return {
                     "success": False,
                     "reason": "password_not_found",
@@ -3987,7 +3986,7 @@ class RobustUnlockConfig:
     Configuration for robust unlock with environment overrides.
 
     🆕 EDGE-NATIVE MODE:
-    When JARVIS_EDGE_NATIVE_MODE=true (default):
+    When Ironcliw_EDGE_NATIVE_MODE=true (default):
     - ALL processing happens locally (no cloud calls in critical path)
     - Local ECAPA via SpeechBrain/Neural Engine is primary
     - Cloud is async-only backup (never blocks unlock)
@@ -3997,40 +3996,40 @@ class RobustUnlockConfig:
     # 🆕 EDGE-NATIVE SETTINGS
     # ========================================================================
     # Master switch for Edge-Native mode
-    EDGE_NATIVE_MODE = os.environ.get("JARVIS_EDGE_NATIVE_MODE", "true").lower() == "true"
+    EDGE_NATIVE_MODE = os.environ.get("Ironcliw_EDGE_NATIVE_MODE", "true").lower() == "true"
     # Force local-only ECAPA (no cloud in critical path)
-    LOCAL_ECAPA_ONLY = os.environ.get("JARVIS_LOCAL_ECAPA_ONLY", "true").lower() == "true"
+    LOCAL_ECAPA_ONLY = os.environ.get("Ironcliw_LOCAL_ECAPA_ONLY", "true").lower() == "true"
     # Allow cloud fallback ONLY when local fails (default: disabled)
-    CLOUD_FALLBACK_ENABLED = os.environ.get("JARVIS_CLOUD_FALLBACK", "false").lower() == "true"
+    CLOUD_FALLBACK_ENABLED = os.environ.get("Ironcliw_CLOUD_FALLBACK", "false").lower() == "true"
     # Prioritize Apple Neural Engine for inference
-    NEURAL_ENGINE_PRIORITY = os.environ.get("JARVIS_NEURAL_ENGINE_PRIORITY", "true").lower() == "true"
+    NEURAL_ENGINE_PRIORITY = os.environ.get("Ironcliw_NEURAL_ENGINE_PRIORITY", "true").lower() == "true"
 
     # ========================================================================
     # TIMEOUT CONFIGURATION (optimized for fast unlock)
     # ========================================================================
     # Total timeout for entire unlock operation (increased for reliability)
-    MAX_TOTAL_TIMEOUT = float(os.environ.get("JARVIS_ROBUST_MAX_TIMEOUT", "45.0"))
+    MAX_TOTAL_TIMEOUT = float(os.environ.get("Ironcliw_ROBUST_MAX_TIMEOUT", "45.0"))
     # Audio decode: base64 decode + FFmpeg conversion
-    AUDIO_DECODE_TIMEOUT = float(os.environ.get("JARVIS_ROBUST_AUDIO_TIMEOUT", "10.0"))
+    AUDIO_DECODE_TIMEOUT = float(os.environ.get("Ironcliw_ROBUST_AUDIO_TIMEOUT", "10.0"))
     # Profile load from SQLite (fast in edge-native mode)
-    PROFILE_LOAD_TIMEOUT = float(os.environ.get("JARVIS_ROBUST_PROFILE_TIMEOUT", "2.0"))
+    PROFILE_LOAD_TIMEOUT = float(os.environ.get("Ironcliw_ROBUST_PROFILE_TIMEOUT", "2.0"))
     # ECAPA embedding extraction (local-first in edge-native mode)
-    ECAPA_EXTRACT_TIMEOUT = float(os.environ.get("JARVIS_ROBUST_ECAPA_TIMEOUT", "10.0"))
+    ECAPA_EXTRACT_TIMEOUT = float(os.environ.get("Ironcliw_ROBUST_ECAPA_TIMEOUT", "10.0"))
     # Unlock execution (typing + verification)
-    UNLOCK_EXECUTE_TIMEOUT = float(os.environ.get("JARVIS_ROBUST_UNLOCK_TIMEOUT", "15.0"))
+    UNLOCK_EXECUTE_TIMEOUT = float(os.environ.get("Ironcliw_ROBUST_UNLOCK_TIMEOUT", "15.0"))
 
     # ========================================================================
     # VERIFICATION SETTINGS
     # ========================================================================
     # Minimum cosine similarity to verify speaker
-    CONFIDENCE_THRESHOLD = float(os.environ.get("JARVIS_ROBUST_THRESHOLD", "0.40"))
+    CONFIDENCE_THRESHOLD = float(os.environ.get("Ironcliw_ROBUST_THRESHOLD", "0.40"))
 
     # ========================================================================
     # DATABASE CONFIGURATION
     # ========================================================================
     # Path to learning database with voiceprints (local SQLite)
     LEARNING_DB_PATH = os.path.expanduser(
-        os.environ.get("JARVIS_LOCAL_DB_PATH", "~/.jarvis/learning/jarvis_learning.db")
+        os.environ.get("Ironcliw_LOCAL_DB_PATH", "~/.jarvis/learning/jarvis_learning.db")
     )
 
     @classmethod
@@ -4242,7 +4241,7 @@ async def _get_time_optimized_embedding(base_embedding: List[float], speaker_nam
     """
     Enhance the base embedding with time-of-day optimizations from the learning engine.
 
-    This is how JARVIS gets SMARTER over time - by using learned temporal patterns
+    This is how Ironcliw gets SMARTER over time - by using learned temporal patterns
     (morning voice, evening voice, etc.) to improve verification accuracy.
 
     Args:
@@ -4612,9 +4611,9 @@ async def _extract_ecapa_robust(audio_bytes: bytes) -> Optional[List[float]]:
     # ========================================================================
 
     # Get Edge-Native config
-    edge_native_enabled = os.environ.get('JARVIS_EDGE_NATIVE_MODE', 'true').lower() == 'true'
-    local_ecapa_only = os.environ.get('JARVIS_LOCAL_ECAPA_ONLY', 'true').lower() == 'true'
-    cloud_fallback_enabled = os.environ.get('JARVIS_CLOUD_FALLBACK', 'false').lower() == 'true'
+    edge_native_enabled = os.environ.get('Ironcliw_EDGE_NATIVE_MODE', 'true').lower() == 'true'
+    local_ecapa_only = os.environ.get('Ironcliw_LOCAL_ECAPA_ONLY', 'true').lower() == 'true'
+    cloud_fallback_enabled = os.environ.get('Ironcliw_CLOUD_FALLBACK', 'false').lower() == 'true'
 
     # ========================================================================
     # v265.4: CPU-PRESSURE-AWARE HYBRID ROUTING
@@ -4855,7 +4854,7 @@ async def _extract_ecapa_robust(audio_bytes: bytes) -> Optional[List[float]]:
     # STRATEGY 3: Cloud ECAPA (ONLY if fallback enabled)
     # ========================================================================
     # In Edge-Native mode, cloud is DISABLED by default
-    # Only used if JARVIS_CLOUD_FALLBACK=true AND all local strategies failed
+    # Only used if Ironcliw_CLOUD_FALLBACK=true AND all local strategies failed
     # ========================================================================
     if not local_ecapa_only and cloud_fallback_enabled:
         try:
@@ -5315,9 +5314,9 @@ async def _decode_audio_robust(audio_base64: str, mime_type: str = "audio/webm")
                 # TimecodeScale = 1000000 (1ms)
                 0x2A, 0xD7, 0xB1, 0x83, 0x0F, 0x42, 0x40,
                 # MuxingApp
-                0x4D, 0x80, 0x8A, 0x4A, 0x41, 0x52, 0x56, 0x49, 0x53, 0x2D, 0x41, 0x49,  # "JARVIS-AI"
+                0x4D, 0x80, 0x8A, 0x4A, 0x41, 0x52, 0x56, 0x49, 0x53, 0x2D, 0x41, 0x49,  # "Ironcliw-AI"
                 # WritingApp
-                0x57, 0x41, 0x8A, 0x4A, 0x41, 0x52, 0x56, 0x49, 0x53, 0x2D, 0x41, 0x49,  # "JARVIS-AI"
+                0x57, 0x41, 0x8A, 0x4A, 0x41, 0x52, 0x56, 0x49, 0x53, 0x2D, 0x41, 0x49,  # "Ironcliw-AI"
             ])
 
             # Tracks element (declares our audio track)
@@ -5993,14 +5992,14 @@ async def _execute_unlock_robust(
         # Simple, clean AppleScript - just type and submit
         password_script = '''
         tell application "System Events"
-            keystroke (system attribute "JARVIS_UNLOCK_PWD")
+            keystroke (system attribute "Ironcliw_UNLOCK_PWD")
             delay 0.1
             key code 36
         end tell
         '''
 
         env = os.environ.copy()
-        env["JARVIS_UNLOCK_PWD"] = password
+        env["Ironcliw_UNLOCK_PWD"] = password
 
         type_proc = await asyncio.create_subprocess_exec(
             "osascript", "-e", password_script,
@@ -6011,7 +6010,7 @@ async def _execute_unlock_robust(
         await asyncio.wait_for(type_proc.wait(), timeout=10.0)
 
         # Don't keep password in memory
-        del env["JARVIS_UNLOCK_PWD"]
+        del env["Ironcliw_UNLOCK_PWD"]
         password = None
 
         logger.info("[UNLOCK] Password submitted")
@@ -6142,7 +6141,7 @@ async def _execute_unlock_applescript_fallback(
             delay 0.2
 
             -- Type the password from environment variable (secure - not in process list)
-            keystroke (system attribute "JARVIS_SECURE_PASS")
+            keystroke (system attribute "Ironcliw_SECURE_PASS")
             delay 0.2
 
             -- Press Enter/Return to submit
@@ -6154,7 +6153,7 @@ async def _execute_unlock_applescript_fallback(
 
         # Set password in environment (more secure than command line)
         env = os.environ.copy()
-        env["JARVIS_SECURE_PASS"] = password
+        env["Ironcliw_SECURE_PASS"] = password
 
         process = await asyncio.create_subprocess_exec(
             "osascript", "-e", type_script,
@@ -6167,7 +6166,7 @@ async def _execute_unlock_applescript_fallback(
 
         # Clear password from environment immediately
         try:
-            del env["JARVIS_SECURE_PASS"]
+            del env["Ironcliw_SECURE_PASS"]
         except Exception:
             pass
 
@@ -6208,7 +6207,7 @@ async def _generate_already_unlocked_response(speaker_name: str) -> str:
     """
     Generate a context-aware, personalized response when screen is already unlocked.
 
-    This creates natural, varied responses that make JARVIS feel self-aware
+    This creates natural, varied responses that make Ironcliw feel self-aware
     and intelligent rather than robotic.
 
     Args:
@@ -6323,7 +6322,7 @@ async def process_voice_unlock_robust(
             voice = None
 
     # =========================================================================
-    # 🔇 SELF-VOICE SUPPRESSION v2.0 - Prevent JARVIS from hearing its own voice
+    # 🔇 SELF-VOICE SUPPRESSION v2.0 - Prevent Ironcliw from hearing its own voice
     # =========================================================================
     # Uses UnifiedSpeechStateManager for accurate cross-system state tracking.
     # Checks: currently speaking, cooldown period, and text similarity.
@@ -6358,7 +6357,7 @@ async def process_voice_unlock_robust(
     except ImportError:
         # Fallback to legacy check if unified manager not available
         if voice and voice.is_speaking:
-            logger.warning("🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio - JARVIS is currently speaking")
+            logger.warning("🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio - Ironcliw is currently speaking")
             return {
                 "success": False,
                 "response": None,
@@ -6482,7 +6481,7 @@ async def process_voice_unlock_robust(
             # =========================================================================
             # 0. ACTIVE LEARNING - Update voice profile with new sample
             # =========================================================================
-            # This is the KEY to JARVIS getting smarter over time!
+            # This is the KEY to Ironcliw getting smarter over time!
             # The learning engine fuses new embeddings into the profile using ML
             # =========================================================================
             if success and embedding is not None:
@@ -6587,11 +6586,10 @@ async def process_voice_unlock_robust(
             # =========================================================================
             # Only save audio for SUCCESSFUL high-confidence attempts
             if success and confidence >= 0.80 and audio_bytes:
-                from intelligence.learning_database import JARVISLearningDatabase
+                from intelligence.learning_database import get_learning_database
                 import base64
 
-                db = JARVISLearningDatabase()
-                await db.initialize()
+                db = await get_learning_database()
 
                 sample_id = f"vbi_unlock_{attempt_id}"
 
@@ -6885,7 +6883,7 @@ async def process_voice_unlock_robust(
             # =========================================================================
             # 🧠 TIME-OPTIMIZED VERIFICATION - Use learned temporal patterns
             # =========================================================================
-            # This is how JARVIS gets SMARTER - by using time-of-day voice patterns
+            # This is how Ironcliw gets SMARTER - by using time-of-day voice patterns
             # learned from previous successful authentications
             # =========================================================================
             try:

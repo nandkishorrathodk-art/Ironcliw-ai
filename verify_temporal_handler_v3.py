@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Verification Script for TemporalQueryHandler v3.0
 
@@ -41,7 +41,7 @@ def main():
     """Run verification checks"""
 
     print("=" * 70)
-    print("JARVIS v3.0 - TemporalQueryHandler Verification")
+    print("Ironcliw v3.0 - TemporalQueryHandler Verification")
     print("=" * 70)
     print()
 

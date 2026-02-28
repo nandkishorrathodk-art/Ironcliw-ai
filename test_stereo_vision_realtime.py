@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS INFINITE EYES - N Optic Nerves Stereoscopic Vision Test
+Ironcliw INFINITE EYES - N Optic Nerves Stereoscopic Vision Test
 ==============================================================
 
-This proves JARVIS has SCALABLE omnipresence - not just "2 eyes" but
+This proves Ironcliw has SCALABLE omnipresence - not just "2 eyes" but
 as many optic nerves as there are windows across ALL desktop spaces.
 
 What This Proves:
-1. Auto-Discovery - JARVIS finds ALL bouncing ball windows on his own
+1. Auto-Discovery - Ironcliw finds ALL bouncing ball windows on his own
 2. Auto-Identification - He READS the screen to determine VERTICAL vs HORIZONTAL
 3. N Optic Nerves - Handles 2, 5, 10, or unlimited windows simultaneously
 4. True Omnipresence - Monitors ALL spaces in parallel with voice narration
@@ -20,7 +20,7 @@ How It Works:
 - Streams bounce counts from ALL windows simultaneously
 - Announces discoveries in real-time with Daniel's voice
 
-Success = JARVIS correctly identifies and monitors ALL windows without
+Success = Ironcliw correctly identifies and monitors ALL windows without
          being told which is which or where they are.
 """
 
@@ -62,8 +62,8 @@ HORIZONTAL_PATTERN = re.compile(r"HORIZONTAL", re.IGNORECASE)
 
 
 async def jarvis_speak(message: str, blocking: bool = False):
-    """JARVIS speaks with Daniel's British voice"""
-    print(f"🗣️  JARVIS: {message}")
+    """Ironcliw speaks with Daniel's British voice"""
+    print(f"🗣️  Ironcliw: {message}")
     try:
         proc = await asyncio.create_subprocess_exec(
             "say", "-v", "Daniel", "-r", "200", message,
@@ -81,7 +81,7 @@ async def test_infinite_eyes():
     The Ultimate Test: N Optic Nerves with Full Auto-Discovery
     """
     print("\n" + "="*80)
-    print("🕶️  JARVIS INFINITE EYES - N OPTIC NERVES TEST")
+    print("🕶️  Ironcliw INFINITE EYES - N OPTIC NERVES TEST")
     print("   Scalable Omnipresent Multi-Space Vision")
     print("="*80)
     print()
@@ -104,7 +104,7 @@ async def test_infinite_eyes():
     print("  - Or 5 windows (mix of vertical and horizontal)")
     print("  - Or 10+ windows across different spaces")
     print()
-    print("JARVIS will:")
+    print("Ironcliw will:")
     print("  1. Find ALL windows automatically")
     print("  2. Read the screen to identify which is which")
     print("  3. Spawn N Ferrari Engines (one per window)")
@@ -112,7 +112,7 @@ async def test_infinite_eyes():
     print("-" * 80)
     print()
 
-    input("👉 Press ENTER when windows are open. JARVIS will find them... ")
+    input("👉 Press ENTER when windows are open. Ironcliw will find them... ")
 
     print()
     await jarvis_speak("Beginning omnipresent workspace scan.", blocking=True)
@@ -389,7 +389,7 @@ async def test_infinite_eyes():
         )
 
         print()
-        print("🧠 IF JARVIS AUTO-DISCOVERED AND MONITORED ALL WINDOWS:")
+        print("🧠 IF Ironcliw AUTO-DISCOVERED AND MONITORED ALL WINDOWS:")
         print("   ✅ Auto-Discovery: PROVEN")
         print("   ✅ Auto-Identification: PROVEN")
         print(f"   ✅ N Optic Nerves ({len(eyes)} simultaneous): PROVEN")

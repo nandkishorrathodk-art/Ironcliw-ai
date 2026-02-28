@@ -1,4 +1,4 @@
-"""
+﻿"""
 Progressive Feedback Generator - Nuanced Confidence-Based Communication.
 =========================================================================
 
@@ -22,7 +22,7 @@ Per CLAUDE.md:
     Low (75-80%): "Having trouble hearing clearly..."
     Failed (<75%): "I'm not able to verify your voice right now..."
 
-Author: JARVIS Trinity v81.0 - Progressive Feedback Intelligence
+Author: Ironcliw Trinity v81.0 - Progressive Feedback Intelligence
 """
 
 from __future__ import annotations

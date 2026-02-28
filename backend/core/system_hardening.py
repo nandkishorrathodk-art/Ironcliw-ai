@@ -1,8 +1,8 @@
-"""
+﻿"""
 System Hardening v3.0 - Enterprise-Grade Infrastructure Protection
 ===================================================================
 
-Provides critical system hardening features for the JARVIS Trinity ecosystem:
+Provides critical system hardening features for the Ironcliw Trinity ecosystem:
 - Race condition prevention via atomic directory initialization
 - Graceful shutdown orchestration with signal handlers
 - Resource cleanup and garbage collection
@@ -62,7 +62,7 @@ Usage:
     health = await get_system_health()
     print(f"System health: {health}")
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0
 """
 
@@ -94,7 +94,7 @@ class HardeningConfig:
     # Critical directories
     jarvis_home: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_HOME",
+            "Ironcliw_HOME",
             str(Path.home() / ".jarvis")
         ))
     )

@@ -1,4 +1,4 @@
-# 🎨 Diagram System Quick Reference
+﻿# 🎨 Diagram System Quick Reference
 
 ## 🚀 Quick Start
 
@@ -46,7 +46,7 @@ stateDiagram-v2
     Inactive --> [*]
 ```
 
-## 🎨 JARVIS Color Palette
+## 🎨 Ironcliw Color Palette
 
 ```mermaid
 flowchart LR
@@ -234,7 +234,7 @@ mmdc -i diagram.mmd -o diagram.svg
 3. **Keep it simple** - 5-20 nodes per diagram
 4. **Add comments** with `%% Comment here`
 5. **Use subgraphs** for organization
-6. **Consistent colors** from JARVIS palette
+6. **Consistent colors** from Ironcliw palette
 7. **Meaningful names** - not "A, B, C"
 8. **Check generated files** in `diagrams/generated/`
 

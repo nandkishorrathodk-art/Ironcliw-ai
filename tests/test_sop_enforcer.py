@@ -1,11 +1,11 @@
-"""
+﻿"""
 Test Suite for SOP Enforcer - Clinical-Grade Discipline
 ========================================================
 
 Tests the ThinkingProtocol, ComplexityAnalyzer, and SOPEnforcer
 integration for "Measure Twice, Cut Once" enforcement.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -264,12 +264,12 @@ class TestSOPEnforcer:
 
 
 class TestThinkingProtocol:
-    """Test the JARVISThinkingProtocol class."""
+    """Test the IroncliwThinkingProtocol class."""
 
     @pytest.fixture
     def protocol(self):
-        from backend.core.governance.sop_enforcer import JARVISThinkingProtocol
-        return JARVISThinkingProtocol()
+        from backend.core.governance.sop_enforcer import IroncliwThinkingProtocol
+        return IroncliwThinkingProtocol()
 
     @pytest.mark.asyncio
     async def test_validate_valid_plan(self, protocol):

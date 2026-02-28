@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Log Analyzer - CLI Tool
+Ironcliw Log Analyzer - CLI Tool
 ================================
 
-Powerful CLI tool for analyzing JARVIS structured JSON logs.
+Powerful CLI tool for analyzing Ironcliw structured JSON logs.
 
 Features:
 - Query logs by level, time range, module, message pattern
@@ -112,7 +112,7 @@ class LogEntry:
 
 
 class LogReader:
-    """Reads and parses JARVIS log files."""
+    """Reads and parses Ironcliw log files."""
 
     def __init__(self, log_dir: Path = DEFAULT_LOG_DIR):
         self.log_dir = log_dir
@@ -375,7 +375,7 @@ class ReportGenerator:
         # Build report
         report = []
         report.append("=" * 80)
-        report.append("JARVIS LOG ANALYSIS REPORT")
+        report.append("Ironcliw LOG ANALYSIS REPORT")
         report.append("=" * 80)
         report.append(f"Time Range: {time_span}")
         report.append(f"Total Entries: {total}")
@@ -665,7 +665,7 @@ def cmd_report(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="JARVIS Log Analyzer - Analyze structured JSON logs"
+        description="Ironcliw Log Analyzer - Analyze structured JSON logs"
     )
     parser.add_argument(
         "--log-dir",

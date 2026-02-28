@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Activation
-Verifies that all JARVIS services are working properly
+Test Ironcliw Activation
+Verifies that all Ironcliw services are working properly
 """
 
 import requests
@@ -25,14 +25,14 @@ def test_backend_health():
         return False
 
 def test_voice_activation():
-    """Test JARVIS voice activation"""
+    """Test Ironcliw voice activation"""
     try:
         response = requests.post("http://localhost:8000/voice/jarvis/activate", timeout=5)
         if response.status_code == 200:
-            print("✅ JARVIS voice activation successful")
+            print("✅ Ironcliw voice activation successful")
             return True
         else:
-            print(f"❌ JARVIS voice activation failed: {response.status_code}")
+            print(f"❌ Ironcliw voice activation failed: {response.status_code}")
             return False
     except Exception as e:
         print(f"❌ Voice activation error: {e}")
@@ -92,7 +92,7 @@ def test_ml_audio_config():
         return False
 
 def main():
-    print("🤖 JARVIS Activation Test Suite")
+    print("🤖 Ironcliw Activation Test Suite")
     print("=" * 50)
     
     # Wait a moment for services to stabilize
@@ -127,7 +127,7 @@ def main():
     print(f"\nTotal: {passed}/{total} tests passed")
     
     if passed == total:
-        print("\n🎉 JARVIS is fully activated and operational!")
+        print("\n🎉 Ironcliw is fully activated and operational!")
     else:
         print("\n⚠️  Some services are not working properly")
         print("Run 'python start_system.py' to start all services")

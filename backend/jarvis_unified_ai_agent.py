@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Unified AI Agent - Bridging Swift, Vision, and Control
+Ironcliw Unified AI Agent - Bridging Swift, Vision, and Control
 A true AI agent that seamlessly integrates all components
 """
 
@@ -29,7 +29,7 @@ from system_control.vision_action_handler import get_vision_action_handler
 from system_control.dynamic_app_controller import DynamicAppController
 
 # Voice System
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from voice.jarvis_agent_voice import IroncliwAgentVoice
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class UnifiedAgentState:
     pending_actions: List[Dict[str, Any]] = field(default_factory=list)
     interaction_history: List[Dict[str, Any]] = field(default_factory=list)
 
-class JARVISUnifiedAIAgent:
+class IroncliwUnifiedAIAgent:
     """
     True AI Agent that bridges:
     - Swift: Intelligent command classification & app control
@@ -68,7 +68,7 @@ class JARVISUnifiedAIAgent:
         logger.info("✅ Vision system (Python/C++) initialized")
         
         # Initialize Voice
-        self.voice_system = JARVISAgentVoice(user_name)
+        self.voice_system = IroncliwAgentVoice(user_name)
         logger.info("✅ Voice system initialized")
         
         # Initialize Control
@@ -85,7 +85,7 @@ class JARVISUnifiedAIAgent:
         self.monitoring_active = False
         self.monitor_interval = 3  # seconds
         
-        logger.info(f"🤖 JARVIS Unified AI Agent ready for {user_name}")
+        logger.info(f"🤖 Ironcliw Unified AI Agent ready for {user_name}")
     
     async def start_intelligent_monitoring(self):
         """
@@ -464,7 +464,7 @@ class JARVISUnifiedAIAgent:
 
 async def demonstrate_unified_agent():
     """Demonstrate the unified AI agent"""
-    print("🤖 JARVIS Unified AI Agent Demo")
+    print("🤖 Ironcliw Unified AI Agent Demo")
     print("=" * 50)
     print("\nBridging Swift + Vision + Voice + Control")
     print("\n✅ Components:")
@@ -473,8 +473,8 @@ async def demonstrate_unified_agent():
     print("• Voice: Natural communication")
     print("• Control: System actions")
     
-    # Initialize JARVIS
-    jarvis = JARVISUnifiedAIAgent("Sir")
+    # Initialize Ironcliw
+    jarvis = IroncliwUnifiedAIAgent("Sir")
     
     print("\n📱 Simulating WhatsApp Notification Scenario:")
     print("-" * 40)
@@ -491,12 +491,12 @@ async def demonstrate_unified_agent():
     print("   Swift: High confidence (0.92) - important message")
     print("   Vision: Visual notification badge detected")
     
-    print("\n2️⃣ JARVIS announces:")
+    print("\n2️⃣ Ironcliw announces:")
     print('   🗣️ "Sir, urgent message from WhatsApp"')
     
     await asyncio.sleep(1)
     
-    print("\n3️⃣ JARVIS offers:")
+    print("\n3️⃣ Ironcliw offers:")
     print('   🗣️ "Would you like me to read the message?"')
     
     print('\n4️⃣ User: "Yes"')
@@ -506,12 +506,12 @@ async def demonstrate_unified_agent():
     
     await asyncio.sleep(1)
     
-    print("\n6️⃣ JARVIS asks:")
+    print("\n6️⃣ Ironcliw asks:")
     print('   🗣️ "Would you like to reply?"')
     
     print('\n7️⃣ User: "Yes"')
     
-    print("\n8️⃣ JARVIS offers contextual options:")
+    print("\n8️⃣ Ironcliw offers contextual options:")
     print('   🗣️ "Based on your context, here are some reply suggestions:"')
     print("      1. Deep in code, will check in a bit")
     print("      2. Give me 5 minutes")

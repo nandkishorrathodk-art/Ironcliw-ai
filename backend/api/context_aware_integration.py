@@ -1,8 +1,8 @@
-"""
+﻿"""
 Context-Aware Command Processing Integration
 ===========================================
 
-Integrates context awareness into JARVIS command processing
+Integrates context awareness into Ironcliw command processing
 """
 
 import logging

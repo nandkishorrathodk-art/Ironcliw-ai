@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 import asyncio
 import sys
 import os
@@ -34,7 +34,7 @@ async def test_agi_processing_lifecycle():
     
     input_data = CognitiveInput(
         modality="text",
-        content="Hello, JARVIS. Please analyze this text.",
+        content="Hello, Ironcliw. Please analyze this text.",
         context={"source": "test_script"}
     )
     

@@ -1,8 +1,8 @@
-# JARVIS Postman Flows
+﻿# Ironcliw Postman Flows
 
 ## Voice Unlock Authentication Flow
 
-The primary authentication pipeline for JARVIS voice biometric unlock system.
+The primary authentication pipeline for Ironcliw voice biometric unlock system.
 
 > **Note:** Postman Flows cannot be exported/imported as JSON files. Flows are created directly in the Postman visual editor. This document provides:
 > 1. A **Collection-based workflow** that can be imported and run with Collection Runner
@@ -18,17 +18,17 @@ Import the collection that executes the same logic as a Flow using Collection Ru
 
 1. Open Postman
 2. Click **Import** in the sidebar
-3. Select file: `postman/collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json`
+3. Select file: `postman/collections/Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json`
 4. The collection will appear in your workspace
 
 ### Run with Collection Runner
 
-1. Click on the collection **"JARVIS Voice Unlock Flow (Sequential)"**
+1. Click on the collection **"Ironcliw Voice Unlock Flow (Sequential)"**
 2. Click **Run** button (or right-click → "Run collection")
 3. Configure:
    - **Iterations:** 1
    - **Delay:** 0 ms
-4. Click **Run JARVIS Voice Unlock Flow**
+4. Click **Run Ironcliw Voice Unlock Flow**
 
 ### What Happens
 
@@ -55,7 +55,7 @@ The Collection Runner executes requests sequentially with test scripts that:
 5. Multi-Factor → [≥80%] → 6. Unlock
                   [<80%] → Error: Challenge Required
 
-6. Unlock → 7. JARVIS Feedback → 8. End Audit
+6. Unlock → 7. Ironcliw Feedback → 8. End Audit
 ```
 
 ---
@@ -69,7 +69,7 @@ The Collection Runner executes requests sequentially with test scripts that:
 1. Open Postman
 2. Go to **Flows** tab in sidebar
 3. Click **+ New Flow**
-4. Name it: "JARVIS Voice Unlock Authentication"
+4. Name it: "Ironcliw Voice Unlock Authentication"
 
 #### 2. Add Start Block
 
@@ -162,7 +162,7 @@ The Collection Runner executes requests sequentially with test scripts that:
    - **Request:** POST `{{base_url}}/api/screen/unlock`
    - **Body:** `{"method": "keychain", "reason": "voice_authenticated"}`
 
-#### 12. Add JARVIS Feedback
+#### 12. Add Ironcliw Feedback
 
 1. Drag **Send Request** block
 2. Connect from Unlock
@@ -191,7 +191,7 @@ In Flow settings, add:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                         JARVIS VOICE UNLOCK AUTHENTICATION FLOW                      │
+│                         Ironcliw VOICE UNLOCK AUTHENTICATION FLOW                      │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 
                                     ┌──────────────────┐
@@ -255,7 +255,7 @@ In Flow settings, add:
                                     │
                                     ▼
                            ┌──────────────────┐
-                           │  🔊 JARVIS       │
+                           │  🔊 Ironcliw       │
                            │    Speaks        │
                            └────────┬─────────┘
                                     │

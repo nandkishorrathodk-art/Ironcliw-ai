@@ -1,4 +1,4 @@
-# JARVIS v12.8 Resource Optimized Edition - Upgrade Notes
+﻿# Ironcliw v12.8 Resource Optimized Edition - Upgrade Notes
 
 ## What's New
 
@@ -34,7 +34,7 @@ The `start_system.py` script has been upgraded with Phase 0D resource optimizati
 ./start_system.py
 ```
 
-This runs JARVIS with all resource optimization features enabled.
+This runs Ironcliw with all resource optimization features enabled.
 
 ### Standard Mode (Legacy)
 
@@ -42,7 +42,7 @@ This runs JARVIS with all resource optimization features enabled.
 ./start_system.py --standard
 ```
 
-This runs JARVIS without optimization features (same as v12.7 behavior).
+This runs Ironcliw without optimization features (same as v12.7 behavior).
 
 ### Other Options
 
@@ -76,7 +76,7 @@ The system now uses `backend/config/resource_management_config.yaml` for dynamic
 ```yaml
 system:
   total_memory_gb: 16        # Your system RAM
-  jarvis_max_memory_gb: 12   # Max for JARVIS
+  jarvis_max_memory_gb: 12   # Max for Ironcliw
   target_usage_percent: 60   # Target usage
 
 components:

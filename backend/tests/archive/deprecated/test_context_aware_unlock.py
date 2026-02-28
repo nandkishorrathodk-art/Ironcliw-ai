@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Context-Aware Screen Unlock
 ================================
 
-Tests the complete flow of JARVIS detecting locked screen and unlocking before executing commands
+Tests the complete flow of Ironcliw detecting locked screen and unlocking before executing commands
 """
 
 import asyncio
@@ -90,7 +90,7 @@ async def test_context_aware_command(command: str):
 async def main():
     """Main test function"""
     print("\n" + "=" * 70)
-    print("🔐 JARVIS CONTEXT-AWARE SCREEN UNLOCK TEST")
+    print("🔐 Ironcliw CONTEXT-AWARE SCREEN UNLOCK TEST")
     print("=" * 70)
 
     # Test 1: Check screen lock detection
@@ -125,9 +125,9 @@ async def main():
     print("\n🎯 Next Steps:")
     print("1. Make sure Voice Unlock daemon is running (port 8765)")
     print("2. Lock your screen (Cmd+Ctrl+Q)")
-    print("3. Say: 'Hey JARVIS, open Safari and search for dogs'")
+    print("3. Say: 'Hey Ironcliw, open Safari and search for dogs'")
     print(
-        "4. JARVIS should detect the locked screen, unlock it, and execute the command!"
+        "4. Ironcliw should detect the locked screen, unlock it, and execute the command!"
     )
 
 

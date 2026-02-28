@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligence Component Manager - Orchestrates all intelligence providers for voice authentication.
 
 This manager coordinates initialization, health monitoring, and graceful shutdown of:
@@ -83,7 +83,7 @@ class IntelligenceConfig:
     learning_coordinator_enabled: bool = field(default_factory=lambda: os.getenv('LEARNING_COORDINATOR_ENABLED', 'true').lower() == 'true')
 
     # Data directory
-    data_dir: Path = field(default_factory=lambda: Path(os.getenv('JARVIS_DATA_DIR', str(Path.home() / '.jarvis'))))
+    data_dir: Path = field(default_factory=lambda: Path(os.getenv('Ironcliw_DATA_DIR', str(Path.home() / '.jarvis'))))
 
     # Graceful degradation
     fail_fast: bool = field(default_factory=lambda: os.getenv('INTELLIGENCE_FAIL_FAST', 'false').lower() == 'true')

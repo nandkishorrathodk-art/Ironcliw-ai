@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Weather Vision Integration
-Verifies that JARVIS uses vision to read weather instead of generic responses
+Test Ironcliw Weather Vision Integration
+Verifies that Ironcliw uses vision to read weather instead of generic responses
 """
 
 import asyncio
@@ -20,12 +20,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 async def test_jarvis_weather():
-    """Test JARVIS weather functionality with vision"""
-    print("🤖 Testing JARVIS Weather Vision Integration")
+    """Test Ironcliw weather functionality with vision"""
+    print("🤖 Testing Ironcliw Weather Vision Integration")
     print("=" * 60)
     
-    # Import JARVIS components
-    from voice.jarvis_agent_voice import JARVISAgentVoice
+    # Import Ironcliw components
+    from voice.jarvis_agent_voice import IroncliwAgentVoice
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzerMain
     from system_control.macos_controller import MacOSController
     
@@ -38,9 +38,9 @@ async def test_jarvis_weather():
     print("\n1. Initializing vision analyzer...")
     vision_analyzer = ClaudeVisionAnalyzerMain(api_key)
     
-    # Initialize JARVIS with vision
-    print("2. Initializing JARVIS with vision handler...")
-    jarvis = JARVISAgentVoice(user_name="Sir", vision_analyzer=vision_analyzer)
+    # Initialize Ironcliw with vision
+    print("2. Initializing Ironcliw with vision handler...")
+    jarvis = IroncliwAgentVoice(user_name="Sir", vision_analyzer=vision_analyzer)
     
     # Test weather queries
     test_queries = [
@@ -129,7 +129,7 @@ async def test_jarvis_weather():
     
     print("\n\n✅ Weather vision integration test complete!")
     print("\nSummary:")
-    print("- JARVIS should use vision to read Weather app")
+    print("- Ironcliw should use vision to read Weather app")
     print("- No generic fallback responses should appear")
     print("- Responses should contain actual weather data (temperature, conditions)")
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Authentication Reasoning State Models v2.0
 
 Enterprise-grade Pydantic models for LangGraph voice authentication reasoning.
@@ -12,7 +12,7 @@ Features:
 - Performance metrics and timing
 - Integration hooks for observability
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations

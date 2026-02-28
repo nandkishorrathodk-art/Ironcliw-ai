@@ -1,4 +1,4 @@
-# UAE + SAI Integration Architecture
+﻿# UAE + SAI Integration Architecture
 
 ## Yes, UAE and SAI Work Together Simultaneously!
 
@@ -13,7 +13,7 @@
 │                  UAE-Enhanced Clicker                       │
 │  Tier 1: Global Context + Cross-System Intelligence         │
 │                                                             │
-│  • Monitors: All JARVIS systems globally                   │
+│  • Monitors: All Ironcliw systems globally                   │
 │  • Predicts: Based on usage patterns                       │
 │  • Coordinates: Multi-agent learning                       │
 │  • Pre-caches: Before you ask                              │
@@ -142,7 +142,7 @@ UAE analyzes pattern:
 UAE proactively:
   1. Invalidates ALL cached UI coordinates
   2. Triggers revalidation of critical elements
-  3. Notifies other JARVIS agents about UI change
+  3. Notifies other Ironcliw agents about UI change
   4. Pre-caches new positions BEFORE next request
     ↓
 You say "living room tv" 30 minutes later

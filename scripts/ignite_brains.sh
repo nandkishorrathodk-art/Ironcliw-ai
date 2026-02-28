@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 #===============================================================================
-# JARVIS Brain Ignition Sequence
+# Ironcliw Brain Ignition Sequence
 #===============================================================================
 #
 # The "Defibrillator" script that ensures all LLM infrastructure is running
@@ -9,7 +9,7 @@
 # This script:
 # 1. Checks if Ollama is running, starts it if not
 # 2. Verifies required models are pulled
-# 3. Checks if JARVIS Prime is running
+# 3. Checks if Ironcliw Prime is running
 # 4. Waits for all endpoints to be healthy
 # 5. Reports final status
 #
@@ -154,7 +154,7 @@ ensure_model_pulled() {
 }
 
 #===============================================================================
-# JARVIS PRIME MANAGEMENT
+# Ironcliw PRIME MANAGEMENT
 #===============================================================================
 
 check_prime_running() {
@@ -163,14 +163,14 @@ check_prime_running() {
 }
 
 start_prime() {
-    log_info "Checking JARVIS Prime..."
+    log_info "Checking Ironcliw Prime..."
 
-    # Look for JARVIS Prime server script
+    # Look for Ironcliw Prime server script
     local prime_script=""
     local search_paths=(
-        "$HOME/Documents/repos/JARVIS-AI-Agent/backend/ai/prime_server.py"
-        "$HOME/Documents/repos/JARVIS-Prime/server.py"
-        "$HOME/Documents/repos/JARVIS-AI-Agent/prime_server.py"
+        "$HOME/Documents/repos/Ironcliw-AI-Agent/backend/ai/prime_server.py"
+        "$HOME/Documents/repos/Ironcliw-Prime/server.py"
+        "$HOME/Documents/repos/Ironcliw-AI-Agent/prime_server.py"
     )
 
     for path in "${search_paths[@]}"; do
@@ -181,12 +181,12 @@ start_prime() {
     done
 
     if [[ -z "$prime_script" ]]; then
-        log_warning "JARVIS Prime server script not found"
+        log_warning "Ironcliw Prime server script not found"
         log_info "Falling back to Ollama-only mode"
         return 1
     fi
 
-    log_info "Starting JARVIS Prime from: $prime_script"
+    log_info "Starting Ironcliw Prime from: $prime_script"
     nohup python3 "$prime_script" > /tmp/jarvis_prime.log 2>&1 &
     PRIME_PID=$!
 
@@ -201,10 +201,10 @@ start_prime() {
     echo ""
 
     if check_prime_running; then
-        log_success "JARVIS Prime started (PID: $PRIME_PID)"
+        log_success "Ironcliw Prime started (PID: $PRIME_PID)"
         return 0
     else
-        log_warning "JARVIS Prime did not start - using Ollama fallback"
+        log_warning "Ironcliw Prime did not start - using Ollama fallback"
         return 1
     fi
 }
@@ -234,7 +234,7 @@ wait_for_brains() {
         # Check Prime
         if check_prime_running; then
             if ! $prime_ready; then
-                log_success "JARVIS Prime is ONLINE (port $PRIME_PORT)"
+                log_success "Ironcliw Prime is ONLINE (port $PRIME_PORT)"
                 prime_ready=true
             fi
         fi
@@ -260,7 +260,7 @@ wait_for_brains() {
 main() {
     echo ""
     echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║         JARVIS BRAIN IGNITION SEQUENCE v2.0                    ║${NC}"
+    echo -e "${BLUE}║         Ironcliw BRAIN IGNITION SEQUENCE v2.0                    ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -283,11 +283,11 @@ main() {
         done
     fi
 
-    # Phase 3: Check/Start JARVIS Prime
+    # Phase 3: Check/Start Ironcliw Prime
     echo ""
-    echo -e "${CYAN}━━━ Phase 3: JARVIS Prime ━━━${NC}"
+    echo -e "${CYAN}━━━ Phase 3: Ironcliw Prime ━━━${NC}"
     if check_prime_running; then
-        log_success "JARVIS Prime already running"
+        log_success "Ironcliw Prime already running"
     elif ! $WAIT_ONLY; then
         start_prime || log_warning "Prime startup skipped"
     else
@@ -313,9 +313,9 @@ main() {
         fi
 
         if check_prime_running; then
-            echo -e "  ${GREEN}●${NC} JARVIS Prime: http://localhost:${PRIME_PORT}"
+            echo -e "  ${GREEN}●${NC} Ironcliw Prime: http://localhost:${PRIME_PORT}"
         else
-            echo -e "  ${YELLOW}●${NC} JARVIS Prime: OFFLINE (using Ollama fallback)"
+            echo -e "  ${YELLOW}●${NC} Ironcliw Prime: OFFLINE (using Ollama fallback)"
         fi
         echo ""
 

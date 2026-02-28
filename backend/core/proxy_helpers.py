@@ -1,5 +1,5 @@
-"""
-JARVIS Proxy Helpers v2.0
+﻿"""
+Ironcliw Proxy Helpers v2.0
 =========================
 
 Utilities for safely accessing Ghost Model Proxies throughout the application.

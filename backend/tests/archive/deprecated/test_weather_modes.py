@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test weather functionality in different modes"""
 
 import asyncio
@@ -79,17 +79,17 @@ async def test_weather_modes():
         traceback.print_exc()
     
     # Test 3: Test through API
-    print("\n3️⃣ Testing through JARVIS API...")
+    print("\n3️⃣ Testing through Ironcliw API...")
     
     try:
-        from api.jarvis_voice_api import jarvis_api, JARVISCommand
+        from api.jarvis_voice_api import jarvis_api, IroncliwCommand
         
         # Test weather command
-        command = JARVISCommand(text="What's the weather today?")
+        command = IroncliwCommand(text="What's the weather today?")
         
         # Get raw response (not JSONResponse)
-        from api.jarvis_voice_api import JARVISVoiceAPI
-        api = JARVISVoiceAPI()
+        from api.jarvis_voice_api import IroncliwVoiceAPI
+        api = IroncliwVoiceAPI()
         result = await api.process_command(command)
         
         print(f"   Response: {result.get('response', '')[:150]}...")

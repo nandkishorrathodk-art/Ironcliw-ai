@@ -1,14 +1,14 @@
+﻿# =============================================================================
+# Ironcliw Backend Cloud Run Module v9.4
 # =============================================================================
-# JARVIS Backend Cloud Run Module v9.4
-# =============================================================================
-# Deploys the full JARVIS-AI-Agent backend to Google Cloud Run
+# Deploys the full Ironcliw-AI-Agent backend to Google Cloud Run
 #
 # Features:
 # - Serverless auto-scaling (0-10 instances)
 # - Neural Mesh with 60+ agents
 # - Data Flywheel integration
 # - Intelligent Continuous Scraping
-# - Multi-repo connectivity (JARVIS-Prime, Reactor-Core)
+# - Multi-repo connectivity (Ironcliw-Prime, Reactor-Core)
 # - VPC access for Redis/ChromaDB
 # - Artifact Registry for Docker images
 #
@@ -101,7 +101,7 @@ variable "concurrency" {
 
 # Integration variables
 variable "jarvis_prime_url" {
-  description = "JARVIS-Prime Cloud Run URL for inference"
+  description = "Ironcliw-Prime Cloud Run URL for inference"
   type        = string
   default     = ""
 }
@@ -157,7 +157,7 @@ variable "anthropic_api_key_secret" {
 resource "google_artifact_registry_repository" "jarvis_backend" {
   location      = var.region
   repository_id = "jarvis-backend"
-  description   = "JARVIS Backend Docker images"
+  description   = "Ironcliw Backend Docker images"
   format        = "DOCKER"
 
   labels = {
@@ -174,8 +174,8 @@ resource "google_artifact_registry_repository" "jarvis_backend" {
 
 resource "google_service_account" "jarvis_backend" {
   account_id   = "jarvis-backend-${var.environment}"
-  display_name = "JARVIS Backend Service Account"
-  description  = "Service account for JARVIS Backend Cloud Run"
+  display_name = "Ironcliw Backend Service Account"
+  description  = "Service account for Ironcliw Backend Cloud Run"
 }
 
 # Artifact Registry access
@@ -258,11 +258,11 @@ resource "google_cloud_run_v2_service" "jarvis_backend" {
         value = "/app:/app/backend"
       }
       env {
-        name  = "JARVIS_DOCKER"
+        name  = "Ironcliw_DOCKER"
         value = "true"
       }
       env {
-        name  = "JARVIS_CLOUD_RUN"
+        name  = "Ironcliw_CLOUD_RUN"
         value = "true"
       }
       env {
@@ -272,11 +272,11 @@ resource "google_cloud_run_v2_service" "jarvis_backend" {
 
       # Paths
       env {
-        name  = "JARVIS_DATA_DIR"
+        name  = "Ironcliw_DATA_DIR"
         value = "/app/data"
       }
       env {
-        name  = "JARVIS_MODELS_DIR"
+        name  = "Ironcliw_MODELS_DIR"
         value = "/app/models"
       }
 
@@ -304,11 +304,11 @@ resource "google_cloud_run_v2_service" "jarvis_backend" {
         value = "true"
       }
 
-      # JARVIS-Prime integration
+      # Ironcliw-Prime integration
       dynamic "env" {
         for_each = var.jarvis_prime_url != "" ? [1] : []
         content {
-          name  = "JARVIS_PRIME_CLOUD_RUN_URL"
+          name  = "Ironcliw_PRIME_CLOUD_RUN_URL"
           value = var.jarvis_prime_url
         }
       }
@@ -459,7 +459,7 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 # =============================================================================
 
 output "service_url" {
-  description = "JARVIS Backend Cloud Run service URL"
+  description = "Ironcliw Backend Cloud Run service URL"
   value       = google_cloud_run_v2_service.jarvis_backend.uri
 }
 

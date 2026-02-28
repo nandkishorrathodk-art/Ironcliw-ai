@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Runtime fix for vision streaming issue
 This can be run while the backend is running to fix the issue
@@ -9,7 +9,7 @@ import aiohttp
 import json
 
 async def send_jarvis_command(command: str):
-    """Send a command to JARVIS via API"""
+    """Send a command to Ironcliw via API"""
     url = "http://localhost:8000/voice/jarvis/command"
     
     async with aiohttp.ClientSession() as session:
@@ -82,7 +82,7 @@ async def test_monitoring():
         return True
 
 async def main():
-    print("🔧 JARVIS Vision Runtime Fix")
+    print("🔧 Ironcliw Vision Runtime Fix")
     print("=" * 60)
     
     print("\n1️⃣ Checking current vision status...")

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Port Manager - Cross-Component Port Allocation with Fallback.
 =====================================================================
 
@@ -6,11 +6,11 @@ v94.0: MAJOR ENHANCEMENT - Process Identity Verification
 ---------------------------------------------------------
 Fixes the ROOT CAUSE of port allocation race conditions by:
 1. Identifying process ownership BEFORE falling back to different ports
-2. Detecting if port owner is a JARVIS component (adoptable) vs external process
-3. Supporting healthy JARVIS instance adoption instead of unnecessary restarts
+2. Detecting if port owner is a Ironcliw component (adoptable) vs external process
+3. Supporting healthy Ironcliw instance adoption instead of unnecessary restarts
 4. Cross-referencing with service registry for registered services
 
-Manages port allocation for ALL Trinity components (JARVIS Body, J-Prime, Reactor-Core)
+Manages port allocation for ALL Trinity components (Ironcliw Body, J-Prime, Reactor-Core)
 with intelligent fallback, conflict detection, and IPC-based coordination.
 
 Key Features:
@@ -20,7 +20,7 @@ Key Features:
 4. IPC integration for port announcements
 5. Hot reload support for port re-allocation
 6. v94.0: Process identity verification before fallback
-7. v94.0: JARVIS component adoption for existing healthy instances
+7. v94.0: Ironcliw component adoption for existing healthy instances
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────┐
@@ -32,7 +32,7 @@ Architecture:
     │  └── ProcessIdentityVerifier (v94.0: identifies port owner)         │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v94.0 - Process-Aware Port Coordination
+Author: Ironcliw Trinity v94.0 - Process-Aware Port Coordination
 """
 
 from __future__ import annotations
@@ -58,8 +58,8 @@ logger = logging.getLogger(__name__)
 
 class ComponentType(enum.Enum):
     """Trinity component types."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
 
 
@@ -147,18 +147,18 @@ class TrinityPortConfig:
         """Load port configurations from environment."""
         if not self.allocations:
             self.allocations = {
-                ComponentType.JARVIS_BODY: PortAllocation.from_env(
-                    name="JARVIS Body",
-                    env_primary="JARVIS_PORT",
+                ComponentType.Ironcliw_BODY: PortAllocation.from_env(
+                    name="Ironcliw Body",
+                    env_primary="Ironcliw_PORT",
                     default_primary=8010,
-                    env_fallbacks="JARVIS_PORT_FALLBACK",
+                    env_fallbacks="Ironcliw_PORT_FALLBACK",
                     default_fallbacks=(8011, 8012, 8013),
                 ),
-                ComponentType.JARVIS_PRIME: PortAllocation.from_env(
-                    name="JARVIS Prime",
-                    env_primary="JARVIS_PRIME_PORT",
+                ComponentType.Ironcliw_PRIME: PortAllocation.from_env(
+                    name="Ironcliw Prime",
+                    env_primary="Ironcliw_PRIME_PORT",
                     default_primary=8000,
-                    env_fallbacks="JARVIS_PRIME_PORT_FALLBACK",
+                    env_fallbacks="Ironcliw_PRIME_PORT_FALLBACK",
                     default_fallbacks=(8004, 8005, 8006),
                 ),
                 ComponentType.REACTOR_CORE: PortAllocation.from_env(
@@ -202,7 +202,7 @@ class AllocationResult:
     fallback_reason: Optional[str] = None
     error: Optional[str] = None
     # v94.0: Process identity verification results
-    adopted_existing: bool = False  # True if we adopted an existing healthy JARVIS instance
+    adopted_existing: bool = False  # True if we adopted an existing healthy Ironcliw instance
     process_owner: Optional[str] = None  # Process name/type that owns the port
     verification_result: Optional[str] = None  # Result of process identity verification
 
@@ -220,13 +220,13 @@ class TrinityPortManager:
     """
     Cross-component port allocation manager for Trinity architecture.
 
-    Coordinates port allocation across JARVIS Body, Prime, and Reactor Core
+    Coordinates port allocation across Ironcliw Body, Prime, and Reactor Core
     to prevent conflicts and enable graceful fallback.
 
     v94.0 Enhancement: Process Identity Verification
     - Before falling back to a different port, verifies if the process holding
-      the port is a JARVIS component (which can be adopted) vs external process
-    - Supports adoption of healthy existing JARVIS instances
+      the port is a Ironcliw component (which can be adopted) vs external process
+    - Supports adoption of healthy existing Ironcliw instances
     - Cross-references with service registry for registered services
 
     Features:
@@ -236,7 +236,7 @@ class TrinityPortManager:
     - IPC-based port announcements
     - Hot reload support
     - v94.0: Process identity verification before fallback
-    - v94.0: JARVIS component adoption for existing healthy instances
+    - v94.0: Ironcliw component adoption for existing healthy instances
     """
 
     def __init__(
@@ -279,8 +279,8 @@ class TrinityPortManager:
 
         logger.info(
             f"[TrinityPortManager] Initialized with config: "
-            f"Body={self.config.allocations[ComponentType.JARVIS_BODY].primary}, "
-            f"Prime={self.config.allocations[ComponentType.JARVIS_PRIME].primary}, "
+            f"Body={self.config.allocations[ComponentType.Ironcliw_BODY].primary}, "
+            f"Prime={self.config.allocations[ComponentType.Ironcliw_PRIME].primary}, "
             f"Reactor={self.config.allocations[ComponentType.REACTOR_CORE].primary}, "
             f"ProcessVerification={enable_process_verification}"
         )
@@ -426,8 +426,8 @@ class TrinityPortManager:
         """
         if order is None:
             order = [
-                ComponentType.JARVIS_BODY,
-                ComponentType.JARVIS_PRIME,
+                ComponentType.Ironcliw_BODY,
+                ComponentType.Ironcliw_PRIME,
                 ComponentType.REACTOR_CORE,
             ]
 
@@ -540,7 +540,7 @@ class TrinityPortManager:
         Verify a port is usable (not in use by external process).
 
         v94.0 Enhancement: Uses ProcessIdentityVerifier to determine if
-        the port owner is a JARVIS component (adoptable) vs external process.
+        the port owner is a Ironcliw component (adoptable) vs external process.
 
         Returns:
             True if port is usable (free or can be adopted)
@@ -568,10 +568,10 @@ class TrinityPortManager:
 
                 # Map our ComponentType to verifier's expected type
                 expected_type = None
-                if component == ComponentType.JARVIS_BODY:
-                    expected_type = VerifierComponentType.JARVIS_BODY
-                elif component == ComponentType.JARVIS_PRIME:
-                    expected_type = VerifierComponentType.JARVIS_PRIME
+                if component == ComponentType.Ironcliw_BODY:
+                    expected_type = VerifierComponentType.Ironcliw_BODY
+                elif component == ComponentType.Ironcliw_PRIME:
+                    expected_type = VerifierComponentType.Ironcliw_PRIME
                 elif component == ComponentType.REACTOR_CORE:
                     expected_type = VerifierComponentType.REACTOR_CORE
 
@@ -584,8 +584,8 @@ class TrinityPortManager:
                     f"fallback={verification.should_use_fallback})"
                 )
 
-                # If it's a healthy JARVIS component, we can adopt it
-                if verification.result == ProcessVerificationResult.JARVIS_HEALTHY:
+                # If it's a healthy Ironcliw component, we can adopt it
+                if verification.result == ProcessVerificationResult.Ironcliw_HEALTHY:
                     if verification.is_adoptable:
                         logger.info(
                             f"[TrinityPortManager] ✅ Port {port} held by healthy "
@@ -607,14 +607,14 @@ class TrinityPortManager:
                     )
                     return False
 
-                # If it's a JARVIS component that's unhealthy/starting, also fallback
+                # If it's a Ironcliw component that's unhealthy/starting, also fallback
                 if verification.result in (
-                    ProcessVerificationResult.JARVIS_UNHEALTHY,
-                    ProcessVerificationResult.JARVIS_STARTING,
+                    ProcessVerificationResult.Ironcliw_UNHEALTHY,
+                    ProcessVerificationResult.Ironcliw_STARTING,
                 ):
                     logger.info(
                         f"[TrinityPortManager] Port {port} held by unhealthy/starting "
-                        f"JARVIS component - will use fallback"
+                        f"Ironcliw component - will use fallback"
                     )
                     return False
 

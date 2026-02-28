@@ -1,4 +1,4 @@
-"""
+﻿"""
 GCP Spot VM Auto-Creation Manager
 ==================================
 
@@ -275,7 +275,7 @@ class VMInstance:
     score_confidence: float = 0.0  # 0-1, how much real data backs the score
 
     # Configurable thresholds (set from VMManagerConfig at creation time)
-    _idle_threshold_minutes: float = float(os.getenv("GCP_IDLE_TIMEOUT_MINUTES", os.getenv("JARVIS_SPOT_VM_IDLE_TIMEOUT", "30")))
+    _idle_threshold_minutes: float = float(os.getenv("GCP_IDLE_TIMEOUT_MINUTES", os.getenv("Ironcliw_SPOT_VM_IDLE_TIMEOUT", "30")))
     _wasting_money_threshold: float = float(os.getenv("GCP_EFFICIENCY_TERMINATION_THRESHOLD", "30.0"))
     _min_confidence_for_termination: float = float(os.getenv("GCP_EFFICIENCY_MIN_CONFIDENCE", "0.5"))
 
@@ -415,14 +415,14 @@ class VMManagerConfig:
     """
 
     # v147.0: GCP Enabled Flag - checks multiple env vars for compatibility
-    # Accepts: GCP_ENABLED, GCP_VM_ENABLED, JARVIS_SPOT_VM_ENABLED (any "true" enables)
-    # This fixes the inconsistency where .env.gcp sets JARVIS_SPOT_VM_ENABLED
+    # Accepts: GCP_ENABLED, GCP_VM_ENABLED, Ironcliw_SPOT_VM_ENABLED (any "true" enables)
+    # This fixes the inconsistency where .env.gcp sets Ironcliw_SPOT_VM_ENABLED
     # but the manager only checked GCP_ENABLED
     enabled: bool = field(
-        default_factory=lambda: any([
+        default_factory=lambda: False if os.getenv("Ironcliw_SKIP_GCP", "false").lower() == "true" else any([
             os.getenv("GCP_ENABLED", "false").lower() == "true",
             os.getenv("GCP_VM_ENABLED", "false").lower() == "true",
-            os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true",
+            os.getenv("Ironcliw_SPOT_VM_ENABLED", "false").lower() == "true",
         ])
     )
 
@@ -492,19 +492,19 @@ class VMManagerConfig:
     #
     # Usage:
     #   1. Build and push image: python scripts/build_gcp_inference_image.py
-    #   2. Set JARVIS_GCP_CONTAINER_IMAGE to the image URL
-    #   3. Set JARVIS_GCP_USE_CONTAINER=true
+    #   2. Set Ironcliw_GCP_CONTAINER_IMAGE to the image URL
+    #   3. Set Ironcliw_GCP_USE_CONTAINER=true
     # ═══════════════════════════════════════════════════════════════════════════
     
     # Enable container-based deployment (uses Container-Optimized OS)
     use_container: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_USE_CONTAINER", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GCP_USE_CONTAINER", "false").lower() == "true"
     )
     
     # Docker image for container-based deployment
     # Format: gcr.io/PROJECT/IMAGE:TAG or REGION-docker.pkg.dev/PROJECT/REPO/IMAGE:TAG
     container_image: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_CONTAINER_IMAGE", None)
+        default_factory=lambda: os.getenv("Ironcliw_GCP_CONTAINER_IMAGE", None)
     )
     
     # Container-Optimized OS image for container-based VMs
@@ -518,14 +518,14 @@ class VMManagerConfig:
     # Container environment variables (comma-separated key=value pairs)
     container_env_vars: str = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GCP_CONTAINER_ENV",
-            "JARVIS_DEPS_PREBAKED=true,JARVIS_SKIP_ML_DEPS_INSTALL=true,JARVIS_GCP_INFERENCE=true"
+            "Ironcliw_GCP_CONTAINER_ENV",
+            "Ironcliw_DEPS_PREBAKED=true,Ironcliw_SKIP_ML_DEPS_INSTALL=true,Ironcliw_GCP_INFERENCE=true"
         )
     )
     
     # Fallback to startup script if container deployment fails
     container_fallback_to_script: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_CONTAINER_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GCP_CONTAINER_FALLBACK", "true").lower() == "true"
     )
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -537,7 +537,7 @@ class VMManagerConfig:
     # What's Pre-baked in the Golden Image:
     #   - Python 3.11 with virtual environment
     #   - All ML dependencies (torch, transformers, llama-cpp-python, etc.)
-    #   - JARVIS-Prime codebase with all dependencies
+    #   - Ironcliw-Prime codebase with all dependencies
     #   - Model files (7B+ parameters) already downloaded
     #   - System configured and ready to serve
     #
@@ -554,53 +554,53 @@ class VMManagerConfig:
     #
     # Usage:
     #   1. Create golden image: python3 unified_supervisor.py --create-golden-image
-    #   2. Set JARVIS_GCP_USE_GOLDEN_IMAGE=true
-    #   3. Optionally set JARVIS_GCP_GOLDEN_IMAGE_NAME to override auto-detection
+    #   2. Set Ironcliw_GCP_USE_GOLDEN_IMAGE=true
+    #   3. Optionally set Ironcliw_GCP_GOLDEN_IMAGE_NAME to override auto-detection
     # ═══════════════════════════════════════════════════════════════════════════
     
     # Enable golden image deployment (highest priority deployment mode)
     use_golden_image: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
     )
     
     # Custom image name (if not set, auto-detects latest jarvis-prime-golden-* image)
     golden_image_name: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_IMAGE_NAME", None)
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_NAME", None)
     )
     
     # Project containing the golden image (defaults to current project)
     golden_image_project: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_IMAGE_PROJECT", None)
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_PROJECT", None)
     )
     
     # Golden image family for auto-detection of latest version
     golden_image_family: str = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_IMAGE_FAMILY", "jarvis-prime-golden")
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_FAMILY", "jarvis-prime-golden")
     )
     
     # Maximum age of golden image before rebuild is recommended (days)
     golden_image_max_age_days: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_GCP_GOLDEN_IMAGE_MAX_AGE_DAYS", "30"))
+        default_factory=lambda: int(os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_MAX_AGE_DAYS", "30"))
     )
     
     # Auto-rebuild golden image if stale (requires elevated permissions)
     golden_image_auto_rebuild: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_IMAGE_AUTO_REBUILD", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_AUTO_REBUILD", "false").lower() == "true"
     )
     
     # Fallback to container/script if golden image is unavailable
     golden_image_fallback: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_IMAGE_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_FALLBACK", "true").lower() == "true"
     )
     
     # Model to pre-load in golden image (for image building)
     golden_image_model: str = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_IMAGE_MODEL", "mistral-7b-instruct-v0.2")
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_MODEL", "mistral-7b-instruct-v0.2")
     )
     
     # Machine type for building golden image (needs enough RAM for model)
     golden_image_builder_machine_type: str = field(
-        default_factory=lambda: os.getenv("JARVIS_GCP_GOLDEN_BUILDER_MACHINE_TYPE", "e2-highmem-8")
+        default_factory=lambda: os.getenv("Ironcliw_GCP_GOLDEN_BUILDER_MACHINE_TYPE", "e2-highmem-8")
     )
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -644,9 +644,9 @@ class VMManagerConfig:
         default_factory=lambda: float(os.getenv("GCP_MAX_VM_LIFETIME_HOURS", "3.0"))
     )
     idle_timeout_minutes: int = field(
-        # Prefer JARVIS_SPOT_VM_IDLE_TIMEOUT (used by hybrid cloud stack), fall back to legacy GCP_*
+        # Prefer Ironcliw_SPOT_VM_IDLE_TIMEOUT (used by hybrid cloud stack), fall back to legacy GCP_*
         default_factory=lambda: int(
-            os.getenv("GCP_IDLE_TIMEOUT_MINUTES", os.getenv("JARVIS_SPOT_VM_IDLE_TIMEOUT", "30"))
+            os.getenv("GCP_IDLE_TIMEOUT_MINUTES", os.getenv("Ironcliw_SPOT_VM_IDLE_TIMEOUT", "30"))
         )
     )
 
@@ -663,9 +663,9 @@ class VMManagerConfig:
         default_factory=lambda: int(os.getenv("GCP_MAX_CONCURRENT_VMS", "2"))
     )
     daily_budget_usd: float = field(
-        # Prefer JARVIS_SPOT_VM_DAILY_BUDGET (used by hybrid cloud stack), fall back to legacy GCP_*
+        # Prefer Ironcliw_SPOT_VM_DAILY_BUDGET (used by hybrid cloud stack), fall back to legacy GCP_*
         default_factory=lambda: float(
-            os.getenv("GCP_DAILY_BUDGET_USD", os.getenv("JARVIS_SPOT_VM_DAILY_BUDGET", "5.0"))
+            os.getenv("GCP_DAILY_BUDGET_USD", os.getenv("Ironcliw_SPOT_VM_DAILY_BUDGET", "5.0"))
         )
     )
 
@@ -1047,13 +1047,13 @@ class GoldenImageInfo:
 
         Args:
             expected_model: Expected model name. If None, reads from
-                           JARVIS_GCP_GOLDEN_IMAGE_MODEL env var.
+                           Ironcliw_GCP_GOLDEN_IMAGE_MODEL env var.
 
         Returns:
             True if mismatch detected, False if match or cannot determine.
         """
         if expected_model is None:
-            expected_model = os.getenv("JARVIS_GCP_GOLDEN_IMAGE_MODEL", "").strip()
+            expected_model = os.getenv("Ironcliw_GCP_GOLDEN_IMAGE_MODEL", "").strip()
         if not expected_model or self.model_name == "unknown":
             return False  # Can't validate — safe default
         is_mismatch = (
@@ -1206,7 +1206,7 @@ class GoldenImageBuilder:
     
     Creates pre-baked VM images with everything installed:
     - Python environment with all dependencies
-    - JARVIS-Prime codebase
+    - Ironcliw-Prime codebase
     - Pre-downloaded model files
     - Configured startup scripts
     
@@ -1265,11 +1265,11 @@ class GoldenImageBuilder:
     
     def _discover_prime_repo_url(self) -> str:
         """
-        v228.0: Dynamically discover JARVIS-Prime repository URL.
+        v228.0: Dynamically discover Ironcliw-Prime repository URL.
         
         Discovery order (first match wins, zero hardcoded usernames):
-          1. JARVIS_PRIME_REPO_URL environment variable (explicit override)
-          2. JARVIS_REPO_URL environment variable (legacy/metadata compat)
+          1. Ironcliw_PRIME_REPO_URL environment variable (explicit override)
+          2. Ironcliw_REPO_URL environment variable (legacy/metadata compat)
           3. Auto-detect from local jarvis-prime sibling repo's git remote
           4. Fail with clear error — never silently use a wrong URL
         
@@ -1277,7 +1277,7 @@ class GoldenImageBuilder:
             Repository URL string, or empty string if discovery fails
         """
         # 1. Explicit environment variables (highest priority)
-        for env_key in ("JARVIS_PRIME_REPO_URL", "JARVIS_REPO_URL"):
+        for env_key in ("Ironcliw_PRIME_REPO_URL", "Ironcliw_REPO_URL"):
             url = os.getenv(env_key)
             if url:
                 self.logger.info(f"[GoldenImageBuilder] Repo URL from {env_key}: {url}")
@@ -1294,18 +1294,18 @@ class GoldenImageBuilder:
             # Relative to this file's repo root (../../jarvis-prime)
             this_file = Path(__file__).resolve()
             repo_root = this_file.parent.parent.parent  # backend/core/ → project root
-            workspace_parent = repo_root.parent  # parent of JARVIS-AI-Agent
+            workspace_parent = repo_root.parent  # parent of Ironcliw-AI-Agent
             
             search_paths.extend([
                 workspace_parent / "jarvis-prime",
-                workspace_parent / "JARVIS-Prime",
+                workspace_parent / "Ironcliw-Prime",
             ])
             
             # Home-based paths
             home = Path.home()
             search_paths.extend([
                 home / "Documents" / "repos" / "jarvis-prime",
-                home / "Documents" / "repos" / "JARVIS-Prime",
+                home / "Documents" / "repos" / "Ironcliw-Prime",
             ])
             
             # Deduplicate (resolve to absolute)
@@ -1336,9 +1336,9 @@ class GoldenImageBuilder:
         
         # 3. No URL found — log clear error
         self.logger.warning(
-            "[GoldenImageBuilder] Could not discover JARVIS-Prime repo URL. "
-            "Set JARVIS_PRIME_REPO_URL environment variable for explicit configuration. "
-            "The golden image builder needs a valid repo URL to clone JARVIS-Prime code."
+            "[GoldenImageBuilder] Could not discover Ironcliw-Prime repo URL. "
+            "Set Ironcliw_PRIME_REPO_URL environment variable for explicit configuration. "
+            "The golden image builder needs a valid repo URL to clone Ironcliw-Prime code."
         )
         return ""
     
@@ -1469,7 +1469,7 @@ class GoldenImageBuilder:
         This script runs on a temporary builder VM and pre-bakes everything:
           Phase 1: System packages (Python, build tools, git)
           Phase 2: Python virtual environment
-          Phase 3: Clone JARVIS-Prime repository (CRITICAL — provides the code)
+          Phase 3: Clone Ironcliw-Prime repository (CRITICAL — provides the code)
           Phase 4: Install ML dependencies (torch, transformers, llama-cpp-python)
           Phase 5: Download and cache LLM model with verification
           Phase 6: Configure for fast startup (systemd, .env, APARS)
@@ -1484,11 +1484,11 @@ class GoldenImageBuilder:
         if not jarvis_prime_repo:
             self.logger.error(
                 "[GoldenImageBuilder] Cannot generate builder script: "
-                "no JARVIS-Prime repo URL. Set JARVIS_PRIME_REPO_URL."
+                "no Ironcliw-Prime repo URL. Set Ironcliw_PRIME_REPO_URL."
             )
             raise ValueError(
-                "JARVIS-Prime repository URL not found. "
-                "Set JARVIS_PRIME_REPO_URL environment variable or ensure "
+                "Ironcliw-Prime repository URL not found. "
+                "Set Ironcliw_PRIME_REPO_URL environment variable or ensure "
                 "jarvis-prime repo exists locally with a git remote configured."
             )
         
@@ -1502,7 +1502,7 @@ class GoldenImageBuilder:
 # Runs on a temporary builder VM. Signals completion via health endpoint.
 #
 # Key improvements over v224.0:
-#   - Actually clones JARVIS-Prime repository (was missing!)
+#   - Actually clones Ironcliw-Prime repository (was missing!)
 #   - Model download verification (fail-fast on missing models)
 #   - systemd EnvironmentFile integration
 #   - Build integrity validation before signaling ready
@@ -1516,8 +1516,8 @@ HEALTH_FILE="/tmp/golden_image_status.json"
 READY_FILE="/tmp/golden_image_ready"
 MODEL_NAME="{model_name}"
 REPO_URL="{jarvis_prime_repo}"
-JARVIS_DIR="/opt/jarvis-prime"
-MODEL_CACHE="$JARVIS_DIR/models"
+Ironcliw_DIR="/opt/jarvis-prime"
+MODEL_CACHE="$Ironcliw_DIR/models"
 BUILD_ERRORS=0
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1613,8 +1613,8 @@ apt-get install -y -qq \\
 update_status "installing" 10 "Setting up Python environment..."
 log "Phase 2: Setting up Python environment"
 
-mkdir -p "$JARVIS_DIR"
-cd "$JARVIS_DIR"
+mkdir -p "$Ironcliw_DIR"
+cd "$Ironcliw_DIR"
 
 python3.11 -m venv venv
 source venv/bin/activate
@@ -1622,13 +1622,13 @@ source venv/bin/activate
 pip install --upgrade pip setuptools wheel 2>&1 | tee -a "$LOG_FILE"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 3: Clone JARVIS-Prime Repository (CRITICAL)
+# Phase 3: Clone Ironcliw-Prime Repository (CRITICAL)
 # ─────────────────────────────────────────────────────────────────────────────
 
-update_status "cloning" 15 "Cloning JARVIS-Prime repository..."
-log "Phase 3: Cloning JARVIS-Prime from $REPO_URL"
+update_status "cloning" 15 "Cloning Ironcliw-Prime repository..."
+log "Phase 3: Cloning Ironcliw-Prime from $REPO_URL"
 
-# Clone into a temporary directory, then move contents to JARVIS_DIR
+# Clone into a temporary directory, then move contents to Ironcliw_DIR
 CLONE_DIR="/tmp/jarvis-prime-clone"
 rm -rf "$CLONE_DIR"
 
@@ -1645,25 +1645,25 @@ for attempt in 1 2 3; do
 done
 
 if [ "$CLONE_SUCCESS" = true ]; then
-    # Move cloned code into JARVIS_DIR (preserve venv which is already there)
+    # Move cloned code into Ironcliw_DIR (preserve venv which is already there)
     # Use rsync-style approach: copy everything except .git to save space
-    cp -a "$CLONE_DIR"/.git "$JARVIS_DIR/.git" 2>/dev/null || true
+    cp -a "$CLONE_DIR"/.git "$Ironcliw_DIR/.git" 2>/dev/null || true
     # Copy all files except .git directory
-    find "$CLONE_DIR" -maxdepth 1 -not -name '.git' -not -path "$CLONE_DIR" -exec cp -a {{}} "$JARVIS_DIR/" \\;
+    find "$CLONE_DIR" -maxdepth 1 -not -name '.git' -not -path "$CLONE_DIR" -exec cp -a {{}} "$Ironcliw_DIR/" \\;
     rm -rf "$CLONE_DIR"
     
     # Verify critical files exist
-    if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
-        log "   ✅ JARVIS-Prime code cloned successfully"
-        log "   ✅ jarvis_prime module found at $JARVIS_DIR/jarvis_prime"
+    if [ -d "$Ironcliw_DIR/jarvis_prime" ]; then
+        log "   ✅ Ironcliw-Prime code cloned successfully"
+        log "   ✅ jarvis_prime module found at $Ironcliw_DIR/jarvis_prime"
     else
         log "   ⚠️  Clone succeeded but jarvis_prime module not found!"
-        log "   ⚠️  Contents of $JARVIS_DIR:"
-        ls -la "$JARVIS_DIR" 2>&1 | tee -a "$LOG_FILE"
+        log "   ⚠️  Contents of $Ironcliw_DIR:"
+        ls -la "$Ironcliw_DIR" 2>&1 | tee -a "$LOG_FILE"
         BUILD_ERRORS=$((BUILD_ERRORS + 1))
     fi
 else
-    log "   ❌ CRITICAL: Failed to clone JARVIS-Prime after 3 attempts!"
+    log "   ❌ CRITICAL: Failed to clone Ironcliw-Prime after 3 attempts!"
     log "   ❌ Repo URL: $REPO_URL"
     log "   ❌ The golden image will NOT have inference code!"
     BUILD_ERRORS=$((BUILD_ERRORS + 1))
@@ -1671,14 +1671,14 @@ else
 fi
 
 # Install jarvis-prime requirements if they exist (from the cloned repo)
-if [ -f "$JARVIS_DIR/requirements.txt" ]; then
-    log "   Installing JARVIS-Prime requirements..."
-    update_status "installing" 20 "Installing JARVIS-Prime requirements..."
-    pip install -r "$JARVIS_DIR/requirements.txt" 2>&1 | tee -a "$LOG_FILE" || true
-elif [ -f "$JARVIS_DIR/pyproject.toml" ]; then
-    log "   Installing JARVIS-Prime from pyproject.toml..."
-    update_status "installing" 20 "Installing JARVIS-Prime package..."
-    pip install -e "$JARVIS_DIR" 2>&1 | tee -a "$LOG_FILE" || true
+if [ -f "$Ironcliw_DIR/requirements.txt" ]; then
+    log "   Installing Ironcliw-Prime requirements..."
+    update_status "installing" 20 "Installing Ironcliw-Prime requirements..."
+    pip install -r "$Ironcliw_DIR/requirements.txt" 2>&1 | tee -a "$LOG_FILE" || true
+elif [ -f "$Ironcliw_DIR/pyproject.toml" ]; then
+    log "   Installing Ironcliw-Prime from pyproject.toml..."
+    update_status "installing" 20 "Installing Ironcliw-Prime package..."
+    pip install -e "$Ironcliw_DIR" 2>&1 | tee -a "$LOG_FILE" || true
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1905,39 +1905,39 @@ update_status "configuring" 80 "Configuring for fast startup..."
 log "Phase 6: Configuring for fast startup"
 
 # Create environment file (sourced by systemd and startup script)
-cat > "$JARVIS_DIR/.env" << EOFENV
+cat > "$Ironcliw_DIR/.env" << EOFENV
 # ═══════════════════════════════════════════════════════════════════════════════
 # Pre-baked Golden Image Configuration (v228.0)
 # Generated at: $(date -Iseconds)
 # ═══════════════════════════════════════════════════════════════════════════════
-JARVIS_DEPS_PREBAKED=true
-JARVIS_SKIP_ML_DEPS_INSTALL=true
-JARVIS_GCP_INFERENCE=true
-JARVIS_MODEL_CACHE=$MODEL_CACHE
+Ironcliw_DEPS_PREBAKED=true
+Ironcliw_SKIP_ML_DEPS_INSTALL=true
+Ironcliw_GCP_INFERENCE=true
+Ironcliw_MODEL_CACHE=$MODEL_CACHE
 GCP_MODELS_DIR=$MODEL_CACHE
 GCP_MULTI_MODEL_ENABLED=true
-JARVIS_PRIME_DIR=$JARVIS_DIR
-JARVIS_PRIME_VENV=$JARVIS_DIR/venv
-JARVIS_PRIME_REPO_URL=$REPO_URL
-PYTHONPATH=$JARVIS_DIR
+Ironcliw_PRIME_DIR=$Ironcliw_DIR
+Ironcliw_PRIME_VENV=$Ironcliw_DIR/venv
+Ironcliw_PRIME_REPO_URL=$REPO_URL
+PYTHONPATH=$Ironcliw_DIR
 EOFENV
 
-log "   ✅ Environment file created at $JARVIS_DIR/.env"
+log "   ✅ Environment file created at $Ironcliw_DIR/.env"
 
 # Create systemd service with EnvironmentFile integration
 cat > /etc/systemd/system/jarvis-prime.service << EOFSVC
 [Unit]
-Description=JARVIS-Prime Inference Server (Golden Image v228.0)
+Description=Ironcliw-Prime Inference Server (Golden Image v228.0)
 After=network.target
 Documentation=https://github.com/drussell23/jarvis-prime
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$JARVIS_DIR
-EnvironmentFile=$JARVIS_DIR/.env
-Environment=PATH=$JARVIS_DIR/venv/bin:/usr/bin:/bin
-ExecStart=$JARVIS_DIR/venv/bin/python -m jarvis_prime.server
+WorkingDirectory=$Ironcliw_DIR
+EnvironmentFile=$Ironcliw_DIR/.env
+Environment=PATH=$Ironcliw_DIR/venv/bin:/usr/bin:/bin
+ExecStart=$Ironcliw_DIR/venv/bin/python -m jarvis_prime.server
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=120
@@ -1954,17 +1954,17 @@ log "   ✅ systemd service configured with EnvironmentFile"
 # === v236.0: Vision Server systemd service (LLaVA on port 8001) ===
 cat > /etc/systemd/system/jarvis-prime-vision.service << EOFVSVC
 [Unit]
-Description=JARVIS-Prime Vision Server (LLaVA on port 8001)
+Description=Ironcliw-Prime Vision Server (LLaVA on port 8001)
 After=network.target jarvis-prime.service
 Wants=jarvis-prime.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$JARVIS_DIR
-EnvironmentFile=$JARVIS_DIR/.env
-Environment=PATH=$JARVIS_DIR/venv/bin:/usr/bin:/bin
-ExecStart=$JARVIS_DIR/venv/bin/python $JARVIS_DIR/vision_server.py --port 8001 --models-dir $MODEL_CACHE
+WorkingDirectory=$Ironcliw_DIR
+EnvironmentFile=$Ironcliw_DIR/.env
+Environment=PATH=$Ironcliw_DIR/venv/bin:/usr/bin:/bin
+ExecStart=$Ironcliw_DIR/venv/bin/python $Ironcliw_DIR/vision_server.py --port 8001 --models-dir $MODEL_CACHE
 Restart=on-failure
 RestartSec=10
 TimeoutStartSec=300
@@ -1991,7 +1991,7 @@ log "Phase 7: Validating build integrity"
 VALIDATION_PASSED=true
 
 # Check 1: Python and venv
-if [ ! -f "$JARVIS_DIR/venv/bin/python" ]; then
+if [ ! -f "$Ironcliw_DIR/venv/bin/python" ]; then
     log "   ❌ FAIL: Python venv not found"
     VALIDATION_PASSED=false
     BUILD_ERRORS=$((BUILD_ERRORS + 1))
@@ -2000,24 +2000,24 @@ else
 fi
 
 # Check 2: Core ML packages importable
-$JARVIS_DIR/venv/bin/python -c "import torch; print(f'   ✅ PyTorch {{torch.__version__}}')" 2>&1 | tee -a "$LOG_FILE" || {{
+$Ironcliw_DIR/venv/bin/python -c "import torch; print(f'   ✅ PyTorch {{torch.__version__}}')" 2>&1 | tee -a "$LOG_FILE" || {{
     log "   ❌ FAIL: PyTorch not importable"
     VALIDATION_PASSED=false
     BUILD_ERRORS=$((BUILD_ERRORS + 1))
 }}
 
-$JARVIS_DIR/venv/bin/python -c "import transformers; print(f'   ✅ Transformers {{transformers.__version__}}')" 2>&1 | tee -a "$LOG_FILE" || {{
+$Ironcliw_DIR/venv/bin/python -c "import transformers; print(f'   ✅ Transformers {{transformers.__version__}}')" 2>&1 | tee -a "$LOG_FILE" || {{
     log "   ❌ FAIL: Transformers not importable"
     VALIDATION_PASSED=false
     BUILD_ERRORS=$((BUILD_ERRORS + 1))
 }}
 
-$JARVIS_DIR/venv/bin/python -c "import llama_cpp; print('   ✅ llama-cpp-python: OK')" 2>&1 | tee -a "$LOG_FILE" || {{
+$Ironcliw_DIR/venv/bin/python -c "import llama_cpp; print('   ✅ llama-cpp-python: OK')" 2>&1 | tee -a "$LOG_FILE" || {{
     log "   ⚠️  llama-cpp-python not importable (optional)"
 }}
 
-# Check 3: JARVIS-Prime code present
-if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
+# Check 3: Ironcliw-Prime code present
+if [ -d "$Ironcliw_DIR/jarvis_prime" ]; then
     log "   ✅ jarvis_prime module: OK"
 else
     log "   ❌ FAIL: jarvis_prime module not found"
@@ -2034,7 +2034,7 @@ else
 fi
 
 # Check 5: Environment file
-if [ -f "$JARVIS_DIR/.env" ]; then
+if [ -f "$Ironcliw_DIR/.env" ]; then
     log "   ✅ Environment file: OK"
 else
     log "   ❌ FAIL: Environment file missing"
@@ -2320,10 +2320,10 @@ wait
                     "type": "golden-image",
                     "model-name": self.config.golden_image_model.replace("/", "-").replace(".", "-").lower(),
                     "model-version": "latest",
-                    "jarvis-version": os.getenv("JARVIS_VERSION", "unknown"),
+                    "jarvis-version": os.getenv("Ironcliw_VERSION", "unknown"),
                     "source-vm": builder_vm_name,
                 },
-                description=f"JARVIS-Prime golden image with {self.config.golden_image_model} pre-loaded",
+                description=f"Ironcliw-Prime golden image with {self.config.golden_image_model} pre-loaded",
             )
             
             image_operation = images_client.insert(
@@ -2517,10 +2517,10 @@ class GCPVMManager:
         self._golden_image_stall_history: Dict[str, List[float]] = {}
         self._golden_image_suspect_set: set = set()
         self._golden_image_corruption_threshold = int(
-            os.environ.get("JARVIS_GOLDEN_IMAGE_CORRUPTION_THRESHOLD", "3")
+            os.environ.get("Ironcliw_GOLDEN_IMAGE_CORRUPTION_THRESHOLD", "3")
         )
         self._golden_image_stall_tolerance_pct = float(
-            os.environ.get("JARVIS_GOLDEN_IMAGE_STALL_TOLERANCE_PCT", "5.0")
+            os.environ.get("Ironcliw_GOLDEN_IMAGE_STALL_TOLERANCE_PCT", "5.0")
         )
 
         # v233.0: Diagnostic signature tracking for enhanced corruption detection
@@ -2786,6 +2786,14 @@ class GCPVMManager:
 
             except Exception as e:
                 self._initialization_error = e
+                # Check for DefaultCredentialsError either directly or wrapped
+                error_str = str(e)
+                if "DefaultCredentialsError" in type(e).__name__ or "DefaultCredentialsError" in error_str or "default credentials were not found" in error_str.lower():
+                    logger.warning("⚠️  GCP Credentials not found. Disabling GCP VM Manager gracefully to prevent crash loops.")
+                    self.config.enabled = False
+                    self.initialized = True  # Prevent retries
+                    return
+                    
                 log_component_failure(
                     "gcp-vm",
                     "Failed to initialize GCP VM Manager",
@@ -2979,7 +2987,7 @@ class GCPVMManager:
 
                 firewall_rule = compute_v1.Firewall(
                     name=firewall_name,
-                    description="CRITICAL: Allow health checks for JARVIS GCP VMs (v155.0)",
+                    description="CRITICAL: Allow health checks for Ironcliw GCP VMs (v155.0)",
                     network=f"global/networks/{self.config.network}",
                     priority=1000,
                     direction="INGRESS",
@@ -2988,7 +2996,7 @@ class GCPVMManager:
                     allowed=[
                         compute_v1.Allowed(
                             I_p_protocol="tcp",
-                            ports=["8000", "8010", "8080", "8090", "22"],  # All JARVIS ports + SSH for debugging
+                            ports=["8000", "8010", "8080", "8090", "22"],  # All Ironcliw ports + SSH for debugging
                         ),
                     ],
                 )
@@ -3041,7 +3049,7 @@ class GCPVMManager:
                         f"    gcloud compute firewall-rules create {firewall_name} \\\n"
                         f"        --allow tcp:8000,tcp:8010,tcp:8080,tcp:8090,tcp:22 \\\n"
                         f"        --target-tags jarvis-node \\\n"
-                        f"        --description 'JARVIS health checks' \\\n"
+                        f"        --description 'Ironcliw health checks' \\\n"
                         f"        --project {self.config.project_id}"
                     )
                     return False
@@ -3063,7 +3071,7 @@ class GCPVMManager:
             f"    gcloud compute firewall-rules create {firewall_name} \\\n"
             f"        --allow tcp:8000,tcp:8010,tcp:8080,tcp:8090,tcp:22 \\\n"
             f"        --target-tags jarvis-node \\\n"
-            f"        --description 'JARVIS health checks' \\\n"
+            f"        --description 'Ironcliw health checks' \\\n"
             f"        --project {self.config.project_id}"
         )
         return False
@@ -3705,7 +3713,7 @@ class GCPVMManager:
             or vm.metadata.get("vm_class") == "invincible"
         )
         port = int(os.getenv(
-            "JARVIS_PRIME_PORT" if is_invincible else "GCP_BACKEND_PORT",
+            "Ironcliw_PRIME_PORT" if is_invincible else "GCP_BACKEND_PORT",
             "8000",
         ))
 
@@ -3725,18 +3733,18 @@ class GCPVMManager:
 
         # Set environment variables (consumed by PrimeClient, HybridBackendClient, etc.)
         # v236.3 (H2 fix): Parity with _propagate_invincible_node_url() — same env vars
-        os.environ["JARVIS_PRIME_URL"] = url
+        os.environ["Ironcliw_PRIME_URL"] = url
         os.environ["GCP_PRIME_ENDPOINT"] = url
-        os.environ["JARVIS_PRIME_CLOUD_RUN_URL"] = url
-        os.environ["JARVIS_PRIME_API_URL"] = url
-        os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
-        os.environ["JARVIS_INVINCIBLE_NODE_IP"] = vm.ip_address
-        os.environ["JARVIS_INVINCIBLE_NODE_PORT"] = str(port)
+        os.environ["Ironcliw_PRIME_CLOUD_RUN_URL"] = url
+        os.environ["Ironcliw_PRIME_API_URL"] = url
+        os.environ["Ironcliw_HOLLOW_CLIENT_ACTIVE"] = "true"
+        os.environ["Ironcliw_INVINCIBLE_NODE_IP"] = vm.ip_address
+        os.environ["Ironcliw_INVINCIBLE_NODE_PORT"] = str(port)
 
         # v236.3 (H2 fix): Vision server endpoint (LLaVA on port 8001)
-        _vision_port = os.getenv("JARVIS_PRIME_VISION_PORT", "8001")
-        os.environ["JARVIS_PRIME_VISION_URL"] = f"http://{vm.ip_address}:{_vision_port}"
-        os.environ["JARVIS_PRIME_VISION_PORT"] = _vision_port
+        _vision_port = os.getenv("Ironcliw_PRIME_VISION_PORT", "8001")
+        os.environ["Ironcliw_PRIME_VISION_URL"] = f"http://{vm.ip_address}:{_vision_port}"
+        os.environ["Ironcliw_PRIME_VISION_PORT"] = _vision_port
 
         logger.info(
             f"[EndpointPropagation] v236.3: Propagating VM '{vm.name}' "
@@ -3829,12 +3837,12 @@ class GCPVMManager:
         )
 
         # Clear hollow client env vars (consumers check these for routing)
-        # Note: Don't clear JARVIS_PRIME_URL — local Prime might still use it
-        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
-        os.environ.pop("JARVIS_INVINCIBLE_NODE_IP", None)
-        os.environ.pop("JARVIS_INVINCIBLE_NODE_PORT", None)
-        os.environ.pop("JARVIS_PRIME_VISION_URL", None)
-        os.environ.pop("JARVIS_PRIME_VISION_PORT", None)
+        # Note: Don't clear Ironcliw_PRIME_URL — local Prime might still use it
+        os.environ.pop("Ironcliw_HOLLOW_CLIENT_ACTIVE", None)
+        os.environ.pop("Ironcliw_INVINCIBLE_NODE_IP", None)
+        os.environ.pop("Ironcliw_INVINCIBLE_NODE_PORT", None)
+        os.environ.pop("Ironcliw_PRIME_VISION_URL", None)
+        os.environ.pop("Ironcliw_PRIME_VISION_PORT", None)
 
         # Notify PrimeRouter to demote back to local
         try:
@@ -3882,13 +3890,13 @@ class GCPVMManager:
 
     async def _count_active_gcp_instances(self) -> int:
         """
-        v229.0: Count all JARVIS VM instances actually running in GCP.
+        v229.0: Count all Ironcliw VM instances actually running in GCP.
         
         This queries the GCP API directly instead of relying on local tracking,
         which can become stale after crashes, re-execs, or orphaned sessions.
         
         Returns:
-            Number of running JARVIS VM instances in GCP
+            Number of running Ironcliw VM instances in GCP
         """
         if not self.instances_client:
             return 0
@@ -3923,7 +3931,7 @@ class GCPVMManager:
             except Exception:
                 pass  # Non-critical
             
-            logger.debug(f"[VMGuard] GCP running JARVIS instances: {count}")
+            logger.debug(f"[VMGuard] GCP running Ironcliw instances: {count}")
             return count
             
         except Exception as e:
@@ -3932,7 +3940,7 @@ class GCPVMManager:
 
     async def cleanup_orphaned_gcp_instances(self, max_age_hours: float = 3.0) -> Dict[str, Any]:
         """
-        v229.0: Scan GCP for orphaned JARVIS VMs and delete them.
+        v229.0: Scan GCP for orphaned Ironcliw VMs and delete them.
         
         Orphan detection logic:
         - VMs named 'jarvis-backend-*' older than max_age_hours → DELETE
@@ -4058,8 +4066,8 @@ class GCPVMManager:
         This task runs every 30 minutes to catch orphans between restarts.
         Also re-syncs managed_vms to catch state drift.
         """
-        _interval = float(os.environ.get("JARVIS_ORPHAN_CLEANUP_INTERVAL", "1800"))  # 30min
-        _max_age = float(os.environ.get("JARVIS_ORPHAN_MAX_AGE_HOURS", "3.0"))
+        _interval = float(os.environ.get("Ironcliw_ORPHAN_CLEANUP_INTERVAL", "1800"))  # 30min
+        _max_age = float(os.environ.get("Ironcliw_ORPHAN_MAX_AGE_HOURS", "3.0"))
 
         # Wait for initial startup to complete before first run
         await asyncio.sleep(120)
@@ -4144,13 +4152,13 @@ class GCPVMManager:
             enabled_vars = {
                 "GCP_ENABLED": os.getenv("GCP_ENABLED", "not set"),
                 "GCP_VM_ENABLED": os.getenv("GCP_VM_ENABLED", "not set"),
-                "JARVIS_SPOT_VM_ENABLED": os.getenv("JARVIS_SPOT_VM_ENABLED", "not set"),
+                "Ironcliw_SPOT_VM_ENABLED": os.getenv("Ironcliw_SPOT_VM_ENABLED", "not set"),
             }
             logger.warning(
                 f"[v147.0] GCP VM Manager disabled. Env vars: {enabled_vars}. "
                 f"Set any of these to 'true' to enable."
             )
-            return False, "GCP_DISABLED: Set GCP_ENABLED, GCP_VM_ENABLED, or JARVIS_SPOT_VM_ENABLED=true"
+            return False, "GCP_DISABLED: Set GCP_ENABLED, GCP_VM_ENABLED, or Ironcliw_SPOT_VM_ENABLED=true"
         
         # v147.0: Validate configuration before attempting
         is_valid, validation_error = self.config.is_valid_for_vm_operations()
@@ -4540,7 +4548,7 @@ class GCPVMManager:
         # Previous bug: only checked tracked VMs (self.managed_vms), but untracked
         # VMs (from crashed sessions, pre-warm tasks, orphans) weren't counted.
         # This led to 7 VMs running simultaneously, exhausting CPU quota.
-        # Fix: Query GCP API for actual running JARVIS instances.
+        # Fix: Query GCP API for actual running Ironcliw instances.
         active_vms = len([vm for vm in self.managed_vms.values() if vm.state == VMState.RUNNING])
         
         # Also count untracked VMs via GCP API (async-safe)
@@ -4548,7 +4556,7 @@ class GCPVMManager:
             gcp_vm_count = await self._count_active_gcp_instances()
             if gcp_vm_count > active_vms:
                 logger.warning(
-                    f"⚠️ [VMGuard] GCP has {gcp_vm_count} running JARVIS VMs "
+                    f"⚠️ [VMGuard] GCP has {gcp_vm_count} running Ironcliw VMs "
                     f"but only {active_vms} are tracked locally. "
                     f"Orphan cleanup recommended."
                 )
@@ -5398,10 +5406,10 @@ class GCPVMManager:
         # Metadata
         # v147.0: Added port and repo URL for startup script configuration
         # v228.0: Dynamic repo URL discovery — always pass to VM metadata
-        jarvis_port = os.environ.get("JARVIS_PRIME_PORT", "8000")
+        jarvis_port = os.environ.get("Ironcliw_PRIME_PORT", "8000")
         
         # v228.0: Dynamically discover repo URL (never rely on hardcoded fallbacks)
-        jarvis_repo_url = os.environ.get("JARVIS_REPO_URL") or os.environ.get("JARVIS_PRIME_REPO_URL", "")
+        jarvis_repo_url = os.environ.get("Ironcliw_REPO_URL") or os.environ.get("Ironcliw_PRIME_REPO_URL", "")
         if not jarvis_repo_url:
             # Auto-detect from golden image builder's discovery logic
             builder = self.get_golden_image_builder()
@@ -5422,9 +5430,9 @@ class GCPVMManager:
             logger.debug(f"   📦 Repo URL passed to VM: {jarvis_repo_url}")
         else:
             logger.warning(
-                "⚠️ [GCP] No JARVIS-Prime repo URL discovered. "
+                "⚠️ [GCP] No Ironcliw-Prime repo URL discovered. "
                 "VM startup script may fail to clone code. "
-                "Set JARVIS_PRIME_REPO_URL or JARVIS_REPO_URL."
+                "Set Ironcliw_PRIME_REPO_URL or Ironcliw_REPO_URL."
             )
 
         # v224.0: Deployment mode handling (golden image, container, or startup script)
@@ -5434,7 +5442,7 @@ class GCPVMManager:
             # ═══════════════════════════════════════════════════════════════════
             # Uses a custom VM image with everything pre-baked:
             #   - Python environment with all ML dependencies
-            #   - JARVIS-Prime codebase
+            #   - Ironcliw-Prime codebase
             #   - Model files already downloaded
             #   - Systemd service configured for auto-start
             #
@@ -5484,9 +5492,9 @@ class GCPVMManager:
                     key, value = pair.split("=", 1)
                     container_env[key.strip()] = value.strip()
             
-            # Add JARVIS-specific environment variables
-            container_env["JARVIS_PORT"] = jarvis_port
-            container_env["JARVIS_COMPONENTS"] = ",".join(components)
+            # Add Ironcliw-specific environment variables
+            container_env["Ironcliw_PORT"] = jarvis_port
+            container_env["Ironcliw_COMPONENTS"] = ",".join(components)
             
             # Build container manifest for Container-Optimized OS
             # This uses the konlet (Container-Optimized OS Container Agent)
@@ -5538,7 +5546,7 @@ class GCPVMManager:
             #
             # The VM's lifecycle is controlled by:
             # 1. max_run_duration in Spot VM config (hard GCP limit)
-            # 2. Explicit terminate_vm() calls from JARVIS
+            # 2. Explicit terminate_vm() calls from Ironcliw
             # 3. GCP preemption (for Spot VMs)
             if self.config.startup_script_path and os.path.exists(self.config.startup_script_path):
                 with open(self.config.startup_script_path, "r") as f:
@@ -5694,7 +5702,7 @@ class GCPVMManager:
         }
         
         if not self.config.use_golden_image:
-            result["message"] = "Golden image deployment is disabled. Enable with JARVIS_GCP_USE_GOLDEN_IMAGE=true"
+            result["message"] = "Golden image deployment is disabled. Enable with Ironcliw_GCP_USE_GOLDEN_IMAGE=true"
             return result
         
         builder = self.get_golden_image_builder()
@@ -5923,7 +5931,7 @@ class GCPVMManager:
             )
             logger.info(
                 f"[CorruptionDetect] Auto-rebuild triggered for '{image_name}' "
-                f"(JARVIS_GCP_GOLDEN_IMAGE_AUTO_REBUILD=true)"
+                f"(Ironcliw_GCP_GOLDEN_IMAGE_AUTO_REBUILD=true)"
             )
         except RuntimeError:
             # No event loop running (unlikely in async context)
@@ -6061,7 +6069,7 @@ class GCPVMManager:
 
         if action == VMAction.STOP:
             # STOP is allowed for session shutdown when session lifecycle is enabled
-            session_lifecycle = os.getenv("JARVIS_GCP_SESSION_LIFECYCLE", "true").lower() == "true"
+            session_lifecycle = os.getenv("Ironcliw_GCP_SESSION_LIFECYCLE", "true").lower() == "true"
             is_session_reason = reason in ("session_shutdown", "supervisor_cleanup", "emergency_shutdown")
 
             if session_lifecycle and is_session_reason:
@@ -6503,7 +6511,7 @@ class GCPVMManager:
         # v232.1: Default 450s (was 300s) — GCP golden image VM creation + boot + health
         # can legitimately take 4-5 minutes. Configurable via env var.
         recovery_timeout = recovery_timeout or float(
-            os.environ.get("JARVIS_GCP_RECOVERY_TIMEOUT", "450")
+            os.environ.get("Ironcliw_GCP_RECOVERY_TIMEOUT", "450")
         )
 
         result: Dict[str, Any] = {
@@ -6720,7 +6728,7 @@ class GCPVMManager:
                 endpoints.append({
                     "ip": vm.ip_address,
                     "internal_ip": vm.internal_ip,
-                    "port": 8010,  # Default JARVIS backend port
+                    "port": 8010,  # Default Ironcliw backend port
                     "name": vm_name,
                     "zone": vm.zone,
                     "health": vm.health_status,
@@ -6926,7 +6934,7 @@ class GCPVMManager:
                                     or vm.metadata.get("vm_class") == "invincible"
                                 )
                                 _ep_port = int(os.getenv(
-                                    "JARVIS_PRIME_PORT" if _is_inv else "GCP_BACKEND_PORT",
+                                    "Ironcliw_PRIME_PORT" if _is_inv else "GCP_BACKEND_PORT",
                                     "8000",
                                 ))
                                 endpoint_ready, _ = await self._ping_health_endpoint(
@@ -7313,7 +7321,7 @@ class GCPVMManager:
         5. POLL /health until ready
 
         Args:
-            port: Port for health endpoint (default: JARVIS_PRIME_PORT or 8000)
+            port: Port for health endpoint (default: Ironcliw_PRIME_PORT or 8000)
             timeout: Max time to wait for VM to be ready (default: 300s)
             progress_callback: v220.1 - Optional callback(progress_pct, phase, detail) for real-time dashboard updates
 
@@ -7323,7 +7331,7 @@ class GCPVMManager:
         # Get configuration
         static_ip_name = self.config.static_ip_name
         instance_name = self.config.static_instance_name or "jarvis-prime-node"
-        target_port = port or int(os.environ.get("JARVIS_PRIME_PORT", "8000"))
+        target_port = port or int(os.environ.get("Ironcliw_PRIME_PORT", "8000"))
         max_timeout = timeout or self.config.static_vm_health_timeout
         poll_interval = self.config.static_vm_health_poll_interval
 
@@ -7602,7 +7610,7 @@ class GCPVMManager:
                     "gcloud", "compute", "addresses", "create", ip_name,
                     "--project", self.config.project_id,
                     "--region", self.config.region,
-                    "--description", "JARVIS Invincible Node static IP (auto-created)"
+                    "--description", "Ironcliw Invincible Node static IP (auto-created)"
                 ],
                 capture_output=True,
                 text=True,
@@ -7938,7 +7946,7 @@ class GCPVMManager:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Runs on VMs created from golden images. Everything is pre-installed:
 #   - Python + venv + ML dependencies (Phase 3 SKIPPED)
-#   - JARVIS-Prime code cloned
+#   - Ironcliw-Prime code cloned
 #   - LLM model pre-cached
 #   - systemd service configured
 #
@@ -7954,7 +7962,7 @@ class GCPVMManager:
 
 LOG_FILE="/var/log/jarvis-golden-startup.log"
 PROGRESS_FILE="/tmp/jarvis_progress.json"
-JARVIS_DIR="/opt/jarvis-prime"
+Ironcliw_DIR="/opt/jarvis-prime"
 START_TIME=$(date +%s)
 STARTUP_SCRIPT_VERSION="__STARTUP_SCRIPT_VERSION__"
 STARTUP_SCRIPT_METADATA_VERSION=""
@@ -8029,26 +8037,26 @@ safe_load_env() {
 # the port was read from metadata, causing it to listen on the wrong port.
 # The supervisor would then poll the metadata port and get no response.
 # v233.2: Try with 5s timeout first, retry with 15s on failure, then default
-JARVIS_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
+Ironcliw_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
     http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port \\
     2>/dev/null)
-if [ -z "$JARVIS_PORT" ] || ! echo "$JARVIS_PORT" | grep -qE '^[0-9]+$'; then
+if [ -z "$Ironcliw_PORT" ] || ! echo "$Ironcliw_PORT" | grep -qE '^[0-9]+$'; then
     log "WARN: First metadata port read failed — retrying with 15s timeout..."
-    JARVIS_PORT=$(timeout 15 curl -s -H 'Metadata-Flavor: Google' \\
+    Ironcliw_PORT=$(timeout 15 curl -s -H 'Metadata-Flavor: Google' \\
         http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port \\
         2>/dev/null)
 fi
-if [ -z "$JARVIS_PORT" ] || ! echo "$JARVIS_PORT" | grep -qE '^[0-9]+$'; then
+if [ -z "$Ironcliw_PORT" ] || ! echo "$Ironcliw_PORT" | grep -qE '^[0-9]+$'; then
     log "WARN: Metadata port read failed — defaulting to 8000"
-    JARVIS_PORT="8000"
+    Ironcliw_PORT="8000"
 fi
 # Validate port is in sane range
-if [ "$JARVIS_PORT" -lt 1 ] 2>/dev/null || [ "$JARVIS_PORT" -gt 65535 ] 2>/dev/null; then
-    log "WARN: Invalid port $JARVIS_PORT — defaulting to 8000"
-    JARVIS_PORT="8000"
+if [ "$Ironcliw_PORT" -lt 1 ] 2>/dev/null || [ "$Ironcliw_PORT" -gt 65535 ] 2>/dev/null; then
+    log "WARN: Invalid port $Ironcliw_PORT — defaulting to 8000"
+    Ironcliw_PORT="8000"
 fi
-export JARVIS_PORT
-log "Port resolved from metadata: $JARVIS_PORT"
+export Ironcliw_PORT
+log "Port resolved from metadata: $Ironcliw_PORT"
 
 # Record startup script metadata version (if present)
 STARTUP_SCRIPT_METADATA_VERSION=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \
@@ -8058,7 +8066,7 @@ if [ -z "$STARTUP_SCRIPT_METADATA_VERSION" ]; then
     STARTUP_SCRIPT_METADATA_VERSION="$STARTUP_SCRIPT_VERSION"
 fi
 
-export JARVIS_APARS_FILE="$PROGRESS_FILE"
+export Ironcliw_APARS_FILE="$PROGRESS_FILE"
 
 update_apars 0 50 2 "golden_image_booting"
 
@@ -8147,7 +8155,7 @@ class APARSHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-port = int(os.environ.get("JARVIS_PORT", "8000"))
+port = int(os.environ.get("Ironcliw_PORT", "8000"))
 server = http.server.HTTPServer(("0.0.0.0", port), APARSHandler)
 server.serve_forever()
 EOFHEALTH
@@ -8157,7 +8165,7 @@ sleep 1
 
 # v233.2: Verify health endpoint started successfully
 if ! kill -0 $HEALTH_PID 2>/dev/null; then
-    log "ERROR: Health endpoint failed to start on port $JARVIS_PORT — retrying..."
+    log "ERROR: Health endpoint failed to start on port $Ironcliw_PORT — retrying..."
     python3 << 'EOFHEALTH2' &
 import http.server, json, os, time
 PROGRESS_FILE = "/tmp/jarvis_progress.json"
@@ -8212,7 +8220,7 @@ class APARSHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
     def log_message(self, format, *args):
         pass
-port = int(os.environ.get("JARVIS_PORT", "8000"))
+port = int(os.environ.get("Ironcliw_PORT", "8000"))
 server = http.server.HTTPServer(("0.0.0.0", port), APARSHandler)
 server.serve_forever()
 EOFHEALTH2
@@ -8223,25 +8231,25 @@ fi
 log "═══════════════════════════════════════════════════════════════════════════════"
 log "GOLDEN IMAGE STARTUP v${STARTUP_SCRIPT_VERSION} - Pre-baked environment"
 log "═══════════════════════════════════════════════════════════════════════════════"
-log "APARS health endpoint on port $JARVIS_PORT (PID: $HEALTH_PID)"
+log "APARS health endpoint on port $Ironcliw_PORT (PID: $HEALTH_PID)"
 
 # ─── Source pre-baked environment ───
 update_apars 1 0 10 "loading_environment"
 
-if [ -f "$JARVIS_DIR/.env" ]; then
-    if safe_load_env "$JARVIS_DIR/.env" 15; then
-        log "✅ Environment loaded from $JARVIS_DIR/.env"
+if [ -f "$Ironcliw_DIR/.env" ]; then
+    if safe_load_env "$Ironcliw_DIR/.env" 15; then
+        log "✅ Environment loaded from $Ironcliw_DIR/.env"
     else
         log "⚠️  .env sourcing failed or timed out after 15s, continuing with defaults"
     fi
     update_apars 1 50 15 "environment_loaded"
 else
-    log "⚠️  No .env file found at $JARVIS_DIR/.env"
+    log "⚠️  No .env file found at $Ironcliw_DIR/.env"
     update_apars 1 50 15 "no_env_file"
 fi
 
-# Ensure PYTHONPATH includes JARVIS_DIR
-export PYTHONPATH="${JARVIS_DIR}:${PYTHONPATH:-}"
+# Ensure PYTHONPATH includes Ironcliw_DIR
+export PYTHONPATH="${Ironcliw_DIR}:${PYTHONPATH:-}"
 
 # v235.0: Smooth progress through skipped phases (stay in Phase 1
 # to avoid contradicting skipped_phases: [2, 3] in health response)
@@ -8254,11 +8262,11 @@ update_apars 4 0 40 "validating_prebaked"
 VALIDATION_OK=true
 
 # Check code exists and is compatible with current startup script
-if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
+if [ -d "$Ironcliw_DIR/jarvis_prime" ]; then
     log "✅ jarvis_prime module found"
     # v235.3: Verify code freshness — ASGI middleware requires module-level app export.
     # Golden images may have old J-Prime code without this. If missing, pull latest.
-    if cd "$JARVIS_DIR" && "$JARVIS_DIR/venv/bin/python" -c "from jarvis_prime.server import app" 2>/dev/null; then
+    if cd "$Ironcliw_DIR" && "$Ironcliw_DIR/venv/bin/python" -c "from jarvis_prime.server import app" 2>/dev/null; then
         log "✅ jarvis_prime.server.app importable (v235.3+ code)"
         update_apars 4 25 45 "code_validated"
     else
@@ -8266,17 +8274,17 @@ if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
         update_apars 4 15 43 "code_stale_pulling"
         REPO_URL=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
             http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-repo-url \\
-            2>/dev/null || echo "${JARVIS_PRIME_REPO_URL:-}")
-        if [ -n "$REPO_URL" ] && [ -d "$JARVIS_DIR/.git" ]; then
+            2>/dev/null || echo "${Ironcliw_PRIME_REPO_URL:-}")
+        if [ -n "$REPO_URL" ] && [ -d "$Ironcliw_DIR/.git" ]; then
             log "   Pulling latest from: $REPO_URL (timeout 60s)"
-            if timeout 60 git -C "$JARVIS_DIR" pull --ff-only 2>&1 | tee -a "$LOG_FILE"; then
+            if timeout 60 git -C "$Ironcliw_DIR" pull --ff-only 2>&1 | tee -a "$LOG_FILE"; then
                 log "✅ Code updated via git pull"
                 update_apars 4 25 45 "code_updated"
             else
                 log "⚠️  git pull failed — trying fresh clone"
                 if timeout 120 git clone --depth 1 "$REPO_URL" /tmp/jprime-update 2>&1 | tee -a "$LOG_FILE"; then
-                    cp -a /tmp/jprime-update/jarvis_prime/* "$JARVIS_DIR/jarvis_prime/" 2>/dev/null
-                    cp -a /tmp/jprime-update/run_server.py "$JARVIS_DIR/" 2>/dev/null
+                    cp -a /tmp/jprime-update/jarvis_prime/* "$Ironcliw_DIR/jarvis_prime/" 2>/dev/null
+                    cp -a /tmp/jprime-update/run_server.py "$Ironcliw_DIR/" 2>/dev/null
                     rm -rf /tmp/jprime-update
                     log "✅ Code rescued via fresh clone"
                     update_apars 4 25 45 "code_rescued"
@@ -8289,8 +8297,8 @@ if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
         elif [ -n "$REPO_URL" ]; then
             log "   No .git dir — cloning fresh (timeout 120s)"
             if timeout 120 git clone --depth 1 "$REPO_URL" /tmp/jprime-update 2>&1 | tee -a "$LOG_FILE"; then
-                cp -a /tmp/jprime-update/jarvis_prime/* "$JARVIS_DIR/jarvis_prime/" 2>/dev/null
-                cp -a /tmp/jprime-update/run_server.py "$JARVIS_DIR/" 2>/dev/null
+                cp -a /tmp/jprime-update/jarvis_prime/* "$Ironcliw_DIR/jarvis_prime/" 2>/dev/null
+                cp -a /tmp/jprime-update/run_server.py "$Ironcliw_DIR/" 2>/dev/null
                 rm -rf /tmp/jprime-update
                 log "✅ Code updated via clone"
                 update_apars 4 25 45 "code_cloned"
@@ -8309,12 +8317,12 @@ else
     update_apars 4 15 43 "code_rescue_starting"
     REPO_URL=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
         http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-repo-url \\
-        2>/dev/null || echo "${JARVIS_PRIME_REPO_URL:-}")
+        2>/dev/null || echo "${Ironcliw_PRIME_REPO_URL:-}")
     if [ -n "$REPO_URL" ]; then
         log "   Cloning from: $REPO_URL (timeout 120s)"
         # v233.3: Add timeout to prevent indefinite hang on DNS/network issues
         if timeout 120 git clone --depth 1 "$REPO_URL" /tmp/jprime-rescue 2>&1 | tee -a "$LOG_FILE"; then
-            cp -a /tmp/jprime-rescue/* "$JARVIS_DIR/" 2>/dev/null && \\
+            cp -a /tmp/jprime-rescue/* "$Ironcliw_DIR/" 2>/dev/null && \\
                 rm -rf /tmp/jprime-rescue && \\
                 log "✅ Code rescued via git clone"
             update_apars 4 40 50 "code_rescue_complete"
@@ -8332,7 +8340,7 @@ fi
 update_apars 4 60 55 "checking_model_cache"
 
 # Check model cache
-MODEL_CACHE="${JARVIS_MODEL_CACHE:-$JARVIS_DIR/models}"
+MODEL_CACHE="${Ironcliw_MODEL_CACHE:-$Ironcliw_DIR/models}"
 if [ -d "$MODEL_CACHE" ] && [ "$(ls -A "$MODEL_CACHE" 2>/dev/null)" ]; then
     # v233.3: Add timeout to prevent hang on network mounts
     MODEL_SIZE=$(timeout 10 du -sm "$MODEL_CACHE" 2>/dev/null | cut -f1 || echo "0")
@@ -8368,11 +8376,11 @@ loses all progress visibility during the critical model-loading phase.
 """
 import os, sys, json, time, argparse
 
-_JARVIS_DIR = os.environ.get("JARVIS_DIR", "/opt/jarvis-prime")
-sys.path.insert(0, _JARVIS_DIR)
-os.chdir(_JARVIS_DIR)
+_Ironcliw_DIR = os.environ.get("Ironcliw_DIR", "/opt/jarvis-prime")
+sys.path.insert(0, _Ironcliw_DIR)
+os.chdir(_Ironcliw_DIR)
 
-APARS_FILE = os.environ.get("JARVIS_APARS_FILE", "/tmp/jarvis_progress.json")
+APARS_FILE = os.environ.get("Ironcliw_APARS_FILE", "/tmp/jarvis_progress.json")
 
 # ─── APARS file reader with stat-based cache ───
 _apars_cache = None
@@ -8503,7 +8511,7 @@ if _app is None:
     import subprocess
     print(f"[APARS Launcher] Could not import J-Prime app: {_import_errors}", flush=True)
     print("[APARS Launcher] Falling back to direct module execution", flush=True)
-    _port = os.environ.get("JARVIS_PORT", "8000")
+    _port = os.environ.get("Ironcliw_PORT", "8000")
     sys.exit(subprocess.call([
         sys.executable, "-m", "jarvis_prime.server",
         "--host", "0.0.0.0", "--port", _port,
@@ -8517,7 +8525,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument(
         "--port", type=int,
-        default=int(os.environ.get("JARVIS_PORT", "8000")),
+        default=int(os.environ.get("Ironcliw_PORT", "8000")),
     )
     args = parser.parse_args()
     print(
@@ -8542,42 +8550,42 @@ if [ -n "$HEALTH_PID" ]; then
     sleep 1
 fi
 
-log "Starting JARVIS-Prime service on port $JARVIS_PORT..."
+log "Starting Ironcliw-Prime service on port $Ironcliw_PORT..."
 
 if systemctl is-enabled jarvis-prime.service 2>/dev/null; then
     # v235.2: Override ExecStart to use APARS launcher + pass all env vars
-    # systemd doesn't inherit shell exports, so JARVIS_APARS_FILE must
+    # systemd doesn't inherit shell exports, so Ironcliw_APARS_FILE must
     # be explicitly listed. ExecStart= (empty) clears the base definition
     # before setting the new command (systemd convention).
     mkdir -p /etc/systemd/system/jarvis-prime.service.d
     cat > /etc/systemd/system/jarvis-prime.service.d/port.conf << EOFOVERRIDE
 [Service]
-Environment=JARVIS_PORT=${JARVIS_PORT}
-Environment=PYTHONPATH=${JARVIS_DIR}
-Environment=JARVIS_APARS_FILE=${JARVIS_APARS_FILE}
-Environment=JARVIS_DIR=${JARVIS_DIR}
+Environment=Ironcliw_PORT=${Ironcliw_PORT}
+Environment=PYTHONPATH=${Ironcliw_DIR}
+Environment=Ironcliw_APARS_FILE=${Ironcliw_APARS_FILE}
+Environment=Ironcliw_DIR=${Ironcliw_DIR}
 ExecStart=
-ExecStart=${JARVIS_DIR}/venv/bin/python ${APARS_LAUNCHER} --host 0.0.0.0 --port ${JARVIS_PORT}
+ExecStart=${Ironcliw_DIR}/venv/bin/python ${APARS_LAUNCHER} --host 0.0.0.0 --port ${Ironcliw_PORT}
 EOFOVERRIDE
     systemctl daemon-reload
     systemctl start jarvis-prime.service
-    log "Started via systemd with APARS enrichment (port $JARVIS_PORT)"
+    log "Started via systemd with APARS enrichment (port $Ironcliw_PORT)"
 else
     # Fallback: start directly with APARS launcher
-    cd "$JARVIS_DIR"
+    cd "$Ironcliw_DIR"
     source venv/bin/activate
     set -a
     # v235.0: Timeout protection — env already loaded in Phase 1, this is defensive
     [ -f .env ] && safe_load_env ".env" 10
     set +a
-    export JARVIS_PORT
-    export JARVIS_APARS_FILE
-    export JARVIS_DIR
-    export PYTHONPATH="${JARVIS_DIR}:${PYTHONPATH:-}"
+    export Ironcliw_PORT
+    export Ironcliw_APARS_FILE
+    export Ironcliw_DIR
+    export PYTHONPATH="${Ironcliw_DIR}:${PYTHONPATH:-}"
     nohup python "$APARS_LAUNCHER" \\
-        --host 0.0.0.0 --port "$JARVIS_PORT" \\
+        --host 0.0.0.0 --port "$Ironcliw_PORT" \\
         > /var/log/jarvis-prime.log 2>&1 &
-    log "Started directly with APARS enrichment (port $JARVIS_PORT, PID: $!)"
+    log "Started directly with APARS enrichment (port $Ironcliw_PORT, PID: $!)"
 fi
 
 # ─── Verify service health with retries ───
@@ -8589,7 +8597,7 @@ update_apars 6 0 90 "verifying_service" true false
 READY=false
 for attempt in $(seq 1 15); do
     sleep 2
-    HEALTH_RESPONSE=$(curl -sf "http://localhost:${JARVIS_PORT}/health" 2>/dev/null || echo "")
+    HEALTH_RESPONSE=$(curl -sf "http://localhost:${Ironcliw_PORT}/health" 2>/dev/null || echo "")
     if [ -n "$HEALTH_RESPONSE" ]; then
         # Check for readiness indicators in the JSON response
         if echo "$HEALTH_RESPONSE" | python3 -c "
@@ -8623,12 +8631,12 @@ if [ "$READY" = true ]; then
     log "═══════════════════════════════════════════════════════════════════════════════"
     ELAPSED=$(($(date +%s) - START_TIME))
     log "✅ GOLDEN IMAGE STARTUP COMPLETE in ${ELAPSED}s"
-    log "   Port: $JARVIS_PORT | Mode: golden_image | Ready: true"
+    log "   Port: $Ironcliw_PORT | Mode: golden_image | Ready: true"
     log "═══════════════════════════════════════════════════════════════════════════════"
 else
     update_apars 6 100 95 "service_start_timeout" true false '"service_health_check_failed"'
     log "⚠️  Service not responding after 30s — may need more time"
-    log "   Check: curl http://localhost:${JARVIS_PORT}/health"
+    log "   Check: curl http://localhost:${Ironcliw_PORT}/health"
     log "   Logs:  journalctl -u jarvis-prime.service"
 fi
 '''
@@ -8792,7 +8800,7 @@ fi
             )
 
             # v229.0: Dynamic repo URL discovery (consistent with _build_instance_config)
-            jarvis_repo_url = os.environ.get("JARVIS_REPO_URL") or os.environ.get("JARVIS_PRIME_REPO_URL", "")
+            jarvis_repo_url = os.environ.get("Ironcliw_REPO_URL") or os.environ.get("Ironcliw_PRIME_REPO_URL", "")
             if not jarvis_repo_url:
                 try:
                     builder = self.get_golden_image_builder()
@@ -9229,7 +9237,7 @@ fi
 
         # Perform health check if we have a static IP
         if result["static_ip"]:
-            port = int(os.environ.get("JARVIS_PRIME_PORT", "8000"))
+            port = int(os.environ.get("Ironcliw_PRIME_PORT", "8000"))
             is_healthy, health_data = await self._ping_health_endpoint(
                 result["static_ip"], port, timeout=10.0
             )
@@ -9540,10 +9548,10 @@ async def create_vm_if_needed(
     """
     try:
         # Explicit opt-in guardrail (prevents surprise spend).
-        # Accept legacy GCP_VM_ENABLED, otherwise use JARVIS_SPOT_VM_ENABLED.
+        # Accept legacy GCP_VM_ENABLED, otherwise use Ironcliw_SPOT_VM_ENABLED.
         enabled_flag = os.getenv("GCP_VM_ENABLED")
         if enabled_flag is None:
-            enabled_flag = os.getenv("JARVIS_SPOT_VM_ENABLED", "false")
+            enabled_flag = os.getenv("Ironcliw_SPOT_VM_ENABLED", "false")
         if str(enabled_flag).lower() != "true":
             logger.info("ℹ️  Spot VM creation disabled by configuration")
             return None

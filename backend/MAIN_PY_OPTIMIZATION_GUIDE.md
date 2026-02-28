@@ -1,4 +1,4 @@
-# 🚀 main.py Optimization Guide
+﻿# 🚀 main.py Optimization Guide
 
 ## Overview
 
@@ -231,7 +231,7 @@ if os.getenv('ENABLE_EXPENSIVE_FEATURE', 'false') == 'true':
   ✅ monitoring loaded
 ⚡ Parallel imports completed in 2.3s
 ✨ Optimized startup completed in 3.1s
-🤖 JARVIS Backend (Optimized) Ready!
+🤖 Ironcliw Backend (Optimized) Ready!
 ```
 
 ### Health Check

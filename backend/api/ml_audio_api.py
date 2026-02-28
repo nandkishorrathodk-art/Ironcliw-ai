@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Unified ML Audio API for JARVIS
+Unified ML Audio API for Ironcliw
 Provides ML-enhanced audio error handling with automatic fallback
 when ML dependencies are not available
 
@@ -1083,7 +1083,7 @@ async def update_ml_config(config: AudioConfigUpdate):
             
             # Save to environment
             for key, value in update_dict.items():
-                os.environ[f'JARVIS_AUDIO_{key.upper()}'] = str(value)
+                os.environ[f'Ironcliw_AUDIO_{key.upper()}'] = str(value)
             
             logger.info(f"Updated ML audio config: {update_dict}")
             

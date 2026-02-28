@@ -1,10 +1,10 @@
-# VSMS Integration Guide
+﻿# VSMS Integration Guide
 
 ## Visual State Management System (VSMS) - Complete Integration
 
 ### Overview
 
-The Visual State Management System (VSMS) has been fully integrated into JARVIS's Claude Vision Analyzer, providing autonomous visual intelligence with zero hardcoding. All states, patterns, and behaviors are learned dynamically through observation.
+The Visual State Management System (VSMS) has been fully integrated into Ironcliw's Claude Vision Analyzer, providing autonomous visual intelligence with zero hardcoding. All states, patterns, and behaviors are learned dynamically through observation.
 
 ### Architecture
 

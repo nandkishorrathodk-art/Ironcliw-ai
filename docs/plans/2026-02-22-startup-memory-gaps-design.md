@@ -1,4 +1,4 @@
-# Design: Startup Memory Gap Closure
+﻿# Design: Startup Memory Gap Closure
 
 **Date:** 2026-02-22
 **Status:** Approved
@@ -49,9 +49,9 @@ In `_apply_optimization_strategy(COMPONENT_UNLOAD)`, fire all registered callbac
 
 | Tier | Before | After | Env Var |
 |------|--------|-------|---------|
-| ABUNDANT/OPTIMAL | 0.75GB | 1.5GB | `JARVIS_MODEL_HEADROOM_RELAXED` |
-| ELEVATED | 1.0GB | 2.0GB | `JARVIS_MODEL_HEADROOM_NORMAL` |
-| CONSTRAINED | 1.5GB | 2.5GB | `JARVIS_MODEL_HEADROOM_TIGHT` |
+| ABUNDANT/OPTIMAL | 0.75GB | 1.5GB | `Ironcliw_MODEL_HEADROOM_RELAXED` |
+| ELEVATED | 1.0GB | 2.0GB | `Ironcliw_MODEL_HEADROOM_NORMAL` |
+| CONSTRAINED | 1.5GB | 2.5GB | `Ironcliw_MODEL_HEADROOM_TIGHT` |
 
 Effect: `_select_best_model()` naturally picks one tier smaller (e.g., Q4 instead of Q8), trading model quality for system stability. The pressure-driven system can always offload to GCP if higher quality is needed.
 

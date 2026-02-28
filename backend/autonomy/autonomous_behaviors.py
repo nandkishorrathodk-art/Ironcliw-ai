@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Autonomous Behaviors for JARVIS
+Autonomous Behaviors for Ironcliw
 
-This module implements specific behavior patterns for different scenarios in the JARVIS
+This module implements specific behavior patterns for different scenarios in the Ironcliw
 autonomous system. It provides handlers for messages, meetings, workspace organization,
 and security events, enabling the system to automatically respond to various situations
 without user intervention.

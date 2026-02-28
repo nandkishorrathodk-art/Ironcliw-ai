@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Display Configuration Manager for JARVIS
+Display Configuration Manager for Ironcliw
 =========================================
 
 Manages display monitoring configuration with:

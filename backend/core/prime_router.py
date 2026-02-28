@@ -1,11 +1,11 @@
-"""
+﻿"""
 Prime Router v1.0
 =================
 
-Central AI inference router that routes all requests through JARVIS-Prime
+Central AI inference router that routes all requests through Ironcliw-Prime
 with automatic fallback to cloud Claude API.
 
-This module is the KEY INTEGRATION POINT that connects JARVIS to its Trinity
+This module is the KEY INTEGRATION POINT that connects Ironcliw to its Trinity
 architecture. All AI inference requests flow through here.
 
 ARCHITECTURE:
@@ -35,7 +35,7 @@ USAGE:
     # Generate response (auto-routes to best available backend)
     response = await router.generate(
         prompt="What is the weather?",
-        system_prompt="You are JARVIS."
+        system_prompt="You are Ironcliw."
     )
 
     # Check routing status
@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 # v242.0: Headroom subtracted ONCE at deadline creation (unified_websocket.py).
 # Inner layers just compute (deadline - now). No per-layer compounding.
 try:
-    _DEADLINE_HEADROOM_S = float(os.getenv("JARVIS_DEADLINE_HEADROOM_S", "2.0"))
+    _DEADLINE_HEADROOM_S = float(os.getenv("Ironcliw_DEADLINE_HEADROOM_S", "2.0"))
 except ValueError:
     _DEADLINE_HEADROOM_S = 2.0
 
@@ -151,7 +151,7 @@ async def _get_ultra_coordinator() -> Optional[Any]:
     global _ultra_coordinator, _ultra_coord_lock
 
     # Skip if disabled
-    if os.getenv("JARVIS_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
+    if os.getenv("Ironcliw_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
         return None
 
     if _ultra_coordinator is not None:
@@ -266,7 +266,7 @@ class PrimeRouter:
     """
     Central router for all AI inference requests.
 
-    Routes between local JARVIS-Prime and cloud Claude API based on:
+    Routes between local Ironcliw-Prime and cloud Claude API based on:
     - Health status of components
     - User preferences
     - Cost optimization
@@ -526,7 +526,7 @@ class PrimeRouter:
         """
         v88.0: Internal generation logic (called by protection wrapper).
 
-        Routes between local JARVIS-Prime and cloud Claude API.
+        Routes between local Ironcliw-Prime and cloud Claude API.
         """
         start_time = time.time()
         self._metrics.total_requests += 1
@@ -666,7 +666,7 @@ class PrimeRouter:
         temperature: float,
         **kwargs
     ) -> RouterResponse:
-        """Generate using local JARVIS-Prime."""
+        """Generate using local Ironcliw-Prime."""
         if self._prime_client is None:
             raise RuntimeError("Prime client not available")
 
@@ -680,10 +680,10 @@ class PrimeRouter:
         )
 
         # Record VM activity when routed to GCP (belt + suspenders with transport layer)
-        if self._gcp_promoted or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP")):
+        if self._gcp_promoted or bool(os.environ.get("Ironcliw_INVINCIBLE_NODE_IP")):
             try:
                 from core.gcp_vm_manager import record_vm_activity
-                gcp_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
+                gcp_ip = os.environ.get("Ironcliw_INVINCIBLE_NODE_IP", "")
                 if gcp_ip:
                     record_vm_activity(ip_address=gcp_ip)
             except Exception:
@@ -693,7 +693,7 @@ class PrimeRouter:
             content=response.content,
             # v235.4: Distinguish GCP from local for metrics/logging.
             # Check env var too (handles dual-module aliasing).
-            source="gcp_prime" if (self._gcp_promoted or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))) else "local_prime",
+            source="gcp_prime" if (self._gcp_promoted or bool(os.environ.get("Ironcliw_INVINCIBLE_NODE_IP"))) else "local_prime",
             latency_ms=response.latency_ms,
             model=response.model,
             tokens_used=response.tokens_used,
@@ -726,7 +726,7 @@ class PrimeRouter:
         create_kwargs = {
             "model": os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
             "max_tokens": max_tokens,
-            "system": system_prompt or "You are JARVIS, an intelligent AI assistant.",
+            "system": system_prompt or "You are Ironcliw, an intelligent AI assistant.",
             "messages": messages,
         }
         stop_seqs = kwargs.get("stop")
@@ -806,7 +806,7 @@ class PrimeRouter:
                     "model": os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
                     "max_tokens": kwargs.get("max_tokens", 4096),
                     "temperature": kwargs.get("temperature", 0.7),
-                    "system": system_prompt or "You are JARVIS.",
+                    "system": system_prompt or "You are Ironcliw.",
                     "messages": messages,
                 }
                 stop_seqs = kwargs.get("stop")

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Utilities and Fixtures for JARVIS Testing
+Test Utilities and Fixtures for Ironcliw Testing
 Provides common test data and helper functions
 """
 
@@ -91,7 +91,7 @@ class WindowFixtures:
             WindowInfo(
                 window_id=1,
                 app_name="Visual Studio Code",
-                window_title="test.py — JARVIS-AI-Agent",
+                window_title="test.py — Ironcliw-AI-Agent",
                 is_focused=True,
                 bounds={"x": 0, "y": 0, "width": 1920, "height": 1080},
                 layer=0,
@@ -107,7 +107,7 @@ class WindowFixtures:
             WindowInfo(
                 window_id=1,
                 app_name="Visual Studio Code",
-                window_title="workspace_analyzer.py — JARVIS-AI-Agent",
+                window_title="workspace_analyzer.py — Ironcliw-AI-Agent",
                 is_focused=True,
                 bounds={"x": 0, "y": 0, "width": 1200, "height": 800},
                 layer=0,
@@ -117,7 +117,7 @@ class WindowFixtures:
             WindowInfo(
                 window_id=2,
                 app_name="Terminal",
-                window_title="~/Documents/repos/JARVIS-AI-Agent",
+                window_title="~/Documents/repos/Ironcliw-AI-Agent",
                 is_focused=False,
                 bounds={"x": 1200, "y": 0, "width": 720, "height": 400},
                 layer=0,

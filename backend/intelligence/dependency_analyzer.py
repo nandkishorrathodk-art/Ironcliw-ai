@@ -1,4 +1,4 @@
-"""
+﻿"""
 Dependency Analyzer v1.0 - Project-Wide Dependency Analysis
 ==========================================================
 
@@ -39,7 +39,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -105,7 +105,7 @@ class DependencyConfig:
     CROSS_REPO_ENABLED: bool = get_env_bool("DEPENDENCY_CROSS_REPO", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    Ironcliw_REPO: Path = Path(get_env_str("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
     PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
     REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
@@ -1069,12 +1069,12 @@ class CrossRepoDependencyAnalyzer:
     """
     Analyzes dependencies across multiple repositories.
 
-    Coordinates between JARVIS, JARVIS-Prime, and Reactor-Core.
+    Coordinates between Ironcliw, Ironcliw-Prime, and Reactor-Core.
     """
 
     def __init__(self):
         self._repos: Dict[str, Path] = {
-            "jarvis": DependencyConfig.JARVIS_REPO,
+            "jarvis": DependencyConfig.Ironcliw_REPO,
             "prime": DependencyConfig.PRIME_REPO,
             "reactor": DependencyConfig.REACTOR_REPO,
         }

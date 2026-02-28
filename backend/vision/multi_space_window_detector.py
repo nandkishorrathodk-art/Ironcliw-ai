@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Multi-Space Window Detector for JARVIS
+Multi-Space Window Detector for Ironcliw
 Enhanced window detection with space awareness and metadata intelligence
 """
 
@@ -10,13 +10,13 @@ import time
 # v262.0: Gate PyObjC imports behind headless detection (prevents SIGABRT).
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC."""
-    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    _cached = os.environ.get("_Ironcliw_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
     import sys as _sys
     result = False
     if _sys.platform == "darwin":
-        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("Ironcliw_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
             pass
@@ -30,7 +30,7 @@ def _is_gui_session() -> bool:
                 result = cg.CGSessionCopyCurrentDictionary() is not None
             except Exception:
                 pass
-    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    os.environ["_Ironcliw_GUI_SESSION"] = "1" if result else "0"
     return result
 
 Quartz = None  # type: ignore[assignment]
@@ -531,7 +531,7 @@ class MultiSpaceWindowDetector:
         =======================
         Exile ≠ Death. Windows teleported to the Shadow Realm (Display 2+) are still
         ALIVE and CAPTURABLE. Yabai may report these spaces as "not visible" because
-        they're on a virtual display, but JARVIS can still see them.
+        they're on a virtual display, but Ironcliw can still see them.
 
         SOLUTION:
         =========
@@ -539,14 +539,14 @@ class MultiSpaceWindowDetector:
         This ensures windows on the Shadow Realm are not filtered out as "hidden."
 
         Returns:
-            List of space IDs that JARVIS can see (visible OR on Ghost Display)
+            List of space IDs that Ironcliw can see (visible OR on Ghost Display)
         """
         visible_space_ids = []
         try:
             from .yabai_space_detector import get_shadow_display_index
             ghost_display_index = get_shadow_display_index()
         except ImportError:
-            ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+            ghost_display_index = int(os.getenv("Ironcliw_SHADOW_DISPLAY", "2"))
 
         try:
             from .yabai_space_detector import get_yabai_detector
@@ -625,7 +625,7 @@ class MultiSpaceWindowDetector:
             from .yabai_space_detector import get_shadow_display_index
             ghost_display_index = get_shadow_display_index()
         except ImportError:
-            ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+            ghost_display_index = int(os.getenv("Ironcliw_SHADOW_DISPLAY", "2"))
 
         try:
             from .yabai_space_detector import get_yabai_detector
@@ -714,7 +714,7 @@ class MultiSpaceWindowDetector:
         self, primary_app: str, applications: List[str], windows: List
     ) -> str:
         """Determine workspace name from applications and windows"""
-        # Check for JARVIS first
+        # Check for Ironcliw first
         for w in windows:
             if (
                 "jarvis" in w.window_title.lower()
@@ -722,7 +722,7 @@ class MultiSpaceWindowDetector:
             ):
                 return "J.A.R.V.I.S. interface"
 
-        # If Chrome is primary, it might be JARVIS
+        # If Chrome is primary, it might be Ironcliw
         if primary_app and "chrome" in primary_app.lower():
             return "J.A.R.V.I.S. interface"
 

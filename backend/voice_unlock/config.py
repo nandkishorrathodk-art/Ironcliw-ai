@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Unlock Configuration
 =========================
 
@@ -60,7 +60,7 @@ class EnrollmentSettings:
     # Phrase configuration for comprehensive voice capture
     use_custom_phrases: bool = os.getenv('VOICE_UNLOCK_CUSTOM_PHRASES', 'true').lower() == 'true'
     default_phrases: List[str] = field(default_factory=lambda: json.loads(
-        os.getenv('VOICE_UNLOCK_PHRASES', '["Hello JARVIS, unlock my Mac", "JARVIS, this is {user}", "Open sesame, JARVIS", "Hey JARVIS, verify my voice", "JARVIS, authenticate {user}"]')
+        os.getenv('VOICE_UNLOCK_PHRASES', '["Hello Ironcliw, unlock my Mac", "Ironcliw, this is {user}", "Open sesame, Ironcliw", "Hey Ironcliw, verify my voice", "Ironcliw, authenticate {user}"]')
     ))
     allow_user_phrases: bool = os.getenv('VOICE_UNLOCK_USER_PHRASES', 'true').lower() == 'true'
     
@@ -180,8 +180,8 @@ class SystemIntegrationSettings:
     show_notifications: bool = os.getenv('VOICE_UNLOCK_NOTIFICATIONS', 'true').lower() == 'true'
     notification_sound: bool = os.getenv('VOICE_UNLOCK_NOTIFICATION_SOUND', 'true').lower() == 'true'
     
-    # JARVIS integration
-    jarvis_responses: bool = os.getenv('VOICE_UNLOCK_JARVIS_RESPONSES', 'true').lower() == 'true'
+    # Ironcliw integration
+    jarvis_responses: bool = os.getenv('VOICE_UNLOCK_Ironcliw_RESPONSES', 'true').lower() == 'true'
     custom_responses: Dict[str, str] = field(default_factory=lambda: json.loads(
         os.getenv('VOICE_UNLOCK_RESPONSES', '{"success": "Welcome back, Sir", "failure": "Voice not recognized, Sir", "lockout": "Security lockout activated, Sir"}')
     ))

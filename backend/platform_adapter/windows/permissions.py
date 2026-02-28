@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Permissions Manager
+﻿"""
+Ironcliw Windows Permissions Manager
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows permission management using UAC and Windows Privacy Settings.
@@ -24,7 +24,7 @@ Permissions Managed:
     - Automation (no explicit permission on Windows)
     - Notifications (Windows 10+ notification settings)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Vision Intelligence Bridge - Integrates Python, Rust, and Swift components
 Provides seamless integration between all vision intelligence components
 """
@@ -66,9 +66,9 @@ try:
     if jarvis_prime_path.exists():
         sys.path.insert(0, str(jarvis_prime_path))
     from prime_intelligence import PrimeIntelligenceEngine
-    JARVIS_PRIME_AVAILABLE = True
+    Ironcliw_PRIME_AVAILABLE = True
 except ImportError:
-    JARVIS_PRIME_AVAILABLE = False
+    Ironcliw_PRIME_AVAILABLE = False
     PrimeIntelligenceEngine = None
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,7 @@ class VisionIntelligenceBridge:
 
         # Cross-repo integrations
         self.reactor_core = ReactorStateManager() if REACTOR_CORE_AVAILABLE else None
-        self.jarvis_prime = PrimeIntelligenceEngine() if JARVIS_PRIME_AVAILABLE else None
+        self.jarvis_prime = PrimeIntelligenceEngine() if Ironcliw_PRIME_AVAILABLE else None
 
         # Execution pools
         if _HAS_MANAGED_EXECUTOR:
@@ -214,7 +214,7 @@ class VisionIntelligenceBridge:
         integration_status = {
             'rust': self.rust_initialized,
             'reactor_core': REACTOR_CORE_AVAILABLE,
-            'jarvis_prime': JARVIS_PRIME_AVAILABLE,
+            'jarvis_prime': Ironcliw_PRIME_AVAILABLE,
             'vsms_core': VSMS_AVAILABLE,
             'swift': self.swift_bridge.swift_executable.exists()
         }
@@ -233,7 +233,7 @@ class VisionIntelligenceBridge:
             screenshot: Screenshot data as bytes or numpy array
             app_id: Application identifier
             metadata: Additional metadata
-            enable_cross_repo: Enable Reactor Core and JARVIS Prime integration
+            enable_cross_repo: Enable Reactor Core and Ironcliw Prime integration
 
         Returns:
             Comprehensive analysis results with performance metrics
@@ -301,7 +301,7 @@ class VisionIntelligenceBridge:
             if self.reactor_core:
                 cross_repo_tasks.append(self._sync_to_reactor_core(results))
 
-            # Get JARVIS Prime predictions
+            # Get Ironcliw Prime predictions
             if self.jarvis_prime:
                 visual_context = {
                     'app_id': app_id,
@@ -327,7 +327,7 @@ class VisionIntelligenceBridge:
         results['performance'] = {
             'processing_time_ms': processing_time_ms,
             'rust_accelerated': self.rust_initialized,
-            'cross_repo_integrated': enable_cross_repo and (REACTOR_CORE_AVAILABLE or JARVIS_PRIME_AVAILABLE)
+            'cross_repo_integrated': enable_cross_repo and (REACTOR_CORE_AVAILABLE or Ironcliw_PRIME_AVAILABLE)
         }
 
         # Update stats
@@ -600,14 +600,14 @@ class VisionIntelligenceBridge:
 
     async def _get_jarvis_prime_predictions(self, visual_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Get predictions from JARVIS Prime based on visual context
+        Get predictions from Ironcliw Prime based on visual context
         Cross-repo integration for advanced intelligence
         """
         if not self.jarvis_prime:
             return None
 
         try:
-            # Request predictions from JARVIS Prime
+            # Request predictions from Ironcliw Prime
             prime_predictions = await asyncio.get_event_loop().run_in_executor(
                 self.executor,
                 self.jarvis_prime.predict_from_visual_context,
@@ -623,7 +623,7 @@ class VisionIntelligenceBridge:
             }
 
         except Exception as e:
-            logger.error(f"JARVIS Prime prediction failed: {e}")
+            logger.error(f"Ironcliw Prime prediction failed: {e}")
             return {'available': False, 'error': str(e)}
 
     def _determine_final_state(self, results: Dict[str, Any]) -> Dict[str, Any]:
@@ -744,7 +744,7 @@ class VisionIntelligenceBridge:
                 'rust_initialized': self.rust_initialized,
                 'swift_available': self.swift_bridge.swift_executable.exists(),
                 'reactor_core_integrated': REACTOR_CORE_AVAILABLE and self.reactor_core is not None,
-                'jarvis_prime_integrated': JARVIS_PRIME_AVAILABLE and self.jarvis_prime is not None
+                'jarvis_prime_integrated': Ironcliw_PRIME_AVAILABLE and self.jarvis_prime is not None
             },
             'performance': {
                 'total_analyses': self.stats['total_analyses'],

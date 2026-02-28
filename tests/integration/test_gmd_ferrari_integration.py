@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration Tests — Ghost Mode Display (GMD) + Ferrari Engine
 
 Tests component chains working together:
@@ -45,7 +45,7 @@ from tests.conftest_gmd_ferrari import (
 class TestFerrariOCRPipeline:
     """Test Ferrari frame capture → OCR text extraction → bounce count.
 
-    This is the core detection pipeline that proves JARVIS can
+    This is the core detection pipeline that proves Ironcliw can
     "see" the ball bouncing and count the bounces in real-time.
     """
 
@@ -427,7 +427,7 @@ class TestGodModeConcurrentDetection:
         """Track bounces in two windows simultaneously.
 
         Proves Ferrari Engine can run multiple watchers in parallel
-        (vertical + horizontal) and JARVIS can differentiate them.
+        (vertical + horizontal) and Ironcliw can differentiate them.
         """
         v_browser, h_browser = dual_bounce_browsers
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Context Integration Bridge - Connects Multi-Space Context Graph with Existing Systems
 ======================================================================================
 
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class ContextIntegrationBridge:
     """
-    Bridges existing JARVIS systems with the new multi-space context graph.
+    Bridges existing Ironcliw systems with the new multi-space context graph.
 
     This is the glue that makes everything work together seamlessly.
     """
@@ -845,9 +845,9 @@ class ContextIntegrationBridge:
 
         Examples:
         - User: "can you see my terminal in the other window?"
-        - JARVIS: "Yes, I can see Terminal in Space 2..."
+        - Ironcliw: "Yes, I can see Terminal in Space 2..."
         - User: "explain what's happening in detail"
-        - JARVIS: [Dynamic explanation based on terminal context]
+        - Ironcliw: [Dynamic explanation based on terminal context]
 
         Args:
             query: Follow-up query (already normalized)
@@ -1368,7 +1368,7 @@ async def initialize_integration_bridge(
     """
     Initialize and configure the integration bridge.
 
-    This is the main initialization function that should be called at JARVIS startup.
+    This is the main initialization function that should be called at Ironcliw startup.
 
     Args:
         context_graph: Optional MultiSpaceContextGraph (created if None)

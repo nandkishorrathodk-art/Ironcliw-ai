@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Health Monitor Agent
+﻿"""
+Ironcliw Neural Mesh - Health Monitor Agent
 
 Monitors the health and performance of all Neural Mesh components.
 Provides proactive alerting and self-healing capabilities.
@@ -41,7 +41,7 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
     # or conditionally-available features.
     _OPTIONAL_AGENTS: frozenset = frozenset(
         s.strip() for s in os.getenv(
-            "JARVIS_OPTIONAL_AGENTS",
+            "Ironcliw_OPTIONAL_AGENTS",
             "computer_use_agent,mas-coordinator,reactor_core",
         ).split(",") if s.strip()
     )
@@ -103,7 +103,7 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         """Check if the system is currently in startup phase.
 
         v258.3: Uses the unified system phase signal (sys._jarvis_system_phase)
-        with fallback to JARVIS_STARTUP_TIMESTAMP env var.  During startup,
+        with fallback to Ironcliw_STARTUP_TIMESTAMP env var.  During startup,
         high CPU and memory usage are expected (ML model loading, parallel
         init, torch imports) and should not trigger health degradation.
         """
@@ -115,7 +115,7 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
             return _phase.get("phase") == "startup"
 
         # Fallback: env var timestamp set early in supervisor startup
-        _startup_ts_str = os.environ.get("JARVIS_STARTUP_TIMESTAMP", "")
+        _startup_ts_str = os.environ.get("Ironcliw_STARTUP_TIMESTAMP", "")
         if _startup_ts_str:
             try:
                 return time.time() - float(_startup_ts_str) < self._metrics_startup_grace
@@ -565,7 +565,7 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         setattr(_sys, '_jarvis_cpu_throttle', _throttle_data)
 
         # v258.3: Cross-process signal — write to ~/.jarvis/signals/cpu_pressure.json
-        # so JARVIS Prime and Reactor Core can read it (sys attr is process-local).
+        # so Ironcliw Prime and Reactor Core can read it (sys attr is process-local).
         try:
             import json
             _signal_dir = os.path.join(os.path.expanduser("~"), ".jarvis", "signals")

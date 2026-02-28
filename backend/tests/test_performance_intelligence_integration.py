@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Integration Test: Memory Quantizer + System Monitor + UAE + SAI + Learning Database
 ====================================================================================
 
-Demonstrates how all performance components work together to make JARVIS smarter
+Demonstrates how all performance components work together to make Ironcliw smarter
 over time with macOS-specific memory management.
 
 Test Flow:
@@ -42,10 +42,10 @@ async def test_full_integration():
     Test full integration of all performance intelligence components
     """
     print("=" * 80)
-    print("🧠 JARVIS Performance Intelligence Integration Test")
+    print("🧠 Ironcliw Performance Intelligence Integration Test")
     print("=" * 80)
     print("\nThis test demonstrates how all components work together to make")
-    print("JARVIS smarter over time with macOS-specific memory management.\n")
+    print("Ironcliw smarter over time with macOS-specific memory management.\n")
 
     # ========================================================================
     # Step 1: Skip Learning Database (schema issues, will be fixed separately)
@@ -248,9 +248,9 @@ async def test_full_integration():
     print("=" * 80)
 
     print(f"\n⚠️  Learning Database metrics skipped for this test")
-    print(f"\n💡 When Learning DB is integrated, JARVIS will:")
+    print(f"\n💡 When Learning DB is integrated, Ironcliw will:")
     print(f"   ✓ Store all patterns in: ~/.jarvis/learning/jarvis_learning.db")
-    print(f"   ✓ Patterns survive JARVIS restarts")
+    print(f"   ✓ Patterns survive Ironcliw restarts")
     print(f"   ✓ Get smarter over time")
     print(f"   ✓ Learn macOS-specific behavior patterns")
     print(f"   ✓ Make predictive optimizations based on history")
@@ -280,7 +280,7 @@ async def test_full_integration():
     print(f"   ✓ UAE Integration: Ready for predictive memory planning")
     print(f"   ✓ SAI Integration: Ready for environment-aware monitoring")
     print(f"   ✓ Learning DB: Ready to integrate (components are Learning DB-aware)")
-    print(f"\n🎯 JARVIS performance intelligence is fully operational!")
+    print(f"\n🎯 Ironcliw performance intelligence is fully operational!")
     print("=" * 80 + "\n")
 
 

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Idle Detector
+Ironcliw Idle Detector
 =====================
 
 System activity monitoring for the Self-Updating Lifecycle Manager.
@@ -9,7 +9,7 @@ Detects user idle state to trigger silent updates.
 Uses subprocess-based approach with `ioreg` for macOS idle detection,
 which is safer and more reliable than direct IOKit ctypes bindings.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.1.0
 """
 

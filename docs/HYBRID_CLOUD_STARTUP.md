@@ -1,10 +1,10 @@
-# Hybrid Cloud Startup Flow
+﻿# Hybrid Cloud Startup Flow
 
 ## Overview
 
-JARVIS uses a **hybrid cloud intelligence architecture** to prevent memory exhaustion on local macOS (16GB RAM) by automatically offloading heavy components to GCP Spot VMs (32GB RAM) when memory pressure is detected.
+Ironcliw uses a **hybrid cloud intelligence architecture** to prevent memory exhaustion on local macOS (16GB RAM) by automatically offloading heavy components to GCP Spot VMs (32GB RAM) when memory pressure is detected.
 
-This ensures JARVIS can run in **full mode** with all features, while preventing local memory thrashing and OOM conditions.
+This ensures Ironcliw can run in **full mode** with all features, while preventing local memory thrashing and OOM conditions.
 
 ---
 
@@ -414,7 +414,7 @@ VM_WARMDOWN_SECONDS = 600            # Keep VM alive 10min after pressure drops
 
 ## Summary
 
-JARVIS's hybrid cloud startup flow prevents local memory exhaustion by:
+Ironcliw's hybrid cloud startup flow prevents local memory exhaustion by:
 
 1. **Detecting** memory pressure ≥80% during component warmup
 2. **Analyzing** pressure with platform-specific metrics (macOS/Linux)

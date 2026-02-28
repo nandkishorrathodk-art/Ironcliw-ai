@@ -1,4 +1,4 @@
-# AdaptiveControlCenterClicker - Quick Reference
+﻿# AdaptiveControlCenterClicker - Quick Reference
 
 **One-page reference for the most common operations**
 
@@ -107,7 +107,7 @@ pytest tests/unit/display/test_adaptive_control_center_clicker.py -v
 
 ### Run Integration Tests
 ```bash
-export JARVIS_INTEGRATION_TESTS=1
+export Ironcliw_INTEGRATION_TESTS=1
 pytest tests/integration/test_adaptive_clicker_integration.py -v
 ```
 

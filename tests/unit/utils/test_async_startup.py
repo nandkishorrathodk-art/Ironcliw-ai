@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for backend.utils.async_startup module.
 
 These tests verify that:
@@ -56,7 +56,7 @@ def temp_file(tmp_path: Path) -> Path:
 def temp_json_file(tmp_path: Path) -> Path:
     """Create a temporary JSON file."""
     file = tmp_path / "test_data.json"
-    data = {"name": "JARVIS", "version": 1, "features": ["voice", "vision"]}
+    data = {"name": "Ironcliw", "version": 1, "features": ["voice", "vision"]}
     file.write_text(json.dumps(data))
     return file
 
@@ -371,7 +371,7 @@ class TestAsyncJsonIO:
         """Test JSON file read."""
         data = await async_json_read(str(temp_json_file))
 
-        assert data["name"] == "JARVIS"
+        assert data["name"] == "Ironcliw"
         assert data["version"] == 1
         assert "voice" in data["features"]
 

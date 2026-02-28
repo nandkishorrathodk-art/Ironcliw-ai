@@ -1,12 +1,12 @@
-"""
+﻿"""
 Trinity Knowledge Indexer - Ultra-Robust Scraped Content → RAG → Training Pipeline
 ====================================================================================
 
-v1.0 ULTRA - The most advanced knowledge indexing system for JARVIS Trinity.
+v1.0 ULTRA - The most advanced knowledge indexing system for Ironcliw Trinity.
 
 ROOT PROBLEM SOLVED:
     Scraped content was stored in SQLite but NOT indexed for retrieval.
-    JARVIS couldn't use scraped knowledge to answer questions.
+    Ironcliw couldn't use scraped knowledge to answer questions.
 
 SOLUTION:
     This module is the "bridge" that turns scraped web content into:
@@ -42,11 +42,11 @@ ARCHITECTURE:
     │  │  (RAG)       │            │  (Fast)      │  │  (Training)  │      │
     │  └──────────────┘            └──────────────┘  └──────────────┘      │
     │         ↓                           ↓                  ↓             │
-    │    JARVIS Brain               J-Prime Search    Model Training       │
+    │    Ironcliw Brain               J-Prime Search    Model Training       │
     │                                                                      │
     └──────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v1.0
+Author: Ironcliw Trinity v1.0
 """
 
 from __future__ import annotations
@@ -374,11 +374,11 @@ class IndexerConfig:
 
         # Database paths
         self.training_db_path = os.getenv(
-            "JARVIS_TRAINING_DB_PATH",
+            "Ironcliw_TRAINING_DB_PATH",
             str(Path.home() / ".jarvis" / "data" / "training_db" / "jarvis_training.db")
         )
         self.vector_db_path = os.getenv(
-            "JARVIS_VECTOR_DB_PATH",
+            "Ironcliw_VECTOR_DB_PATH",
             str(Path.home() / ".jarvis" / "data" / "vector_db")
         )
 
@@ -666,7 +666,7 @@ class QualityScorer:
 
 class TrinityKnowledgeIndexer:
     """
-    Ultra-robust knowledge indexer that bridges scraped content to JARVIS's brain.
+    Ultra-robust knowledge indexer that bridges scraped content to Ironcliw's brain.
 
     This is the "missing link" that makes web scraping actually useful.
 
@@ -754,7 +754,7 @@ class TrinityKnowledgeIndexer:
                     )
                     self._chroma_collection = self._chroma_client.get_or_create_collection(
                         name="jarvis_knowledge",
-                        metadata={"description": "JARVIS scraped knowledge base"}
+                        metadata={"description": "Ironcliw scraped knowledge base"}
                     )
                     logger.info("[Trinity Indexer] ✅ ChromaDB initialized")
                 except Exception as e:

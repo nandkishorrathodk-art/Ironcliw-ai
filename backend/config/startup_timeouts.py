@@ -1,13 +1,13 @@
-"""
-Centralized Timeout Configuration for JARVIS Startup/Shutdown
+﻿"""
+Centralized Timeout Configuration for Ironcliw Startup/Shutdown
 ===============================================================
 
 This module provides a single source of truth for all timeout values used during
-JARVIS startup, shutdown, and runtime operations. All timeouts are configurable
+Ironcliw startup, shutdown, and runtime operations. All timeouts are configurable
 via environment variables with sensible defaults.
 
 Design Principles:
-- All env vars use JARVIS_ prefix for consistency
+- All env vars use Ironcliw_ prefix for consistency
 - Validation logs warnings but uses defaults (never crashes on bad config)
 - MAX_TIMEOUT is configurable to support different deployment environments
 - Each timeout is documented with its purpose and default
@@ -16,50 +16,50 @@ Environment Variables:
 ----------------------
 
 ### Global Timeout Configuration
-- JARVIS_MAX_TIMEOUT: Maximum allowed timeout for any operation (default: 900.0s)
+- Ironcliw_MAX_TIMEOUT: Maximum allowed timeout for any operation (default: 900.0s)
     Purpose: Safety cap to prevent unbounded waits
 
 ### Signal Timeouts (Shutdown)
-- JARVIS_CLEANUP_TIMEOUT_SIGINT: Wait time after SIGINT before SIGTERM (default: 10.0s)
-- JARVIS_CLEANUP_TIMEOUT_SIGTERM: Wait time after SIGTERM before SIGKILL (default: 5.0s)
-- JARVIS_CLEANUP_TIMEOUT_SIGKILL: Wait time after SIGKILL before giving up (default: 2.0s)
+- Ironcliw_CLEANUP_TIMEOUT_SIGINT: Wait time after SIGINT before SIGTERM (default: 10.0s)
+- Ironcliw_CLEANUP_TIMEOUT_SIGTERM: Wait time after SIGTERM before SIGKILL (default: 5.0s)
+- Ironcliw_CLEANUP_TIMEOUT_SIGKILL: Wait time after SIGKILL before giving up (default: 2.0s)
 
 ### Port and Network Timeouts
-- JARVIS_PORT_CHECK_TIMEOUT: Timeout for TCP port availability check (default: 1.0s)
-- JARVIS_PORT_RELEASE_WAIT: Time to wait for port release after process exit (default: 2.0s)
-- JARVIS_IPC_SOCKET_TIMEOUT: Timeout for Unix socket connections (default: 8.0s)
+- Ironcliw_PORT_CHECK_TIMEOUT: Timeout for TCP port availability check (default: 1.0s)
+- Ironcliw_PORT_RELEASE_WAIT: Time to wait for port release after process exit (default: 2.0s)
+- Ironcliw_IPC_SOCKET_TIMEOUT: Timeout for Unix socket connections (default: 8.0s)
 
 ### Tool Timeouts
-- JARVIS_LSOF_TIMEOUT: Timeout for lsof subprocess calls (default: 5.0s)
-- JARVIS_DOCKER_CHECK_TIMEOUT: Timeout for docker health checks (default: 10.0s)
+- Ironcliw_LSOF_TIMEOUT: Timeout for lsof subprocess calls (default: 5.0s)
+- Ironcliw_DOCKER_CHECK_TIMEOUT: Timeout for docker health checks (default: 10.0s)
 
 ### Health Check Timeouts
-- JARVIS_BACKEND_HEALTH_TIMEOUT: Timeout for backend HTTP health check (default: 30.0s)
-- JARVIS_FRONTEND_HEALTH_TIMEOUT: Timeout for frontend health check (default: 60.0s)
-- JARVIS_LOADING_SERVER_HEALTH_TIMEOUT: Timeout for loading server health (default: 5.0s)
+- Ironcliw_BACKEND_HEALTH_TIMEOUT: Timeout for backend HTTP health check (default: 30.0s)
+- Ironcliw_FRONTEND_HEALTH_TIMEOUT: Timeout for frontend health check (default: 60.0s)
+- Ironcliw_LOADING_SERVER_HEALTH_TIMEOUT: Timeout for loading server health (default: 5.0s)
 
 ### Heartbeat Configuration
-- JARVIS_HEARTBEAT_INTERVAL: Interval between heartbeat broadcasts (default: 5.0s)
+- Ironcliw_HEARTBEAT_INTERVAL: Interval between heartbeat broadcasts (default: 5.0s)
 
 ### Trinity Component Timeouts
-- JARVIS_PRIME_STARTUP_TIMEOUT: Timeout for JARVIS-Prime startup (default: 600.0s)
-- JARVIS_REACTOR_STARTUP_TIMEOUT: Timeout for Reactor-Core startup (default: 120.0s)
-- JARVIS_REACTOR_HEALTH_TIMEOUT: Timeout for Reactor health check (default: 10.0s)
+- Ironcliw_PRIME_STARTUP_TIMEOUT: Timeout for Ironcliw-Prime startup (default: 600.0s)
+- Ironcliw_REACTOR_STARTUP_TIMEOUT: Timeout for Reactor-Core startup (default: 120.0s)
+- Ironcliw_REACTOR_HEALTH_TIMEOUT: Timeout for Reactor health check (default: 10.0s)
 
 ### Lock Timeouts
-- JARVIS_STARTUP_LOCK_TIMEOUT: Timeout for acquiring startup lock (default: 30.0s)
-- JARVIS_TAKEOVER_HANDOVER_TIMEOUT: Timeout for instance takeover handover (default: 15.0s)
-- JARVIS_MAX_LOCK_TIMEOUT: Maximum allowed lock timeout (default: 300.0s)
-- JARVIS_MIN_LOCK_TIMEOUT: Minimum allowed lock timeout (default: 0.1s)
-- JARVIS_DEFAULT_LOCK_TIMEOUT: Default lock acquisition timeout (default: 5.0s)
-- JARVIS_STALE_LOCK_RETRY_TIMEOUT: Timeout for retry after stale lock removal (default: 1.0s)
+- Ironcliw_STARTUP_LOCK_TIMEOUT: Timeout for acquiring startup lock (default: 30.0s)
+- Ironcliw_TAKEOVER_HANDOVER_TIMEOUT: Timeout for instance takeover handover (default: 15.0s)
+- Ironcliw_MAX_LOCK_TIMEOUT: Maximum allowed lock timeout (default: 300.0s)
+- Ironcliw_MIN_LOCK_TIMEOUT: Minimum allowed lock timeout (default: 0.1s)
+- Ironcliw_DEFAULT_LOCK_TIMEOUT: Default lock acquisition timeout (default: 5.0s)
+- Ironcliw_STALE_LOCK_RETRY_TIMEOUT: Timeout for retry after stale lock removal (default: 1.0s)
 
 ### Broadcast Timeout
-- JARVIS_BROADCAST_TIMEOUT: Timeout for progress/status broadcasts (default: 2.0s)
+- Ironcliw_BROADCAST_TIMEOUT: Timeout for progress/status broadcasts (default: 2.0s)
 
 ### Async Utility Timeouts
-- JARVIS_PROCESS_WAIT_TIMEOUT: Default timeout for async_process_wait (default: 10.0s)
-- JARVIS_SUBPROCESS_TIMEOUT: Default timeout for async_subprocess_run (default: 30.0s)
+- Ironcliw_PROCESS_WAIT_TIMEOUT: Default timeout for async_process_wait (default: 10.0s)
+- Ironcliw_SUBPROCESS_TIMEOUT: Default timeout for async_subprocess_run (default: 30.0s)
 
 Usage:
     from backend.config.startup_timeouts import StartupTimeouts
@@ -155,7 +155,7 @@ _DEFAULT_SUBPROCESS_TIMEOUT = 30.0
 @dataclass
 class StartupTimeouts:
     """
-    Centralized timeout configuration for JARVIS startup/shutdown.
+    Centralized timeout configuration for Ironcliw startup/shutdown.
 
     All timeouts are loaded from environment variables at instantiation time.
     Invalid values trigger a warning log and fall back to defaults.
@@ -170,7 +170,7 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     max_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_MAX_TIMEOUT", _DEFAULT_MAX_TIMEOUT, min_val=1.0
+        "Ironcliw_MAX_TIMEOUT", _DEFAULT_MAX_TIMEOUT, min_val=1.0
     ))
     """Maximum allowed timeout for any operation. Safety cap to prevent unbounded waits."""
 
@@ -179,17 +179,17 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     cleanup_timeout_sigint: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_CLEANUP_TIMEOUT_SIGINT", _DEFAULT_CLEANUP_TIMEOUT_SIGINT, min_val=0.1
+        "Ironcliw_CLEANUP_TIMEOUT_SIGINT", _DEFAULT_CLEANUP_TIMEOUT_SIGINT, min_val=0.1
     ))
     """Wait time after sending SIGINT before escalating to SIGTERM."""
 
     cleanup_timeout_sigterm: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_CLEANUP_TIMEOUT_SIGTERM", _DEFAULT_CLEANUP_TIMEOUT_SIGTERM, min_val=0.1
+        "Ironcliw_CLEANUP_TIMEOUT_SIGTERM", _DEFAULT_CLEANUP_TIMEOUT_SIGTERM, min_val=0.1
     ))
     """Wait time after sending SIGTERM before escalating to SIGKILL."""
 
     cleanup_timeout_sigkill: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_CLEANUP_TIMEOUT_SIGKILL", _DEFAULT_CLEANUP_TIMEOUT_SIGKILL, min_val=0.1
+        "Ironcliw_CLEANUP_TIMEOUT_SIGKILL", _DEFAULT_CLEANUP_TIMEOUT_SIGKILL, min_val=0.1
     ))
     """Wait time after sending SIGKILL before giving up on process termination."""
 
@@ -198,17 +198,17 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     port_check_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_PORT_CHECK_TIMEOUT", _DEFAULT_PORT_CHECK_TIMEOUT, min_val=0.1
+        "Ironcliw_PORT_CHECK_TIMEOUT", _DEFAULT_PORT_CHECK_TIMEOUT, min_val=0.1
     ))
     """Timeout for TCP port availability check (connect_ex)."""
 
     port_release_wait: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_PORT_RELEASE_WAIT", _DEFAULT_PORT_RELEASE_WAIT, min_val=0.1
+        "Ironcliw_PORT_RELEASE_WAIT", _DEFAULT_PORT_RELEASE_WAIT, min_val=0.1
     ))
     """Time to wait for port to be released after process exit."""
 
     ipc_socket_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_IPC_SOCKET_TIMEOUT", _DEFAULT_IPC_SOCKET_TIMEOUT, min_val=0.5
+        "Ironcliw_IPC_SOCKET_TIMEOUT", _DEFAULT_IPC_SOCKET_TIMEOUT, min_val=0.5
     ))
     """Timeout for Unix socket connections (supervisor IPC)."""
 
@@ -217,12 +217,12 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     lsof_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_LSOF_TIMEOUT", _DEFAULT_LSOF_TIMEOUT, min_val=0.5
+        "Ironcliw_LSOF_TIMEOUT", _DEFAULT_LSOF_TIMEOUT, min_val=0.5
     ))
     """Timeout for lsof subprocess calls to check port usage."""
 
     docker_check_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_DOCKER_CHECK_TIMEOUT", _DEFAULT_DOCKER_CHECK_TIMEOUT, min_val=1.0
+        "Ironcliw_DOCKER_CHECK_TIMEOUT", _DEFAULT_DOCKER_CHECK_TIMEOUT, min_val=1.0
     ))
     """Timeout for docker daemon health checks."""
 
@@ -231,17 +231,17 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     backend_health_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_BACKEND_HEALTH_TIMEOUT", _DEFAULT_BACKEND_HEALTH_TIMEOUT, min_val=1.0
+        "Ironcliw_BACKEND_HEALTH_TIMEOUT", _DEFAULT_BACKEND_HEALTH_TIMEOUT, min_val=1.0
     ))
     """Timeout for backend HTTP health check endpoint."""
 
     frontend_health_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_FRONTEND_HEALTH_TIMEOUT", _DEFAULT_FRONTEND_HEALTH_TIMEOUT, min_val=1.0
+        "Ironcliw_FRONTEND_HEALTH_TIMEOUT", _DEFAULT_FRONTEND_HEALTH_TIMEOUT, min_val=1.0
     ))
     """Timeout for frontend health check (webpack dev server)."""
 
     loading_server_health_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_LOADING_SERVER_HEALTH_TIMEOUT", _DEFAULT_LOADING_SERVER_HEALTH_TIMEOUT, min_val=0.5
+        "Ironcliw_LOADING_SERVER_HEALTH_TIMEOUT", _DEFAULT_LOADING_SERVER_HEALTH_TIMEOUT, min_val=0.5
     ))
     """Timeout for loading server health check."""
 
@@ -250,7 +250,7 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     heartbeat_interval: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_HEARTBEAT_INTERVAL", _DEFAULT_HEARTBEAT_INTERVAL, min_val=1.0
+        "Ironcliw_HEARTBEAT_INTERVAL", _DEFAULT_HEARTBEAT_INTERVAL, min_val=1.0
     ))
     """Interval between heartbeat broadcasts during startup."""
 
@@ -259,17 +259,17 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     prime_startup_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_PRIME_STARTUP_TIMEOUT", _DEFAULT_PRIME_STARTUP_TIMEOUT, min_val=10.0
+        "Ironcliw_PRIME_STARTUP_TIMEOUT", _DEFAULT_PRIME_STARTUP_TIMEOUT, min_val=10.0
     ))
-    """Timeout for JARVIS-Prime startup (includes model loading)."""
+    """Timeout for Ironcliw-Prime startup (includes model loading)."""
 
     reactor_startup_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_REACTOR_STARTUP_TIMEOUT", _DEFAULT_REACTOR_STARTUP_TIMEOUT, min_val=5.0
+        "Ironcliw_REACTOR_STARTUP_TIMEOUT", _DEFAULT_REACTOR_STARTUP_TIMEOUT, min_val=5.0
     ))
     """Timeout for Reactor-Core startup."""
 
     reactor_health_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_REACTOR_HEALTH_TIMEOUT", _DEFAULT_REACTOR_HEALTH_TIMEOUT, min_val=1.0
+        "Ironcliw_REACTOR_HEALTH_TIMEOUT", _DEFAULT_REACTOR_HEALTH_TIMEOUT, min_val=1.0
     ))
     """Timeout for Reactor-Core health check."""
 
@@ -297,17 +297,17 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     invincible_node_quick_check_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_INVINCIBLE_QUICK_CHECK_TIMEOUT", _DEFAULT_INVINCIBLE_NODE_QUICK_CHECK_TIMEOUT, min_val=1.0
+        "Ironcliw_INVINCIBLE_QUICK_CHECK_TIMEOUT", _DEFAULT_INVINCIBLE_NODE_QUICK_CHECK_TIMEOUT, min_val=1.0
     ))
     """Quick check timeout during startup - if node responds within this, startup proceeds immediately."""
 
     invincible_node_background_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_INVINCIBLE_BACKGROUND_TIMEOUT", _DEFAULT_INVINCIBLE_NODE_BACKGROUND_TIMEOUT, min_val=30.0
+        "Ironcliw_INVINCIBLE_BACKGROUND_TIMEOUT", _DEFAULT_INVINCIBLE_NODE_BACKGROUND_TIMEOUT, min_val=30.0
     ))
     """Max wait time for background Invincible Node wake-up after quick check times out."""
 
     invincible_node_health_poll_interval: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_INVINCIBLE_HEALTH_POLL_INTERVAL", _DEFAULT_INVINCIBLE_NODE_HEALTH_POLL_INTERVAL, min_val=1.0
+        "Ironcliw_INVINCIBLE_HEALTH_POLL_INTERVAL", _DEFAULT_INVINCIBLE_NODE_HEALTH_POLL_INTERVAL, min_val=1.0
     ))
     """Interval between health polls during Invincible Node wake-up."""
 
@@ -316,32 +316,32 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     startup_lock_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_STARTUP_LOCK_TIMEOUT", _DEFAULT_STARTUP_LOCK_TIMEOUT, min_val=1.0
+        "Ironcliw_STARTUP_LOCK_TIMEOUT", _DEFAULT_STARTUP_LOCK_TIMEOUT, min_val=1.0
     ))
     """Timeout for acquiring the startup lock (single-instance coordination)."""
 
     takeover_handover_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_TAKEOVER_HANDOVER_TIMEOUT", _DEFAULT_TAKEOVER_HANDOVER_TIMEOUT, min_val=1.0
+        "Ironcliw_TAKEOVER_HANDOVER_TIMEOUT", _DEFAULT_TAKEOVER_HANDOVER_TIMEOUT, min_val=1.0
     ))
     """Timeout for graceful handover during instance takeover."""
 
     max_lock_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_MAX_LOCK_TIMEOUT", _DEFAULT_MAX_LOCK_TIMEOUT, min_val=1.0
+        "Ironcliw_MAX_LOCK_TIMEOUT", _DEFAULT_MAX_LOCK_TIMEOUT, min_val=1.0
     ))
     """Maximum allowed lock acquisition timeout."""
 
     min_lock_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_MIN_LOCK_TIMEOUT", _DEFAULT_MIN_LOCK_TIMEOUT, min_val=0.01
+        "Ironcliw_MIN_LOCK_TIMEOUT", _DEFAULT_MIN_LOCK_TIMEOUT, min_val=0.01
     ))
     """Minimum allowed lock acquisition timeout (prevents spin-lock)."""
 
     default_lock_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_DEFAULT_LOCK_TIMEOUT", _DEFAULT_DEFAULT_LOCK_TIMEOUT, min_val=0.1
+        "Ironcliw_DEFAULT_LOCK_TIMEOUT", _DEFAULT_DEFAULT_LOCK_TIMEOUT, min_val=0.1
     ))
     """Default lock acquisition timeout when not specified."""
 
     stale_lock_retry_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_STALE_LOCK_RETRY_TIMEOUT", _DEFAULT_STALE_LOCK_RETRY_TIMEOUT, min_val=0.1
+        "Ironcliw_STALE_LOCK_RETRY_TIMEOUT", _DEFAULT_STALE_LOCK_RETRY_TIMEOUT, min_val=0.1
     ))
     """Timeout for retry attempt after removing a stale lock."""
 
@@ -350,7 +350,7 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     broadcast_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_BROADCAST_TIMEOUT", _DEFAULT_BROADCAST_TIMEOUT, min_val=0.1
+        "Ironcliw_BROADCAST_TIMEOUT", _DEFAULT_BROADCAST_TIMEOUT, min_val=0.1
     ))
     """Timeout for progress/status broadcasts to clients."""
 
@@ -359,12 +359,12 @@ class StartupTimeouts:
     # -------------------------------------------------------------------------
 
     process_wait_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_PROCESS_WAIT_TIMEOUT", _DEFAULT_PROCESS_WAIT_TIMEOUT, min_val=0.1
+        "Ironcliw_PROCESS_WAIT_TIMEOUT", _DEFAULT_PROCESS_WAIT_TIMEOUT, min_val=0.1
     ))
     """Default timeout for async_process_wait operations."""
 
     subprocess_timeout: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_SUBPROCESS_TIMEOUT", _DEFAULT_SUBPROCESS_TIMEOUT, min_val=1.0
+        "Ironcliw_SUBPROCESS_TIMEOUT", _DEFAULT_SUBPROCESS_TIMEOUT, min_val=1.0
     ))
     """Default timeout for async_subprocess_run operations."""
 
@@ -680,7 +680,7 @@ class PhaseBudgets:
     Startup phase budget configuration.
 
     Each phase has a default budget (in seconds) that can be overridden
-    via environment variables with JARVIS_ prefix.
+    via environment variables with Ironcliw_ prefix.
 
     The SAFETY_MARGIN is NOT included in the phase budgets dict - it's
     added separately to the global_timeout calculation.
@@ -689,59 +689,59 @@ class PhaseBudgets:
     calculated values.
 
     Environment Variables:
-    - JARVIS_PRE_TRINITY_BUDGET: Pre-Trinity initialization (default: 30s)
-    - JARVIS_TRINITY_PHASE_BUDGET: Trinity component startup (default: 300s)
-    - JARVIS_GCP_WAIT_BUFFER: GCP credential acquisition (default: 120s)
-    - JARVIS_POST_TRINITY_BUDGET: Post-Trinity setup (default: 60s)
-    - JARVIS_DISCOVERY_BUDGET: Service discovery (default: 45s)
-    - JARVIS_HEALTH_CHECK_BUDGET: Health checks (default: 30s)
-    - JARVIS_CLEANUP_BUDGET: Cleanup operations (default: 30s)
-    - JARVIS_SAFETY_MARGIN: Safety buffer (default: 30s)
-    - JARVIS_STARTUP_HARD_CAP: Absolute maximum timeout (default: 900s)
+    - Ironcliw_PRE_TRINITY_BUDGET: Pre-Trinity initialization (default: 30s)
+    - Ironcliw_TRINITY_PHASE_BUDGET: Trinity component startup (default: 300s)
+    - Ironcliw_GCP_WAIT_BUFFER: GCP credential acquisition (default: 120s)
+    - Ironcliw_POST_TRINITY_BUDGET: Post-Trinity setup (default: 60s)
+    - Ironcliw_DISCOVERY_BUDGET: Service discovery (default: 45s)
+    - Ironcliw_HEALTH_CHECK_BUDGET: Health checks (default: 30s)
+    - Ironcliw_CLEANUP_BUDGET: Cleanup operations (default: 30s)
+    - Ironcliw_SAFETY_MARGIN: Safety buffer (default: 30s)
+    - Ironcliw_STARTUP_HARD_CAP: Absolute maximum timeout (default: 900s)
     """
 
     PRE_TRINITY: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_PRE_TRINITY_BUDGET", _DEFAULT_PRE_TRINITY_BUDGET, min_val=1.0
+        "Ironcliw_PRE_TRINITY_BUDGET", _DEFAULT_PRE_TRINITY_BUDGET, min_val=1.0
     ))
     """Budget for pre-Trinity initialization phase."""
 
     TRINITY_PHASE: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_TRINITY_PHASE_BUDGET", _DEFAULT_TRINITY_PHASE_BUDGET, min_val=10.0
+        "Ironcliw_TRINITY_PHASE_BUDGET", _DEFAULT_TRINITY_PHASE_BUDGET, min_val=10.0
     ))
-    """Budget for Trinity component startup (JARVIS-Prime, Reactor-Core)."""
+    """Budget for Trinity component startup (Ironcliw-Prime, Reactor-Core)."""
 
     GCP_WAIT_BUFFER: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_GCP_WAIT_BUFFER", _DEFAULT_GCP_WAIT_BUFFER, min_val=10.0
+        "Ironcliw_GCP_WAIT_BUFFER", _DEFAULT_GCP_WAIT_BUFFER, min_val=10.0
     ))
     """Buffer for GCP credential acquisition and cloud service initialization."""
 
     POST_TRINITY: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_POST_TRINITY_BUDGET", _DEFAULT_POST_TRINITY_BUDGET, min_val=5.0
+        "Ironcliw_POST_TRINITY_BUDGET", _DEFAULT_POST_TRINITY_BUDGET, min_val=5.0
     ))
     """Budget for post-Trinity setup phase."""
 
     DISCOVERY: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_DISCOVERY_BUDGET", _DEFAULT_DISCOVERY_BUDGET, min_val=5.0
+        "Ironcliw_DISCOVERY_BUDGET", _DEFAULT_DISCOVERY_BUDGET, min_val=5.0
     ))
     """Budget for service discovery phase."""
 
     HEALTH_CHECK: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_HEALTH_CHECK_BUDGET", _DEFAULT_HEALTH_CHECK_BUDGET, min_val=5.0
+        "Ironcliw_HEALTH_CHECK_BUDGET", _DEFAULT_HEALTH_CHECK_BUDGET, min_val=5.0
     ))
     """Budget for health check verification phase."""
 
     CLEANUP: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_CLEANUP_BUDGET", _DEFAULT_CLEANUP_BUDGET, min_val=5.0
+        "Ironcliw_CLEANUP_BUDGET", _DEFAULT_CLEANUP_BUDGET, min_val=5.0
     ))
     """Budget for cleanup operations during startup."""
 
     SAFETY_MARGIN: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_SAFETY_MARGIN", _DEFAULT_SAFETY_MARGIN, min_val=5.0
+        "Ironcliw_SAFETY_MARGIN", _DEFAULT_SAFETY_MARGIN, min_val=5.0
     ))
     """Safety buffer added to global_timeout (not in phase budgets)."""
 
     HARD_CAP: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_STARTUP_HARD_CAP", _DEFAULT_STARTUP_HARD_CAP, min_val=60.0
+        "Ironcliw_STARTUP_HARD_CAP", _DEFAULT_STARTUP_HARD_CAP, min_val=60.0
     ))
     """Absolute maximum timeout cap for any operation."""
 
@@ -927,9 +927,9 @@ class StartupConfig:
 
     Environment Variables:
     ----------------------
-    - JARVIS_TRINITY_ENABLED: Enable Trinity components (default: True)
-    - JARVIS_GCP_ENABLED: Enable GCP cloud services (default: False)
-    - JARVIS_HOLLOW_RAM_THRESHOLD_GB: RAM threshold for Hollow Client (default: 32.0)
+    - Ironcliw_TRINITY_ENABLED: Enable Trinity components (default: True)
+    - Ironcliw_GCP_ENABLED: Enable GCP cloud services (default: False)
+    - Ironcliw_HOLLOW_RAM_THRESHOLD_GB: RAM threshold for Hollow Client (default: 32.0)
 
     All PhaseBudgets and StartupTimeouts env vars are also supported.
 
@@ -953,17 +953,17 @@ class StartupConfig:
     # -------------------------------------------------------------------------
 
     trinity_enabled: bool = field(default_factory=lambda: get_env_bool(
-        "JARVIS_TRINITY_ENABLED", _DEFAULT_TRINITY_ENABLED
+        "Ironcliw_TRINITY_ENABLED", _DEFAULT_TRINITY_ENABLED
     ))
-    """Whether Trinity components (JARVIS-Prime, Reactor-Core) are enabled."""
+    """Whether Trinity components (Ironcliw-Prime, Reactor-Core) are enabled."""
 
     gcp_enabled: bool = field(default_factory=lambda: get_env_bool(
-        "JARVIS_GCP_ENABLED", _DEFAULT_GCP_ENABLED
+        "Ironcliw_GCP_ENABLED", _DEFAULT_GCP_ENABLED
     ))
     """Whether GCP cloud services are enabled."""
 
     hollow_ram_threshold_gb: float = field(default_factory=lambda: get_env_float(
-        "JARVIS_HOLLOW_RAM_THRESHOLD_GB", _DEFAULT_HOLLOW_RAM_THRESHOLD_GB, min_val=0.0
+        "Ironcliw_HOLLOW_RAM_THRESHOLD_GB", _DEFAULT_HOLLOW_RAM_THRESHOLD_GB, min_val=0.0
     ))
     """RAM threshold in GB for Hollow Client enforcement."""
 

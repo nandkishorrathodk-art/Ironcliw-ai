@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Agent Voice System - AI Agent with System Control
+Ironcliw Agent Voice System - AI Agent with System Control
 Enhanced version with macOS control capabilities
 """
 
@@ -40,8 +40,8 @@ except ImportError:
     logger.warning("Vision System v2.0 not available")
 
 
-class JARVISAgentVoice(MLEnhancedVoiceSystem):
-    """JARVIS AI Agent with system control capabilities"""
+class IroncliwAgentVoice(MLEnhancedVoiceSystem):
+    """Ironcliw AI Agent with system control capabilities"""
 
     def __init__(self, user_name: str = "Sir", vision_analyzer=None):
         super().__init__(user_name)
@@ -188,9 +188,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Try to initialize workspace intelligence first (Phase 1)
         try:
-            from vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+            from vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
-            self.workspace_intelligence = JARVISWorkspaceIntelligence()
+            self.workspace_intelligence = IroncliwWorkspaceIntelligence()
             self.workspace_intelligence_enabled = True
             logger.info(
                 "Workspace intelligence (multi-window) initialized successfully"
@@ -261,9 +261,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         try:
             # Try to use intelligent vision first
-            from vision.intelligent_vision_integration import IntelligentJARVISVision
+            from vision.intelligent_vision_integration import IntelligentIroncliwVision
 
-            self.vision_integration = IntelligentJARVISVision()
+            self.vision_integration = IntelligentIroncliwVision()
             self.vision_enabled = True
             self.intelligent_vision_enabled = True
             logger.info("Intelligent vision system initialized successfully")
@@ -272,11 +272,11 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             try:
                 from vision.screen_vision import (
                     ScreenVisionSystem,
-                    JARVISVisionIntegration,
+                    IroncliwVisionIntegration,
                 )
 
                 self.vision_system = ScreenVisionSystem()
-                self.vision_integration = JARVISVisionIntegration(self.vision_system)
+                self.vision_integration = IroncliwVisionIntegration(self.vision_system)
                 self.vision_enabled = True
                 logger.info("Basic vision system initialized")
             except ImportError:
@@ -288,7 +288,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def process_voice_input(self, text: str) -> str:
         """Process voice input with system control capabilities using async pipeline"""
-        logger.info(f"[JARVIS DEBUG] process_voice_input received: '{text}'")
+        logger.info(f"[Ironcliw DEBUG] process_voice_input received: '{text}'")
 
         # Use async pipeline for completely non-blocking processing
         try:
@@ -302,7 +302,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def _legacy_process_voice_input(self, text: str) -> str:
         """Legacy processing method (fallback)"""
-        logger.info(f"[JARVIS DEBUG] Using legacy processing for: '{text}'")
+        logger.info(f"[Ironcliw DEBUG] Using legacy processing for: '{text}'")
 
         # Check if we need to detect wake word in text
         if not self.running:
@@ -311,7 +311,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                 return ""
             else:
                 # Wake word detected, activate
-                logger.info("Wake word detected, activating JARVIS")
+                logger.info("Wake word detected, activating Ironcliw")
                 self.running = True
 
         # Check for mode switches
@@ -366,11 +366,11 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         if is_surveillance_command:
             logger.info(
-                f"[JARVIS] 👁️ SURVEILLANCE COMMAND DETECTED: '{text}' | "
+                f"[Ironcliw] 👁️ SURVEILLANCE COMMAND DETECTED: '{text}' | "
                 f"monitoring={has_monitoring}, multi_target={has_multi_target}, "
                 f"structure={has_surveillance_structure}"
             )
-            logger.info("[JARVIS] Routing to UnifiedCommandProcessor (God Mode surveillance)")
+            logger.info("[Ironcliw] Routing to UnifiedCommandProcessor (God Mode surveillance)")
 
             # Route through UnifiedCommandProcessor which has proper surveillance handling
             try:
@@ -380,14 +380,14 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
                 if result and result.get('response'):
                     response = result['response']
-                    logger.info(f"[JARVIS] ✅ Surveillance response: {response[:100]}...")
+                    logger.info(f"[Ironcliw] ✅ Surveillance response: {response[:100]}...")
                     return response
                 else:
-                    logger.warning(f"[JARVIS] Surveillance result missing response: {result}")
+                    logger.warning(f"[Ironcliw] Surveillance result missing response: {result}")
                     return f"I've initiated monitoring, {self.user_name}. I'll alert you when I detect what you're looking for."
 
             except Exception as e:
-                logger.error(f"[JARVIS] ❌ Surveillance routing failed: {e}", exc_info=True)
+                logger.error(f"[Ironcliw] ❌ Surveillance routing failed: {e}", exc_info=True)
                 return f"I encountered an error setting up monitoring, {self.user_name}: {str(e)}"
 
         # =========================================================================
@@ -414,10 +414,10 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         if is_evolution_command:
             logger.info(
-                f"[JARVIS] 🧬 EVOLUTION COMMAND DETECTED: '{text}' | "
+                f"[Ironcliw] 🧬 EVOLUTION COMMAND DETECTED: '{text}' | "
                 f"evolution_kw={has_evolution_keyword}, code_target={has_code_target}"
             )
-            logger.info("[JARVIS] Routing to Coding Council for code evolution")
+            logger.info("[Ironcliw] Routing to Coding Council for code evolution")
 
             try:
                 from core.coding_council.integration import get_voice_evolution_handler
@@ -436,17 +436,17 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     # v79.1: ML Learning - Learn from evolution command success/failure
                     await self._learn_from_evolution_command(text, success, result)
 
-                    logger.info(f"[JARVIS] ✅ Evolution response: {response[:100]}...")
+                    logger.info(f"[Ironcliw] ✅ Evolution response: {response[:100]}...")
                     return response
                 else:
-                    logger.warning("[JARVIS] Evolution handler not available")
+                    logger.warning("[Ironcliw] Evolution handler not available")
                     return f"I understand you want to evolve the code, {self.user_name}, but the Coding Council is not available right now."
 
             except ImportError:
-                logger.debug("[JARVIS] Coding Council not installed")
+                logger.debug("[Ironcliw] Coding Council not installed")
                 return f"The Coding Council module is not available, {self.user_name}."
             except Exception as e:
-                logger.error(f"[JARVIS] ❌ Evolution routing failed: {e}", exc_info=True)
+                logger.error(f"[Ironcliw] ❌ Evolution routing failed: {e}", exc_info=True)
                 # Still learn from failure
                 await self._learn_from_evolution_command(text, False, {"error": str(e)})
                 return f"I encountered an error processing the evolution request, {self.user_name}: {str(e)}"
@@ -462,7 +462,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         has_document_type = any(dtype in text_normalized for dtype in document_types)
 
         if has_document_keyword and has_document_type:
-            logger.info(f"[JARVIS DEBUG] DOCUMENT CREATION COMMAND DETECTED! Text: '{text}'")
+            logger.info(f"[Ironcliw DEBUG] DOCUMENT CREATION COMMAND DETECTED! Text: '{text}'")
             if DOCUMENT_WRITER_AVAILABLE:
                 try:
                     return await self._handle_document_creation(text)
@@ -931,7 +931,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
             if is_surveillance:
                 # Route through UnifiedCommandProcessor for proper God Mode handling
-                logger.info(f"[JARVIS] 👁️ Surveillance detected in system path: '{text}'")
+                logger.info(f"[Ironcliw] 👁️ Surveillance detected in system path: '{text}'")
                 from api.unified_command_processor import UnifiedCommandProcessor
                 processor = UnifiedCommandProcessor()
                 result = await processor.process_command(text)
@@ -1132,7 +1132,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         is_surveillance = (has_monitoring and has_surveillance_structure) or (has_monitoring and has_multi_target)
 
         if is_surveillance:
-            logger.info(f"[JARVIS] 👁️ Surveillance detected in vision path: '{text}'")
+            logger.info(f"[Ironcliw] 👁️ Surveillance detected in vision path: '{text}'")
             try:
                 from api.unified_command_processor import UnifiedCommandProcessor
                 processor = UnifiedCommandProcessor()

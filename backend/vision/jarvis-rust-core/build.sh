@@ -1,8 +1,8 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-# Build script for JARVIS Rust core
+# Build script for Ironcliw Rust core
 
-echo "Building JARVIS Rust core with advanced features..."
+echo "Building Ironcliw Rust core with advanced features..."
 
 # Ensure we're in the right directory
 cd "$(dirname "$0")"
@@ -27,4 +27,4 @@ echo "Build complete!"
 echo "Running tests..."
 cargo test --release
 
-echo "✅ JARVIS Rust core built successfully!"
+echo "✅ Ironcliw Rust core built successfully!"

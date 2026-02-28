@@ -1,5 +1,5 @@
-"""
-Autonomy Coordinator for JARVIS Autonomous Action System.
+﻿"""
+Autonomy Coordinator for Ironcliw Autonomous Action System.
 
 This module provides the central coordinator that orchestrates all autonomy
 components including action registry, permission system, safety validator,
@@ -14,9 +14,9 @@ Key Features:
     - Configuration management
 
 Environment Variables:
-    JARVIS_AUTONOMY_ENABLED: Enable autonomy system (default: true)
-    JARVIS_AUTONOMY_HEALTH_CHECK_INTERVAL: Health check interval (default: 60)
-    JARVIS_AUTONOMY_AUTO_RESTART: Auto-restart failed components (default: true)
+    Ironcliw_AUTONOMY_ENABLED: Enable autonomy system (default: true)
+    Ironcliw_AUTONOMY_HEALTH_CHECK_INTERVAL: Health check interval (default: 60)
+    Ironcliw_AUTONOMY_AUTO_RESTART: Auto-restart failed components (default: true)
 """
 
 from __future__ import annotations
@@ -132,24 +132,24 @@ class AutonomyCoordinatorConfig:
     def from_env(cls) -> "AutonomyCoordinatorConfig":
         """Create configuration from environment variables."""
         return cls(
-            enabled=os.getenv("JARVIS_AUTONOMY_ENABLED", "true").lower() == "true",
+            enabled=os.getenv("Ironcliw_AUTONOMY_ENABLED", "true").lower() == "true",
             health_check_interval_seconds=float(os.getenv(
-                "JARVIS_AUTONOMY_HEALTH_CHECK_INTERVAL", "60"
+                "Ironcliw_AUTONOMY_HEALTH_CHECK_INTERVAL", "60"
             )),
             auto_restart_failed=os.getenv(
-                "JARVIS_AUTONOMY_AUTO_RESTART", "true"
+                "Ironcliw_AUTONOMY_AUTO_RESTART", "true"
             ).lower() == "true",
             max_restart_attempts=int(os.getenv(
-                "JARVIS_AUTONOMY_MAX_RESTART", "3"
+                "Ironcliw_AUTONOMY_MAX_RESTART", "3"
             )),
             enable_learning=os.getenv(
-                "JARVIS_AUTONOMY_LEARNING", "true"
+                "Ironcliw_AUTONOMY_LEARNING", "true"
             ).lower() == "true",
             enable_safety_validation=os.getenv(
-                "JARVIS_AUTONOMY_SAFETY", "true"
+                "Ironcliw_AUTONOMY_SAFETY", "true"
             ).lower() == "true",
             enable_permission_checks=os.getenv(
-                "JARVIS_AUTONOMY_PERMISSIONS", "true"
+                "Ironcliw_AUTONOMY_PERMISSIONS", "true"
             ).lower() == "true",
         )
 

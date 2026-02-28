@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test API Weather Speed"""
 
 import asyncio
@@ -58,5 +58,5 @@ async def test_api_speed():
     print("✨ API provides sub-second weather responses!")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_api_speed())

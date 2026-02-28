@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Watch and log all mouse movements in real-time
-This will show us exactly where JARVIS is moving the mouse
+This will show us exactly where Ironcliw is moving the mouse
 """
 
 import pyautogui
@@ -12,7 +12,7 @@ print("\n" + "="*70)
 print("🔍 LIVE MOUSE MOVEMENT TRACKER")
 print("="*70)
 print("\nThis will track mouse movements in real-time.")
-print("When you tell JARVIS 'living room tv', watch the coordinates below.")
+print("When you tell Ironcliw 'living room tv', watch the coordinates below.")
 print("\nPress Ctrl+C to stop")
 print("="*70)
 print()

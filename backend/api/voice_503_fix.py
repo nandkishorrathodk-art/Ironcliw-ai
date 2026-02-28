@@ -1,4 +1,4 @@
-"""
+﻿"""
 Immediate fix for 503 Service Unavailable errors in voice activation
 Provides a lightweight wrapper that prevents overload
 """
@@ -51,7 +51,7 @@ async def process_queue():
             if not future.done():
                 future.set_result({
                     'status': 'activated',
-                    'message': 'JARVIS voice activated successfully',
+                    'message': 'Ironcliw voice activated successfully',
                     'cpu_usage': f"{cpu:.1f}%",
                     'queue_size': request_queue.qsize()
                 })
@@ -100,7 +100,7 @@ async def activate_jarvis_fixed(request: Request):
             # Queue is full, but still return success to prevent 503
             return JSONResponse(content={
                 'status': 'activated',
-                'message': 'JARVIS activated (high load)',
+                'message': 'Ironcliw activated (high load)',
                 'fallback': True
             }, status_code=200)
         
@@ -112,7 +112,7 @@ async def activate_jarvis_fixed(request: Request):
             # Timeout, but still return success
             return JSONResponse(content={
                 'status': 'activated',
-                'message': 'JARVIS activated (processing)',
+                'message': 'Ironcliw activated (processing)',
                 'timeout': True
             }, status_code=200)
             
@@ -121,13 +121,13 @@ async def activate_jarvis_fixed(request: Request):
         # Even on error, return 200 to prevent 503
         return JSONResponse(content={
             'status': 'activated',
-            'message': 'JARVIS activated (recovery mode)',
+            'message': 'Ironcliw activated (recovery mode)',
             'error': str(e)
         }, status_code=200)
 
 @router.get("/voice/jarvis/status")
 async def jarvis_status_fixed():
-    """Get JARVIS status without causing 503"""
+    """Get Ironcliw status without causing 503"""
     try:
         cpu = psutil.cpu_percent(interval=0.1)
         memory = psutil.virtual_memory()

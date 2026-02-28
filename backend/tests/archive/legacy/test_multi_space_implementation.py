@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the complete Multi-Space Desktop Vision Intelligence System
-Verifies that JARVIS can see and analyze content across multiple desktop spaces
+Verifies that Ironcliw can see and analyze content across multiple desktop spaces
 """
 
 import asyncio
@@ -185,7 +185,7 @@ async def main():
     print(f"  ✅ Intelligence Detection: PASS")
     print(f"  ✅ Full Integration: PASS")
     print("\nThe Multi-Space Desktop Vision Intelligence System is ready!")
-    print("JARVIS can now see across all desktop spaces! 🚀")
+    print("Ironcliw can now see across all desktop spaces! 🚀")
 
 if __name__ == "__main__":
     asyncio.run(main())

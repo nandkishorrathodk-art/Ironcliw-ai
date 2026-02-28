@@ -1,4 +1,4 @@
-# Voice Unlock Quick Start Guide
+﻿# Voice Unlock Quick Start Guide
 
 ## 🚀 One Command to Rule Them All
 
@@ -42,12 +42,12 @@ That's it! This will:
 
 ## 🗣️ Test Voice Unlock
 
-After JARVIS starts:
+After Ironcliw starts:
 
 ```
-You: "Hey JARVIS, unlock my screen"
+You: "Hey Ironcliw, unlock my screen"
 
-JARVIS: "Of course, Derek. Unlocking your screen now."
+Ironcliw: "Of course, Derek. Unlocking your screen now."
 [Screen unlocks] ✅
 ```
 
@@ -69,7 +69,7 @@ Derek J. Russell|59
 
 **2. Check Logs:**
 ```bash
-grep "Bootstrap\|Voice cache" ~/Documents/repos/JARVIS-AI-Agent/jarvis_startup.log
+grep "Bootstrap\|Voice cache" ~/Documents/repos/Ironcliw-AI-Agent/jarvis_startup.log
 ```
 
 **3. Force Re-Bootstrap:**
@@ -100,7 +100,7 @@ python start_system.py --restart
 python backend/voice/enroll_voice.py --name "Derek J. Russell"
 ```
 
-Then restart JARVIS to pull the new profile.
+Then restart Ironcliw to pull the new profile.
 
 ## 📊 Architecture Summary
 
@@ -124,7 +124,7 @@ Then restart JARVIS to pull the new profile.
 │     ├─> Show sample counts                          │
 │     └─> Confirm offline capability                  │
 │                                                       │
-│  4. Start JARVIS                                    │
+│  4. Start Ironcliw                                    │
 │     └─> Voice unlock ready! ✅                      │
 │                                                       │
 └──────────────────────────────────────────────────────┘
@@ -143,7 +143,7 @@ Then restart JARVIS to pull the new profile.
 ## 📝 Next Steps
 
 After successful bootstrap:
-1. **Test voice unlock** - Say "Hey JARVIS, unlock my screen"
+1. **Test voice unlock** - Say "Hey Ironcliw, unlock my screen"
 2. **Test offline mode** - Stop CloudSQL proxy, try unlock again (should still work!)
 3. **Enroll more samples** - Improve accuracy by enrolling more voice samples
 4. **Check metrics** - Monitor cache performance via logs

@@ -1,16 +1,16 @@
-#!/usr/bin/env python3
-"""Test JARVIS real-time responses"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw real-time responses"""
 
 import asyncio
 import sys
 sys.path.append('.')
 
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from voice.jarvis_agent_voice import IroncliwAgentVoice
 
 async def test_jarvis():
-    print("🤖 Testing JARVIS Real-Time Responses\n")
+    print("🤖 Testing Ironcliw Real-Time Responses\n")
     
-    jarvis = JARVISAgentVoice()
+    jarvis = IroncliwAgentVoice()
     
     # Test queries - including wake word
     queries = [
@@ -23,10 +23,10 @@ async def test_jarvis():
     for query in queries:
         print(f"\n📢 You: {query}")
         
-        # Process the query through JARVIS
+        # Process the query through Ironcliw
         response = await jarvis.process_voice_input(query)
         
-        print(f"🎙️ JARVIS: {response}")
+        print(f"🎙️ Ironcliw: {response}")
     
     print("\n✅ Test complete!")
 

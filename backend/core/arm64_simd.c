@@ -1,5 +1,5 @@
-/*
- * ARM64 NEON SIMD Optimizations for JARVIS ML Intent Prediction
+﻿/*
+ * ARM64 NEON SIMD Optimizations for Ironcliw ML Intent Prediction
  *
  * Features:
  * - NEON intrinsics for vectorized operations
@@ -291,7 +291,7 @@ static PyMethodDef ARM64SIMDMethods[] = {
 static struct PyModuleDef arm64simdmodule = {
     PyModuleDef_HEAD_INIT,
     "arm64_simd",
-    "ARM64 NEON SIMD optimizations for JARVIS ML",
+    "ARM64 NEON SIMD optimizations for Ironcliw ML",
     -1,
     ARM64SIMDMethods
 };

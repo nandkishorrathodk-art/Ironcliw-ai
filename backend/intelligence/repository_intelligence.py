@@ -1,12 +1,12 @@
-"""
-Repository Intelligence System for JARVIS Ecosystem
+﻿"""
+Repository Intelligence System for Ironcliw Ecosystem
 ====================================================
 
 Advanced codebase understanding system that provides:
 - Tree-sitter based code parsing for symbol extraction
 - NetworkX graph-based code relationship analysis
 - PageRank-based file importance ranking
-- Cross-repository awareness (JARVIS, JARVIS Prime, Reactor Core)
+- Cross-repository awareness (Ironcliw, Ironcliw Prime, Reactor Core)
 - Intelligent caching with mtime invalidation
 - LangGraph reasoning for architectural decisions
 - Async-first parallel processing
@@ -16,7 +16,7 @@ Inspired by patterns from:
 - Open Interpreter: Async tool execution with streaming
 - MetaGPT: Structured workflow enforcement
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -152,7 +152,7 @@ class RepositoryIntelligenceConfig:
 
     # Cross-repo settings
     cross_repo_state_dir: Path = field(default_factory=lambda: _get_env_path(
-        "JARVIS_CROSS_REPO_DIR", "~/.jarvis/cross_repo"
+        "Ironcliw_CROSS_REPO_DIR", "~/.jarvis/cross_repo"
     ))
 
     # Parallel settings
@@ -169,12 +169,12 @@ class RepositoryIntelligenceConfig:
             self.repositories = {
                 "jarvis": RepositoryConfig.from_env(
                     "jarvis",
-                    "JARVIS_REPO_PATH",
-                    "~/Documents/repos/JARVIS-AI-Agent"
+                    "Ironcliw_REPO_PATH",
+                    "~/Documents/repos/Ironcliw-AI-Agent"
                 ),
                 "jarvis_prime": RepositoryConfig.from_env(
                     "jarvis_prime",
-                    "JARVIS_PRIME_REPO_PATH",
+                    "Ironcliw_PRIME_REPO_PATH",
                     "~/Documents/repos/jarvis-prime"
                 ),
                 "reactor_core": RepositoryConfig.from_env(

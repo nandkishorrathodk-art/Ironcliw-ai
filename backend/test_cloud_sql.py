@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Cloud SQL connection directly
 
@@ -36,13 +36,13 @@ except ImportError:
 def _load_database_config() -> dict:
     """v133.0: Load database config from multiple sources."""
     # Priority 1: Environment variable
-    if os.getenv("JARVIS_DB_PASSWORD"):
+    if os.getenv("Ironcliw_DB_PASSWORD"):
         return {
-            "host": os.getenv("JARVIS_DB_HOST", "127.0.0.1"),
-            "port": int(os.getenv("JARVIS_DB_PORT", "5432")),
-            "database": os.getenv("JARVIS_DB_NAME", "jarvis_learning"),
-            "user": os.getenv("JARVIS_DB_USER", "jarvis"),
-            "password": os.getenv("JARVIS_DB_PASSWORD"),
+            "host": os.getenv("Ironcliw_DB_HOST", "127.0.0.1"),
+            "port": int(os.getenv("Ironcliw_DB_PORT", "5432")),
+            "database": os.getenv("Ironcliw_DB_NAME", "jarvis_learning"),
+            "user": os.getenv("Ironcliw_DB_USER", "jarvis"),
+            "password": os.getenv("Ironcliw_DB_PASSWORD"),
         }
 
     # Priority 2: Config file

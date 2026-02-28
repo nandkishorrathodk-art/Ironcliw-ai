@@ -1,4 +1,4 @@
-name: Deploy JARVIS to GCP
+﻿name: Deploy Ironcliw to GCP
 
 on:
   push:
@@ -171,10 +171,10 @@ jobs:
           echo "   via the startup script embedded in start_system.py"
           echo ""
           echo "ℹ️  To deploy:"
-          echo "   1. Start JARVIS locally: python start_system.py"
+          echo "   1. Start Ironcliw locally: python start_system.py"
           echo "   2. When RAM > 85%, Spot VM auto-creates"
           echo "   3. Spot VM pulls latest code from Cloud Storage"
-          echo "   4. JARVIS runs with latest changes"
+          echo "   4. Ironcliw runs with latest changes"
 
       - name: Deployment Summary
         if: always()
@@ -199,10 +199,10 @@ jobs:
           echo "- ✅ Intelligent Routing" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### How to Deploy" >> $GITHUB_STEP_SUMMARY
-          echo "1. Run JARVIS locally: \`python start_system.py\`" >> $GITHUB_STEP_SUMMARY
+          echo "1. Run Ironcliw locally: \`python start_system.py\`" >> $GITHUB_STEP_SUMMARY
           echo "2. System auto-scales to GCP when RAM > 85%" >> $GITHUB_STEP_SUMMARY
           echo "3. Spot VMs auto-pull latest code from Cloud Storage" >> $GITHUB_STEP_SUMMARY
-          echo "4. VMs auto-delete when JARVIS stops (Ctrl+C)" >> $GITHUB_STEP_SUMMARY
+          echo "4. VMs auto-delete when Ironcliw stops (Ctrl+C)" >> $GITHUB_STEP_SUMMARY
 
   verify-deployment-package:
     name: Verify Deployment Package

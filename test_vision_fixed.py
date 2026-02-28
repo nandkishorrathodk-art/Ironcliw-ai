@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """Test script to verify vision command routing is working"""
 
 import asyncio
@@ -13,10 +13,10 @@ async def test_vision_command():
     """Test if vision commands are properly routed"""
     
     # Start the backend
-    print("🚀 Starting JARVIS backend...")
+    print("🚀 Starting Ironcliw backend...")
     backend_process = subprocess.Popen(
         [sys.executable, "-B", "main.py", "--port", "8010"],
-        cwd="/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend",
+        cwd="/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}

@@ -1,5 +1,5 @@
-"""
-JARVIS Distributed State Module
+﻿"""
+Ironcliw Distributed State Module
 ================================
 
 Provides unified distributed state management with:

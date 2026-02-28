@@ -1,4 +1,4 @@
-"""
+﻿"""
 Debug script to diagnose intelligent routing issues
 """
 
@@ -19,7 +19,7 @@ async def debug_intelligent_system():
     """Debug the intelligent routing system"""
 
     print("=" * 80)
-    print("JARVIS INTELLIGENT SYSTEM DIAGNOSTIC")
+    print("Ironcliw INTELLIGENT SYSTEM DIAGNOSTIC")
     print("=" * 80)
 
     # 1. Check if vision handler is initialized

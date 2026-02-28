@@ -1,6 +1,6 @@
-//
+﻿//
 //  ProximityCalculator.swift
-//  JARVISProximityAuth
+//  IroncliwProximityAuth
 //
 //  Calculates proximity confidence from Bluetooth signals
 //

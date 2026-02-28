@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test voice unlock confidence after profile merge"""
 
 import asyncio
@@ -142,7 +142,7 @@ async def test_voice_confidence():
             print("\n✅ Profile appears healthy and ready for voice unlock!")
 
         print("\nNext steps:")
-        print("   1. Restart JARVIS to reload the merged profile")
+        print("   1. Restart Ironcliw to reload the merged profile")
         print("   2. Try voice unlock command again")
         print("   3. Expected confidence should be > 85%")
 

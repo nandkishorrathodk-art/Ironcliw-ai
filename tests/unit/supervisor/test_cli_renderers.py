@@ -1,4 +1,4 @@
-# tests/unit/supervisor/test_cli_renderers.py
+﻿# tests/unit/supervisor/test_cli_renderers.py
 """
 Unit tests for CLI renderer classes in unified_supervisor.py (lines 6181-6379).
 
@@ -431,10 +431,10 @@ class TestCliRendererFactory:
     """Tests for _create_cli_renderer factory function."""
 
     def test_factory_json_mode(self, monkeypatch):
-        """When JARVIS_LOG_JSON=1 and ui_mode='auto', factory returns JsonCliRenderer."""
+        """When Ironcliw_LOG_JSON=1 and ui_mode='auto', factory returns JsonCliRenderer."""
         import unified_supervisor as us
 
-        monkeypatch.setenv("JARVIS_LOG_JSON", "1")
+        monkeypatch.setenv("Ironcliw_LOG_JSON", "1")
 
         renderer = us._create_cli_renderer(
             ui_mode="auto",
@@ -448,7 +448,7 @@ class TestCliRendererFactory:
         """When stdout is not a TTY and no JSON override, factory returns PlainCliRenderer."""
         import unified_supervisor as us
 
-        monkeypatch.delenv("JARVIS_LOG_JSON", raising=False)
+        monkeypatch.delenv("Ironcliw_LOG_JSON", raising=False)
         monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
 
         renderer = us._create_cli_renderer(

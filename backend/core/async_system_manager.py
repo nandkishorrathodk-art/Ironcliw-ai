@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 v111.0: Unified Monolith - AsyncSystemManager
 =============================================
 
-Enterprise-grade system lifecycle manager for JARVIS.
+Enterprise-grade system lifecycle manager for Ironcliw.
 This module can be imported without side effects and manages
 the FastAPI backend lifecycle within the supervisor's event loop.
 
@@ -41,7 +41,7 @@ Critical Design Decisions:
 4. Uvicorn signal handlers DISABLED - supervisor manages signals
 5. Thread-safe singleton with double-checked locking
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 111.0.0 (January 2026)
 """
 
@@ -120,10 +120,10 @@ class SystemManagerConfig:
     SERVER_READY_TIMEOUT: float = _env_float("SYSTEM_SERVER_READY_TIMEOUT", 30.0)
 
     # Server configuration
-    HOST: str = os.getenv("JARVIS_HOST", "0.0.0.0")
-    PORT: int = _env_int("JARVIS_PORT", 8000)
-    LOG_LEVEL: str = os.getenv("JARVIS_LOG_LEVEL", "info")
-    WORKERS: int = _env_int("JARVIS_WORKERS", 1)
+    HOST: str = os.getenv("Ironcliw_HOST", "0.0.0.0")
+    PORT: int = _env_int("Ironcliw_PORT", 8000)
+    LOG_LEVEL: str = os.getenv("Ironcliw_LOG_LEVEL", "info")
+    WORKERS: int = _env_int("Ironcliw_WORKERS", 1)
 
     # Feature flags
     ENABLE_HEALTH_MONITOR: bool = _env_bool("SYSTEM_ENABLE_HEALTH_MONITOR", True)
@@ -131,7 +131,7 @@ class SystemManagerConfig:
     GRACEFUL_SHUTDOWN: bool = _env_bool("SYSTEM_GRACEFUL_SHUTDOWN", True)
 
     # App path
-    APP_MODULE: str = os.getenv("JARVIS_APP_MODULE", "backend.main:app")
+    APP_MODULE: str = os.getenv("Ironcliw_APP_MODULE", "backend.main:app")
 
 
 # =============================================================================
@@ -237,7 +237,7 @@ class AsyncSystemManager:
     """
     v111.0: Enterprise-grade async system manager.
 
-    This class manages the JARVIS backend lifecycle and can be
+    This class manages the Ironcliw backend lifecycle and can be
     imported and used without side effects until start() is called.
 
     Key Features:
@@ -284,10 +284,10 @@ class AsyncSystemManager:
         All async primitives are created lazily when needed.
 
         Args:
-            host: Server host (default from env JARVIS_HOST)
-            port: Server port (default from env JARVIS_PORT)
-            app_module: ASGI app module path (default from env JARVIS_APP_MODULE)
-            log_level: Uvicorn log level (default from env JARVIS_LOG_LEVEL)
+            host: Server host (default from env Ironcliw_HOST)
+            port: Server port (default from env Ironcliw_PORT)
+            app_module: ASGI app module path (default from env Ironcliw_APP_MODULE)
+            log_level: Uvicorn log level (default from env Ironcliw_LOG_LEVEL)
             **kwargs: Additional Uvicorn config options
         """
         # Configuration (all from environment if not provided)

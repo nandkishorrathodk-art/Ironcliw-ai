@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.2: Memory Management & Retention Policies - Gaps #64, #67
 ==============================================================
 
@@ -24,7 +24,7 @@ Features:
     - Memory usage monitoring
     - Handler lifecycle management
 
-Author: JARVIS v77.2
+Author: Ironcliw v77.2
 """
 
 from __future__ import annotations

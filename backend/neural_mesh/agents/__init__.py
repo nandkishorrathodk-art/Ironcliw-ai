@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Production Agents
+﻿"""
+Ironcliw Neural Mesh - Production Agents
 
 This module contains all production-ready agents for the Neural Mesh system.
 Each agent extends BaseNeuralMeshAgent and provides specific capabilities.

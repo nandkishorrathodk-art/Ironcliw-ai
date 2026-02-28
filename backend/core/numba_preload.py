@@ -1,5 +1,5 @@
-"""
-JARVIS Numba Pre-loader v12.0.0
+﻿"""
+Ironcliw Numba Pre-loader v12.0.0
 ===============================
 
 CRITICAL: This module must be imported FIRST, before ANY other imports
@@ -249,7 +249,7 @@ def _test_numba_import_safety() -> tuple:
     if 'numba' in _sys.modules:
         mod = _sys.modules.get('numba')
         # Check if it's our mock module (that's OK)
-        if getattr(mod, '_JARVIS_MOCK', False):
+        if getattr(mod, '_Ironcliw_MOCK', False):
             return (False, "already_mocked")
         if mod is None or not hasattr(mod, '__version__'):
             return (False, "numba_already_corrupted")
@@ -332,7 +332,7 @@ if not _NUMBA_COMPATIBLE:
     # Set environment to prevent any numba import attempts
     _os.environ['NUMBA_DISABLE_JIT'] = '1'
     _os.environ['NUMBA_NUM_THREADS'] = '1'
-    _os.environ['_JARVIS_NUMBA_SKIP'] = '1'
+    _os.environ['_Ironcliw_NUMBA_SKIP'] = '1'
 
     # ═══════════════════════════════════════════════════════════════════════════
     # v13.0: ROOT CAUSE FIX - INSTALL MOCK NUMBA MODULE
@@ -355,7 +355,7 @@ if not _NUMBA_COMPATIBLE:
         __version__ = "0.0.0-skipped"
         __file__ = __file__
         __path__ = []
-        _JARVIS_MOCK = True
+        _Ironcliw_MOCK = True
         _SKIP_REASON = _NUMBA_SKIP_REASON
 
         def __getattr__(self, name):
@@ -391,7 +391,7 @@ if not _NUMBA_COMPATIBLE:
     _existing_numba = _sys.modules.get('numba')
     _should_mock = (
         _existing_numba is None or  # Not loaded yet
-        getattr(_existing_numba, '_JARVIS_MOCK', False) or  # Already our mock
+        getattr(_existing_numba, '_Ironcliw_MOCK', False) or  # Already our mock
         not hasattr(_existing_numba, '__version__') or  # Corrupted
         getattr(_existing_numba, '__version__', '') == '0.0.0-skipped'  # Already skipped
     )
@@ -428,7 +428,7 @@ def _check_early_corruption() -> bool:
         return True  # None in sys.modules = corrupted
 
     # v13.0: Check if this is our mock module - if so, it's NOT corrupted
-    if getattr(numba_mod, '_JARVIS_MOCK', False):
+    if getattr(numba_mod, '_Ironcliw_MOCK', False):
         return False  # Our mock is intentional, not corrupted
 
     # Check for partial initialization
@@ -1257,14 +1257,14 @@ def set_numba_bypass_marker():
     Set a global marker that signals numba has been attempted.
     Other modules can check this to avoid redundant initialization attempts.
     """
-    os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
+    os.environ['_Ironcliw_NUMBA_INIT_ATTEMPTED'] = '1'
 
 
 def get_numba_bypass_marker() -> bool:
     """
     Check if numba initialization has been attempted.
     """
-    return os.environ.get('_JARVIS_NUMBA_INIT_ATTEMPTED') == '1'
+    return os.environ.get('_Ironcliw_NUMBA_INIT_ATTEMPTED') == '1'
 
 
 def acquire_import_lock_and_wait(timeout: float = 120.0) -> bool:
@@ -1366,7 +1366,7 @@ def reset_for_testing():
         _numba_module = None
         _initialization_complete.clear()
         _importing_threads.clear()
-        os.environ.pop('_JARVIS_NUMBA_INIT_ATTEMPTED', None)
+        os.environ.pop('_Ironcliw_NUMBA_INIT_ATTEMPTED', None)
 
 
 def is_numba_corrupted() -> Tuple[bool, str]:
@@ -1391,7 +1391,7 @@ def is_numba_corrupted() -> Tuple[bool, str]:
         return True, "module_is_none"
 
     # v13.0: Check if this is our mock module - if so, it's NOT corrupted
-    if getattr(numba_mod, '_JARVIS_MOCK', False):
+    if getattr(numba_mod, '_Ironcliw_MOCK', False):
         return False, "mock_module"
 
     # Check for missing __version__ (sign of partial init)
@@ -1405,7 +1405,7 @@ def is_numba_corrupted() -> Tuple[bool, str]:
             return True, "utils_module_is_none"
 
         # v13.0: Check if this is our mock submodule
-        if getattr(utils_mod, '_JARVIS_MOCK', False):
+        if getattr(utils_mod, '_Ironcliw_MOCK', False):
             return False, "mock_submodule"
 
         # Check if it's a partial module (missing expected attributes)
@@ -1458,7 +1458,7 @@ def is_numba_mocked() -> bool:
     numba_mod = sys.modules.get('numba')
     if numba_mod is None:
         return False
-    return getattr(numba_mod, '_JARVIS_MOCK', False)
+    return getattr(numba_mod, '_Ironcliw_MOCK', False)
 
 
 def clear_corrupted_numba_modules() -> int:

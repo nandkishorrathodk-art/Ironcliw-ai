@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Whisper STT to fix JARVIS transcription
+Test Whisper STT to fix Ironcliw transcription
 """
 
 import whisper
@@ -44,7 +44,7 @@ def transcribe_with_whisper(audio_file):
 def test_stt_pipeline():
     """Test the complete STT pipeline"""
     print("\n" + "="*60)
-    print("🎯 TESTING WHISPER STT FOR JARVIS")
+    print("🎯 TESTING WHISPER STT FOR Ironcliw")
     print("="*60)
 
     try:
@@ -83,9 +83,9 @@ def test_stt_pipeline():
         return None
 
 def create_jarvis_stt_fix():
-    """Create a fix for JARVIS STT configuration"""
+    """Create a fix for Ironcliw STT configuration"""
     print("\n" + "="*60)
-    print("🔧 JARVIS STT FIX")
+    print("🔧 Ironcliw STT FIX")
     print("="*60)
 
     config_fix = {
@@ -96,17 +96,17 @@ def create_jarvis_stt_fix():
         "audio_duration": 3
     }
 
-    print("\n📝 Add this to JARVIS configuration:")
+    print("\n📝 Add this to Ironcliw configuration:")
     print("-" * 40)
     import json
     print(json.dumps(config_fix, indent=2))
     print("-" * 40)
 
-    print("\n✨ Then restart JARVIS:")
+    print("\n✨ Then restart Ironcliw:")
     print("   python3 start_system.py --stt-engine whisper")
 
 if __name__ == "__main__":
-    print("🎤 WHISPER STT TEST FOR JARVIS")
+    print("🎤 WHISPER STT TEST FOR Ironcliw")
     print("This will fix the '[transcription failed]' issue")
     print("-" * 60)
 

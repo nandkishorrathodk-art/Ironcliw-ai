@@ -1,8 +1,8 @@
-# Multi-Space Vision System with Purple Indicator Integration
+﻿# Multi-Space Vision System with Purple Indicator Integration
 
 ## Overview
 
-The multi-space vision system has been integrated with JARVIS's existing purple indicator monitoring mechanism. When users say "start monitoring my screen", JARVIS will:
+The multi-space vision system has been integrated with Ironcliw's existing purple indicator monitoring mechanism. When users say "start monitoring my screen", Ironcliw will:
 
 1. Show the purple indicator in the menu bar (macOS screen recording confirmation)
 2. Enable multi-space vision capabilities
@@ -29,13 +29,13 @@ When monitoring is active (purple indicator visible):
 - **No Permission Prompts**: Already has screen recording permission
 - **Efficient Captures**: Can capture any space without re-requesting permission
 - **Shared Session**: Multi-space queries leverage the existing session
-- **Visual Confirmation**: Purple indicator shows JARVIS is monitoring
+- **Visual Confirmation**: Purple indicator shows Ironcliw is monitoring
 
 ### 3. Command Flow
 
 #### Start Monitoring
 ```
-User: "Hey JARVIS, start monitoring my screen"
+User: "Hey Ironcliw, start monitoring my screen"
 ↓
 VisionCommandHandler._handle_monitoring_command()
 ↓
@@ -63,7 +63,7 @@ Returns results from all spaces
 
 #### Stop Monitoring
 ```
-User: "Hey JARVIS, stop monitoring my screen"
+User: "Hey Ironcliw, stop monitoring my screen"
 ↓
 VisionCommandHandler._handle_monitoring_command()
 ↓
@@ -98,7 +98,7 @@ Purple indicator disappears
 
 1. **Single Permission Request**: User grants permission once when monitoring starts
 2. **Efficient Multi-Space Capture**: No need to request permission for each space
-3. **Visual Feedback**: User knows when JARVIS is monitoring via purple indicator
+3. **Visual Feedback**: User knows when Ironcliw is monitoring via purple indicator
 4. **Seamless Experience**: Multi-space queries work naturally during monitoring
 
 ## Usage Examples
@@ -106,21 +106,21 @@ Purple indicator disappears
 ### Basic Monitoring
 ```
 User: "Start monitoring my screen"
-JARVIS: "I've started monitoring your screen. I can see Safari open with documentation..."
+Ironcliw: "I've started monitoring your screen. I can see Safari open with documentation..."
 [Purple indicator appears]
 ```
 
 ### Multi-Space Query While Monitoring
 ```
 User: "Where is Slack?"
-JARVIS: "I can see Slack is open on Desktop 2. You have 3 unread messages..."
+Ironcliw: "I can see Slack is open on Desktop 2. You have 3 unread messages..."
 [Uses active monitoring session - no new permission needed]
 ```
 
 ### Stop Monitoring
 ```
 User: "Stop monitoring"
-JARVIS: "I've stopped monitoring your screen."
+Ironcliw: "I've stopped monitoring your screen."
 [Purple indicator disappears]
 ```
 

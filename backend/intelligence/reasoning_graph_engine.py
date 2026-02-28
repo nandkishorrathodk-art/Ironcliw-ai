@@ -1,7 +1,7 @@
-"""
-JARVIS Advanced Reasoning Graph Engine with Multi-Branch Execution
+﻿"""
+Ironcliw Advanced Reasoning Graph Engine with Multi-Branch Execution
 
-This module implements a sophisticated reasoning graph that enables JARVIS to:
+This module implements a sophisticated reasoning graph that enables Ironcliw to:
 - Generate multiple solution branches in parallel
 - Dynamically switch between approaches when one fails
 - Learn from failures to generate better alternatives
@@ -27,7 +27,7 @@ Architecture:
         v
     [Final Response with Narration]
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0 - Multi-Branch Architecture
 """
 
@@ -178,10 +178,10 @@ class FailureAnalysis:
 
 class VoiceNarrator:
     """
-    Handles real-time narration of JARVIS's reasoning process.
+    Handles real-time narration of Ironcliw's reasoning process.
 
     Integrates with TTS systems to provide voice output of what
-    JARVIS is thinking and doing.
+    Ironcliw is thinking and doing.
     """
 
     def __init__(

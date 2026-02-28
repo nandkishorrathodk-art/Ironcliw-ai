@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Platform Tests
+﻿"""
+Ironcliw Windows Platform Tests
 ═══════════════════════════════════════════════════════════════════════════════
 
 Unit tests for Windows platform implementations.
@@ -14,7 +14,7 @@ Tests:
     - Process manager (process lifecycle, Task Scheduler)
     - File watcher (directory monitoring)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 import pytest

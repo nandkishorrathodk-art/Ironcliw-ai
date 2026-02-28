@@ -1,4 +1,4 @@
-"""
+﻿"""
 Advanced Thread Manager - Bulletproof thread lifecycle management
 ===================================================================
 
@@ -3155,5 +3155,5 @@ class SegfaultHandler:
 
 
 # Auto-install SIGSEGV handler if enabled
-if _env_bool('JARVIS_SIGSEGV_HANDLER', True):
+if _env_bool('Ironcliw_SIGSEGV_HANDLER', True):
     SegfaultHandler.install()

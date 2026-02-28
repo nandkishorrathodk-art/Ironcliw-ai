@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enhanced SAI (Situational Awareness Intelligence) Orchestrator v1.0
 ====================================================================
 
@@ -11,7 +11,7 @@ Features:
 ✅ Multi-dimensional awareness:
    - System resources (RAM, CPU, disk)
    - Workspace/space tracking
-   - Cross-repo status (JARVIS Prime, Reactor Core)
+   - Cross-repo status (Ironcliw Prime, Reactor Core)
    - Process coordination status
    - User activity patterns
 ✅ Intelligent predictions:
@@ -28,12 +28,12 @@ Architecture:
     EnhancedSAIOrchestrator
     ├── ResourceAwarenessEngine (RAM, CPU, Disk)
     ├── WorkspaceIntelligence (Yabai spaces, windows)
-    ├── CrossRepoAwareness (JARVIS Prime, Reactor Core)
+    ├── CrossRepoAwareness (Ironcliw Prime, Reactor Core)
     ├── CoordinationAwareness (ProcessCoordinationHub)
     ├── PredictionEngine (ML-based predictions)
     └── EventStream (real-time awareness updates)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -118,7 +118,7 @@ class InsightCategory(str, Enum):
     """Categories of SAI insights."""
     RESOURCE = "resource"          # RAM, CPU, Disk
     WORKSPACE = "workspace"        # Spaces, windows
-    CROSS_REPO = "cross_repo"      # JARVIS Prime, Reactor Core
+    CROSS_REPO = "cross_repo"      # Ironcliw Prime, Reactor Core
     COORDINATION = "coordination"  # Process coordination
     ACTIVITY = "activity"          # User activity patterns
     PREDICTION = "prediction"      # Future predictions
@@ -430,7 +430,7 @@ class ResourceAwarenessEngine:
 
 class CrossRepoAwarenessEngine:
     """
-    Monitors status of JARVIS Prime and Reactor Core.
+    Monitors status of Ironcliw Prime and Reactor Core.
 
     Features:
     - Heartbeat monitoring
@@ -454,10 +454,10 @@ class CrossRepoAwarenessEngine:
 
         self._last_check = current_time
 
-        # Check JARVIS Prime
+        # Check Ironcliw Prime
         jprime_status = await self._check_jarvis_prime()
         self._status_cache["jarvis_prime"] = jprime_status
-        insights.extend(self._generate_repo_insights("JARVIS Prime", jprime_status))
+        insights.extend(self._generate_repo_insights("Ironcliw Prime", jprime_status))
 
         # Check Reactor Core
         reactor_status = await self._check_reactor_core()
@@ -467,7 +467,7 @@ class CrossRepoAwarenessEngine:
         return insights
 
     async def _check_jarvis_prime(self) -> Dict[str, Any]:
-        """Check JARVIS Prime status."""
+        """Check Ironcliw Prime status."""
         status = {
             "available": False,
             "health": "unknown",
@@ -504,7 +504,7 @@ class CrossRepoAwarenessEngine:
                             status["health"] = "healthy"
 
         except Exception as e:
-            logger.debug(f"[CrossRepoAwareness] JARVIS Prime check error: {e}")
+            logger.debug(f"[CrossRepoAwareness] Ironcliw Prime check error: {e}")
 
         return status
 

@@ -1,5 +1,5 @@
-"""
-OmniParser Integration for JARVIS Computer Use
+﻿"""
+OmniParser Integration for Ironcliw Computer Use
 ===============================================
 
 This module provides integration with Microsoft's OmniParser for fast,
@@ -24,7 +24,7 @@ Architecture:
                                                             ↓
                                             Action decisions based on element IDs
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 (Preparatory - OmniParser not yet cloned)
 """
 
@@ -55,7 +55,7 @@ else:
         "  2. git clone https://github.com/microsoft/OmniParser\n"
         "  3. Follow OmniParser setup instructions\n"
         "  4. Set OMNIPARSER_ENABLED=true\n"
-        "  5. Restart JARVIS"
+        "  5. Restart Ironcliw"
     )
 
 
@@ -360,10 +360,10 @@ with local UI parsing, follow these steps:
 
 4. Download model weights (follow OmniParser README)
 
-5. Enable OmniParser in JARVIS:
+5. Enable OmniParser in Ironcliw:
    $ export OMNIPARSER_ENABLED=true
 
-6. Restart JARVIS
+6. Restart Ironcliw
 
 Benefits:
 • 60% faster UI parsing (0.6s vs 2s+)

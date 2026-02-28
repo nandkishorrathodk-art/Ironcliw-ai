@@ -1,10 +1,10 @@
-# Phase 1.1 — Multi-Monitor Support
+﻿# Phase 1.1 — Multi-Monitor Support
 
 ## Executive Summary 
 
-JARVIS currently assumes a single-display workspace, limiting its vision and context awareness when users operate across multiple monitors. This enhancement introduces Multi-Monitor Support, enabling JARVIS to detect, map, and analyze multiple displays and their active spaces in real time.  
+Ironcliw currently assumes a single-display workspace, limiting its vision and context awareness when users operate across multiple monitors. This enhancement introduces Multi-Monitor Support, enabling Ironcliw to detect, map, and analyze multiple displays and their active spaces in real time.  
 
-This capability allows JARVIS to understand multi-screen workflows such as: 
+This capability allows Ironcliw to understand multi-screen workflows such as: 
 
 **"Code on monitor 1, documentation on monitor 2, Slack on monitor 3."**
 
@@ -24,7 +24,7 @@ By integrating this foundation, subsequent vision layers (Multi-Space Vision Int
 
 | Issue | Impact |
 |-------|--------|
-| Single-monitor assumption | JARVIS only tracks space on one display |
+| Single-monitor assumption | Ironcliw only tracks space on one display |
 | No spatial awareness | Cannot distinguish which monitor a space belongs to |
 | Limited context analysis | Vision system reports incomplete activity summaries |
 
@@ -64,7 +64,7 @@ class MultiMonitorDetector:
 
 | User Story | Description | Priority |
 |------------|-------------|----------|
-| US-1 | As a user, I want JARVIS to detect all my connected monitors | ⭐⭐⭐⭐⭐ |
+| US-1 | As a user, I want Ironcliw to detect all my connected monitors | ⭐⭐⭐⭐⭐ |
 | US-2 | As a user, I want to ask "What's on my second monitor?" | ⭐⭐⭐⭐ |
 | US-3 | As a developer, I want to map which spaces belong to which displays | ⭐⭐⭐⭐ |
 | US-4 | As an analyst, I want to capture screenshots per monitor for visual intelligence | ⭐⭐⭐⭐ |
@@ -124,10 +124,10 @@ class MultiMonitorDetector:
 ## Example Responses 
 
 **User:** "What's on my second monitor?"
-**JARVIS:** "Monitor 2 (2560×1440) is displaying your documentation space – Chrome and Notion are active."
+**Ironcliw:** "Monitor 2 (2560×1440) is displaying your documentation space – Chrome and Notion are active."
 
 **User:** "Show me all my displays."
-**JARVIS:** "You have 2 displays: Primary 1920×1080 (Code workspace), Secondary 2560×1440 (Research workspace)."
+**Ironcliw:** "You have 2 displays: Primary 1920×1080 (Code workspace), Secondary 2560×1440 (Research workspace)."
 
 ## Risks & Mitigations 
 

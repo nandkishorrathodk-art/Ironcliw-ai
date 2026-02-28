@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Build script for Rust extensions
 =================================
 
-Compiles the Rust extensions for JARVIS ML memory management.
+Compiles the Rust extensions for Ironcliw ML memory management.
 Run this script to build the high-performance Rust components.
 """
 
@@ -90,7 +90,7 @@ def copy_to_backend():
 
 def main():
     """Main build process"""
-    print("JARVIS Rust Extensions Build Script")
+    print("Ironcliw Rust Extensions Build Script")
     print("===================================\n")
     
     # Check prerequisites

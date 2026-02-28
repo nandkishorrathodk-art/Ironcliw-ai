@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ouroboros Advanced Orchestrator v2.0
 =====================================
 
@@ -11,7 +11,7 @@ Super-robust orchestration layer that handles ALL edge cases:
 - Continuous health monitoring with auto-recovery
 - Rate limiting with token bucket algorithm
 - Graceful degradation with multiple fallback levels
-- Cross-repo integration (JARVIS, Prime, Reactor Core)
+- Cross-repo integration (Ironcliw, Prime, Reactor Core)
 - Resource management (memory, disk, file locks)
 
 This is the "God Layer" that ensures Ouroboros never fails silently.
@@ -124,8 +124,8 @@ class OrchestratorConfig:
     CACHE_DIR = Path(os.getenv("OUROBOROS_CACHE_DIR", str(Path.home() / ".jarvis/ouroboros/cache")))
 
     # Cross-Repo Integration
-    JARVIS_REPO = Path(os.getenv("JARVIS_REPO", Path.home() / "Documents/repos/JARVIS-AI-Agent"))
-    PRIME_REPO = Path(os.getenv("PRIME_REPO", Path.home() / "Documents/repos/JARVIS-AI-Agent"))  # Same repo
+    Ironcliw_REPO = Path(os.getenv("Ironcliw_REPO", Path.home() / "Documents/repos/Ironcliw-AI-Agent"))
+    PRIME_REPO = Path(os.getenv("PRIME_REPO", Path.home() / "Documents/repos/Ironcliw-AI-Agent"))  # Same repo
     REACTOR_REPO = Path(os.getenv("REACTOR_REPO", Path.home() / "Documents/repos/reactor-core"))
 
 
@@ -867,7 +867,7 @@ class ProviderStarter:
         """
         discovered = []
         endpoints = [
-            ("localhost", 8000, "JARVIS Prime"),
+            ("localhost", 8000, "Ironcliw Prime"),
             ("localhost", 11434, "Ollama"),
             ("localhost", 8080, "vLLM"),
             ("localhost", 5000, "Text Generation"),
@@ -925,7 +925,7 @@ class AdvancedOuroborosOrchestrator:
         self._rate_limiter = TokenBucketRateLimiter()
         self._cache = SemanticCache()
         self._syntax_validator = SyntaxValidator()
-        self._git_manager = GitStateManager(OrchestratorConfig.JARVIS_REPO)
+        self._git_manager = GitStateManager(OrchestratorConfig.Ironcliw_REPO)
         self._file_locks = FileLockManager()
         self._resource_monitor = ResourceMonitor()
         self._health_monitor = HealthMonitor()
@@ -1393,7 +1393,7 @@ async def jarvis_improve(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="JARVIS Improve - AI Code Enhancement")
+    parser = argparse.ArgumentParser(description="Ironcliw Improve - AI Code Enhancement")
     parser.add_argument("target_file", help="File to improve")
     parser.add_argument("goal", help="Improvement goal")
     parser.add_argument("--test", "-t", help="Test command")

@@ -1,14 +1,14 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Startup Announcement Coordinator
 ==========================================
 
-Enterprise-grade coordinator preventing multiple overlapping JARVIS startup
+Enterprise-grade coordinator preventing multiple overlapping Ironcliw startup
 announcements with priority-based selection, callbacks, metrics, and retry logic.
 
 Problem:
-- jarvis_voice_api.py announces: "Good morning, Sir. JARVIS systems initialized..."
-- advanced_display_monitor.py announces: "JARVIS online. Display detected..."
+- jarvis_voice_api.py announces: "Good morning, Sir. Ironcliw systems initialized..."
+- advanced_display_monitor.py announces: "Ironcliw online. Display detected..."
 - Multiple voices overlap and confuse the user
 
 Solution:
@@ -167,25 +167,25 @@ class StartupAnnouncementCoordinator:
             "enable_metrics": True,
             "greeting_templates": {
                 "morning": [
-                    "Good morning, Sir. JARVIS systems initialized and ready for your command.",
+                    "Good morning, Sir. Ironcliw systems initialized and ready for your command.",
                     "Good morning, Sir. All systems operational.",
-                    "Morning, Sir. JARVIS at your service.",
+                    "Morning, Sir. Ironcliw at your service.",
                 ],
                 "afternoon": [
-                    "Good afternoon, Sir. JARVIS at your disposal.",
+                    "Good afternoon, Sir. Ironcliw at your disposal.",
                     "Afternoon, Sir. Systems online and ready.",
                 ],
                 "evening": [
-                    "Good evening, Sir. JARVIS at your service.",
+                    "Good evening, Sir. Ironcliw at your service.",
                     "Evening, Sir. All systems operational.",
                 ],
                 "night": [
-                    "Welcome back, Sir. JARVIS systems online despite the late hour.",
-                    "Good evening, Sir. Working late, I see. JARVIS is here to assist.",
+                    "Welcome back, Sir. Ironcliw systems online despite the late hour.",
+                    "Good evening, Sir. Working late, I see. Ironcliw is here to assist.",
                 ],
                 "default": [
-                    "JARVIS online and ready, Sir.",
-                    "Systems initialized. JARVIS at your service.",
+                    "Ironcliw online and ready, Sir.",
+                    "Systems initialized. Ironcliw at your service.",
                 ],
             },
             "context_variables": [
@@ -533,7 +533,7 @@ async def should_announce_startup(
 
     Usage:
         if await should_announce_startup("my_system", AnnouncementPriority.HIGH):
-            await speak("JARVIS online")
+            await speak("Ironcliw online")
     """
     coordinator = get_startup_coordinator()
     return await coordinator.announce_if_first(system_name, priority=priority)

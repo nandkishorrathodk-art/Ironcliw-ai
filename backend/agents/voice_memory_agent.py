@@ -1,19 +1,19 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-🎤🧠 Voice Memory Agent - JARVIS's Persistent Voice Recognition Memory System
+🎤🧠 Voice Memory Agent - Ironcliw's Persistent Voice Recognition Memory System
 
-A self-aware, memory-persistent AI agent that ensures JARVIS never forgets your voice.
+A self-aware, memory-persistent AI agent that ensures Ironcliw never forgets your voice.
 
 Features:
 - Persistent voice memory across restarts
 - Automatic freshness monitoring on startup
-- Integrates with JARVISLearningDatabase for long-term storage
+- Integrates with IroncliwLearningDatabase for long-term storage
 - ML-based voice pattern recognition and recall
 - Memory-aware voice profile management
 - Adaptive learning from every interaction
 - Predictive voice degradation detection
 
-This agent runs automatically when JARVIS starts and maintains voice recognition accuracy
+This agent runs automatically when Ironcliw starts and maintains voice recognition accuracy
 by managing sample freshness, triggering automatic updates, and ensuring voice profiles
 remain current and accurate.
 """
@@ -52,7 +52,7 @@ class VoiceMemoryAgent:
     """
     Intelligent agent for persistent voice memory management
 
-    This agent ensures JARVIS maintains accurate voice recognition by:
+    This agent ensures Ironcliw maintains accurate voice recognition by:
     1. Loading voice profiles on startup
     2. Checking sample freshness automatically
     3. Triggering refresh recommendations when needed
@@ -118,13 +118,20 @@ class VoiceMemoryAgent:
 
     async def initialize(self):
         """Initialize the voice memory agent"""
+        import os
         logger.info("🧠 Initializing Voice Memory Agent...")
 
         # Initialize database connection
         self.learning_db = await get_learning_database()
 
-        # Initialize speaker verification service
-        self.speaker_service = await get_speaker_verification_service()
+        # Skip speaker verification service when voice biometrics are disabled
+        _auth_mode_vma = os.getenv("Ironcliw_AUTH_MODE", "none").strip().lower()
+        _voice_bio_vma = os.getenv("Ironcliw_VOICE_BIOMETRIC_ENABLED", "true").lower() not in ("false", "0", "no")
+        if _auth_mode_vma in ("none", "") or not _voice_bio_vma:
+            logger.info("⚡ Voice Memory Agent: skipping speaker service (auth bypass mode)")
+            self.speaker_service = None
+        else:
+            self.speaker_service = await get_speaker_verification_service()
 
         # Load persistent memory
         await self._load_persistent_memory()

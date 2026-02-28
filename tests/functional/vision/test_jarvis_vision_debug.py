@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Debug test for JARVIS vision command
+Debug test for Ironcliw vision command
 """
 
 import asyncio
@@ -10,14 +10,14 @@ import os
 sys.path.append('backend')
 
 async def test_vision_message():
-    """Test the exact message flow JARVIS would use"""
-    print("🔍 Testing JARVIS Vision Message Flow")
+    """Test the exact message flow Ironcliw would use"""
+    print("🔍 Testing Ironcliw Vision Message Flow")
     print("=" * 50)
     
     # Import the handler
     from api.unified_vision_handler import handle_vision_command
     
-    # Create the exact message JARVIS would send
+    # Create the exact message Ironcliw would send
     message = {
         "type": "vision_command",
         "command": "can you see my screen"

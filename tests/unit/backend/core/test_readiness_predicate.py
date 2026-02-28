@@ -1,8 +1,8 @@
-"""
+﻿"""
 Tests for readiness predicate.
 
 This module tests the unified readiness predicate that determines
-when JARVIS can be marked FULLY_READY.
+when Ironcliw can be marked FULLY_READY.
 
 Key logic:
 - FULLY_READY iff (all critical components healthy) AND (optional components can be healthy, skipped, or errored)

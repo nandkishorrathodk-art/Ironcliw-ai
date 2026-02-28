@@ -1,6 +1,6 @@
-# backend/core/voice_orchestrator.py
+﻿# backend/core/voice_orchestrator.py
 """
-VoiceOrchestrator - Unified voice coordination for JARVIS ecosystem.
+VoiceOrchestrator - Unified voice coordination for Ironcliw ecosystem.
 
 Single playback authority that:
 - Receives announcements via Unix domain socket (IPC)

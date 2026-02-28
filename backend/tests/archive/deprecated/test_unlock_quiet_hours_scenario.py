@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Unlock During Quiet Hours Scenario
 ======================================
@@ -24,12 +24,12 @@ async def test_unlock_scenario():
     else:
         print("ℹ️  Not in quiet hours, but testing anyway")
     
-    print("\n📡 Connecting to JARVIS WebSocket...")
+    print("\n📡 Connecting to Ironcliw WebSocket...")
     
     try:
-        # Connect to JARVIS
+        # Connect to Ironcliw
         async with websockets.connect('ws://localhost:8000/voice/jarvis/stream') as ws:
-            print("✅ Connected to JARVIS")
+            print("✅ Connected to Ironcliw")
             
             # Send the unlock command
             command = {
@@ -43,7 +43,7 @@ async def test_unlock_scenario():
             
             # Collect all responses
             responses = []
-            print("\n📨 Responses from JARVIS:")
+            print("\n📨 Responses from Ironcliw:")
             print("-"*40)
             
             # Wait for responses (with timeout)
@@ -54,7 +54,7 @@ async def test_unlock_scenario():
                     responses.append(data)
                     
                     if data.get('text'):
-                        print(f"   JARVIS: {data['text']}")
+                        print(f"   Ironcliw: {data['text']}")
                         if data.get('speak'):
                             print(f"           (spoken aloud)")
                     
@@ -97,7 +97,7 @@ async def test_unlock_scenario():
                     
     except Exception as e:
         print(f"❌ Error: {e}")
-        print("\nMake sure JARVIS is running on port 8000")
+        print("\nMake sure Ironcliw is running on port 8000")
         return
     
     print("\n🎉 Test complete!")

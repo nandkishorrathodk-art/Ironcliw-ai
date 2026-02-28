@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Working Out Loud Feature
 ==============================
@@ -350,22 +350,22 @@ def test_env_config():
     print("=" * 60)
 
     # Save original env vars
-    original_wol = os.environ.get("JARVIS_WORKING_OUT_LOUD")
-    original_hbi = os.environ.get("JARVIS_HEARTBEAT_INTERVAL")
+    original_wol = os.environ.get("Ironcliw_WORKING_OUT_LOUD")
+    original_hbi = os.environ.get("Ironcliw_HEARTBEAT_INTERVAL")
 
     try:
         # Set test env vars
-        os.environ["JARVIS_WORKING_OUT_LOUD"] = "false"
-        os.environ["JARVIS_HEARTBEAT_INTERVAL"] = "45"
+        os.environ["Ironcliw_WORKING_OUT_LOUD"] = "false"
+        os.environ["Ironcliw_HEARTBEAT_INTERVAL"] = "45"
 
         # Read and verify
-        wol_enabled = os.getenv("JARVIS_WORKING_OUT_LOUD", "true").lower() == "true"
-        heartbeat_interval = float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "30"))
+        wol_enabled = os.getenv("Ironcliw_WORKING_OUT_LOUD", "true").lower() == "true"
+        heartbeat_interval = float(os.getenv("Ironcliw_HEARTBEAT_INTERVAL", "30"))
 
-        print(f"\n  JARVIS_WORKING_OUT_LOUD=false → {wol_enabled}")
+        print(f"\n  Ironcliw_WORKING_OUT_LOUD=false → {wol_enabled}")
         assert wol_enabled == False, "Should parse 'false' correctly"
 
-        print(f"  JARVIS_HEARTBEAT_INTERVAL=45 → {heartbeat_interval}")
+        print(f"  Ironcliw_HEARTBEAT_INTERVAL=45 → {heartbeat_interval}")
         assert heartbeat_interval == 45.0, "Should parse '45' correctly"
 
         print("\n  ✅ Environment variable parsing works correctly")
@@ -373,14 +373,14 @@ def test_env_config():
     finally:
         # Restore original env vars
         if original_wol is None:
-            os.environ.pop("JARVIS_WORKING_OUT_LOUD", None)
+            os.environ.pop("Ironcliw_WORKING_OUT_LOUD", None)
         else:
-            os.environ["JARVIS_WORKING_OUT_LOUD"] = original_wol
+            os.environ["Ironcliw_WORKING_OUT_LOUD"] = original_wol
 
         if original_hbi is None:
-            os.environ.pop("JARVIS_HEARTBEAT_INTERVAL", None)
+            os.environ.pop("Ironcliw_HEARTBEAT_INTERVAL", None)
         else:
-            os.environ["JARVIS_HEARTBEAT_INTERVAL"] = original_hbi
+            os.environ["Ironcliw_HEARTBEAT_INTERVAL"] = original_hbi
 
 
 def main():
@@ -403,17 +403,17 @@ def main():
 The "Working Out Loud" feature is ready for use!
 
 Configuration Options:
-  JARVIS_WORKING_OUT_LOUD=true|false  - Enable/disable narration
-  JARVIS_HEARTBEAT_INTERVAL=30        - Seconds between heartbeats
-  JARVIS_NEAR_MISS_NARRATION=true     - Enable near-miss alerts
-  JARVIS_NEAR_MISS_COOLDOWN=60        - Cooldown between near-miss narrations
-  JARVIS_ACTIVITY_NARRATION=true      - Enable activity narration
-  JARVIS_NARRATION_VERBOSITY=normal   - minimal|normal|verbose|debug
-  JARVIS_MAX_NARRATIONS_PER_MIN=6     - Rate limit per minute
+  Ironcliw_WORKING_OUT_LOUD=true|false  - Enable/disable narration
+  Ironcliw_HEARTBEAT_INTERVAL=30        - Seconds between heartbeats
+  Ironcliw_NEAR_MISS_NARRATION=true     - Enable near-miss alerts
+  Ironcliw_NEAR_MISS_COOLDOWN=60        - Cooldown between near-miss narrations
+  Ironcliw_ACTIVITY_NARRATION=true      - Enable activity narration
+  Ironcliw_NARRATION_VERBOSITY=normal   - minimal|normal|verbose|debug
+  Ironcliw_MAX_NARRATIONS_PER_MIN=6     - Rate limit per minute
 
 Example voice commands:
   "Watch Chrome for 'Build Complete'"
-  → JARVIS will narrate: "I'm now watching Chrome for 'Build Complete'."
+  → Ironcliw will narrate: "I'm now watching Chrome for 'Build Complete'."
   → Every 30s: "Still watching Chrome for 'Build Complete'. 1 minute in."
   → On near-miss: "I see 'Build Started' but waiting for 'Build Complete'."
   → On detection: "Found it! 'Build Complete' detected on Chrome."

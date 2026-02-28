@@ -1,4 +1,4 @@
-# Native AirPlay Control System 🚀
+﻿# Native AirPlay Control System 🚀
 
 **Production-Grade Native AirPlay Control with Zero Hardcoding**
 
@@ -19,7 +19,7 @@ Advanced, async, robust display connection system combining Swift native APIs wi
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    JARVIS Display Monitor                    │
+│                    Ironcliw Display Monitor                    │
 │                  (Python - Async Orchestrator)               │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -384,14 +384,14 @@ Monitor these metrics in production:
 
 ## 🙏 Credits
 
-- Built for JARVIS AI Assistant
+- Built for Ironcliw AI Assistant
 - Author: Derek Russell
 - Date: October 2025-10-15
 - Version: 2.0
 
 ## 📄 License
 
-Part of the JARVIS AI Assistant project.
+Part of the Ironcliw AI Assistant project.
 
 ---
 

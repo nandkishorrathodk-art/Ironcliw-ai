@@ -1,8 +1,8 @@
-"""
-JARVIS Integration Layer for LangGraph/LangChain
+﻿"""
+Ironcliw Integration Layer for LangGraph/LangChain
 
 This module provides seamless integration between the new LangGraph/LangChain
-components and JARVIS's existing systems including:
+components and Ironcliw's existing systems including:
 - Permission Manager
 - Action Queue Manager
 - Action Executor
@@ -38,11 +38,11 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# Protocols for JARVIS Components
+# Protocols for Ironcliw Components
 # ============================================================================
 
 class PermissionManagerProtocol(Protocol):
-    """Protocol for JARVIS Permission Manager."""
+    """Protocol for Ironcliw Permission Manager."""
 
     async def check_permission(
         self,
@@ -68,7 +68,7 @@ class PermissionManagerProtocol(Protocol):
 
 
 class ActionQueueProtocol(Protocol):
-    """Protocol for JARVIS Action Queue Manager."""
+    """Protocol for Ironcliw Action Queue Manager."""
 
     async def add_action(
         self,
@@ -88,7 +88,7 @@ class ActionQueueProtocol(Protocol):
 
 
 class ActionExecutorProtocol(Protocol):
-    """Protocol for JARVIS Action Executor."""
+    """Protocol for Ironcliw Action Executor."""
 
     async def execute_action(
         self,
@@ -104,7 +104,7 @@ class ActionExecutorProtocol(Protocol):
 
 
 class ContextEngineProtocol(Protocol):
-    """Protocol for JARVIS Context Engine."""
+    """Protocol for Ironcliw Context Engine."""
 
     async def analyze_context(self) -> Dict[str, Any]:
         """Analyze current context."""
@@ -120,7 +120,7 @@ class ContextEngineProtocol(Protocol):
 
 
 class LearningDatabaseProtocol(Protocol):
-    """Protocol for JARVIS Learning Database."""
+    """Protocol for Ironcliw Learning Database."""
 
     async def store_experience(self, experience: Dict[str, Any]) -> str:
         """Store an experience."""
@@ -141,7 +141,7 @@ class LearningDatabaseProtocol(Protocol):
 
 class PermissionAdapter:
     """
-    Adapter for JARVIS Permission Manager.
+    Adapter for Ironcliw Permission Manager.
 
     Provides a unified interface for permission checking that works
     with both the existing permission system and new LangGraph flows.
@@ -269,7 +269,7 @@ class PermissionAdapter:
 
 class ActionQueueAdapter:
     """
-    Adapter for JARVIS Action Queue Manager.
+    Adapter for Ironcliw Action Queue Manager.
 
     Provides integration between LangGraph execution and the
     existing action queue system.
@@ -394,7 +394,7 @@ class ActionQueueAdapter:
 
 class ActionExecutorAdapter:
     """
-    Adapter for JARVIS Action Executor.
+    Adapter for Ironcliw Action Executor.
 
     Wraps the existing action executor to provide a consistent
     interface for LangGraph execution nodes.
@@ -558,7 +558,7 @@ class ActionExecutorAdapter:
 
 class ContextAdapter:
     """
-    Adapter for JARVIS Context Engine.
+    Adapter for Ironcliw Context Engine.
 
     Provides context information for LangGraph state.
     """
@@ -637,7 +637,7 @@ class ContextAdapter:
 
 class LearningAdapter:
     """
-    Adapter for JARVIS Learning Database.
+    Adapter for Ironcliw Learning Database.
 
     Integrates with episodic memory and experience storage.
     """
@@ -744,7 +744,7 @@ class LearningAdapter:
 
 @dataclass
 class IntegrationConfig:
-    """Configuration for JARVIS integration."""
+    """Configuration for Ironcliw integration."""
     permission_manager: Optional[Any] = None
     action_queue: Optional[Any] = None
     action_executor: Optional[Any] = None
@@ -759,9 +759,9 @@ class IntegrationConfig:
     enable_rollback: bool = True
 
 
-class JARVISIntegrationManager:
+class IroncliwIntegrationManager:
     """
-    Central manager for JARVIS system integration.
+    Central manager for Ironcliw system integration.
 
     Coordinates all adapters and provides a unified interface
     for the LangGraph autonomous agent.
@@ -978,14 +978,14 @@ class JARVISIntegrationManager:
 # Factory Functions
 # ============================================================================
 
-_integration_manager: Optional[JARVISIntegrationManager] = None
+_integration_manager: Optional[IroncliwIntegrationManager] = None
 
 
-def get_integration_manager() -> JARVISIntegrationManager:
+def get_integration_manager() -> IroncliwIntegrationManager:
     """Get or create global integration manager."""
     global _integration_manager
     if _integration_manager is None:
-        _integration_manager = JARVISIntegrationManager()
+        _integration_manager = IroncliwIntegrationManager()
     return _integration_manager
 
 
@@ -996,16 +996,16 @@ def configure_integration(
     context_engine: Optional[Any] = None,
     learning_db: Optional[Any] = None,
     **kwargs
-) -> JARVISIntegrationManager:
+) -> IroncliwIntegrationManager:
     """
     Configure and return the integration manager.
 
     Args:
-        permission_manager: JARVIS permission manager
-        action_queue: JARVIS action queue
-        action_executor: JARVIS action executor
-        context_engine: JARVIS context engine
-        learning_db: JARVIS learning database
+        permission_manager: Ironcliw permission manager
+        action_queue: Ironcliw action queue
+        action_executor: Ironcliw action executor
+        context_engine: Ironcliw context engine
+        learning_db: Ironcliw learning database
         **kwargs: Additional configuration
 
     Returns:
@@ -1022,13 +1022,13 @@ def configure_integration(
         **kwargs
     )
 
-    _integration_manager = JARVISIntegrationManager(config)
+    _integration_manager = IroncliwIntegrationManager(config)
     return _integration_manager
 
 
-async def auto_configure_integration() -> JARVISIntegrationManager:
+async def auto_configure_integration() -> IroncliwIntegrationManager:
     """
-    Auto-configure integration by discovering existing JARVIS components.
+    Auto-configure integration by discovering existing Ironcliw components.
 
     Returns:
         Configured integration manager
@@ -1061,8 +1061,8 @@ async def auto_configure_integration() -> JARVISIntegrationManager:
         pass
 
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
-        components["learning_db"] = JARVISLearningDatabase()
+        from intelligence.learning_database import get_learning_database
+        components["learning_db"] = await get_learning_database()
     except ImportError:
         pass
 

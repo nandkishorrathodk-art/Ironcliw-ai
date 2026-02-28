@@ -1,19 +1,19 @@
-"""
-Unified LangGraph-Based Autonomous Agent for JARVIS
+﻿"""
+Unified LangGraph-Based Autonomous Agent for Ironcliw
 
 This module provides the main autonomous agent that combines:
 - LangGraph reasoning engine
 - LangChain tool registry
 - Tool orchestration
 - Memory management
-- JARVIS system integration
+- Ironcliw system integration
 
 The agent provides:
 - Multi-step autonomous reasoning
 - Dynamic tool selection and execution
 - Context-aware decision making
 - Learning from experience
-- Seamless JARVIS integration
+- Seamless Ironcliw integration
 
 This is the primary entry point for autonomous operations.
 """
@@ -57,7 +57,7 @@ from .langgraph_engine import (
 )
 from .langchain_tools import (
     ToolRegistry,
-    JARVISTool,
+    IroncliwTool,
     ToolCategory,
     ToolRiskLevel,
     register_builtin_tools,
@@ -76,12 +76,12 @@ from .memory_integration import (
     EpisodicMemory,
     MemoryType,
     MemoryPriority,
-    JARVISCheckpointer,
+    IroncliwCheckpointer,
     create_memory_manager,
     create_checkpointer
 )
 from .jarvis_integration import (
-    JARVISIntegrationManager,
+    IroncliwIntegrationManager,
     IntegrationConfig,
     get_integration_manager,
     configure_integration
@@ -114,7 +114,7 @@ class AgentPersonality(str, Enum):
 class AgentConfig:
     """Configuration for the autonomous agent."""
     # Core settings
-    name: str = "JARVIS"
+    name: str = "Ironcliw"
     mode: AgentMode = AgentMode.SUPERVISED
     personality: AgentPersonality = AgentPersonality.HELPFUL
 
@@ -189,11 +189,11 @@ class AgentMetrics:
 
 class AutonomousAgent:
     """
-    Unified LangGraph-based autonomous agent for JARVIS.
+    Unified LangGraph-based autonomous agent for Ironcliw.
 
     This agent combines reasoning, tool execution, memory, and learning
     into a cohesive autonomous system that integrates seamlessly with
-    existing JARVIS components.
+    existing Ironcliw components.
 
     Example usage:
         ```python
@@ -221,7 +221,7 @@ class AutonomousAgent:
         self,
         config: Optional[AgentConfig] = None,
         llm_client: Optional[Any] = None,
-        integration_manager: Optional[JARVISIntegrationManager] = None
+        integration_manager: Optional[IroncliwIntegrationManager] = None
     ):
         self.config = config or AgentConfig()
         self.llm_client = llm_client
@@ -234,7 +234,7 @@ class AutonomousAgent:
         self.memory_manager: Optional[MemoryManager] = None
         self.conversation_memory: Optional[ConversationMemory] = None
         self.episodic_memory: Optional[EpisodicMemory] = None
-        self.checkpointer: Optional[JARVISCheckpointer] = None
+        self.checkpointer: Optional[IroncliwCheckpointer] = None
 
         # State
         self._initialized = False
@@ -560,7 +560,7 @@ class AutonomousAgent:
                 jarvis_context = await self.integration_manager.get_full_context()
                 context["jarvis"] = jarvis_context
             except Exception as e:
-                self.logger.warning(f"Failed to get JARVIS context: {e}")
+                self.logger.warning(f"Failed to get Ironcliw context: {e}")
 
         # Add memory context
         if self.memory_manager:
@@ -696,7 +696,7 @@ class AutonomousAgent:
     # Tool Management
     # ============================================================================
 
-    def register_tool(self, tool: JARVISTool) -> None:
+    def register_tool(self, tool: IroncliwTool) -> None:
         """Register a new tool."""
         if self.tool_registry:
             self.tool_registry.register(tool)
@@ -858,7 +858,7 @@ class AutonomousAgent:
             await self._runtime.cancel_goal(goal_id, reason)
 
     async def cancel_all_goals(self, reason: str = "user_cancelled"):
-        """Cancel all active goals. Called on 'JARVIS stop'."""
+        """Cancel all active goals. Called on 'Ironcliw stop'."""
         if self._runtime is not None:
             await self._runtime.cancel_active_goals(reason)
 
@@ -909,7 +909,7 @@ class AutonomousAgent:
 # ============================================================================
 
 def create_agent(
-    name: str = "JARVIS",
+    name: str = "Ironcliw",
     mode: AgentMode = AgentMode.SUPERVISED,
     personality: AgentPersonality = AgentPersonality.HELPFUL,
     **config_kwargs
@@ -999,7 +999,7 @@ class AgentBuilder:
         self._config = AgentConfig()
         self._integration_config = IntegrationConfig()
         self._llm_client = None
-        self._custom_tools: List[JARVISTool] = []
+        self._custom_tools: List[IroncliwTool] = []
 
     def with_name(self, name: str) -> "AgentBuilder":
         """Set agent name."""
@@ -1061,7 +1061,7 @@ class AgentBuilder:
             self._config.allowed_risk_levels = risk_levels
         return self
 
-    def with_custom_tool(self, tool: JARVISTool) -> "AgentBuilder":
+    def with_custom_tool(self, tool: IroncliwTool) -> "AgentBuilder":
         """Add a custom tool."""
         self._custom_tools.append(tool)
         return self
@@ -1103,7 +1103,7 @@ class AgentBuilder:
         context_engine: Optional[Any] = None,
         learning_db: Optional[Any] = None
     ) -> "AgentBuilder":
-        """Configure JARVIS integration."""
+        """Configure Ironcliw integration."""
         self._integration_config = IntegrationConfig(
             permission_manager=permission_manager,
             action_queue=action_queue,
@@ -1136,7 +1136,7 @@ class AgentBuilder:
             self._integration_config.context_engine,
             self._integration_config.learning_db
         ]):
-            integration_manager = JARVISIntegrationManager(self._integration_config)
+            integration_manager = IroncliwIntegrationManager(self._integration_config)
 
         # Create agent
         agent = AutonomousAgent(

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Supervisor Integration - Bridge between run_supervisor.py and Distributed Proxy System
 
 Provides drop-in replacement functions for existing CloudSQL initialization,
@@ -16,7 +16,7 @@ Usage in run_supervisor.py:
         components=components,
     )
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

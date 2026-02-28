@@ -1,4 +1,4 @@
-"""
+﻿"""
 macOS Screensaver Integration v3.0
 ===================================
 
@@ -561,7 +561,7 @@ class ScreensaverIntegration:
             # Show notification if enabled
             if self.config.system.show_notifications:
                 self._show_notification(
-                    "JARVIS Voice Unlock",
+                    "Ironcliw Voice Unlock",
                     "Say your unlock phrase..."
                 )
                 
@@ -575,7 +575,7 @@ class ScreensaverIntegration:
                 if success:
                     self._trigger_event('unlock_success', details)
                     
-                    # JARVIS response if enabled
+                    # Ironcliw response if enabled
                     if self.config.system.jarvis_responses:
                         response = self.config.system.custom_responses.get(
                             'success', 
@@ -789,14 +789,14 @@ class ScreensaverIntegration:
                 logger.debug(f"Notification error: {e}")
             
     async def _speak_response(self, text: str):
-        """Speak JARVIS response"""
+        """Speak Ironcliw response"""
         # DISABLED: Audio is now handled by frontend to avoid duplicate voices
         # The WebSocket response includes speak:true flag for frontend TTS
         logger.debug(f"[Skipping backend TTS] Text would have been: {text}")
         return
         # Original code kept for reference:
         # try:
-        #     # This would integrate with JARVIS voice system
+        #     # This would integrate with Ironcliw voice system
         #     # For now, use system TTS
         #     subprocess.run(["say", "-v", "Daniel", text], capture_output=True)
         # except Exception as e:

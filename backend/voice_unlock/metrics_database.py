@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Unlock Metrics Database v3.0
 ===================================
@@ -1479,9 +1479,9 @@ class MetricsDatabase:
         logger.info(f"✅ SQLite database initialized: {self.sqlite_path}")
 
     def _init_cloud_sql(self):
-        """Initialize CloudSQL connection (uses existing JARVIS CloudSQL connection)"""
+        """Initialize CloudSQL connection (uses existing Ironcliw CloudSQL connection)"""
         try:
-            # Import existing CloudSQL manager from JARVIS
+            # Import existing CloudSQL manager from Ironcliw
             import sys
             from pathlib import Path
             sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -2946,7 +2946,7 @@ class MetricsDatabase:
         Update per-display success history for learning optimal strategies.
 
         This tracks success rates and timing parameters for each unique display,
-        allowing JARVIS to learn which strategies work best for specific displays.
+        allowing Ironcliw to learn which strategies work best for specific displays.
 
         Args:
             display_identifier: Unique display name/ID
@@ -3735,7 +3735,7 @@ class MetricsDatabase:
         """
         Record a voice sample from an unlock attempt for continuous learning tracking.
 
-        This tracks every voice sample JARVIS hears, whether it's added to the
+        This tracks every voice sample Ironcliw hears, whether it's added to the
         profile or not, enabling analytics on voice recognition improvement.
 
         Args:
@@ -4363,7 +4363,7 @@ class MetricsDatabase:
         """
         Get a human-readable summary of voice learning progress.
 
-        This can be spoken by JARVIS to inform the user about
+        This can be spoken by Ironcliw to inform the user about
         their voice profile's improvement.
         """
         stats = await self.get_voice_profile_stats(speaker_name)

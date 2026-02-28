@@ -1,4 +1,4 @@
-# Voice Biometric Test Fixes
+﻿# Voice Biometric Test Fixes
 
 ## Issues Fixed
 
@@ -6,7 +6,7 @@
 
 **Problem:**
 ```
-'JARVISLearningDatabase' object has no attribute 'connection_pool'
+'IroncliwLearningDatabase' object has no attribute 'connection_pool'
 ```
 
 The test was trying to access `db.connection_pool.connection()` directly, but the learning database object doesn't expose this attribute.

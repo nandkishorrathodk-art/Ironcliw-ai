@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Simple Test - JARVIS Voice Only
+Simple Test - Ironcliw Voice Only
 =================================
 
-Tests just the JARVIS voice output without importing the full unlock system.
+Tests just the Ironcliw voice output without importing the full unlock system.
 """
 
 import asyncio
@@ -12,8 +12,8 @@ import subprocess
 
 
 async def speak_jarvis(message: str, urgent: bool = False):
-    """Speak with JARVIS voice (Daniel - British male voice)"""
-    jarvis_voice_name = os.getenv('JARVIS_VOICE_NAME', 'Daniel')
+    """Speak with Ironcliw voice (Daniel - British male voice)"""
+    jarvis_voice_name = os.getenv('Ironcliw_VOICE_NAME', 'Daniel')
     jarvis_voice_rate = 175 if not urgent else 200
 
     try:
@@ -38,7 +38,7 @@ async def speak_jarvis(message: str, urgent: bool = False):
 
 async def main():
     print("\n" + "=" * 80)
-    print("🔊 JARVIS VOICE FEEDBACK TEST")
+    print("🔊 Ironcliw VOICE FEEDBACK TEST")
     print("=" * 80)
 
     # Test 1: Welcome message (what you'll hear on successful unlock)

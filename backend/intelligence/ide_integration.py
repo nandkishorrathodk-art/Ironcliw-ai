@@ -1,4 +1,4 @@
-"""
+﻿"""
 IDE Integration - VS Code/Cursor Extension Support
 ====================================================
 
@@ -12,11 +12,11 @@ Production-grade IDE integration system with:
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
-    │                    JARVIS IDE Integration v1.0                           │
+    │                    Ironcliw IDE Integration v1.0                           │
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                          │
     │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐               │
-    │   │   VS Code   │     │  Extension  │     │   JARVIS    │               │
+    │   │   VS Code   │     │  Extension  │     │   Ironcliw    │               │
     │   │   Cursor    │◀───▶│   Bridge    │◀───▶│   Backend   │               │
     │   └─────────────┘     └─────────────┘     └─────────────┘               │
     │          │                   │                   │                      │
@@ -32,7 +32,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -60,7 +60,7 @@ from typing import (
     Union,
 )
 
-logger = logging.getLogger("JARVIS.IDEIntegration")
+logger = logging.getLogger("Ironcliw.IDEIntegration")
 
 
 # =============================================================================
@@ -74,7 +74,7 @@ class IDEIntegrationConfig:
     # Extension settings
     extension_id: str = os.getenv("IDE_EXTENSION_ID", "jarvis.jarvis-ai")
     extension_version: str = os.getenv("IDE_EXTENSION_VERSION", "1.0.0")
-    extension_name: str = os.getenv("IDE_EXTENSION_NAME", "JARVIS AI Assistant")
+    extension_name: str = os.getenv("IDE_EXTENSION_NAME", "Ironcliw AI Assistant")
 
     # Communication
     socket_path: str = os.getenv("IDE_SOCKET_PATH", str(Path.home() / ".jarvis/ide.sock"))
@@ -199,7 +199,7 @@ class Command:
         return {
             "command": f"jarvis.{self.id}",
             "title": self.title,
-            "category": "JARVIS",
+            "category": "Ironcliw",
             "icon": self.icon or "$(sparkle)",
         }
 
@@ -301,7 +301,7 @@ class CommandRegistry:
     """
     Registry for IDE commands.
 
-    Manages all available JARVIS commands and their handlers.
+    Manages all available Ironcliw commands and their handlers.
     """
 
     def __init__(self, config: IDEIntegrationConfig):
@@ -311,7 +311,7 @@ class CommandRegistry:
         self._register_builtin_commands()
 
     def _register_builtin_commands(self) -> None:
-        """Register built-in JARVIS commands."""
+        """Register built-in Ironcliw commands."""
 
         # Improvement commands
         self.register(Command(
@@ -466,7 +466,7 @@ class CommandRegistry:
         # Chat command
         self.register(Command(
             id="chat.open",
-            title="Open JARVIS Chat",
+            title="Open Ironcliw Chat",
             category=CommandCategory.EXPLANATION,
             shortcut=KeyboardShortcut(
                 key="cmd+shift+j",
@@ -474,7 +474,7 @@ class CommandRegistry:
                 win="ctrl+shift+j",
             ),
             icon="$(comment-discussion)",
-            description="Open JARVIS AI chat panel",
+            description="Open Ironcliw AI chat panel",
         ))
 
     def register(self, command: Command) -> None:
@@ -641,7 +641,7 @@ class StatusBarManager:
     """
     Manages statusbar items.
 
-    Shows JARVIS status and quick actions in the IDE status bar.
+    Shows Ironcliw status and quick actions in the IDE status bar.
     """
 
     def __init__(self, config: IDEIntegrationConfig):
@@ -654,11 +654,11 @@ class StatusBarManager:
         if not self.config.enable_statusbar:
             return
 
-        # Main JARVIS status
+        # Main Ironcliw status
         self.add_item(StatusBarItem(
             id="status",
-            text="$(sparkle) JARVIS",
-            tooltip="JARVIS AI Assistant - Click to open chat",
+            text="$(sparkle) Ironcliw",
+            tooltip="Ironcliw AI Assistant - Click to open chat",
             command="chat.open",
             alignment=StatusBarAlignment.RIGHT,
             priority=100,
@@ -668,7 +668,7 @@ class StatusBarManager:
         self.add_item(StatusBarItem(
             id="connection",
             text="$(plug) Connected",
-            tooltip="JARVIS Backend Connection Status",
+            tooltip="Ironcliw Backend Connection Status",
             alignment=StatusBarAlignment.RIGHT,
             priority=99,
         ))
@@ -726,7 +726,7 @@ class WebviewManager:
             return self._get_chat_html()
         elif panel_type == WebviewPanelType.DIFF:
             return self._get_diff_html()
-        return "<html><body>JARVIS</body></html>"
+        return "<html><body>Ironcliw</body></html>"
 
     def _get_chat_html(self) -> str:
         """Get chat panel HTML."""
@@ -736,7 +736,7 @@ class WebviewManager:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS Chat</title>
+    <title>Ironcliw Chat</title>
     <style>
         body {
             font-family: var(--vscode-font-family);
@@ -800,11 +800,11 @@ class WebviewManager:
     <div class="chat-container">
         <div class="messages" id="messages">
             <div class="message ai-message">
-                Hello! I'm JARVIS, your AI coding assistant. How can I help you today?
+                Hello! I'm Ironcliw, your AI coding assistant. How can I help you today?
             </div>
         </div>
         <div class="input-container">
-            <input type="text" id="input" placeholder="Ask JARVIS anything..." />
+            <input type="text" id="input" placeholder="Ask Ironcliw anything..." />
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -856,7 +856,7 @@ class WebviewManager:
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JARVIS Diff View</title>
+    <title>Ironcliw Diff View</title>
     <style>
         body {
             font-family: var(--vscode-editor-font-family);
@@ -975,7 +975,7 @@ class CodeLensProvider:
                     range_end=node.lineno - 1,
                     command_id="improve",
                     title="$(sparkle) Improve",
-                    tooltip="Improve this function with JARVIS",
+                    tooltip="Improve this function with Ironcliw",
                 ))
 
                 # Add test generation lens
@@ -1025,7 +1025,7 @@ class InlineCompletionProvider:
         if not self.config.enable_inline_completion:
             return []
 
-        # This would integrate with JARVIS AI for real completions
+        # This would integrate with Ironcliw AI for real completions
         # For now, return empty list
         return []
 
@@ -1117,7 +1117,7 @@ class IDEIntegrationEngine:
                 "keybindings": self.command_registry.generate_keybindings(),
                 "menus": self.context_menu_manager.generate_menu_contributions(),
                 "configuration": {
-                    "title": "JARVIS AI",
+                    "title": "Ironcliw AI",
                     "properties": {
                         "jarvis.enableInlineCompletion": {
                             "type": "boolean",
@@ -1132,7 +1132,7 @@ class IDEIntegrationEngine:
                         "jarvis.serverUrl": {
                             "type": "string",
                             "default": "http://localhost:2088",
-                            "description": "JARVIS backend server URL",
+                            "description": "Ironcliw backend server URL",
                         },
                     },
                 },
@@ -1155,7 +1155,7 @@ class IDEIntegrationEngine:
 
 class CrossRepoIDECoordinator:
     """
-    Coordinates IDE integration across JARVIS, JARVIS-Prime, and Reactor-Core.
+    Coordinates IDE integration across Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
     Enables:
     - Cross-repo navigation

@@ -1,5 +1,5 @@
-"""
-Predictive ETA Calculator for JARVIS Loading Server v212.0
+﻿"""
+Predictive ETA Calculator for Ironcliw Loading Server v212.0
 ===========================================================
 
 ML-based ETA prediction using historical startup data.
@@ -21,7 +21,7 @@ Usage:
     eta, confidence = calculator.predict_eta(50.0)
     print(f"ETA: {eta}s (confidence: {confidence})")
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

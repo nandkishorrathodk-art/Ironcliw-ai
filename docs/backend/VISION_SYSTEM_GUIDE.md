@@ -1,8 +1,8 @@
-# 🖥️ JARVIS Vision System Guide
+﻿# 🖥️ Ironcliw Vision System Guide
 
 ## Overview
 
-The JARVIS Vision System adds computer vision capabilities to JARVIS, enabling it to:
+The Ironcliw Vision System adds computer vision capabilities to Ironcliw, enabling it to:
 - 👀 See and understand what's displayed on your screen
 - 🔄 Detect software updates and system notifications
 - 📝 Extract and read text from any application
@@ -44,9 +44,9 @@ pip install pyobjc-framework-Quartz pyobjc-framework-Vision
 cd backend
 python test_vision_system.py
 
-# Test with JARVIS
+# Test with Ironcliw
 python test_jarvis_voice.py
-# Say: "Hey JARVIS, what's on my screen?"
+# Say: "Hey Ironcliw, what's on my screen?"
 ```
 
 ## Voice Commands
@@ -54,42 +54,42 @@ python test_jarvis_voice.py
 ### Basic Vision Commands
 
 ```
-"Hey JARVIS, what's on my screen?"
+"Hey Ironcliw, what's on my screen?"
 → Describes visible applications and content
 
-"Hey JARVIS, check for software updates"
+"Hey Ironcliw, check for software updates"
 → Scans screen for update notifications
 
-"Hey JARVIS, what applications are open?"
+"Hey Ironcliw, what applications are open?"
 → Lists detected applications
 
-"Hey JARVIS, analyze my screen"
+"Hey Ironcliw, analyze my screen"
 → Provides detailed screen analysis
 ```
 
 ### Monitoring Commands
 
 ```
-"Hey JARVIS, start monitoring for updates"
+"Hey Ironcliw, start monitoring for updates"
 → Begins continuous monitoring (checks every 5 minutes)
 
-"Hey JARVIS, stop monitoring"
+"Hey Ironcliw, stop monitoring"
 → Stops update monitoring
 
-"Hey JARVIS, are there any updates?"
+"Hey Ironcliw, are there any updates?"
 → Quick check for pending updates
 ```
 
 ### Advanced Commands
 
 ```
-"Hey JARVIS, read the text in the menu bar"
+"Hey Ironcliw, read the text in the menu bar"
 → Extracts text from specific screen region
 
-"Hey JARVIS, is there anything important on screen?"
+"Hey Ironcliw, is there anything important on screen?"
 → Uses AI to identify important information
 
-"Hey JARVIS, check for security alerts"
+"Hey Ironcliw, check for security alerts"
 → Scans for security-related notifications
 ```
 
@@ -176,36 +176,36 @@ When Claude API is available:
 - Background monitoring for updates
 - Configurable check intervals
 - Priority-based notifications
-- Automatic JARVIS announcements
+- Automatic Ironcliw announcements
 
 ## Use Cases
 
 ### 1. Update Management
 ```
-User: "Hey JARVIS, check if I need to update anything"
-JARVIS: "Sir, I've detected 3 updates: macOS 14.2, Chrome browser, and Slack. 
+User: "Hey Ironcliw, check if I need to update anything"
+Ironcliw: "Sir, I've detected 3 updates: macOS 14.2, Chrome browser, and Slack. 
          The macOS update is marked as a critical security update."
 ```
 
 ### 2. Productivity Assistant
 ```
-User: "Hey JARVIS, what am I working on?"
-JARVIS: "I can see you have VS Code open with a Python file, Chrome with 
+User: "Hey Ironcliw, what am I working on?"
+Ironcliw: "I can see you have VS Code open with a Python file, Chrome with 
          documentation tabs, and Terminal running tests. You appear to be 
          debugging the authentication module."
 ```
 
 ### 3. Security Monitoring
 ```
-User: "Hey JARVIS, start monitoring for security alerts"
-JARVIS: "I'll monitor your screen for security notifications and alert you 
+User: "Hey Ironcliw, start monitoring for security alerts"
+Ironcliw: "I'll monitor your screen for security notifications and alert you 
          immediately if any appear, sir."
 ```
 
 ### 4. Accessibility
 ```
-User: "Hey JARVIS, read the error message on screen"
-JARVIS: "The error message says: 'Connection timeout: Unable to reach server. 
+User: "Hey Ironcliw, read the error message on screen"
+Ironcliw: "The error message says: 'Connection timeout: Unable to reach server. 
          Please check your internet connection and try again.'"
 ```
 
@@ -307,7 +307,7 @@ This prevents "can you see my screen?" and "what's happening across my workspace
 ### "Vision capabilities are not available"
 1. Install required dependencies: `pip install -r requirements.txt`
 2. Install Tesseract: `brew install tesseract`
-3. Restart JARVIS
+3. Restart Ironcliw
 
 ### "No text detected on screen"
 1. Ensure good screen contrast

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Swift-Vision Bridge for JARVIS
+Swift-Vision Bridge for Ironcliw
 Connects Swift's intelligent command classification with Vision's screen analysis
 """
 

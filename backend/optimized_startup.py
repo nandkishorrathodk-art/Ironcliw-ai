@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Optimized JARVIS Startup with Pre-loaded Voice Authentication
+Optimized Ironcliw Startup with Pre-loaded Voice Authentication
 This ensures all voice biometric components are ready before the main system starts
 """
 
@@ -19,8 +19,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-class OptimizedJARVISStartup:
-    """Optimized startup sequence for JARVIS with voice biometrics"""
+class OptimizedIroncliwStartup:
+    """Optimized startup sequence for Ironcliw with voice biometrics"""
 
     def __init__(self):
         self.cloud_sql_process = None
@@ -82,12 +82,11 @@ class OptimizedJARVISStartup:
         logger.info("🔐 Pre-loading speaker verification service...")
 
         try:
-            from intelligence.learning_database import JARVISLearningDatabase
+            from intelligence.learning_database import get_learning_database
             from voice.speaker_verification_service import SpeakerVerificationService
 
             # Initialize learning database with Cloud SQL
-            learning_db = JARVISLearningDatabase()
-            await learning_db.initialize()
+            learning_db = await get_learning_database()
 
             # Initialize speaker service
             self.speaker_service = SpeakerVerificationService(learning_db)
@@ -154,14 +153,14 @@ class OptimizedJARVISStartup:
 
     async def start_backend_with_preloaded_services(self):
         """Start backend with all services pre-loaded"""
-        logger.info("🚀 Starting JARVIS backend with pre-loaded services...")
+        logger.info("🚀 Starting Ironcliw backend with pre-loaded services...")
 
         # Set environment variables for Cloud SQL
-        os.environ["JARVIS_DB_TYPE"] = "cloudsql"
-        os.environ["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
+        os.environ["Ironcliw_DB_TYPE"] = "cloudsql"
+        os.environ["Ironcliw_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
         # Password should be set in environment before running
-        if "JARVIS_DB_PASSWORD" not in os.environ:
-            raise ValueError("JARVIS_DB_PASSWORD environment variable must be set")
+        if "Ironcliw_DB_PASSWORD" not in os.environ:
+            raise ValueError("Ironcliw_DB_PASSWORD environment variable must be set")
 
         # Import and run backend main
         try:
@@ -188,7 +187,7 @@ class OptimizedJARVISStartup:
     async def start(self):
         """Main startup sequence"""
         print("\n" + "=" * 60)
-        print("🚀 JARVIS OPTIMIZED STARTUP SEQUENCE")
+        print("🚀 Ironcliw OPTIMIZED STARTUP SEQUENCE")
         print("=" * 60)
 
         start_time = time.time()
@@ -207,7 +206,7 @@ class OptimizedJARVISStartup:
         await self.start_backend_with_preloaded_services()
 
         elapsed = time.time() - start_time
-        print(f"\n✅ JARVIS ready in {elapsed:.1f} seconds!")
+        print(f"\n✅ Ironcliw ready in {elapsed:.1f} seconds!")
         print("  - Cloud SQL: Connected")
         print("  - Speaker Verification: Pre-loaded")
         print("  - Voice Biometrics: Active")
@@ -216,7 +215,7 @@ class OptimizedJARVISStartup:
 
     async def shutdown(self):
         """Clean shutdown"""
-        logger.info("Shutting down JARVIS...")
+        logger.info("Shutting down Ironcliw...")
 
         if self.backend_process:
             self.backend_process.terminate()
@@ -227,14 +226,14 @@ class OptimizedJARVISStartup:
 
 async def main():
     """Run optimized startup"""
-    startup = OptimizedJARVISStartup()
+    startup = OptimizedIroncliwStartup()
 
     try:
         await startup.start()
         # Keep running
         await asyncio.Event().wait()
     except KeyboardInterrupt:
-        logger.info("\n👋 Shutting down JARVIS...")
+        logger.info("\n👋 Shutting down Ironcliw...")
         await startup.shutdown()
 
 

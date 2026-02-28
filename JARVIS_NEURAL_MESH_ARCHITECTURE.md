@@ -1,4 +1,4 @@
-# JARVIS Neural Mesh Architecture - Complete Integration Documentation
+﻿# Ironcliw Neural Mesh Architecture - Complete Integration Documentation
 
 **Author:** Derek J. Russell
 **Date:** October 25, 2025
@@ -24,7 +24,7 @@
 
 ## Executive Summary
 
-JARVIS Neural Mesh is a **unified multi-agent intelligence framework** that transforms the existing 60+ isolated agents into a cohesive, collaborative AI ecosystem. The Neural Mesh integrates seamlessly with:
+Ironcliw Neural Mesh is a **unified multi-agent intelligence framework** that transforms the existing 60+ isolated agents into a cohesive, collaborative AI ecosystem. The Neural Mesh integrates seamlessly with:
 
 - **UAE (Unified Awareness Engine)**: Master context coordination
 - **SAI (Self-Aware Intelligence)**: Self-healing and optimization
@@ -50,7 +50,7 @@ The Neural Mesh creates a **living AI organism** where:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS NEURAL MESH - UNIFIED INTELLIGENCE                        │
+│                    Ironcliw NEURAL MESH - UNIFIED INTELLIGENCE                        │
 ├─────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                     │
 │  ╔═══════════════════════════════════════════════════════════════════════════════╗ │
@@ -732,7 +732,7 @@ class SharedKnowledgeGraph:
 
             self.chroma_collection = self.chroma_client.get_or_create_collection(
                 name="jarvis_knowledge",
-                metadata={"description": "JARVIS shared knowledge embeddings"}
+                metadata={"description": "Ironcliw shared knowledge embeddings"}
             )
 
             logger.info("✅ ChromaDB initialized")
@@ -2198,7 +2198,7 @@ logger = logging.getLogger(__name__)
 
 class UnifiedAwarenessEngine(BaseAgent):
     """
-    Master intelligence coordinator for JARVIS
+    Master intelligence coordinator for Ironcliw
 
     Enhanced with Neural Mesh:
     - Aggregates context from all 60+ agents via Communication Bus

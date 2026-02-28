@@ -1,4 +1,4 @@
-"""
+﻿"""
 UnifiedAgentRegistry v100.0 - Distributed Agent Registry with Redis
 ====================================================================
 
@@ -40,7 +40,7 @@ Architecture:
     |  +------------------------------------------------------------+ |
     +-----------------------------------------------------------------+
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -76,7 +76,7 @@ from backend.core.async_safety import LazyAsyncLock
 # Environment-driven configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 REDIS_DB = int(os.getenv("REDIS_AGENT_REGISTRY_DB", "1"))
-REGISTRY_KEY_PREFIX = os.getenv("JARVIS_REGISTRY_PREFIX", "jarvis:agents:")
+REGISTRY_KEY_PREFIX = os.getenv("Ironcliw_REGISTRY_PREFIX", "jarvis:agents:")
 HEARTBEAT_INTERVAL_SECONDS = float(os.getenv("AGENT_HEARTBEAT_INTERVAL", "5.0"))
 HEARTBEAT_TIMEOUT_SECONDS = float(os.getenv("AGENT_HEARTBEAT_TIMEOUT", "15.0"))
 CIRCUIT_BREAKER_FAILURES = int(os.getenv("AGENT_CIRCUIT_BREAKER_FAILURES", "3"))

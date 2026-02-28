@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Vision Edge Cases - Multi-window, Ambiguity, and Dynamic Content
-Tests JARVIS's ability to handle complex visual scenarios intelligently
+Tests Ironcliw's ability to handle complex visual scenarios intelligently
 """
 
 import asyncio
@@ -105,7 +105,7 @@ async def test_edge_case_queries():
                 response = await chatbot.analyze_screen_with_vision(query)
                 
                 # Analyze the response for edge case handling
-                print(f"\n🤖 JARVIS Response:")
+                print(f"\n🤖 Ironcliw Response:")
                 print(response)
                 
                 # Check for intelligent edge case handling
@@ -172,7 +172,7 @@ async def test_confidence_expressions():
         
         try:
             response = await chatbot.analyze_screen_with_vision(query)
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
             # Check for confidence expressions
             confidence_words = ["certain", "believe", "likely", "unsure", "unclear", "appears", "seems"]
@@ -231,7 +231,7 @@ async def test_monitoring_edge_cases():
         print(f"   Context: {item['context']}")
         
         response = await chatbot.generate_response(item['query'])
-        print(f"\n🤖 JARVIS: {response}")
+        print(f"\n🤖 Ironcliw: {response}")
         
         await asyncio.sleep(2)
     
@@ -243,7 +243,7 @@ async def test_monitoring_edge_cases():
 async def main():
     """Run all edge case tests"""
     
-    print("🧪 JARVIS Vision Edge Case Test Suite")
+    print("🧪 Ironcliw Vision Edge Case Test Suite")
     print("Testing pure vision intelligence for complex scenarios")
     print("=" * 70)
     
@@ -270,7 +270,7 @@ async def main():
     
     print("\n\n✨ All edge case tests completed!")
     print("\nKey things to verify:")
-    print("- JARVIS distinguishes between system UI and app content")
+    print("- Ironcliw distinguishes between system UI and app content")
     print("- Expresses uncertainty when appropriate")
     print("- Acknowledges when things are not visible")
     print("- Handles multi-window scenarios intelligently")

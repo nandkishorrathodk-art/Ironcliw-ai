@@ -1,9 +1,9 @@
-"""
+﻿"""
 Cross-Repo Orchestrator v2.0 - Advanced Multi-Repository Coordination
 ========================================================================
 
 Production-grade orchestration system for coordinating startup, health monitoring,
-and failover across JARVIS, JARVIS-Prime, and Reactor-Core repositories.
+and failover across Ironcliw, Ironcliw-Prime, and Reactor-Core repositories.
 
 v2.0 Enhancements:
 - Actual subprocess management for external repos
@@ -22,7 +22,7 @@ Problem Solved:
             management, graceful degradation with intelligent recovery
 
 Features:
-- Dependency-aware startup (JARVIS Core → J-Prime → J-Reactor)
+- Dependency-aware startup (Ironcliw Core → J-Prime → J-Reactor)
 - Parallel initialization where safe
 - Multi-layer health verification (process, IPC, HTTP, readiness)
 - Circuit breaker pattern for failing repos
@@ -37,7 +37,7 @@ Architecture:
     │                 Cross-Repo Orchestrator v2.0                     │
     ├─────────────────────────────────────────────────────────────────┤
     │                                                                   │
-    │  Phase 1: JARVIS Core (Required)                                │
+    │  Phase 1: Ironcliw Core (Required)                                │
     │  ├─ Initialize distributed lock manager                         │
     │  ├─ Start cross-repo state sync                                 │
     │  ├─ Setup IPC event bus                                         │
@@ -73,7 +73,7 @@ Example Usage:
     await orchestrator.monitor_health()
     ```
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0
 """
 
@@ -125,8 +125,8 @@ def _get_env_bool(key: str, default: bool) -> bool:
 
 
 # Directory configuration
-CROSS_REPO_DIR = _get_env_path("JARVIS_CROSS_REPO_DIR", Path.home() / ".jarvis" / "cross_repo")
-REPOS_BASE_DIR = _get_env_path("JARVIS_REPOS_DIR", Path.home() / "Documents" / "repos")
+CROSS_REPO_DIR = _get_env_path("Ironcliw_CROSS_REPO_DIR", Path.home() / ".jarvis" / "cross_repo")
+REPOS_BASE_DIR = _get_env_path("Ironcliw_REPOS_DIR", Path.home() / "Documents" / "repos")
 
 
 # =============================================================================
@@ -138,27 +138,27 @@ class OrchestratorConfig:
     """
     v2.0: Enhanced configuration for cross-repo orchestrator.
 
-    All values can be overridden via environment variables with JARVIS_ prefix.
+    All values can be overridden via environment variables with Ironcliw_ prefix.
     """
     # Startup timeouts (configurable via env)
     jarvis_startup_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CORE_STARTUP_TIMEOUT", 60.0)
+        default_factory=lambda: _get_env_float("Ironcliw_CORE_STARTUP_TIMEOUT", 60.0)
     )
     # v150.0: UNIFIED TIMEOUT - Must match cross_repo_startup_orchestrator.py (600s)
     # Previous: 120s - inconsistent with other components
     jprime_startup_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 600.0)
+        default_factory=lambda: _get_env_float("Ironcliw_PRIME_STARTUP_TIMEOUT", 600.0)
     )
     jreactor_startup_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_REACTOR_STARTUP_TIMEOUT", 90.0)
+        default_factory=lambda: _get_env_float("Ironcliw_REACTOR_STARTUP_TIMEOUT", 90.0)
     )
 
     # Health check settings
     health_check_interval: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_HEALTH_CHECK_INTERVAL", 30.0)
+        default_factory=lambda: _get_env_float("Ironcliw_HEALTH_CHECK_INTERVAL", 30.0)
     )
     health_check_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_HEALTH_CHECK_TIMEOUT", 5.0)
+        default_factory=lambda: _get_env_float("Ironcliw_HEALTH_CHECK_TIMEOUT", 5.0)
     )
     health_retry_count: int = 3
     health_retry_delay: float = 2.0
@@ -167,38 +167,38 @@ class OrchestratorConfig:
     # Circuit breaker settings
     circuit_breaker_failure_threshold: int = 5
     circuit_breaker_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CIRCUIT_BREAKER_TIMEOUT", 60.0)
+        default_factory=lambda: _get_env_float("Ironcliw_CIRCUIT_BREAKER_TIMEOUT", 60.0)
     )
 
     # Graceful degradation
     allow_degraded_mode: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ALLOW_DEGRADED_MODE", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_ALLOW_DEGRADED_MODE", True)
     )
     minimum_required_repos: Set[str] = field(default_factory=lambda: {"jarvis"})
 
     # Recovery settings
     auto_recovery_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_AUTO_RECOVERY", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_AUTO_RECOVERY", True)
     )
     recovery_check_interval: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_RECOVERY_INTERVAL", 120.0)
+        default_factory=lambda: _get_env_float("Ironcliw_RECOVERY_INTERVAL", 120.0)
     )
 
     # v2.0: Subprocess management
     auto_launch_external_repos: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_AUTO_LAUNCH_REPOS", False)
+        default_factory=lambda: _get_env_bool("Ironcliw_AUTO_LAUNCH_REPOS", False)
     )
     subprocess_output_log: bool = True
     subprocess_terminate_timeout: float = 10.0
 
     # v2.0: IPC settings
     ipc_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_IPC_TIMEOUT", 5.0)
+        default_factory=lambda: _get_env_float("Ironcliw_IPC_TIMEOUT", 5.0)
     )
 
     # v2.0: HTTP health check ports (configurable via env)
-    # JARVIS Core backend typically runs on 8010, supervisor metrics on 9090
-    # JARVIS Prime runs on 8000
+    # Ironcliw Core backend typically runs on 8010, supervisor metrics on 9090
+    # Ironcliw Prime runs on 8000
     # Reactor Core typically runs on 8082
     jarvis_http_port: int = 8010
     jarvis_http_fallback_ports: List[int] = field(default_factory=lambda: [8080, 8000, 9090])
@@ -291,7 +291,7 @@ class HealthCheckResult:
 class CrossRepoOrchestrator:
     """
     v2.0: Advanced orchestration system for coordinated startup and health monitoring
-    across JARVIS, J-Prime, and J-Reactor repositories.
+    across Ironcliw, J-Prime, and J-Reactor repositories.
 
     Features:
     - Multi-layer health verification (process, IPC, HTTP, file)
@@ -327,20 +327,20 @@ class CrossRepoOrchestrator:
         v2.0: Dynamically discover repos from environment, config, or filesystem.
 
         Priority:
-        1. Environment variables (JARVIS_REPO_PATH, JARVIS_PRIME_PATH, etc.)
+        1. Environment variables (Ironcliw_REPO_PATH, Ironcliw_PRIME_PATH, etc.)
         2. Standard locations (~Documents/repos/)
         3. Current working directory siblings
         """
         repos = {}
 
-        # JARVIS Core (this repo - always exists)
+        # Ironcliw Core (this repo - always exists)
         # Note: Supervisor listens on 9090 (Prometheus), backend on 8010
         jarvis_path = _get_env_path(
-            "JARVIS_CORE_PATH",
-            REPOS_BASE_DIR / "JARVIS-AI-Agent"
+            "Ironcliw_CORE_PATH",
+            REPOS_BASE_DIR / "Ironcliw-AI-Agent"
         )
         repos["jarvis"] = RepoInfo(
-            name="JARVIS Core",
+            name="Ironcliw Core",
             path=jarvis_path,
             required=True,
             http_port=self.config.jarvis_http_port,  # 8010
@@ -354,13 +354,13 @@ class CrossRepoOrchestrator:
             ]
         )
 
-        # JARVIS Prime (runs on port 8000)
+        # Ironcliw Prime (runs on port 8000)
         jprime_path = _get_env_path(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             REPOS_BASE_DIR / "jarvis-prime"
         )
         repos["jprime"] = RepoInfo(
-            name="JARVIS Prime",
+            name="Ironcliw Prime",
             path=jprime_path,
             required=False,
             http_port=self.config.jprime_http_port,  # 8000
@@ -375,7 +375,7 @@ class CrossRepoOrchestrator:
 
         # Reactor Core
         jreactor_path = _get_env_path(
-            "JARVIS_REACTOR_PATH",
+            "Ironcliw_REACTOR_PATH",
             REPOS_BASE_DIR / "reactor-core"
         )
         repos["jreactor"] = RepoInfo(
@@ -437,23 +437,23 @@ class CrossRepoOrchestrator:
         logger.info("=" * 70)
 
         try:
-            # Phase 1: Start JARVIS Core (Required)
-            logger.info("\n📍 PHASE 1: Starting JARVIS Core (required)")
+            # Phase 1: Start Ironcliw Core (Required)
+            logger.info("\n📍 PHASE 1: Starting Ironcliw Core (required)")
             jarvis_success = await self._start_jarvis_core()
 
             if not jarvis_success:
-                logger.error("❌ JARVIS Core failed to start - ABORTING")
+                logger.error("❌ Ironcliw Core failed to start - ABORTING")
                 return StartupResult(
                     success=False,
                     repos_started=0,
                     failed_repos=["jarvis"],
                     degraded_mode=False,
                     total_time=time.time() - start_time,
-                    details={"error": "JARVIS Core is required but failed to start"}
+                    details={"error": "Ironcliw Core is required but failed to start"}
                 )
 
             self.repos["jarvis"].status = RepoStatus.HEALTHY
-            logger.info("✅ JARVIS Core started successfully")
+            logger.info("✅ Ironcliw Core started successfully")
 
             # Phase 2: Start External Repos (Parallel, Optional)
             logger.info("\n📍 PHASE 2: Starting external repos (parallel)")
@@ -600,9 +600,9 @@ class CrossRepoOrchestrator:
             raise
 
     async def _start_jarvis_core(self) -> bool:
-        """Start JARVIS Core (this repo)."""
+        """Start Ironcliw Core (this repo)."""
         try:
-            logger.info("  → Initializing JARVIS Core...")
+            logger.info("  → Initializing Ironcliw Core...")
             self.repos["jarvis"].status = RepoStatus.STARTING
 
             # Import and initialize core components
@@ -626,11 +626,11 @@ class CrossRepoOrchestrator:
                 return False
 
         except Exception as e:
-            logger.error(f"  ✗ JARVIS Core startup error: {e}")
+            logger.error(f"  ✗ Ironcliw Core startup error: {e}")
             return False
 
     async def _start_jprime(self) -> bool:
-        """Start JARVIS Prime (if available)."""
+        """Start Ironcliw Prime (if available)."""
         try:
             logger.info("  → Probing J-Prime availability...")
             self.repos["jprime"].status = RepoStatus.STARTING
@@ -661,7 +661,7 @@ class CrossRepoOrchestrator:
             return False
 
     async def _start_jreactor(self) -> bool:
-        """Start JARVIS Reactor (if available)."""
+        """Start Ironcliw Reactor (if available)."""
         try:
             logger.info("  → Probing J-Reactor availability...")
             self.repos["jreactor"].status = RepoStatus.STARTING
@@ -960,7 +960,7 @@ class CrossRepoOrchestrator:
         try:
             url = f"http://127.0.0.1:{port}/health"
             req = urllib.request.Request(url)
-            req.add_header("User-Agent", "JARVIS-CrossRepo-Orchestrator/2.0")
+            req.add_header("User-Agent", "Ironcliw-CrossRepo-Orchestrator/2.0")
 
             with urllib.request.urlopen(req, timeout=self.config.health_check_timeout) as response:
                 latency_ms = (time.perf_counter() - start_time) * 1000
@@ -1083,7 +1083,7 @@ class CrossRepoOrchestrator:
                     pass
 
         if not pid:
-            # v2.0: For JARVIS Core, try to read PID from supervisor lock file
+            # v2.0: For Ironcliw Core, try to read PID from supervisor lock file
             supervisor_lock = Path.home() / ".jarvis" / "locks" / "supervisor.lock"
             if supervisor_lock.exists():
                 try:
@@ -1106,7 +1106,7 @@ class CrossRepoOrchestrator:
             # Check if process exists
             os.kill(pid, 0)
 
-            # Verify it's a Python/JARVIS process
+            # Verify it's a Python/Ironcliw process
             try:
                 import psutil
                 proc = psutil.Process(pid)
@@ -1125,7 +1125,7 @@ class CrossRepoOrchestrator:
                         healthy=False,
                         method=HealthCheckMethod.PROCESS,
                         latency_ms=(time.perf_counter() - start_time) * 1000,
-                        message=f"Process {pid} is not a JARVIS process"
+                        message=f"Process {pid} is not a Ironcliw process"
                     )
 
             except ImportError:

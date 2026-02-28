@@ -1,8 +1,8 @@
-# Rust Self-Healing System Documentation
+﻿# Rust Self-Healing System Documentation
 
 ## Overview
 
-The JARVIS Rust Self-Healing System automatically diagnoses and fixes issues preventing Rust components from loading, ensuring the system can recover from failures without manual intervention.
+The Ironcliw Rust Self-Healing System automatically diagnoses and fixes issues preventing Rust components from loading, ensuring the system can recover from failures without manual intervention.
 
 ## Features
 

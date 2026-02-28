@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Final comprehensive test for JARVIS TV connection with all fixes
+Final comprehensive test for Ironcliw TV connection with all fixes
 """
 
 import asyncio
@@ -12,7 +12,7 @@ import time
 sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
 print("\n" + "=" * 80)
-print("FINAL JARVIS TV CONNECTION TEST")
+print("FINAL Ironcliw TV CONNECTION TEST")
 print("=" * 80)
 print("\nThis test verifies:")
 print("✅ Drag motion is used for Control Center")
@@ -20,8 +20,8 @@ print("✅ Fresh instances are created")
 print("✅ Living Room TV connection works")
 
 async def main():
-    # Wait for JARVIS to fully initialize
-    print("\nWaiting for JARVIS to initialize...")
+    # Wait for Ironcliw to fully initialize
+    print("\nWaiting for Ironcliw to initialize...")
     await asyncio.sleep(5)
 
     print("\n1. Testing with factory (force_new=True)...")
@@ -49,11 +49,11 @@ async def main():
         print("\n" + "=" * 80)
         print("✅ ALL TESTS PASSED!")
         print("=" * 80)
-        print("\nJARVIS is now correctly configured to:")
+        print("\nIroncliw is now correctly configured to:")
         print("• Use drag motion for Control Center")
         print("• Create fresh instances when needed")
         print("• Connect to Living Room TV reliably")
-        print("\nYou can now ask JARVIS: 'Connect to Living Room TV'")
+        print("\nYou can now ask Ironcliw: 'Connect to Living Room TV'")
         print("and it should work correctly!")
 
     else:

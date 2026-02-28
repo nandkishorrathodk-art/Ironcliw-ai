@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Memory Manager
 ======================
 
@@ -11,7 +11,7 @@ Provides persistent memory across autonomous tasks with:
 
 v1.0: Initial implementation with multi-tier memory architecture.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -36,40 +36,40 @@ class MemoryManagerConfig:
 
     # Memory limits
     working_memory_max_items: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_WORKING_MEMORY_MAX", "100"))
+        default_factory=lambda: int(os.getenv("Ironcliw_WORKING_MEMORY_MAX", "100"))
     )
     episodic_memory_max_items: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_EPISODIC_MEMORY_MAX", "1000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_EPISODIC_MEMORY_MAX", "1000"))
     )
     semantic_memory_max_items: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_SEMANTIC_MEMORY_MAX", "500"))
+        default_factory=lambda: int(os.getenv("Ironcliw_SEMANTIC_MEMORY_MAX", "500"))
     )
 
     # Persistence settings
     persistence_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_PERSIST", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_PERSIST", "true").lower() == "true"
     )
     persistence_path: str = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_PATH", "/tmp/jarvis_memory")
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_PATH", "/tmp/jarvis_memory")
     )
     auto_save_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MEMORY_SAVE_INTERVAL", "60"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MEMORY_SAVE_INTERVAL", "60"))
     )
 
     # Consolidation settings
     consolidation_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_CONSOLIDATE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_CONSOLIDATE", "true").lower() == "true"
     )
     consolidation_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_CONSOLIDATION_THRESHOLD", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_CONSOLIDATION_THRESHOLD", "10"))
     )
 
     # Experience replay settings
     replay_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_EXPERIENCE_REPLAY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_EXPERIENCE_REPLAY", "true").lower() == "true"
     )
     replay_similarity_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_REPLAY_SIMILARITY", "0.75"))
+        default_factory=lambda: float(os.getenv("Ironcliw_REPLAY_SIMILARITY", "0.75"))
     )
 
 

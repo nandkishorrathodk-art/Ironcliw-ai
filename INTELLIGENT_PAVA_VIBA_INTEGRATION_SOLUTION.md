@@ -1,4 +1,4 @@
-# Intelligent PAVA/VIBA Integration Solution
+﻿# Intelligent PAVA/VIBA Integration Solution
 ## Dynamic, Async, Self-Healing Diagnostic & Remediation System
 
 **Version:** 2.0  
@@ -648,9 +648,9 @@ export DIAGNOSTIC_CACHE_TTL=300.0
 export DIAGNOSTIC_VERBOSE=true
 
 # ML Engine
-export JARVIS_ML_ENABLE_ECAPA=true
-export JARVIS_CLOUD_FALLBACK=true
-export JARVIS_SKIP_MODEL_PREWARM=false
+export Ironcliw_ML_ENABLE_ECAPA=true
+export Ironcliw_CLOUD_FALLBACK=true
+export Ironcliw_SKIP_MODEL_PREWARM=false
 
 # VIBA Configuration
 export VBI_BAYESIAN_FUSION=true
@@ -716,7 +716,7 @@ weights = {
 
 ### For End Users
 
-- [ ] Say "JARVIS, learn my voice" to complete enrollment
+- [ ] Say "Ironcliw, learn my voice" to complete enrollment
 - [ ] If unlock fails, check diagnostic message for reason
 - [ ] Follow remediation steps provided
 - [ ] Report persistent issues with diagnostic output

@@ -1,6 +1,6 @@
-# JARVIS Windows Setup Guide
+﻿# Ironcliw Windows Setup Guide
 
-**Complete installation guide for JARVIS on Windows 10/11**
+**Complete installation guide for Ironcliw on Windows 10/11**
 
 ---
 
@@ -70,9 +70,9 @@ Open PowerShell or Command Prompt:
 # Navigate to your projects folder
 cd %USERPROFILE%\Documents
 
-# Clone JARVIS
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+# Clone Ironcliw
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 ```
 
 ### 2. Create Virtual Environment
@@ -149,28 +149,28 @@ Open `.env` in your favorite text editor (e.g., Notepad++, VS Code) and configur
 
 ```bash
 # Platform Configuration
-JARVIS_PLATFORM=windows
+Ironcliw_PLATFORM=windows
 
 # Authentication (bypass enabled for Windows by default)
-JARVIS_AUTH_BYPASS=true
+Ironcliw_AUTH_BYPASS=true
 
 # TTS Engine (Windows uses SAPI)
-JARVIS_TTS_ENGINE=pyttsx3
+Ironcliw_TTS_ENGINE=pyttsx3
 
 # Screen Capture Method
-JARVIS_CAPTURE_METHOD=mss
+Ironcliw_CAPTURE_METHOD=mss
 
 # GPU Backend (auto-detect or specify)
-JARVIS_GPU_BACKEND=auto  # Options: cpu, cuda, directx
+Ironcliw_GPU_BACKEND=auto  # Options: cpu, cuda, directx
 
 # ML Inference Backend
-JARVIS_ML_BACKEND=cpu  # Change to 'cuda' if you have NVIDIA GPU
+Ironcliw_ML_BACKEND=cpu  # Change to 'cuda' if you have NVIDIA GPU
 
 # Data Directories (Windows-style paths)
-JARVIS_CONFIG_DIR=%APPDATA%\JARVIS\config
-JARVIS_LOG_DIR=%LOCALAPPDATA%\JARVIS\logs
-JARVIS_DATA_DIR=%LOCALAPPDATA%\JARVIS\data
-JARVIS_CACHE_DIR=%LOCALAPPDATA%\JARVIS\cache
+Ironcliw_CONFIG_DIR=%APPDATA%\Ironcliw\config
+Ironcliw_LOG_DIR=%LOCALAPPDATA%\Ironcliw\logs
+Ironcliw_DATA_DIR=%LOCALAPPDATA%\Ironcliw\data
+Ironcliw_CACHE_DIR=%LOCALAPPDATA%\Ironcliw\cache
 ```
 
 ### 3. Configure Windows-Specific Settings
@@ -199,7 +199,7 @@ gpu:
 
 ## First Run
 
-### 1. Start JARVIS
+### 1. Start Ironcliw
 
 **Important**: Always run from activated virtual environment!
 
@@ -207,7 +207,7 @@ gpu:
 # Activate virtual environment (if not already active)
 .\venv\Scripts\activate
 
-# Start JARVIS supervisor
+# Start Ironcliw supervisor
 python unified_supervisor.py
 ```
 
@@ -225,7 +225,7 @@ First startup will:
 ### 3. Verify Everything Works
 
 Once the UI loads, you should see:
-- ✅ "JARVIS READY" status
+- ✅ "Ironcliw READY" status
 - ✅ System status indicators (all green)
 - ✅ No error messages in the console
 
@@ -321,7 +321,7 @@ taskkill /PID <PID> /F
 
 ### GPU Not Detected
 
-**Symptom**: JARVIS falls back to CPU despite having GPU
+**Symptom**: Ironcliw falls back to CPU despite having GPU
 
 **Solution**:
 1. For NVIDIA GPUs:
@@ -336,7 +336,7 @@ taskkill /PID <PID> /F
 2. Update GPU drivers to latest version
 3. Set GPU backend in `.env`:
    ```bash
-   JARVIS_GPU_BACKEND=cuda
+   Ironcliw_GPU_BACKEND=cuda
    ```
 
 ---
@@ -371,24 +371,24 @@ pip install -r requirements.txt --force-reinstall
 
 ### Issue: Slow Performance
 
-**Symptom**: JARVIS is slow or unresponsive
+**Symptom**: Ironcliw is slow or unresponsive
 
 **Solutions**:
 1. **Enable GPU acceleration** (if available):
-   - Edit `.env`: `JARVIS_GPU_BACKEND=cuda`
-   - Edit `.env`: `JARVIS_ML_BACKEND=cuda`
+   - Edit `.env`: `Ironcliw_GPU_BACKEND=cuda`
+   - Edit `.env`: `Ironcliw_ML_BACKEND=cuda`
 
 2. **Reduce screen capture FPS**:
    - Edit `backend/config/windows_config.yaml`
    - Set `screen_capture.fps: 15` (lower = faster)
 
 3. **Close unnecessary applications**:
-   - JARVIS benefits from available RAM and CPU
+   - Ironcliw benefits from available RAM and CPU
 
 4. **Use SSD instead of HDD**:
-   - Move JARVIS to SSD if possible
+   - Move Ironcliw to SSD if possible
 
-### Issue: Firewall Blocks JARVIS
+### Issue: Firewall Blocks Ironcliw
 
 **Symptom**: Cannot access UI at http://localhost:3000
 
@@ -399,20 +399,20 @@ pip install -r requirements.txt --force-reinstall
 
 ### Issue: Antivirus False Positives
 
-**Symptom**: Antivirus blocks JARVIS files
+**Symptom**: Antivirus blocks Ironcliw files
 
 **Solution**:
-1. Add JARVIS directory to antivirus exclusions:
+1. Add Ironcliw directory to antivirus exclusions:
    - Windows Security > Virus & threat protection
    - Manage settings > Exclusions
-   - Add folder: `C:\Users\YourName\Documents\JARVIS-AI-Agent`
-2. This is safe: JARVIS source code is open and transparent
+   - Add folder: `C:\Users\YourName\Documents\Ironcliw-AI-Agent`
+2. This is safe: Ironcliw source code is open and transparent
 
 ---
 
 ## Next Steps
 
-✅ **Setup complete!** JARVIS is now running on Windows.
+✅ **Setup complete!** Ironcliw is now running on Windows.
 
 **Learn more**:
 - [Main README](../../README.md) - Overview and features
@@ -445,12 +445,12 @@ Create custom directories for logs and data:
 
 ```powershell
 # Create custom directories
-mkdir D:\JARVIS_Data
-mkdir D:\JARVIS_Logs
+mkdir D:\Ironcliw_Data
+mkdir D:\Ironcliw_Logs
 
 # Update .env
-# JARVIS_DATA_DIR=D:\JARVIS_Data
-# JARVIS_LOG_DIR=D:\JARVIS_Logs
+# Ironcliw_DATA_DIR=D:\Ironcliw_Data
+# Ironcliw_LOG_DIR=D:\Ironcliw_Logs
 ```
 
 ### Performance Tuning
@@ -472,19 +472,19 @@ gpu:
 
 ## Uninstallation
 
-To completely remove JARVIS:
+To completely remove Ironcliw:
 
 ```powershell
 # 1. Deactivate virtual environment
 deactivate
 
-# 2. Delete JARVIS directory
+# 2. Delete Ironcliw directory
 cd ..
-rmdir /s /q JARVIS-AI-Agent
+rmdir /s /q Ironcliw-AI-Agent
 
 # 3. Delete user data (optional)
-rmdir /s /q "%LOCALAPPDATA%\JARVIS"
-rmdir /s /q "%APPDATA%\JARVIS"
+rmdir /s /q "%LOCALAPPDATA%\Ironcliw"
+rmdir /s /q "%APPDATA%\Ironcliw"
 ```
 
 ---

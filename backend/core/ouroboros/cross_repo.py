@@ -1,8 +1,8 @@
-"""
+﻿"""
 Cross-Repository Integration for Ouroboros
 ===========================================
 
-Connects JARVIS, JARVIS-Prime, and Reactor-Core into a unified
+Connects Ironcliw, Ironcliw-Prime, and Reactor-Core into a unified
 self-improvement ecosystem that can evolve code across all repositories.
 
 Architecture:
@@ -11,7 +11,7 @@ Architecture:
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                          │
     │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐               │
-    │   │   JARVIS    │     │   PRIME     │     │  REACTOR    │               │
+    │   │   Ironcliw    │     │   PRIME     │     │  REACTOR    │               │
     │   │   (Body)    │◄────│   (Mind)    │────►│   (Nerves)  │               │
     │   │             │     │             │     │             │               │
     │   │ • Voice     │     │ • LLM       │     │ • Training  │               │
@@ -60,7 +60,7 @@ class CrossRepoConfig:
     """Cross-repository configuration."""
 
     # Repository paths - CRITICAL: Each repo must point to its correct location
-    JARVIS_REPO = Path(os.getenv("JARVIS_REPO", Path.home() / "Documents/repos/JARVIS-AI-Agent"))
+    Ironcliw_REPO = Path(os.getenv("Ironcliw_REPO", Path.home() / "Documents/repos/Ironcliw-AI-Agent"))
     PRIME_REPO = Path(os.getenv("PRIME_REPO", Path.home() / "Documents/repos/jarvis-prime"))
     REACTOR_REPO = Path(os.getenv("REACTOR_REPO", Path.home() / "Documents/repos/reactor-core"))
 
@@ -79,8 +79,8 @@ class CrossRepoConfig:
 
 class RepoType(Enum):
     """Type of repository."""
-    JARVIS = "jarvis"       # Main JARVIS agent
-    PRIME = "prime"         # JARVIS Prime LLM
+    Ironcliw = "jarvis"       # Main Ironcliw agent
+    PRIME = "prime"         # Ironcliw Prime LLM
     REACTOR = "reactor"     # Reactor Core training
 
 
@@ -571,8 +571,8 @@ class CrossRepoOrchestrator:
     Orchestrates operations across all repositories.
 
     Manages the flow of:
-    - Improvement requests (JARVIS → Prime → JARVIS)
-    - Training experiences (JARVIS → Reactor)
+    - Improvement requests (Ironcliw → Prime → Ironcliw)
+    - Training experiences (Ironcliw → Reactor)
     - Model updates (Reactor → Prime)
     """
 
@@ -584,7 +584,7 @@ class CrossRepoOrchestrator:
 
         # Repository connectors
         self._connectors: Dict[RepoType, RepoConnector] = {
-            RepoType.JARVIS: RepoConnector(RepoType.JARVIS, CrossRepoConfig.JARVIS_REPO),
+            RepoType.Ironcliw: RepoConnector(RepoType.Ironcliw, CrossRepoConfig.Ironcliw_REPO),
             RepoType.PRIME: RepoConnector(RepoType.PRIME, CrossRepoConfig.PRIME_REPO),
             RepoType.REACTOR: RepoConnector(RepoType.REACTOR, CrossRepoConfig.REACTOR_REPO),
         }
@@ -682,7 +682,7 @@ class CrossRepoOrchestrator:
         self,
         file_path: str,
         goal: str,
-        source_repo: RepoType = RepoType.JARVIS,
+        source_repo: RepoType = RepoType.Ironcliw,
     ) -> str:
         """
         Request an improvement across repositories.
@@ -720,7 +720,7 @@ class CrossRepoOrchestrator:
         event = CrossRepoEvent(
             id=f"exp_{uuid.uuid4().hex[:12]}",
             type=EventType.EXPERIENCE_GENERATED,
-            source_repo=RepoType.JARVIS,
+            source_repo=RepoType.Ironcliw,
             target_repo=RepoType.REACTOR,
             payload={
                 "original_code": original_code[:5000],
@@ -1405,7 +1405,7 @@ class EnhancedCrossRepoOrchestrator(CrossRepoOrchestrator):
         self,
         file_path: str,
         goal: str,
-        source_repo: RepoType = RepoType.JARVIS,
+        source_repo: RepoType = RepoType.Ironcliw,
     ) -> str:
         """
         Request improvement with Lamport clock ordering.

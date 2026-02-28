@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Knowledge Module
+﻿"""
+Ironcliw Neural Mesh - Knowledge Module
 
 This module provides the Shared Knowledge Graph for persistent,
 searchable collective memory across all agents.

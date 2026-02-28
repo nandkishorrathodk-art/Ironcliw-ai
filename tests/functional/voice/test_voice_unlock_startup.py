@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Voice Unlock Startup Integration
 ====================================
 
-Verifies that voice unlock is properly integrated with JARVIS.
+Verifies that voice unlock is properly integrated with Ironcliw.
 """
 
 import asyncio
@@ -20,7 +20,7 @@ from backend.voice_unlock.jarvis_integration import check_voice_unlock_requireme
 
 async def test_voice_unlock_startup():
     """Test voice unlock startup integration"""
-    print("🧪 Testing Voice Unlock Integration with JARVIS")
+    print("🧪 Testing Voice Unlock Integration with Ironcliw")
     print("=" * 60)
     
     # Check backend status

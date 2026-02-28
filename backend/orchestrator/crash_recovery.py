@@ -1,5 +1,5 @@
-"""
-JARVIS Crash Recovery System v1.0.0
+﻿"""
+Ironcliw Crash Recovery System v1.0.0
 ====================================
 
 Intelligent crash recovery and graceful degradation for the Trinity ecosystem.
@@ -33,7 +33,7 @@ Exit Code Reference:
     137 - 128 + SIGKILL (OOM killed by system)
     139 - 128 + SIGSEGV (segfault)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -316,7 +316,7 @@ class RecoveryDecisionEngine:
         """
         Handle OOM (Out of Memory) crash.
         
-        OOM is the most common cause of crashes in the JARVIS system,
+        OOM is the most common cause of crashes in the Ironcliw system,
         especially on machines with < 32GB RAM running ML models.
         
         Strategy:

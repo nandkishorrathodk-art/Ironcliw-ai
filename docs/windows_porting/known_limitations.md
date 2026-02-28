@@ -1,8 +1,8 @@
-# JARVIS Windows Port - Known Limitations
+﻿# Ironcliw Windows Port - Known Limitations
 
 ## Overview
 
-This document describes the current limitations, missing features, and differences between the Windows port and the original macOS version of JARVIS. This is the MVP (Minimum Viable Product) release, with full feature parity planned for v2.0.
+This document describes the current limitations, missing features, and differences between the Windows port and the original macOS version of Ironcliw. This is the MVP (Minimum Viable Product) release, with full feature parity planned for v2.0.
 
 ---
 
@@ -38,7 +38,7 @@ The macOS version uses ECAPA-TDNN speaker verification with Core ML (Metal GPU a
 **Workaround:**
 - Use Windows Hello (facial recognition, fingerprint)
 - Use password-based authentication at OS level
-- Treat JARVIS as authenticated/trusted (like macOS when TCC is approved)
+- Treat Ironcliw as authenticated/trusted (like macOS when TCC is approved)
 
 **Planned Fix:** v2.0 (DirectML/ONNX Runtime integration)
 
@@ -62,8 +62,8 @@ Windows `ReadDirectoryChangesW` API is less reliable for large codebases with ne
 
 **Workaround:**
 - Use React HMR for frontend (instant)
-- Reduce `JARVIS_RELOAD_CHECK_INTERVAL` to 5s (higher CPU usage)
-- Disable hot reload and restart manually: `JARVIS_DEV_MODE=false`
+- Reduce `Ironcliw_RELOAD_CHECK_INTERVAL` to 5s (higher CPU usage)
+- Disable hot reload and restart manually: `Ironcliw_DEV_MODE=false`
 
 **Status:** ⚠️ **Working as Intended** (acceptable trade-off)
 
@@ -80,11 +80,11 @@ Windows uses GDI+ software rendering. Hardware acceleration via Windows.Graphics
 **Impact:**
 - Max FPS: ~60 FPS (Windows) vs ~100 FPS (macOS)
 - CPU usage: ~10-15% higher on Windows
-- Not noticeable in real-world usage (JARVIS targets 15 FPS)
+- Not noticeable in real-world usage (Ironcliw targets 15 FPS)
 
 **Workaround:**
-- Reduce vision FPS: `JARVIS_VISION_FPS=10` (default: 15)
-- Disable continuous capture: `JARVIS_VISION_CONTINUOUS=false`
+- Reduce vision FPS: `Ironcliw_VISION_FPS=10` (default: 15)
+- Disable continuous capture: `Ironcliw_VISION_CONTINUOUS=false`
 
 **Planned Fix:** v1.1 (Windows.Graphics.Capture API)
 
@@ -105,8 +105,8 @@ Windows uses GDI+ software rendering. Hardware acceleration via Windows.Graphics
 - Warm restart: ~3-4 seconds (cached)
 
 **Workaround:**
-- Exclude JARVIS directory from Windows Defender scanning
-- Keep JARVIS running (minimize instead of close)
+- Exclude Ironcliw directory from Windows Defender scanning
+- Keep Ironcliw running (minimize instead of close)
 - Use `unified_supervisor.py --restart` (faster than cold start)
 
 **Status:** ⚠️ **Acceptable** (within 2x of macOS)
@@ -272,7 +272,7 @@ The following features are **theoretically cross-platform** but **not thoroughly
 
 ---
 
-### ☑️ Trinity Coordination (JARVIS-Prime + Reactor-Core)
+### ☑️ Trinity Coordination (Ironcliw-Prime + Reactor-Core)
 
 - ⚠️ Cross-repo discovery (uses `pathlib.Path`, should work)
 - ⚠️ Process spawning for Prime/Reactor (uses `subprocess.Popen`, should work)
@@ -281,7 +281,7 @@ The following features are **theoretically cross-platform** but **not thoroughly
 
 **Status:** Code updated for Windows compatibility, but full Trinity not tested.
 
-**Reason:** JARVIS-Prime and Reactor-Core repos not yet ported to Windows.
+**Reason:** Ironcliw-Prime and Reactor-Core repos not yet ported to Windows.
 
 ---
 
@@ -381,7 +381,7 @@ The following features are **theoretically cross-platform** but **not thoroughly
 
 Found a limitation not listed here? Please report it!
 
-1. Check [GitHub Issues](https://github.com/drussell23/JARVIS/issues)
+1. Check [GitHub Issues](https://github.com/drussell23/Ironcliw/issues)
 2. Open a new issue with tag: `windows-port`, `limitation`
 3. Include:
    - Description of missing feature

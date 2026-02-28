@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ultra-Advanced Hybrid STT Router v3.0
 =====================================
 Zero hardcoding, fully async, RAM-aware, cost-optimized
@@ -561,7 +561,7 @@ class HybridSTTRouter:
         if intent not in ("lock", "unlock"):
             return current
 
-        consensus_enabled = os.getenv("JARVIS_STT_SCREEN_CONSENSUS", "true").lower() == "true"
+        consensus_enabled = os.getenv("Ironcliw_STT_SCREEN_CONSENSUS", "true").lower() == "true"
         if not consensus_enabled:
             current.metadata = current.metadata or {}
             current.metadata["screen_intent"] = intent
@@ -569,7 +569,7 @@ class HybridSTTRouter:
             return current
 
         try:
-            timeout_sec = float(os.getenv("JARVIS_STT_SCREEN_CONSENSUS_TIMEOUT_SEC", "1.8"))
+            timeout_sec = float(os.getenv("Ironcliw_STT_SCREEN_CONSENSUS_TIMEOUT_SEC", "1.8"))
         except ValueError:
             timeout_sec = 1.8
 
@@ -1235,8 +1235,8 @@ class HybridSTTRouter:
 
         v8.0 SELF-VOICE SUPPRESSION:
         - Checks UnifiedSpeechStateManager BEFORE transcription
-        - Rejects audio if JARVIS is speaking or in cooldown
-        - Prevents hallucinations from JARVIS hearing its own voice
+        - Rejects audio if Ironcliw is speaking or in cooldown
+        - Prevents hallucinations from Ironcliw hearing its own voice
 
         Args:
             audio_data: Raw audio bytes
@@ -1260,8 +1260,8 @@ class HybridSTTRouter:
         # ═══════════════════════════════════════════════════════════════════
         # v8.0: SELF-VOICE SUPPRESSION - CRITICAL CHECK
         # ═══════════════════════════════════════════════════════════════════
-        # If JARVIS is currently speaking or in post-speech cooldown,
-        # reject this audio to prevent transcribing JARVIS's own voice.
+        # If Ironcliw is currently speaking or in post-speech cooldown,
+        # reject this audio to prevent transcribing Ironcliw's own voice.
         # This is the FIRST LINE OF DEFENSE against self-voice hallucinations.
         # ═══════════════════════════════════════════════════════════════════
         if not bypass_self_voice_check:
@@ -1551,7 +1551,7 @@ class HybridSTTRouter:
 
         v8.0 SELF-VOICE SUPPRESSION:
         - Checks UnifiedSpeechStateManager BEFORE transcription
-        - Rejects audio if JARVIS is speaking or in cooldown
+        - Rejects audio if Ironcliw is speaking or in cooldown
 
         Args:
             audio_data: Raw audio bytes
@@ -1833,7 +1833,7 @@ class HybridSTTRouter:
                 audio_bus = get_audio_bus()
             except ImportError:
                 raise RuntimeError(
-                    "AudioBus not available. Set JARVIS_AUDIO_BUS_ENABLED=true"
+                    "AudioBus not available. Set Ironcliw_AUDIO_BUS_ENABLED=true"
                 )
 
         if audio_bus.is_running:

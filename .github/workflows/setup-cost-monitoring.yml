@@ -1,4 +1,4 @@
-name: Setup Cost Monitoring (Advanced)
+﻿name: Setup Cost Monitoring (Advanced)
 
 on:
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
 
     env:
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      JARVIS_ALERT_EMAIL: ${{ inputs.alert_email || secrets.JARVIS_ALERT_EMAIL }}
+      Ironcliw_ALERT_EMAIL: ${{ inputs.alert_email || secrets.Ironcliw_ALERT_EMAIL }}
       BUDGET_THRESHOLD_1: ${{ inputs.budget_threshold_1 }}
       BUDGET_THRESHOLD_2: ${{ inputs.budget_threshold_2 }}
       BUDGET_THRESHOLD_3: ${{ inputs.budget_threshold_3 }}
@@ -74,7 +74,7 @@ jobs:
           pip install --upgrade pip
           pip install aiosqlite pydantic psutil PyYAML
 
-      - name: Create JARVIS directories
+      - name: Create Ironcliw directories
         run: |
           mkdir -p $HOME/.jarvis/{logs,learning,config,gcp,functions}
           echo "✅ Directory structure created"
@@ -136,7 +136,7 @@ jobs:
             --format="table(name,zone,creationTimestamp,status)" 2>/dev/null || echo "")
 
           if [ -n "$ORPHANED_VMS" ]; then
-            echo "⚠️  Found JARVIS VMs:"
+            echo "⚠️  Found Ironcliw VMs:"
             echo "$ORPHANED_VMS"
 
             # Calculate age and flag old VMs
@@ -159,7 +159,7 @@ jobs:
               fi
             done
           else
-            echo "✅ No JARVIS VMs currently running"
+            echo "✅ No Ironcliw VMs currently running"
           fi
 
   setup-gcp-budgets:
@@ -271,7 +271,7 @@ jobs:
 
     env:
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      ALERT_EMAIL: ${{ inputs.alert_email || secrets.JARVIS_ALERT_EMAIL }}
+      ALERT_EMAIL: ${{ inputs.alert_email || secrets.Ironcliw_ALERT_EMAIL }}
 
     steps:
       - name: Checkout code
@@ -313,7 +313,7 @@ jobs:
               budget_amount = alert_data.get('budgetAmount', 0)
               threshold = (cost_amount / budget_amount * 100) if budget_amount > 0 else 0
 
-              alert_email = os.environ.get('JARVIS_ALERT_EMAIL')
+              alert_email = os.environ.get('Ironcliw_ALERT_EMAIL')
 
               if not alert_email:
                   print("Email not configured")
@@ -337,7 +337,7 @@ jobs:
             --runtime python311 \
             --trigger-topic budget-alerts \
             --entry-point process_budget_alert \
-            --set-env-vars JARVIS_ALERT_EMAIL=$ALERT_EMAIL \
+            --set-env-vars Ironcliw_ALERT_EMAIL=$ALERT_EMAIL \
             --project=$GCP_PROJECT_ID \
             --region=us-central1 \
             --quiet
@@ -375,7 +375,7 @@ jobs:
 
           if [ "${{ inputs.deploy_email_function }}" == "true" ]; then
             echo "📧 Email Notifications:"
-            echo "   Recipient: ${{ inputs.alert_email || secrets.JARVIS_ALERT_EMAIL }}"
+            echo "   Recipient: ${{ inputs.alert_email || secrets.Ironcliw_ALERT_EMAIL }}"
             echo "   Status: ✅ Deployed"
           else
             echo "📧 Email Notifications: ⏭️  Skipped (enable with deploy_email_function=true)"

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Migrate JARVIS to optimized continuous learning
+Migrate Ironcliw to optimized continuous learning
 Reduces CPU from 97% to ~25% using Python optimizations
 """
 
@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def kill_high_cpu_processes():
-    """Kill any existing high-CPU JARVIS processes"""
+    """Kill any existing high-CPU Ironcliw processes"""
     logger.info("🔍 Checking for high-CPU processes...")
     
     killed = []
@@ -293,7 +293,7 @@ def verify_performance():
 
 def main():
     """Main migration process"""
-    print("\n🚀 JARVIS Optimized Learning Migration")
+    print("\n🚀 Ironcliw Optimized Learning Migration")
     print("=" * 60)
     print("This will reduce CPU usage from 97% to ~25%")
     print()
@@ -325,7 +325,7 @@ def main():
     
     # Summary
     print("\n" + "=" * 60)
-    print("🎉 JARVIS OPTIMIZATION COMPLETE!")
+    print("🎉 Ironcliw OPTIMIZATION COMPLETE!")
     print("=" * 60)
     print(f"\n📊 Results:")
     print(f"   • CPU Usage: 97% → {avg_cpu:.1f}% ({'✅ SUCCESS' if success else '⚠️  PARTIAL'})")

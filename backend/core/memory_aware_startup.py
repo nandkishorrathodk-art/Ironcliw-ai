@@ -1,4 +1,4 @@
-"""
+﻿"""
 Memory-Aware Startup Manager
 ============================
 
@@ -156,14 +156,14 @@ class MemoryAwareStartup:
         """
         # Load thresholds from environment
         self.full_local_threshold = float(
-            os.getenv("JARVIS_FULL_LOCAL_RAM_GB", self.DEFAULT_FULL_LOCAL_THRESHOLD_GB)
+            os.getenv("Ironcliw_FULL_LOCAL_RAM_GB", self.DEFAULT_FULL_LOCAL_THRESHOLD_GB)
         )
         # Cloud threshold now equals full local - NO GAP!
         self.cloud_first_threshold = float(
-            os.getenv("JARVIS_CLOUD_FIRST_RAM_GB", self.DEFAULT_CLOUD_FIRST_THRESHOLD_GB)
+            os.getenv("Ironcliw_CLOUD_FIRST_RAM_GB", self.DEFAULT_CLOUD_FIRST_THRESHOLD_GB)
         )
         self.cloud_only_threshold = float(
-            os.getenv("JARVIS_CLOUD_ONLY_RAM_GB", self.DEFAULT_CLOUD_ONLY_THRESHOLD_GB)
+            os.getenv("Ironcliw_CLOUD_ONLY_RAM_GB", self.DEFAULT_CLOUD_ONLY_THRESHOLD_GB)
         )
 
         # Cloud ML configuration
@@ -516,7 +516,7 @@ class MemoryAwareStartup:
         if self._gcp_vm_manager:
             logger.info("🧹 Cleaning up GCP ML backend...")
             await self._gcp_vm_manager.cleanup_all_vms(
-                reason="JARVIS shutdown - memory-aware startup cleanup"
+                reason="Ironcliw shutdown - memory-aware startup cleanup"
             )
 
 

@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Watch & Act Smoke Test - JARVIS Autonomous Loop Verification
+Watch & Act Smoke Test - Ironcliw Autonomous Loop Verification
 =============================================================
 
-This script verifies that JARVIS can:
+This script verifies that Ironcliw can:
 1. Watch a Terminal window for specific text
 2. Detect when that text appears (via OCR)
 3. AUTOMATICALLY take control and execute an action
@@ -11,7 +11,7 @@ This script verifies that JARVIS can:
 This is the proof-of-concept for the complete autonomous loop:
 SpatialAwareness → Visual Monitoring → Computer Use Action
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 11.0 - Watch & Act Smoke Test
 """
 
@@ -43,15 +43,15 @@ logging.getLogger('backend.neural_mesh.agents.visual_monitor_agent').setLevel(lo
 
 
 # ============================================================================
-# JARVIS Voice - Daniel's TTS
+# Ironcliw Voice - Daniel's TTS
 # ============================================================================
 
 async def jarvis_speak(message: str, rate: int = 180) -> None:
     """
-    JARVIS speaks using Daniel's voice (macOS TTS).
+    Ironcliw speaks using Daniel's voice (macOS TTS).
 
     Args:
-        message: Text for JARVIS to speak
+        message: Text for Ironcliw to speak
         rate: Speaking rate (words per minute, default 180)
     """
     try:
@@ -62,7 +62,7 @@ async def jarvis_speak(message: str, rate: int = 180) -> None:
             stderr=asyncio.subprocess.PIPE
         )
         await process.communicate()
-        logger.debug(f"🗣️ JARVIS: {message}")
+        logger.debug(f"🗣️ Ironcliw: {message}")
     except Exception as e:
         logger.warning(f"TTS failed: {e}")
         # Fallback to silent operation if TTS fails
@@ -81,7 +81,7 @@ async def test_autonomous_loop():
     """
 
     print("=" * 70)
-    print("🚀 JARVIS Watch & Act Smoke Test")
+    print("🚀 Ironcliw Watch & Act Smoke Test")
     print("=" * 70)
     print()
     print("This test will verify the complete autonomous loop:")
@@ -136,10 +136,10 @@ async def test_autonomous_loop():
         )
 
         # Initialize Computer Use connector WITH TTS before agent is created
-        # This ensures JARVIS can speak during autonomous actions
+        # This ensures Ironcliw can speak during autonomous actions
         from backend.display.computer_use_connector import get_computer_use_connector
         computer_use = get_computer_use_connector(tts_callback=jarvis_speak)
-        logger.info("✓ Computer Use connector initialized with JARVIS voice (Daniel)")
+        logger.info("✓ Computer Use connector initialized with Ironcliw voice (Daniel)")
 
         print("📦 Step 1: Initializing VisualMonitorAgent...")
         await jarvis_speak("Initializing Visual Monitor Agent for autonomous loop test")
@@ -187,9 +187,9 @@ async def test_autonomous_loop():
         print("     and press Enter to start the countdown")
         print()
         print("  4. WATCH CLOSELY:")
-        print("     - JARVIS will watch your Terminal")
+        print("     - Ironcliw will watch your Terminal")
         print("     - When 'DEPLOYMENT READY' appears (after 10 seconds)")
-        print("     - JARVIS will AUTOMATICALLY type 'echo SUCCESS' and press Enter")
+        print("     - Ironcliw will AUTOMATICALLY type 'echo SUCCESS' and press Enter")
         print()
         print("=" * 70)
         print()
@@ -212,7 +212,7 @@ async def test_autonomous_loop():
         print("   1...")
         await asyncio.sleep(1)
         print()
-        print("🔍 MONITORING ACTIVE - JARVIS is watching your Terminal...")
+        print("🔍 MONITORING ACTIVE - Ironcliw is watching your Terminal...")
         await jarvis_speak("Monitoring active. I am now watching your Terminal window.")
         print()
 
@@ -262,7 +262,7 @@ async def test_autonomous_loop():
                     print()
                     print("   Check your Terminal window - you should see:")
                     print("   1. 'DEPLOYMENT READY' (from your command)")
-                    print("   2. 'SUCCESS' (typed by JARVIS automatically!)")
+                    print("   2. 'SUCCESS' (typed by Ironcliw automatically!)")
                     print()
                     await jarvis_speak("Check your Terminal window. You should see the success message that I typed autonomously.")
                     return True
@@ -336,7 +336,7 @@ def main():
     """Main entry point."""
     print()
     print("╔════════════════════════════════════════════════════════════════╗")
-    print("║           JARVIS Watch & Act Smoke Test v11.0                  ║")
+    print("║           Ironcliw Watch & Act Smoke Test v11.0                  ║")
     print("║                                                                 ║")
     print("║  This test verifies the complete autonomous loop:              ║")
     print("║  Vision → Detection → Action                                   ║")
@@ -348,7 +348,7 @@ def main():
         print("❌ ERROR: Must be run from project root directory")
         print("   Current directory:", os.getcwd())
         print()
-        print("   Please cd to the JARVIS-AI-Agent directory and run:")
+        print("   Please cd to the Ironcliw-AI-Agent directory and run:")
         print("   python3 test_watch_and_act.py")
         sys.exit(1)
 

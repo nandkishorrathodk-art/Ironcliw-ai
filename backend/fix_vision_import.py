@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix vision import issues for chatbot
 """
@@ -111,6 +111,6 @@ if __name__ == "__main__":
         else:
             print("\n❌ Could not fix imports automatically")
             print("\nManual fix:")
-            print("1. Ensure you're running from the JARVIS root directory")
+            print("1. Ensure you're running from the Ironcliw root directory")
             print("2. Set ANTHROPIC_API_KEY environment variable")
             print("3. Check that vision/claude_vision_analyzer_main.py exists")

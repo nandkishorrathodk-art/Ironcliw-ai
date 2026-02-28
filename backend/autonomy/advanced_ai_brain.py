@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced AI Brain for JARVIS
+Advanced AI Brain for Ironcliw
 Provides predictive intelligence, contextual understanding, and creative problem solving
 Powered by Anthropic's Claude API
 """
@@ -16,7 +16,7 @@ import os
 from collections import defaultdict, deque
 import anthropic
 
-# Import JARVIS components
+# Import Ironcliw components
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 class AdvancedAIBrain:
     """
-    The advanced AI brain for JARVIS that provides:
+    The advanced AI brain for Ironcliw that provides:
     - Dynamic predictive intelligence
     - Deep contextual understanding
     - Creative problem solving
@@ -91,7 +91,7 @@ class AdvancedAIBrain:
             self.macos_system = get_macos_integration(self.claude_api_key)
             self.hardware_system = HardwareControlSystem(self.claude_api_key)
         
-        # Core JARVIS components
+        # Core Ironcliw components
         self.decision_engine = AutonomousDecisionEngine()
         self.navigation = None  # Will be injected
         self.automation = None  # Will be injected
@@ -158,7 +158,7 @@ class AdvancedAIBrain:
                 await self.macos_system.start_system_monitoring()
                 logger.info("💻 macOS integration activated")
         
-        logger.info("🧠 Advanced AI Brain fully activated - JARVIS achieving true autonomous intelligence")
+        logger.info("🧠 Advanced AI Brain fully activated - Ironcliw achieving true autonomous intelligence")
         
     async def stop_brain_activity(self):
         """Gracefully stop brain activity"""
@@ -733,7 +733,7 @@ class AdvancedAIBrain:
                 max_tokens=1000,
                 messages=[{
                     "role": "user",
-                    "content": f"""As JARVIS with full autonomous AI capabilities, process this command:
+                    "content": f"""As Ironcliw with full autonomous AI capabilities, process this command:
 
 Command: "{command}"
 
@@ -1048,10 +1048,10 @@ async def test_ai_brain():
     # Test personality response
     print("\n💬 Testing personality response...")
     response = await brain.get_personality_response(
-        "Good morning JARVIS",
+        "Good morning Ironcliw",
         {'time': 'morning'}
     )
-    print(f"JARVIS: {response}")
+    print(f"Ironcliw: {response}")
     
     # Get brain status
     status = brain.get_brain_status()

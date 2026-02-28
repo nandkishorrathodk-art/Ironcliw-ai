@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test microphone and speech recognition setup"""
 
 import speech_recognition as sr
@@ -38,9 +38,9 @@ def test_microphone():
                     text = recognizer.recognize_google(audio)
                     print(f"✅ You said: '{text}'")
                     
-                    # Check for JARVIS wake word
+                    # Check for Ironcliw wake word
                     if "jarvis" in text.lower():
-                        print("🎯 Wake word detected! JARVIS is listening.")
+                        print("🎯 Wake word detected! Ironcliw is listening.")
                     
                 except sr.UnknownValueError:
                     print("❌ Could not understand audio")
@@ -62,14 +62,14 @@ def test_microphone():
     return True
 
 if __name__ == "__main__":
-    print("JARVIS Microphone Test Utility")
+    print("Ironcliw Microphone Test Utility")
     print("=" * 40)
     
     success = test_microphone()
     
     if success:
-        print("\n🎉 Your microphone is ready for JARVIS!")
-        print("Try saying 'Hey JARVIS' in the web interface.")
+        print("\n🎉 Your microphone is ready for Ironcliw!")
+        print("Try saying 'Hey Ironcliw' in the web interface.")
     else:
-        print("\n❌ Please fix the microphone issues before using JARVIS.")
+        print("\n❌ Please fix the microphone issues before using Ironcliw.")
         sys.exit(1)

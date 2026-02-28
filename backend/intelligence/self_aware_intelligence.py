@@ -1,4 +1,4 @@
-"""
+﻿"""
 Self-Aware Intelligence (SAI) runtime implementation.
 
 Provides:
@@ -75,10 +75,10 @@ class SelfAwareIntelligence:
         self._lock = threading.RLock()
         self._monitor_interval_s = max(
             1.0,
-            _env_float("JARVIS_SAI_MONITOR_INTERVAL_S", 5.0),
+            _env_float("Ironcliw_SAI_MONITOR_INTERVAL_S", 5.0),
         )
-        self._history_limit = max(50, _env_int("JARVIS_SAI_HISTORY_LIMIT", 500))
-        self._window_seconds = max(30.0, _env_float("JARVIS_SAI_WINDOW_SECONDS", 300.0))
+        self._history_limit = max(50, _env_int("Ironcliw_SAI_HISTORY_LIMIT", 500))
+        self._window_seconds = max(30.0, _env_float("Ironcliw_SAI_WINDOW_SECONDS", 300.0))
 
         self._monitor_task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()

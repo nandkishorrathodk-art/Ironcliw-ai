@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Automated Voice Demo - No Input Required
 ========================================
@@ -28,14 +28,14 @@ class VoiceWebSocket:
             speak = data.get('speak', False)
             
             if text:
-                print(f"\n💬 JARVIS: {text}")
+                print(f"\n💬 Ironcliw: {text}")
                 
                 if speak:
                     print("   🔊 [SPEAKING...]")
                     await self._speak(text)
     
     async def _speak(self, text):
-        """Make JARVIS speak"""
+        """Make Ironcliw speak"""
         try:
             async with aiohttp.ClientSession() as session:
                 url = "http://localhost:8888/api/jarvis/speak"
@@ -58,7 +58,7 @@ async def run_demo():
     
     print("\n📢 This demo will:")
     print("   1. Lock your screen")
-    print("   2. JARVIS will speak when detecting the lock")
+    print("   2. Ironcliw will speak when detecting the lock")
     print("   3. Unlock and execute a command")
     
     print("\n🔊 Make sure your speakers are on!")
@@ -76,8 +76,8 @@ async def run_demo():
     print("   Waiting for lock...")
     await asyncio.sleep(3)
     
-    # Set up JARVIS
-    print("\n🤖 Setting up JARVIS...")
+    # Set up Ironcliw
+    print("\n🤖 Setting up Ironcliw...")
     processor = UnifiedCommandProcessor()
     handler = wrap_with_enhanced_context(processor)
     websocket = VoiceWebSocket()
@@ -85,7 +85,7 @@ async def run_demo():
     # Send command
     command = "open Safari and search for dogs"
     print(f"\n🎯 Sending command: '{command}'")
-    print("\n👂 LISTEN FOR JARVIS TO SPEAK...")
+    print("\n👂 LISTEN FOR Ironcliw TO SPEAK...")
     
     # Process
     try:
@@ -101,7 +101,7 @@ async def run_demo():
                       if m.get('type') == 'response' and m.get('speak')]
         
         if spoken_msgs:
-            print(f"\n🔊 JARVIS spoke {len(spoken_msgs)} message(s):")
+            print(f"\n🔊 Ironcliw spoke {len(spoken_msgs)} message(s):")
             for msg in spoken_msgs:
                 print(f"   • \"{msg.get('text')}\"")
         
@@ -121,7 +121,7 @@ async def run_demo():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("🚀 JARVIS Automated Voice Demo")
+    print("🚀 Ironcliw Automated Voice Demo")
     
     # Check services
     ws_check = subprocess.run(["lsof", "-i:8765"], capture_output=True)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
         sys.exit(1)
     
     if jarvis_check.returncode != 0:
-        print("\n❌ JARVIS not running!")
+        print("\n❌ Ironcliw not running!")
         print("   Start it with: python main.py")
         sys.exit(1)
     

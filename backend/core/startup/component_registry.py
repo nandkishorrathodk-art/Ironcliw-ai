@@ -1,5 +1,5 @@
-"""
-JARVIS Component Registry v149.2
+﻿"""
+Ironcliw Component Registry v149.2
 ================================
 
 Centralized registry for component lifecycle tracking.
@@ -358,7 +358,7 @@ class ComponentRegistry:
         # Build summary message
         lines = [
             "=" * 60,
-            "JARVIS STARTUP SUMMARY",
+            "Ironcliw STARTUP SUMMARY",
             "=" * 60,
             f"Components: {summary['ready']}/{summary['total_components']} ready",
         ]

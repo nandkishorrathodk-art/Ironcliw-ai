@@ -1,5 +1,5 @@
-"""
-JARVIS CAI (Context Awareness Intelligence) Voice Feedback Manager
+﻿"""
+Ironcliw CAI (Context Awareness Intelligence) Voice Feedback Manager
 ===================================================================
 
 Advanced, intelligent verbal transparency system for the CAI → VBI → Unlock → Continuation flow.
@@ -884,7 +884,7 @@ async def get_cai_voice_manager() -> CAIVoiceFeedbackManager:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# HELPER FUNCTION FOR JARVIS_VOICE_API INTEGRATION
+# HELPER FUNCTION FOR Ironcliw_VOICE_API INTEGRATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def speak_cai_message(message: str, wait: bool = True) -> bool:

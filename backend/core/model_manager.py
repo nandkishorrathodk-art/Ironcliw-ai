@@ -1,4 +1,4 @@
-"""Model Manager - Brain Switcher for JARVIS.
+﻿"""Model Manager - Brain Switcher for Ironcliw.
 
 This module implements a tiered model loading system with automatic switching based on
 task complexity and available memory. It manages multiple language models of different
@@ -357,7 +357,7 @@ class ModelManager:
                 # Create model with optimized settings
                 model = LlamaCpp(
                     model_path=str(model_path),
-                    n_gpu_layers=int(os.getenv("JARVIS_N_GPU_LAYERS", "-1")),  # v234.0: Full Metal GPU offload
+                    n_gpu_layers=int(os.getenv("Ironcliw_N_GPU_LAYERS", "-1")),  # v234.0: Full Metal GPU offload
                     n_ctx=model_info.context_size,
                     n_batch=256 if tier == ModelTier.TINY else 512,
                     temperature=0.7,

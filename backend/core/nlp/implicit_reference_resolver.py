@@ -1,8 +1,8 @@
-"""
+﻿"""
 Implicit Reference Resolver - Advanced Natural Language Understanding
 ======================================================================
 
-This module provides sophisticated natural language understanding capabilities for JARVIS,
+This module provides sophisticated natural language understanding capabilities for Ironcliw,
 enabling it to resolve implicit references in user queries like "it", "that", "this",
 and contextual questions.
 
@@ -146,16 +146,16 @@ class QueryParsed:
 
 @dataclass
 class ConversationTurn:
-    """A single turn in the conversation (user query + JARVIS response).
+    """A single turn in the conversation (user query + Ironcliw response).
 
-    Represents one complete exchange between the user and JARVIS, including
+    Represents one complete exchange between the user and Ironcliw, including
     the context that was used to generate the response.
 
     Attributes:
         turn_id: Unique identifier for this turn
         timestamp: When this turn occurred
         user_query: What the user asked
-        jarvis_response: How JARVIS responded
+        jarvis_response: How Ironcliw responded
         context_used: What context was used to answer
         entities_mentioned: Entities that were discussed in this turn
     """
@@ -209,7 +209,7 @@ class ConversationalContext:
 
         Args:
             user_query: What the user asked
-            jarvis_response: How JARVIS responded
+            jarvis_response: How Ironcliw responded
             context_used: Context that was used to generate the response
         """
         self.turn_counter += 1
@@ -289,7 +289,7 @@ class ConversationalContext:
 
         Args:
             user_query: The user's query
-            jarvis_response: JARVIS's response
+            jarvis_response: Ironcliw's response
             context: Context used for the response
 
         Returns:
@@ -385,10 +385,10 @@ class VisualAttentionTracker:
     """Tracks what the user has been looking at.
 
     This class maintains a history of what was visible on the user's screen,
-    enabling JARVIS to answer questions like "What did I just see?" or
+    enabling Ironcliw to answer questions like "What did I just see?" or
     "What was that on screen?"
 
-    When you switch spaces or scroll, JARVIS remembers what was visible.
+    When you switch spaces or scroll, Ironcliw remembers what was visible.
 
     Attributes:
         attention_events: Deque of recent visual attention events

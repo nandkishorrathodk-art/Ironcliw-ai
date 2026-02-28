@@ -1,8 +1,8 @@
-# 🚀 JARVIS Parallel Startup Guide
+﻿# 🚀 Ironcliw Parallel Startup Guide
 
 ## Overview
 
-The JARVIS Parallel Startup system reduces backend initialization time from **107+ seconds to ~30 seconds** by running all services and component loading concurrently.
+The Ironcliw Parallel Startup system reduces backend initialization time from **107+ seconds to ~30 seconds** by running all services and component loading concurrently.
 
 ## Key Features
 
@@ -30,11 +30,11 @@ The JARVIS Parallel Startup system reduces backend initialization time from **10
 
 ### 1. Enable Parallel Startup
 ```bash
-cd /path/to/JARVIS
+cd /path/to/Ironcliw
 python backend/enable_parallel_startup.py
 ```
 
-### 2. Start JARVIS (Parallel Mode)
+### 2. Start Ironcliw (Parallel Mode)
 ```bash
 python start_system.py
 ```
@@ -70,7 +70,7 @@ BACKEND_PRELOAD_CACHE=true     # Preload common data
 
 ```
 ┌─────────────────────────────────────────────┐
-│           JARVIS PARALLEL STARTUP           │
+│           Ironcliw PARALLEL STARTUP           │
 └─────────────────────────────────────────────┘
                       │
         ┌─────────────┴─────────────┐

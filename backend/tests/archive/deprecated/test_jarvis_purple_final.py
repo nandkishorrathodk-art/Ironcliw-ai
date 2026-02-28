@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Final test for JARVIS purple indicator
+Final test for Ironcliw purple indicator
 """
 
 import requests
@@ -8,7 +8,7 @@ import json
 import time
 
 def test_monitoring():
-    print("\n🟣 TESTING JARVIS PURPLE INDICATOR FINAL")
+    print("\n🟣 TESTING Ironcliw PURPLE INDICATOR FINAL")
     print("=" * 60)
     
     # Test the monitoring command

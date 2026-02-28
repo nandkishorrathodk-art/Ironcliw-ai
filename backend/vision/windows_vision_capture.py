@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Vision Capture - Enhanced Implementation
+﻿"""
+Ironcliw Windows Vision Capture - Enhanced Implementation
 ═══════════════════════════════════════════════════════════════════════════════
 
 Advanced Windows screen capture implementation with multi-monitor support,
@@ -24,7 +24,7 @@ Performance Targets:
     - <100ms latency per frame
     - <500MB memory footprint
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 7)
 """
 from __future__ import annotations

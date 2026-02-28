@@ -1,8 +1,8 @@
-# UAE Initialization - Complete ✅
+﻿# UAE Initialization - Complete ✅
 
 ## What Was Done
 
-UAE (Unified Awareness Engine) has been successfully integrated into JARVIS's startup sequence to work together with SAI (Situational Awareness Intelligence).
+UAE (Unified Awareness Engine) has been successfully integrated into Ironcliw's startup sequence to work together with SAI (Situational Awareness Intelligence).
 
 ---
 
@@ -76,7 +76,7 @@ if hasattr(app.state, "uae_engine"):
 ### Startup Sequence
 
 ```
-1. JARVIS starts
+1. Ironcliw starts
    ↓
 2. Core components load (chatbots, vision, etc.)
    ↓
@@ -117,7 +117,7 @@ if hasattr(app.state, "uae_engine"):
 
 ## Expected Startup Logs
 
-When you restart JARVIS, you should see:
+When you restart Ironcliw, you should see:
 
 ```bash
 [INFO] 🧠 Initializing UAE (Unified Awareness Engine)...
@@ -142,7 +142,7 @@ When you restart JARVIS, you should see:
 
 ### Test #1: Check UAE Status
 
-After JARVIS starts, verify UAE is running:
+After Ironcliw starts, verify UAE is running:
 
 ```python
 # In Python console or test script:
@@ -169,7 +169,7 @@ print(f"Recommended: {info['recommended']}")      # Should be 'uae'
 ### Test #3: Test Display Connection
 
 ```bash
-# Say to JARVIS:
+# Say to Ironcliw:
 "Living room tv"
 
 # Check logs for:
@@ -238,7 +238,7 @@ The system gracefully falls back:
 except Exception as e:
     logger.warning(f"⚠️ Could not initialize UAE: {e}")
     logger.info("   Falling back to SAI-only mode")
-    # JARVIS continues with SAI-Enhanced clicker
+    # Ironcliw continues with SAI-Enhanced clicker
 ```
 
 **Result:** No impact on core functionality. Display connections still work with SAI alone.
@@ -302,7 +302,7 @@ print(f"UAE active: {uae and uae.is_active}")
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        JARVIS                                │
+│                        Ironcliw                                │
 │                                                              │
 │  main.py (Startup)                                          │
 │    ↓                                                         │
@@ -340,11 +340,11 @@ print(f"UAE active: {uae and uae.is_active}")
 
 ## Next Steps
 
-### 1. Restart JARVIS
+### 1. Restart Ironcliw
 
 ```bash
 # Stop current instance
-# Restart JARVIS
+# Restart Ironcliw
 
 # Watch for UAE initialization logs
 ```
@@ -352,7 +352,7 @@ print(f"UAE active: {uae and uae.is_active}")
 ### 2. Test Display Connection
 
 ```bash
-# Say to JARVIS:
+# Say to Ironcliw:
 "Living room tv"
 
 # Should connect successfully

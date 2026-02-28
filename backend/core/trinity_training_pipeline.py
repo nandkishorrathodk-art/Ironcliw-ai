@@ -1,11 +1,11 @@
-"""
+﻿"""
 Trinity Training Pipeline v2.7
 ==============================
 
 Complete training pipeline integration across Trinity:
-- JARVIS (Body) → Experience capture, feedback collection
+- Ironcliw (Body) → Experience capture, feedback collection
 - Reactor Core (Nerves) → Training orchestration
-- JARVIS Prime (Mind) → Model deployment, hot-swap
+- Ironcliw Prime (Mind) → Model deployment, hot-swap
 
 Pipeline Flow:
     ┌──────────────────────────────────────────────────────────────────┐
@@ -13,7 +13,7 @@ Pipeline Flow:
     ├──────────────────────────────────────────────────────────────────┤
     │                                                                   │
     │  ┌─────────────┐                                                 │
-    │  │   JARVIS    │  1. Capture experiences                        │
+    │  │   Ironcliw    │  1. Capture experiences                        │
     │  │   (Body)    │  2. User feedback                              │
     │  │             │  3. Error patterns                              │
     │  └──────┬──────┘                                                 │
@@ -29,7 +29,7 @@ Pipeline Flow:
     │         │ model.trained                                          │
     │         ▼                                                        │
     │  ┌─────────────┐                                                 │
-    │  │   JARVIS    │  1. Receive new model                          │
+    │  │   Ironcliw    │  1. Receive new model                          │
     │  │   Prime     │  2. Hot-swap (zero downtime)                   │
     │  │   (Mind)    │  3. A/B test vs previous                       │
     │  └──────┬──────┘                                                 │
@@ -37,7 +37,7 @@ Pipeline Flow:
     │         │ model.deployed                                         │
     │         ▼                                                        │
     │  ┌─────────────┐                                                 │
-    │  │   JARVIS    │  1. Use new model                              │
+    │  │   Ironcliw    │  1. Use new model                              │
     │  │   (Body)    │  2. Capture performance                        │
     │  │             │  3. Feedback loop continues                    │
     │  └─────────────┘                                                 │
@@ -115,8 +115,8 @@ class PipelineConfig:
     REACTOR_CORE_TIMEOUT = _env_float("REACTOR_CORE_TIMEOUT", 30.0)
 
     # Prime settings
-    PRIME_URL = _env_str("JARVIS_PRIME_URL", "http://localhost:8000")
-    PRIME_TIMEOUT = _env_float("JARVIS_PRIME_TIMEOUT", 30.0)
+    PRIME_URL = _env_str("Ironcliw_PRIME_URL", "http://localhost:8000")
+    PRIME_TIMEOUT = _env_float("Ironcliw_PRIME_TIMEOUT", 30.0)
 
     # Storage
     EXPERIENCE_STORE_PATH = _env_str(
@@ -176,7 +176,7 @@ class FeedbackType(Enum):
 
 @dataclass
 class Experience:
-    """A training experience captured from JARVIS."""
+    """A training experience captured from Ironcliw."""
     experience_id: str = ""
     experience_type: ExperienceType = ExperienceType.INFERENCE
     input_data: Dict[str, Any] = field(default_factory=dict)
@@ -318,9 +318,9 @@ class TrinityTrainingPipeline:
     Complete training pipeline for Trinity ecosystem.
 
     Handles:
-    - Experience capture from JARVIS
+    - Experience capture from Ironcliw
     - Training job orchestration with Reactor Core
-    - Model deployment to JARVIS Prime
+    - Model deployment to Ironcliw Prime
     - Feedback loop and continuous learning
     """
 
@@ -440,13 +440,13 @@ class TrinityTrainingPipeline:
             logger.warning(f"[TrainingPipeline] Reactor Core connection failed after retries: {e}")
 
     async def _init_prime_client(self) -> None:
-        """Initialize JARVIS Prime client."""
+        """Initialize Ironcliw Prime client."""
         try:
             from backend.clients.jarvis_prime_client import get_jarvis_prime_client
             self._prime_client = await get_jarvis_prime_client()
-            logger.info("[TrainingPipeline] JARVIS Prime client connected")
+            logger.info("[TrainingPipeline] Ironcliw Prime client connected")
         except ImportError:
-            logger.warning("[TrainingPipeline] JARVIS Prime client not available")
+            logger.warning("[TrainingPipeline] Ironcliw Prime client not available")
         except Exception as e:
             logger.warning(f"[TrainingPipeline] Prime connection failed: {e}")
 
@@ -460,7 +460,7 @@ class TrinityTrainingPipeline:
                 RepoType,
             )
 
-            self._event_bus = await get_trinity_event_bus(RepoType.JARVIS)
+            self._event_bus = await get_trinity_event_bus(RepoType.Ironcliw)
 
             # Subscribe to training events
             await self._event_bus.subscribe("training.*", self._handle_training_event)
@@ -646,7 +646,7 @@ class TrinityTrainingPipeline:
         ab_test: bool = False,
     ) -> bool:
         """
-        Deploy a model version to JARVIS Prime.
+        Deploy a model version to Ironcliw Prime.
 
         Args:
             version_id: Model version to deploy
@@ -662,7 +662,7 @@ class TrinityTrainingPipeline:
             return False
 
         if not self._prime_client:
-            logger.warning("[TrainingPipeline] JARVIS Prime not available")
+            logger.warning("[TrainingPipeline] Ironcliw Prime not available")
             return False
 
         try:

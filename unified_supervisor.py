@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Unified System Kernel v1.0.0
+Ironcliw Unified System Kernel v1.0.0
 ═══════════════════════════════════════════════════════════════════════════════
 
-The ONE file that controls the entire JARVIS ecosystem.
+The ONE file that controls the entire Ironcliw ecosystem.
 This is a Monolithic Kernel - all logic inline, zero external module dependencies.
 
 Merges capabilities from:
@@ -44,7 +44,7 @@ Design Principles:
     - Lazy loading (ML models only loaded when needed)
     - Adaptive (thresholds learn from outcomes)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 from __future__ import annotations
@@ -125,8 +125,8 @@ if _is_cli_mode:
     # For --restart and --shutdown, launch detached child and EXIT IMMEDIATELY.
     # The detached child does the actual work in complete isolation.
     _needs_detached = (
-        ('--restart' in _early_sys.argv and not _early_os.environ.get('_JARVIS_RESTART_REEXEC')) or
-        ('--shutdown' in _early_sys.argv and not _early_os.environ.get('_JARVIS_SHUTDOWN_REEXEC'))
+        ('--restart' in _early_sys.argv and not _early_os.environ.get('_Ironcliw_RESTART_REEXEC')) or
+        ('--shutdown' in _early_sys.argv and not _early_os.environ.get('_Ironcliw_SHUTDOWN_REEXEC'))
     )
     if _needs_detached:
         import subprocess as _sp
@@ -134,7 +134,7 @@ if _is_cli_mode:
 
         _is_shutdown = '--shutdown' in _early_sys.argv
         _cmd_name = 'shutdown' if _is_shutdown else 'restart'
-        _reexec_marker = '_JARVIS_SHUTDOWN_REEXEC' if _is_shutdown else '_JARVIS_RESTART_REEXEC'
+        _reexec_marker = '_Ironcliw_SHUTDOWN_REEXEC' if _is_shutdown else '_Ironcliw_RESTART_REEXEC'
         # Cross-platform temp directory
         _result_path = _early_os.path.join(_tmp.gettempdir(), f"jarvis_{_cmd_name}_{_early_os.getpid()}.result")
 
@@ -210,7 +210,7 @@ with open({_result_path!r}, "w") as f:
 
         # Print message and exit IMMEDIATELY
         _early_sys.stdout.write(f"\n{'='*60}\n")
-        _early_sys.stdout.write(f"  JARVIS Kernel {_cmd_name.title()} Initiated\n")
+        _early_sys.stdout.write(f"  Ironcliw Kernel {_cmd_name.title()} Initiated\n")
         _early_sys.stdout.write(f"{'='*60}\n")
         _early_sys.stdout.write(f"  Running in background.\n")
         _early_sys.stdout.write(f"  Status: python3 unified_supervisor.py --status\n")
@@ -226,7 +226,7 @@ with open({_result_path!r}, "w") as f:
         except (OSError, PermissionError, AttributeError):
             pass
 
-    _early_os.environ['_JARVIS_CLI_PROTECTED'] = '1'
+    _early_os.environ['_Ironcliw_CLI_PROTECTED'] = '1'
 
 # Clean up early imports
 del _early_sys, _early_signal, _early_os, _early_platform, _cli_flags, _is_cli_mode
@@ -254,11 +254,11 @@ def _ensure_venv_python() -> None:
     often symlinks to system Python.
     """
     # Skip if explicitly disabled
-    if _os.environ.get('JARVIS_SKIP_VENV_CHECK') == '1':
+    if _os.environ.get('Ironcliw_SKIP_VENV_CHECK') == '1':
         return
 
     # Skip if already re-executed (prevent infinite loop)
-    if _os.environ.get('_JARVIS_VENV_REEXEC') == '1':
+    if _os.environ.get('_Ironcliw_VENV_REEXEC') == '1':
         return
 
     script_dir = _Path(__file__).parent.resolve() # This is the script directory.
@@ -297,7 +297,7 @@ def _ensure_venv_python() -> None:
     print(f"[KERNEL] Current: {_sys.executable}") # This is a print statement to print the current executable.
     print(f"[KERNEL] Switching to: {venv_python}") # This is a print statement to print the venv Python executable.
 
-    _os.environ['_JARVIS_VENV_REEXEC'] = '1' # This is a setting to indicate that we have re-executed with the venv Python.
+    _os.environ['_Ironcliw_VENV_REEXEC'] = '1' # This is a setting to indicate that we have re-executed with the venv Python.
 
     # Set PYTHONPATH to include project directories
     pythonpath = _os.pathsep.join([ # This is the PYTHONPATH environment variable.
@@ -414,7 +414,7 @@ def _fast_kernel_check() -> bool:
         return False
 
     # Check for auto-restart behavior
-    skip_restart = _os.environ.get('JARVIS_KERNEL_SKIP_RESTART', '').lower() in ('1', 'true', 'yes')
+    skip_restart = _os.environ.get('Ironcliw_KERNEL_SKIP_RESTART', '').lower() in ('1', 'true', 'yes')
 
     if not skip_restart:
         return False  # Let main() handle shutdown → start
@@ -425,7 +425,7 @@ def _fast_kernel_check() -> bool:
     uptime_str = f"{int(uptime // 60)}m {int(uptime % 60)}s" if uptime > 60 else f"{int(uptime)}s"
 
     print(f"\n{'='*70}")
-    print(f"  JARVIS Kernel (PID {pid}) is running and healthy")
+    print(f"  Ironcliw Kernel (PID {pid}) is running and healthy")
     print(f"{'='*70}")
     print(f"   Health:  {health_level}")
     print(f"   Uptime:  {uptime_str}")
@@ -520,7 +520,7 @@ def _apply_pytorch_compat() -> bool:
 
         _pytree.register_pytree_node = _compat_register_pytree_node
 
-        if _os.environ.get("JARVIS_DEBUG"):
+        if _os.environ.get("Ironcliw_DEBUG"):
             import sys
             print("[KERNEL] Applied pytree compatibility wrapper", file=sys.stderr)
         return True
@@ -546,7 +546,7 @@ def _apply_transformers_security_bypass() -> bool:
     """Bypass torch.load security check for trusted HuggingFace models."""
     import os as _os
 
-    if _os.environ.get("JARVIS_STRICT_TORCH_SECURITY") == "1":
+    if _os.environ.get("Ironcliw_STRICT_TORCH_SECURITY") == "1":
         return False
 
     try:
@@ -870,10 +870,10 @@ try:
     from rich import box
     RICH_AVAILABLE = True
 
-    # ── JARVIS Rich Theme (v228.1) ─────────────────────────────────
+    # ── Ironcliw Rich Theme (v228.1) ─────────────────────────────────
     # Enterprise-grade color palette with vibrant section-specific
     # styles, gradient effects, and status-aware theming.
-    JARVIS_THEME_STYLES = {
+    Ironcliw_THEME_STYLES = {
         # ── Core Identity ──
         "jarvis.title":         "bold bright_cyan",
         "jarvis.subtitle":      "dim cyan",
@@ -936,8 +936,8 @@ try:
         "jarvis.tag.gcp":       "bold bright_yellow",
         "jarvis.tag.voice":     "bold bright_white",
     }
-    JARVIS_RICH_THEME = RichTheme(JARVIS_THEME_STYLES)
-    _rich_console = Console(theme=JARVIS_RICH_THEME, highlight=False)
+    Ironcliw_RICH_THEME = RichTheme(Ironcliw_THEME_STYLES)
+    _rich_console = Console(theme=Ironcliw_RICH_THEME, highlight=False)
 
 except ImportError as _ie:
     RICH_AVAILABLE = False
@@ -958,8 +958,8 @@ except ImportError as _ie:
     RichPadding = None
     box = None
     _rich_console = None
-    JARVIS_THEME_STYLES = {}
-    JARVIS_RICH_THEME = None
+    Ironcliw_THEME_STYLES = {}
+    Ironcliw_RICH_THEME = None
 
 # ── v228.1: Centralized Emoji Mappings ─────────────────────────────
 # Enterprise-grade emoji indicators for all CLI components.
@@ -1074,15 +1074,15 @@ _SEVERITY_EMOJI = {
 
 # 🔗 Cross-repo component → emoji mapping (system-of-systems identity)
 _REPO_EMOJI = {
-    "jarvis":       "🏠",   # JARVIS Body (macOS orchestrator)
-    "jarvis-prime": "🧠",   # JARVIS Prime (Mind / inference)
+    "jarvis":       "🏠",   # Ironcliw Body (macOS orchestrator)
+    "jarvis-prime": "🧠",   # Ironcliw Prime (Mind / inference)
     "reactor-core": "⚛️ ",  # Reactor Core (Training / learning)
     "trinity":      "🔱",   # Trinity (Cross-repo orchestration)
     "gcp":          "☁️ ",  # Google Cloud Platform
     "docker":       "🐳",   # Docker containers
 }
 
-# 🎯 Feature capability → emoji mapping (what JARVIS can do)
+# 🎯 Feature capability → emoji mapping (what Ironcliw can do)
 _CAPABILITY_EMOJI = {
     "self_healing":    "🔄",
     "zero_touch":      "🤖",
@@ -1659,19 +1659,19 @@ def _use_modular_circuit_breaker() -> bool:
     if not MODULAR_KERNEL_AVAILABLE:
         return False
     # Environment variable to force inline implementation (for debugging)
-    return not _get_env_bool("JARVIS_FORCE_INLINE_CIRCUIT_BREAKER", False)
+    return not _get_env_bool("Ironcliw_FORCE_INLINE_CIRCUIT_BREAKER", False)
 
 def _use_modular_browser_stability() -> bool:
     """Check if we should use the modular browser stability implementation."""
     if not MODULAR_BROWSER_STABILITY_AVAILABLE:
         return False
-    return not _get_env_bool("JARVIS_FORCE_INLINE_BROWSER_STABILITY", False)
+    return not _get_env_bool("Ironcliw_FORCE_INLINE_BROWSER_STABILITY", False)
 
 def _use_modular_crash_recovery() -> bool:
     """Check if we should use the modular crash recovery implementation."""
     if not MODULAR_ORCHESTRATOR_AVAILABLE:
         return False
-    return not _get_env_bool("JARVIS_FORCE_INLINE_CRASH_RECOVERY", False)
+    return not _get_env_bool("Ironcliw_FORCE_INLINE_CRASH_RECOVERY", False)
 
 # Log modular integration status at startup
 _integration_logger = logging.getLogger("unified_supervisor.integration")
@@ -1718,7 +1718,7 @@ except ImportError as _ie:
 # v203.0: CENTRALIZED TIMEOUT CONFIGURATION
 # =============================================================================
 # Environment-driven timeout configuration with validation.
-# All timeouts configurable via JARVIS_* environment variables.
+# All timeouts configurable via Ironcliw_* environment variables.
 # =============================================================================
 try:
     from backend.config.startup_timeouts import (
@@ -1752,9 +1752,9 @@ except ImportError as _ie:
     _record_import_failure("HARDWARE_ENFORCER_AVAILABLE", "backend.config.hardware_enforcer", _ie, "MODERATE")
 
 # =============================================================================
-# v185.0: JARVIS SUPERVISOR LIFECYCLE INTEGRATION
+# v185.0: Ironcliw SUPERVISOR LIFECYCLE INTEGRATION
 # =============================================================================
-# Integrates with the JARVISSupervisor from backend/core/supervisor for:
+# Integrates with the IroncliwSupervisor from backend/core/supervisor for:
 # - Dead Man's Switch (post-update stability verification)
 # - Rollback Manager (version history, snapshots)
 # - Update Engine (staging, validation, classification)
@@ -1763,7 +1763,7 @@ except ImportError as _ie:
 # =============================================================================
 try:
     from backend.core.supervisor import (
-        JARVISSupervisor,
+        IroncliwSupervisor,
         SupervisorConfig,
         get_supervisor_config,
         SupervisorState as LegacySupervisorState,
@@ -1774,11 +1774,11 @@ try:
         RollbackDecision,
     )
     from backend.core.supervisor.update_engine import UpdateEngine
-    JARVIS_SUPERVISOR_AVAILABLE = True
+    Ironcliw_SUPERVISOR_AVAILABLE = True
 except ImportError as _ie:
-    JARVIS_SUPERVISOR_AVAILABLE = False
-    _record_import_failure("JARVIS_SUPERVISOR_AVAILABLE", "backend.core.supervisor", _ie, "HIGH")
-    JARVISSupervisor = None
+    Ironcliw_SUPERVISOR_AVAILABLE = False
+    _record_import_failure("Ironcliw_SUPERVISOR_AVAILABLE", "backend.core.supervisor", _ie, "HIGH")
+    IroncliwSupervisor = None
     SupervisorConfig = None
     get_supervisor_config = None
     LegacySupervisorState = None
@@ -1941,15 +1941,15 @@ _log_import_audit()
 
 # Kernel version
 KERNEL_VERSION = "1.0.0"
-KERNEL_NAME = "JARVIS Unified System Kernel"
+KERNEL_NAME = "Ironcliw Unified System Kernel"
 
 # Default paths (dynamically resolved at runtime)
 PROJECT_ROOT = Path(__file__).parent.resolve()
 BACKEND_DIR = PROJECT_ROOT / "backend"
-JARVIS_HOME = Path.home() / ".jarvis"
-LOCKS_DIR = JARVIS_HOME / "locks"
-CACHE_DIR = JARVIS_HOME / "cache"
-LOGS_DIR = JARVIS_HOME / "logs"
+Ironcliw_HOME = Path.home() / ".jarvis"
+LOCKS_DIR = Ironcliw_HOME / "locks"
+CACHE_DIR = Ironcliw_HOME / "cache"
+LOGS_DIR = Ironcliw_HOME / "logs"
 
 # IPC socket paths
 KERNEL_SOCKET_PATH = LOCKS_DIR / "kernel.sock"
@@ -1977,12 +1977,12 @@ DEFAULT_IDLE_TIMEOUT = 300
 # These enable dynamic timeout extension based on observed model loading progress
 TRINITY_PROGRESS_POLL_INTERVAL = 15.0  # Seconds between progress checks
 TRINITY_PROGRESS_EXTENSION_BUFFER = 120.0  # Seconds to add when progress observed
-TRINITY_MAX_EXTENDED_TIMEOUT = float(os.environ.get("JARVIS_TRINITY_MAX_TIMEOUT", "1200.0"))  # Configurable hard cap
+TRINITY_MAX_EXTENDED_TIMEOUT = float(os.environ.get("Ironcliw_TRINITY_MAX_TIMEOUT", "1200.0"))  # Configurable hard cap
 TRINITY_PROGRESS_STALL_THRESHOLD = 90.0  # Seconds without progress before considering stalled
 # v242.4: Hard cap on phase hold duration — prevents a leaked has_active_subsystem=True
 # from suppressing stall detection indefinitely. Even if a subsystem claims to be active,
 # if there's been zero progress for this long, treat it as a stall.
-TRINITY_PHASE_HOLD_HARD_CAP = float(os.environ.get("JARVIS_PHASE_HOLD_HARD_CAP", "300.0"))
+TRINITY_PHASE_HOLD_HARD_CAP = float(os.environ.get("Ironcliw_PHASE_HOLD_HARD_CAP", "300.0"))
 
 # =============================================================================
 # v223.0: SMARTWATCHDOG CONFIGURATION - Enterprise-Grade Async Handshake
@@ -1999,12 +1999,12 @@ TRINITY_PHASE_HOLD_HARD_CAP = float(os.environ.get("JARVIS_PHASE_HOLD_HARD_CAP",
 # =============================================================================
 
 # SmartWatchdog environment variable configuration
-SMARTWATCHDOG_POLL_INTERVAL = float(os.environ.get("JARVIS_WATCHDOG_POLL_INTERVAL", "10.0"))
-SMARTWATCHDOG_STALL_THRESHOLD = float(os.environ.get("JARVIS_GCP_STALL_THRESHOLD", "180.0"))  # 3 minutes
-SMARTWATCHDOG_MAX_TIMEOUT = float(os.environ.get("JARVIS_GCP_MAX_TIMEOUT", "1800.0"))  # 30 minutes hard cap
-SMARTWATCHDOG_CONSECUTIVE_FAILURES = int(os.environ.get("JARVIS_WATCHDOG_CONSECUTIVE_FAILURES", "3"))
-SMARTWATCHDOG_EXTENSION_BUFFER = float(os.environ.get("JARVIS_WATCHDOG_EXTENSION_BUFFER", "60.0"))
-SMARTWATCHDOG_LIVENESS_ENABLED = os.environ.get("JARVIS_WATCHDOG_LIVENESS_ENABLED", "true").lower() == "true"
+SMARTWATCHDOG_POLL_INTERVAL = float(os.environ.get("Ironcliw_WATCHDOG_POLL_INTERVAL", "10.0"))
+SMARTWATCHDOG_STALL_THRESHOLD = float(os.environ.get("Ironcliw_GCP_STALL_THRESHOLD", "180.0"))  # 3 minutes
+SMARTWATCHDOG_MAX_TIMEOUT = float(os.environ.get("Ironcliw_GCP_MAX_TIMEOUT", "1800.0"))  # 30 minutes hard cap
+SMARTWATCHDOG_CONSECUTIVE_FAILURES = int(os.environ.get("Ironcliw_WATCHDOG_CONSECUTIVE_FAILURES", "3"))
+SMARTWATCHDOG_EXTENSION_BUFFER = float(os.environ.get("Ironcliw_WATCHDOG_EXTENSION_BUFFER", "60.0"))
+SMARTWATCHDOG_LIVENESS_ENABLED = os.environ.get("Ironcliw_WATCHDOG_LIVENESS_ENABLED", "true").lower() == "true"
 
 def _calculate_effective_startup_timeout(
     config_timeout: float,
@@ -2024,7 +2024,7 @@ def _calculate_effective_startup_timeout(
     (which needs 600s for model loading alone).
 
     Args:
-        config_timeout: User-configured timeout from JARVIS_STARTUP_TIMEOUT
+        config_timeout: User-configured timeout from Ironcliw_STARTUP_TIMEOUT
         trinity_enabled: Whether Trinity cross-repo is enabled
         gcp_enabled: Whether GCP cloud provisioning is enabled
 
@@ -2046,7 +2046,7 @@ def _calculate_effective_startup_timeout(
         components.append("trinity")
 
     # Dynamic hard cap: proportional to base, with env override
-    env_max = os.environ.get("JARVIS_STARTUP_MAX_TIMEOUT")
+    env_max = os.environ.get("Ironcliw_STARTUP_MAX_TIMEOUT")
     if env_max:
         max_timeout = float(env_max)
     else:
@@ -2100,7 +2100,7 @@ class ProgressAwareStartupController:
         self.logger = logger or logging.getLogger(__name__)
         self.post_complete_grace = max(
             5.0,
-            float(os.environ.get("JARVIS_STARTUP_POST_COMPLETE_GRACE", "45.0")),
+            float(os.environ.get("Ironcliw_STARTUP_POST_COMPLETE_GRACE", "45.0")),
         )
 
         # State tracking
@@ -2535,7 +2535,7 @@ class _RegisteredCheckpointFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return "registered checkpoint" not in record.getMessage().lower()
 
-if os.getenv("JARVIS_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", "true").strip().lower() in (
+if os.getenv("Ironcliw_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", "true").strip().lower() in (
     "1", "true", "yes", "on"
 ):
     _checkpoint_filter = _RegisteredCheckpointFilter()
@@ -2625,8 +2625,8 @@ def _discover_repo(names: List[str]) -> Optional[Path]:
     return None
 
 def _discover_prime_repo() -> Optional[Path]:
-    """Discover JARVIS-Prime repository."""
-    return _discover_repo(["JARVIS-Prime", "jarvis-prime"])
+    """Discover Ironcliw-Prime repository."""
+    return _discover_repo(["Ironcliw-Prime", "jarvis-prime"])
 
 def _discover_reactor_repo() -> Optional[Path]:
     """Discover Reactor-Core repository."""
@@ -2751,7 +2751,7 @@ def _calculate_memory_budget() -> float:
         return DEFAULT_MAX_MEMORY_GB
 
     total_gb = psutil.virtual_memory().total / (1024 ** 3)
-    target_percent = float(os.environ.get("JARVIS_MEMORY_TARGET", DEFAULT_MEMORY_TARGET_PERCENT))
+    target_percent = float(os.environ.get("Ironcliw_MEMORY_TARGET", DEFAULT_MEMORY_TARGET_PERCENT))
 
     return round(total_gb * (target_percent / 100), 1)
 
@@ -2834,18 +2834,18 @@ def _resolve_local_startup_mode_on_cloud_unavailable(
     }:
         normalized_mode = "cloud_first"
 
-    critical_threshold = max(0.1, _get_env_float("JARVIS_CRITICAL_THRESHOLD_GB", 2.0))
+    critical_threshold = max(0.1, _get_env_float("Ironcliw_CRITICAL_THRESHOLD_GB", 2.0))
     optimize_threshold = max(
         critical_threshold,
-        _get_env_float("JARVIS_OPTIMIZE_THRESHOLD_GB", 4.0),
+        _get_env_float("Ironcliw_OPTIMIZE_THRESHOLD_GB", 4.0),
     )
-    planned_ml_gb = max(0.0, _get_env_float("JARVIS_PLANNED_ML_GB", 4.6))
+    planned_ml_gb = max(0.0, _get_env_float("Ironcliw_PLANNED_ML_GB", 4.6))
     minimal_threshold = max(
         0.5,
         min(
             critical_threshold,
             _get_env_float(
-                "JARVIS_MINIMAL_THRESHOLD_GB",
+                "Ironcliw_MINIMAL_THRESHOLD_GB",
                 critical_threshold * 0.5,
             ),
         ),
@@ -2932,7 +2932,7 @@ def _discover_backend_launch_context(
     """
     candidate_roots: List[Path] = []
 
-    env_project_root = os.environ.get("JARVIS_PROJECT_ROOT")
+    env_project_root = os.environ.get("Ironcliw_PROJECT_ROOT")
     if env_project_root:
         candidate_roots.append(Path(env_project_root).expanduser())
 
@@ -3305,7 +3305,7 @@ def get_cli_box(width: int = 70) -> CLIBoxDrawing:
 @dataclass
 class SystemKernelConfig:
     """
-    Unified configuration for the JARVIS System Kernel.
+    Unified configuration for the Ironcliw System Kernel.
 
     Merges:
     - BootstrapConfig (run_supervisor.py) - supervisor features
@@ -3325,21 +3325,21 @@ class SystemKernelConfig:
     # ═══════════════════════════════════════════════════════════════════════════
     # OPERATING MODE
     # ═══════════════════════════════════════════════════════════════════════════
-    mode: str = field(default_factory=lambda: os.environ.get("JARVIS_MODE", "supervisor"))
-    in_process_backend: bool = field(default_factory=lambda: _get_env_bool("JARVIS_IN_PROCESS", True))
-    dev_mode: bool = field(default_factory=lambda: _get_env_bool("JARVIS_DEV_MODE", True))
-    zero_touch_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_ZERO_TOUCH", False))
-    debug: bool = field(default_factory=lambda: _get_env_bool("JARVIS_DEBUG", False))
-    verbose: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VERBOSE", False))
+    mode: str = field(default_factory=lambda: os.environ.get("Ironcliw_MODE", "supervisor"))
+    in_process_backend: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_IN_PROCESS", True))
+    dev_mode: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_DEV_MODE", True))
+    zero_touch_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_ZERO_TOUCH", False))
+    debug: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_DEBUG", False))
+    verbose: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_VERBOSE", False))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # NETWORK
     # ═══════════════════════════════════════════════════════════════════════════
-    backend_host: str = field(default_factory=lambda: os.environ.get("JARVIS_HOST", "0.0.0.0"))
-    backend_port: int = field(default_factory=lambda: _get_env_int("JARVIS_BACKEND_PORT", 0))
-    websocket_port: int = field(default_factory=lambda: _get_env_int("JARVIS_WEBSOCKET_PORT", 0))
-    websocket_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WEBSOCKET_ENABLED", False))
-    loading_server_port: int = field(default_factory=lambda: _get_env_int("JARVIS_LOADING_PORT", 0))
+    backend_host: str = field(default_factory=lambda: os.environ.get("Ironcliw_HOST", "0.0.0.0"))
+    backend_port: int = field(default_factory=lambda: _get_env_int("Ironcliw_BACKEND_PORT", 0))
+    websocket_port: int = field(default_factory=lambda: _get_env_int("Ironcliw_WEBSOCKET_PORT", 0))
+    websocket_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_WEBSOCKET_ENABLED", False))
+    loading_server_port: int = field(default_factory=lambda: _get_env_int("Ironcliw_LOADING_PORT", 0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PATHS
@@ -3347,138 +3347,138 @@ class SystemKernelConfig:
     project_root: Path = field(default_factory=lambda: PROJECT_ROOT)
     backend_dir: Path = field(default_factory=lambda: BACKEND_DIR)
     venv_path: Optional[Path] = field(default_factory=_discover_venv)
-    jarvis_home: Path = field(default_factory=lambda: JARVIS_HOME)
+    jarvis_home: Path = field(default_factory=lambda: Ironcliw_HOME)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # TRINITY / CROSS-REPO
     # ═══════════════════════════════════════════════════════════════════════════
-    trinity_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_TRINITY_ENABLED", True))
+    trinity_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_TRINITY_ENABLED", True))
     prime_repo_path: Optional[Path] = field(default_factory=_discover_prime_repo)
     reactor_repo_path: Optional[Path] = field(default_factory=_discover_reactor_repo)
-    prime_cloud_run_url: Optional[str] = field(default_factory=lambda: os.environ.get("JARVIS_PRIME_CLOUD_RUN_URL"))
-    prime_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_PRIME_ENABLED", True))
+    prime_cloud_run_url: Optional[str] = field(default_factory=lambda: os.environ.get("Ironcliw_PRIME_CLOUD_RUN_URL"))
+    prime_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_PRIME_ENABLED", True))
     reactor_enabled: bool = field(default_factory=lambda: _get_env_bool("REACTOR_CORE_ENABLED", True))
     # v238.0: Rewired to use SAME env vars as Trinity launcher.
     # Previously defaulted to 8011/8012 (ghost ports never actually used by Trinity).
     # Now reads TRINITY_JPRIME_PORT / TRINITY_REACTOR_PORT with correct defaults.
-    prime_api_port: int = field(default_factory=lambda: _get_env_int("TRINITY_JPRIME_PORT", _get_env_int("JARVIS_PRIME_PORT", 8001)))
+    prime_api_port: int = field(default_factory=lambda: _get_env_int("TRINITY_JPRIME_PORT", _get_env_int("Ironcliw_PRIME_PORT", 8001)))
     reactor_api_port: int = field(default_factory=lambda: _get_env_int("TRINITY_REACTOR_PORT", _get_env_int("REACTOR_CORE_API_PORT", 8090)))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # DOCKER
     # ═══════════════════════════════════════════════════════════════════════════
-    docker_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_DOCKER_ENABLED", True))
-    docker_auto_start: bool = field(default_factory=lambda: _get_env_bool("JARVIS_DOCKER_AUTO_START", True))
-    docker_health_check_interval: float = field(default_factory=lambda: _get_env_float("JARVIS_DOCKER_HEALTH_INTERVAL", 30.0))
+    docker_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_DOCKER_ENABLED", True))
+    docker_auto_start: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_DOCKER_AUTO_START", True))
+    docker_health_check_interval: float = field(default_factory=lambda: _get_env_float("Ironcliw_DOCKER_HEALTH_INTERVAL", 30.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # GCP / CLOUD
     # ═══════════════════════════════════════════════════════════════════════════
-    gcp_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_GCP_ENABLED", True) and _detect_gcp_credentials())
+    gcp_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_GCP_ENABLED", True) and _detect_gcp_credentials())
     gcp_project_id: Optional[str] = field(default_factory=_detect_gcp_project)
-    gcp_zone: str = field(default_factory=lambda: os.environ.get("JARVIS_GCP_ZONE", "us-central1-a"))
-    gcp_region: str = field(default_factory=lambda: os.environ.get("JARVIS_GCP_REGION", "us-central1"))
-    spot_vm_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_SPOT_VM_ENABLED", False))
-    prefer_cloud_run: bool = field(default_factory=lambda: _get_env_bool("JARVIS_PREFER_CLOUD_RUN", False))
-    cloud_sql_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_CLOUD_SQL_ENABLED", True))
+    gcp_zone: str = field(default_factory=lambda: os.environ.get("Ironcliw_GCP_ZONE", "us-central1-a"))
+    gcp_region: str = field(default_factory=lambda: os.environ.get("Ironcliw_GCP_REGION", "us-central1"))
+    spot_vm_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_SPOT_VM_ENABLED", False))
+    prefer_cloud_run: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_PREFER_CLOUD_RUN", False))
+    cloud_sql_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_CLOUD_SQL_ENABLED", True))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # INVINCIBLE NODE (Static IP Spot VM with STOP termination)
     # ═══════════════════════════════════════════════════════════════════════════
     # When configured, the supervisor will proactively wake up the cloud node
     # during startup for fast (~30s) inference availability.
-    invincible_node_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_INVINCIBLE_NODE_ENABLED", False))
+    invincible_node_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_INVINCIBLE_NODE_ENABLED", False))
     # v210.0: Added default names for auto-creation - no manual setup required
     invincible_node_static_ip_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_STATIC_IP_NAME", "jarvis-prime-ip"))
     invincible_node_instance_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node"))
-    invincible_node_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8001))
+    invincible_node_port: int = field(default_factory=lambda: _get_env_int("Ironcliw_PRIME_PORT", 8001))
     invincible_node_health_timeout: float = field(default_factory=lambda: _get_env_float("GCP_STATIC_VM_HEALTH_TIMEOUT", 300.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # COST OPTIMIZATION
     # ═══════════════════════════════════════════════════════════════════════════
-    scale_to_zero_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_SCALE_TO_ZERO", True))
-    idle_timeout_seconds: int = field(default_factory=lambda: _get_env_int("JARVIS_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT))
-    cost_budget_daily_usd: float = field(default_factory=lambda: _get_env_float("JARVIS_DAILY_BUDGET", DEFAULT_DAILY_BUDGET_USD))
+    scale_to_zero_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_SCALE_TO_ZERO", True))
+    idle_timeout_seconds: int = field(default_factory=lambda: _get_env_int("Ironcliw_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT))
+    cost_budget_daily_usd: float = field(default_factory=lambda: _get_env_float("Ironcliw_DAILY_BUDGET", DEFAULT_DAILY_BUDGET_USD))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # INTELLIGENCE / ML
     # ═══════════════════════════════════════════════════════════════════════════
-    hybrid_intelligence_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_INTELLIGENCE_ENABLED", True))
-    goal_inference_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_GOAL_INFERENCE", True))
-    goal_preset: str = field(default_factory=lambda: os.environ.get("JARVIS_GOAL_PRESET", "auto"))
-    voice_cache_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_CACHE", True))
+    hybrid_intelligence_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_INTELLIGENCE_ENABLED", True))
+    goal_inference_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_GOAL_INFERENCE", True))
+    goal_preset: str = field(default_factory=lambda: os.environ.get("Ironcliw_GOAL_PRESET", "auto"))
+    voice_cache_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_VOICE_CACHE", True))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # TWO-TIER SECURITY (VBIA/PAVA) - v200.0
     # ═══════════════════════════════════════════════════════════════════════════
     # Two-Tier Security Model with Voice Biometric Intelligence + Agentic Watchdog
     # Tier 0: Local LLM (instant), Tier 1: Gemini (fast), Tier 2: Claude CU (agentic)
-    two_tier_security_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_TWO_TIER_ENABLED", True))
-    watchdog_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WATCHDOG_ENABLED", True))
-    vbia_tier1_threshold: float = field(default_factory=lambda: _get_env_float("JARVIS_TIER1_VBIA_THRESHOLD", 0.70))
-    vbia_tier2_threshold: float = field(default_factory=lambda: _get_env_float("JARVIS_TIER2_VBIA_THRESHOLD", 0.85))
-    tier2_require_liveness: bool = field(default_factory=lambda: _get_env_bool("JARVIS_TIER2_REQUIRE_LIVENESS", True))
+    two_tier_security_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_TWO_TIER_ENABLED", True))
+    watchdog_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_WATCHDOG_ENABLED", True))
+    vbia_tier1_threshold: float = field(default_factory=lambda: _get_env_float("Ironcliw_TIER1_VBIA_THRESHOLD", 0.70))
+    vbia_tier2_threshold: float = field(default_factory=lambda: _get_env_float("Ironcliw_TIER2_VBIA_THRESHOLD", 0.85))
+    tier2_require_liveness: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_TIER2_REQUIRE_LIVENESS", True))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # AGI OS - v200.0
     # ═══════════════════════════════════════════════════════════════════════════
     # Autonomous General Intelligence Operating System
     # Proactive monitoring, voice approval workflows, neural mesh integration
-    agi_os_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_AGI_OS_ENABLED", True))
-    agi_os_proactive_mode: bool = field(default_factory=lambda: _get_env_bool("JARVIS_AGI_OS_PROACTIVE", True))
-    agi_os_voice_approvals: bool = field(default_factory=lambda: _get_env_bool("JARVIS_AGI_OS_VOICE_APPROVALS", True))
+    agi_os_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_AGI_OS_ENABLED", True))
+    agi_os_proactive_mode: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_AGI_OS_PROACTIVE", True))
+    agi_os_voice_approvals: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_AGI_OS_VOICE_APPROVALS", True))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # UI / DISPLAY (v249.0)
     # ═══════════════════════════════════════════════════════════════════════════
-    ui_mode: str = field(default_factory=lambda: os.environ.get("JARVIS_UI_MODE", "auto"))
-    ui_verbosity: str = field(default_factory=lambda: os.environ.get("JARVIS_UI_VERBOSITY", "ops"))
-    ui_no_ansi: bool = field(default_factory=lambda: _get_env_bool("JARVIS_UI_NO_ANSI", False))
-    ui_no_animation: bool = field(default_factory=lambda: _get_env_bool("JARVIS_UI_NO_ANIMATION", False))
+    ui_mode: str = field(default_factory=lambda: os.environ.get("Ironcliw_UI_MODE", "auto"))
+    ui_verbosity: str = field(default_factory=lambda: os.environ.get("Ironcliw_UI_VERBOSITY", "ops"))
+    ui_no_ansi: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_UI_NO_ANSI", False))
+    ui_no_animation: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_UI_NO_ANIMATION", False))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # BROWSER PREFERENCE - v200.0
     # ═══════════════════════════════════════════════════════════════════════════
-    browser_preference: str = field(default_factory=lambda: os.environ.get("JARVIS_BROWSER", "auto"))
+    browser_preference: str = field(default_factory=lambda: os.environ.get("Ironcliw_BROWSER", "auto"))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # VOICE / AUDIO
     # ═══════════════════════════════════════════════════════════════════════════
-    voice_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_ENABLED", True))
+    voice_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_VOICE_ENABLED", True))
     narrator_enabled: bool = field(default_factory=lambda: _get_env_bool("STARTUP_NARRATOR_VOICE", True))
-    wake_word_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WAKE_WORD", True))
-    ecapa_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_ECAPA_ENABLED", True))
-    voice_sidecar_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_ENABLED", False))
-    voice_sidecar_required: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_REQUIRED", False))
-    voice_sidecar_manage_worker: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_MANAGE_WORKER", False))
-    voice_sidecar_transport: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_TRANSPORT", "http").strip().lower() or "http")
-    voice_sidecar_base_url: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9860").strip())
-    voice_sidecar_socket_path: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_SOCKET", "").strip())
-    voice_sidecar_command: List[str] = field(default_factory=lambda: _get_env_command("JARVIS_VOICE_SIDECAR_COMMAND"))
-    voice_sidecar_health_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT", 2.5))
-    voice_sidecar_start_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_START_TIMEOUT", 20.0))
-    voice_sidecar_control_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT", 5.0))
+    wake_word_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_WAKE_WORD", True))
+    ecapa_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_ECAPA_ENABLED", True))
+    voice_sidecar_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_VOICE_SIDECAR_ENABLED", False))
+    voice_sidecar_required: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_VOICE_SIDECAR_REQUIRED", False))
+    voice_sidecar_manage_worker: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_VOICE_SIDECAR_MANAGE_WORKER", False))
+    voice_sidecar_transport: str = field(default_factory=lambda: os.environ.get("Ironcliw_VOICE_SIDECAR_TRANSPORT", "http").strip().lower() or "http")
+    voice_sidecar_base_url: str = field(default_factory=lambda: os.environ.get("Ironcliw_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9860").strip())
+    voice_sidecar_socket_path: str = field(default_factory=lambda: os.environ.get("Ironcliw_VOICE_SIDECAR_SOCKET", "").strip())
+    voice_sidecar_command: List[str] = field(default_factory=lambda: _get_env_command("Ironcliw_VOICE_SIDECAR_COMMAND"))
+    voice_sidecar_health_timeout: float = field(default_factory=lambda: _get_env_float("Ironcliw_VOICE_SIDECAR_HEALTH_TIMEOUT", 2.5))
+    voice_sidecar_start_timeout: float = field(default_factory=lambda: _get_env_float("Ironcliw_VOICE_SIDECAR_START_TIMEOUT", 20.0))
+    voice_sidecar_control_timeout: float = field(default_factory=lambda: _get_env_float("Ironcliw_VOICE_SIDECAR_CONTROL_TIMEOUT", 5.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # MEMORY / RESOURCES
     # ═══════════════════════════════════════════════════════════════════════════
-    memory_mode: str = field(default_factory=lambda: os.environ.get("JARVIS_MEMORY_MODE", "auto"))
-    memory_target_percent: float = field(default_factory=lambda: _get_env_float("JARVIS_MEMORY_TARGET", DEFAULT_MEMORY_TARGET_PERCENT))
+    memory_mode: str = field(default_factory=lambda: os.environ.get("Ironcliw_MEMORY_MODE", "auto"))
+    memory_target_percent: float = field(default_factory=lambda: _get_env_float("Ironcliw_MEMORY_TARGET", DEFAULT_MEMORY_TARGET_PERCENT))
     max_memory_gb: float = field(default_factory=_calculate_memory_budget)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # READINESS / HEALTH
     # ═══════════════════════════════════════════════════════════════════════════
-    health_check_interval: float = field(default_factory=lambda: _get_env_float("JARVIS_HEALTH_INTERVAL", DEFAULT_HEALTH_CHECK_INTERVAL))
-    startup_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_STARTUP_TIMEOUT", DEFAULT_STARTUP_TIMEOUT))
+    health_check_interval: float = field(default_factory=lambda: _get_env_float("Ironcliw_HEALTH_INTERVAL", DEFAULT_HEALTH_CHECK_INTERVAL))
+    startup_timeout: float = field(default_factory=lambda: _get_env_float("Ironcliw_STARTUP_TIMEOUT", DEFAULT_STARTUP_TIMEOUT))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # HOT RELOAD / DEV
     # ═══════════════════════════════════════════════════════════════════════════
-    hot_reload_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_HOT_RELOAD", True))
-    reload_check_interval: float = field(default_factory=lambda: _get_env_float("JARVIS_RELOAD_CHECK_INTERVAL", DEFAULT_HOT_RELOAD_INTERVAL))
-    reload_grace_period: float = field(default_factory=lambda: _get_env_float("JARVIS_RELOAD_GRACE_PERIOD", DEFAULT_HOT_RELOAD_GRACE_PERIOD))
+    hot_reload_enabled: bool = field(default_factory=lambda: _get_env_bool("Ironcliw_HOT_RELOAD", True))
+    reload_check_interval: float = field(default_factory=lambda: _get_env_float("Ironcliw_RELOAD_CHECK_INTERVAL", DEFAULT_HOT_RELOAD_INTERVAL))
+    reload_grace_period: float = field(default_factory=lambda: _get_env_float("Ironcliw_RELOAD_GRACE_PERIOD", DEFAULT_HOT_RELOAD_GRACE_PERIOD))
     watch_patterns: List[str] = field(default_factory=lambda: ["*.py", "*.yaml", "*.yml"])
 
     def __post_init__(self):
@@ -3530,16 +3530,16 @@ class SystemKernelConfig:
             warnings_list.append("GCP enabled but no project ID found")
 
         if self.trinity_enabled and not self.prime_repo_path and not self.prime_cloud_run_url:
-            warnings_list.append("Trinity enabled but JARVIS-Prime not found (local or cloud)")
+            warnings_list.append("Trinity enabled but Ironcliw-Prime not found (local or cloud)")
 
         if self.hot_reload_enabled and not self.dev_mode:
             warnings_list.append("hot_reload_enabled but dev_mode=False (hot reload will be disabled)")
 
         if self.voice_sidecar_enabled and self.voice_sidecar_transport == "unix" and not self.voice_sidecar_socket_path:
-            warnings_list.append("voice sidecar unix transport selected but JARVIS_VOICE_SIDECAR_SOCKET is unset")
+            warnings_list.append("voice sidecar unix transport selected but Ironcliw_VOICE_SIDECAR_SOCKET is unset")
 
         if self.voice_sidecar_enabled and not self.voice_sidecar_command:
-            warnings_list.append("voice sidecar enabled but JARVIS_VOICE_SIDECAR_COMMAND is empty; supervisor expects sidecar to already be running")
+            warnings_list.append("voice sidecar enabled but Ironcliw_VOICE_SIDECAR_COMMAND is empty; supervisor expects sidecar to already be running")
 
         return warnings_list
 
@@ -3731,8 +3731,8 @@ class UnifiedLogger:
             if BoundedDefaultDict is not None
             else defaultdict(list)
         )
-        self._json_mode = _get_env_bool("JARVIS_LOG_JSON", False)
-        self._verbose = _get_env_bool("JARVIS_VERBOSE", False)
+        self._json_mode = _get_env_bool("Ironcliw_LOG_JSON", False)
+        self._verbose = _get_env_bool("Ironcliw_VERBOSE", False)
         self._colors_enabled = sys.stdout.isatty()
         self._log_lock = threading.Lock()
         # v239.0: External metrics sink (set by SSR Wire 1 → ObservabilityPipeline)
@@ -3756,7 +3756,7 @@ class UnifiedLogger:
         section_emoji = _SECTION_EMOJI.get(section.value, "📌")
         # Section-specific Rich style key (falls back to jarvis.phase)
         section_style = f"jarvis.section.{section.value.lower()}"
-        if section_style not in JARVIS_THEME_STYLES:
+        if section_style not in Ironcliw_THEME_STYLES:
             section_style = "jarvis.phase"
 
         with self._log_lock:
@@ -3854,7 +3854,7 @@ class UnifiedLogger:
     # STANDARD LOGGING METHODS
     # ═══════════════════════════════════════════════════════════════════════════
 
-    # v228.1: Map LogLevel to JARVIS Rich theme styles
+    # v228.1: Map LogLevel to Ironcliw Rich theme styles
     _LEVEL_THEME_MAP = {
         "DEBUG":    "jarvis.dim",
         "INFO":     "jarvis.info",
@@ -4029,21 +4029,21 @@ class StartupLock:
 
     def _is_process_alive(self, pid: int) -> bool:
         """
-        Check if a process is alive AND is actually a JARVIS process.
+        Check if a process is alive AND is actually a Ironcliw process.
         
         v220.3: Enhanced stale lock detection with process validation.
-        Previously, this only checked if a PID existed. If the original JARVIS
+        Previously, this only checked if a PID existed. If the original Ironcliw
         process died and the PID was reused by another process, we would
-        incorrectly think JARVIS was still running.
+        incorrectly think Ironcliw was still running.
         
-        Now we also verify the process is actually JARVIS by checking:
+        Now we also verify the process is actually Ironcliw by checking:
         1. Process exists (os.kill signal 0)
         2. Process cmdline contains 'unified_supervisor' or 'jarvis' (case-insensitive)
         """
         try:
             os.kill(pid, 0)  # Check if process exists
             
-            # v220.3: Verify it's actually a JARVIS process
+            # v220.3: Verify it's actually a Ironcliw process
             # This prevents false positives when PID is reused
             if platform.system() == "Darwin" or platform.system() == "Linux":
                 try:
@@ -4061,7 +4061,7 @@ class StartupLock:
                         with open(f"/proc/{pid}/cmdline", "r") as f:
                             cmdline = f.read().lower().replace("\x00", " ")
                     
-                    # Check if it's a JARVIS-related process
+                    # Check if it's a Ironcliw-related process
                     jarvis_markers = [
                         "unified_supervisor",
                         "jarvis",
@@ -4070,7 +4070,7 @@ class StartupLock:
                     is_jarvis = any(marker in cmdline for marker in jarvis_markers)
                     
                     if not is_jarvis:
-                        # PID exists but isn't JARVIS - this is a stale lock
+                        # PID exists but isn't Ironcliw - this is a stale lock
                         return False
                         
                 except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError, OSError):
@@ -4103,7 +4103,7 @@ class StartupLock:
 
             # Root hardening: never steal a live lock by default.
             # Force takeover must kill/handover first (handled by takeover protocol).
-            allow_live_steal = _get_env_bool("JARVIS_STARTUP_LOCK_FORCE_STEAL", False)
+            allow_live_steal = _get_env_bool("Ironcliw_STARTUP_LOCK_FORCE_STEAL", False)
             if holder_pid and self._is_process_alive(holder_pid) and not allow_live_steal:
                 return False
 
@@ -4143,7 +4143,7 @@ class StartupLock:
                     except Exception:
                         current_pid = None
 
-                allow_live_steal = _get_env_bool("JARVIS_STARTUP_LOCK_FORCE_STEAL", False)
+                allow_live_steal = _get_env_bool("Ironcliw_STARTUP_LOCK_FORCE_STEAL", False)
                 holder_live = (
                     current_pid is not None
                     and current_pid != self.pid
@@ -4209,7 +4209,7 @@ class StartupLock:
 # =============================================================================
 # Advanced system for handling kernel conflicts with:
 # - IPC-based health verification (not just PID alive check)
-# - Cross-repo process discovery (JARVIS, Prime, Reactor)
+# - Cross-repo process discovery (Ironcliw, Prime, Reactor)
 # - Graceful handover protocol with timeout
 # - Async parallel process scanning
 # - Smart retry with exponential backoff
@@ -4256,7 +4256,7 @@ class IntelligentKernelTakeover:
     Advanced kernel takeover protocol for handling instance conflicts.
 
     This class implements intelligent detection and resolution of kernel
-    conflicts across all Trinity repos (JARVIS, Prime, Reactor).
+    conflicts across all Trinity repos (Ironcliw, Prime, Reactor).
 
     Features:
     - IPC-based health verification (goes beyond simple PID check)
@@ -5244,7 +5244,7 @@ class TerminalUI:
             pct_style = "jarvis.metric.good" if pct >= 80 else ("jarvis.metric.warn" if pct >= 50 else "jarvis.metric")
             from io import StringIO
             buf = StringIO()
-            temp_console = Console(file=buf, theme=JARVIS_RICH_THEME, highlight=False, no_color=False)
+            temp_console = Console(file=buf, theme=Ironcliw_RICH_THEME, highlight=False, no_color=False)
             temp_console.print(
                 f"  [jarvis.progress.bar]{bar}[/jarvis.progress.bar]"
                 f" [{pct_style}]{pct:3d}%[/{pct_style}]"
@@ -5331,7 +5331,7 @@ class SecretRedactionFilter(logging.Filter):
         (re.compile(r'(OPENAI_API_KEY[=:\s]+)[^\s"\']+', re.IGNORECASE), r'\1[REDACTED]'),
         (re.compile(r'(GOOGLE_API_KEY[=:\s]+)[^\s"\']+', re.IGNORECASE), r'\1[REDACTED]'),
         (re.compile(r'(AWS_SECRET_ACCESS_KEY[=:\s]+)[^\s"\']+', re.IGNORECASE), r'\1[REDACTED]'),
-        (re.compile(r'(JARVIS_SECRET_[A-Z_]+[=:\s]+)[^\s"\']+', re.IGNORECASE), r'\1[REDACTED]'),
+        (re.compile(r'(Ironcliw_SECRET_[A-Z_]+[=:\s]+)[^\s"\']+', re.IGNORECASE), r'\1[REDACTED]'),
 
         # Generic API key patterns
         (re.compile(r'(api[_-]?key[=:\s]+)[^\s"\']{20,}', re.IGNORECASE), r'\1[REDACTED]'),
@@ -5738,7 +5738,7 @@ def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
 # =============================================================================
 # Shows live updating status of:
 #   - GCP VM progress (APARS phase, checkpoint, ETA, progress bar)
-#   - Trinity components (JARVIS, Prime, Reactor status)
+#   - Trinity components (Ironcliw, Prime, Reactor status)
 #   - Memory usage
 #   - System health
 #
@@ -5797,9 +5797,9 @@ class LiveProgressDashboard:
     - ETA and elapsed time
     - Color-coded status
     - **NEW** Log passthrough mode (shows recent logs in dashboard)
-    - **NEW** Configurable display mode via JARVIS_DASHBOARD_MODE env var
+    - **NEW** Configurable display mode via Ironcliw_DASHBOARD_MODE env var
     
-    Display Modes (set via JARVIS_DASHBOARD_MODE):
+    Display Modes (set via Ironcliw_DASHBOARD_MODE):
     - "overlay" (default): Dashboard overwrites previous output (clean look)
     - "passthrough": Logs flow through, dashboard prints periodically (see everything)
     - "compact": Minimal single-line status (least intrusive)
@@ -5843,8 +5843,8 @@ class LiveProgressDashboard:
         
         # v197.3: Display mode configuration
         # "overlay" = overwrites (clean), "passthrough" = logs flow, "compact" = minimal
-        self._display_mode = os.getenv("JARVIS_DASHBOARD_MODE", "passthrough").lower()
-        self._max_log_lines = int(os.getenv("JARVIS_DASHBOARD_LOG_LINES", "8"))
+        self._display_mode = os.getenv("Ironcliw_DASHBOARD_MODE", "passthrough").lower()
+        self._max_log_lines = int(os.getenv("Ironcliw_DASHBOARD_LOG_LINES", "8"))
         self._log_buffer: List[str] = []
         self._render_count = 0
         self._passthrough_interval = 5  # Print full dashboard every N renders in passthrough mode
@@ -5890,12 +5890,12 @@ class LiveProgressDashboard:
         self._components = {
             "jarvis-body": {
                 "status": "pending",
-                "port": int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
+                "port": int(os.getenv("Ironcliw_BACKEND_PORT", "8010")),
                 "pid": None
             },
             "jarvis-prime": {
                 "status": "pending",
-                "port": int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001"))),
+                "port": int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("Ironcliw_PRIME_PORT", "8001"))),
                 "pid": None
             },
             "reactor-core": {
@@ -6341,7 +6341,7 @@ class LiveProgressDashboard:
         if RICH_AVAILABLE and _rich_console:
             # Build Rich-styled compact line with emoji indicators
             parts = [
-                f"[jarvis.title]⚡ JARVIS[/jarvis.title]",
+                f"[jarvis.title]⚡ Ironcliw[/jarvis.title]",
                 f"[jarvis.timestamp]⏱ {elapsed:>5.0f}s[/jarvis.timestamp]",
                 f"[jarvis.label]☁️  GCP:[/jarvis.label][jarvis.metric]{gcp['progress']:.0f}%[/jarvis.metric]",
             ]
@@ -6364,7 +6364,7 @@ class LiveProgressDashboard:
             # Render to string for carriage-return overwrite
             from io import StringIO
             buf = StringIO()
-            temp_console = Console(file=buf, theme=JARVIS_RICH_THEME, highlight=False, no_color=False)
+            temp_console = Console(file=buf, theme=Ironcliw_RICH_THEME, highlight=False, no_color=False)
             temp_console.print(" [jarvis.dim]|[/jarvis.dim] ".join(parts), end="")
             status_line = "\r\033[K" + buf.getvalue()
         else:
@@ -6372,14 +6372,14 @@ class LiveProgressDashboard:
                 model_pct = model_state.get("progress_pct", 0)
                 model_name = (model_state.get("model_name") or "LLM")[:10]
                 status_line = (
-                    f"\r{self.BOLD}[JARVIS]{self.RESET} "
+                    f"\r{self.BOLD}[Ironcliw]{self.RESET} "
                     f"{elapsed:>5.0f}s | GCP:{gcp['progress']:>3.0f}% | "
                     f"{self.CYAN}{model_name}:{model_pct}%{self.RESET} | "
                     f"Mem: {mem['percent']:.0f}%"
                 )
             else:
                 status_line = (
-                    f"\r{self.BOLD}[JARVIS]{self.RESET} "
+                    f"\r{self.BOLD}[Ironcliw]{self.RESET} "
                     f"{elapsed:>5.0f}s | GCP:{gcp['progress']:>3.0f}% | "
                     f"{self.GREEN}{healthy}{self.RESET}/{self.CYAN}{starting}{self.RESET}/{total} | "
                     f"Mem: {mem['percent']:.0f}%"
@@ -6414,7 +6414,7 @@ class LiveProgressDashboard:
         lines = []
         lines.append("")
         lines.append(f"{self.DIM}{'─' * 70}{self.RESET}")
-        lines.append(f"{self.BOLD}JARVIS STATUS{self.RESET} @ {elapsed:.0f}s")
+        lines.append(f"{self.BOLD}Ironcliw STATUS{self.RESET} @ {elapsed:.0f}s")
 
         comp_parts = []
         for name, comp in self._components.items():
@@ -6460,7 +6460,7 @@ class LiveProgressDashboard:
 
         _rich_console.print()
         _rich_console.print(RichRule(
-            f"[jarvis.title]⚡ JARVIS STATUS[/jarvis.title]"
+            f"[jarvis.title]⚡ Ironcliw STATUS[/jarvis.title]"
             f" [jarvis.separator]│[/jarvis.separator] "
             f"[jarvis.timestamp]⏱ {elapsed:.0f}s[/jarvis.timestamp]",
             style="jarvis.border",
@@ -6557,7 +6557,7 @@ class LiveProgressDashboard:
         lines = []
         lines.append("")
         lines.append(f"{self.BOLD}╔══════════════════════════════════════════════════════════════════╗{self.RESET}")
-        lines.append(f"{self.BOLD}║  JARVIS SYSTEM STATUS                         {elapsed:>6.1f}s elapsed  ║{self.RESET}")
+        lines.append(f"{self.BOLD}║  Ironcliw SYSTEM STATUS                         {elapsed:>6.1f}s elapsed  ║{self.RESET}")
         lines.append(f"{self.BOLD}╠══════════════════════════════════════════════════════════════════╣{self.RESET}")
 
         gcp = self._gcp_state
@@ -6725,7 +6725,7 @@ class LiveProgressDashboard:
 
         panel = Panel(
             RichGroup(*parts),
-            title=f"[jarvis.title]⚡ JARVIS SYSTEM STATUS[/jarvis.title]",
+            title=f"[jarvis.title]⚡ Ironcliw SYSTEM STATUS[/jarvis.title]",
             subtitle=f"[jarvis.timestamp]⏱ {elapsed:.1f}s elapsed[/jarvis.timestamp]",
             border_style="jarvis.border",
             box=box.ROUNDED,
@@ -6735,7 +6735,7 @@ class LiveProgressDashboard:
         # Render with cursor management
         from io import StringIO
         buf = StringIO()
-        temp_console = Console(file=buf, theme=JARVIS_RICH_THEME, highlight=False, width=80)
+        temp_console = Console(file=buf, theme=Ironcliw_RICH_THEME, highlight=False, width=80)
         temp_console.print(panel)
         output = buf.getvalue()
 
@@ -6984,12 +6984,12 @@ def update_dashboard_memory() -> None:
 # Renderer failures are fully isolated — startup NEVER depends on UI.
 #
 # Env vars:
-#   JARVIS_UI_MODE          = auto|rich|plain|json  (default: auto)
-#   JARVIS_UI_VERBOSITY     = summary|ops|debug     (default: ops)
-#   JARVIS_UI_NO_ANSI       = true/false            (default: false)
-#   JARVIS_UI_NO_ANIMATION  = true/false            (default: false)
-#   JARVIS_EVENT_BUS_QUEUE_SIZE = int               (default: 1000)
-#   JARVIS_EVENT_BUS_ENABLED    = true/false        (default: true)
+#   Ironcliw_UI_MODE          = auto|rich|plain|json  (default: auto)
+#   Ironcliw_UI_VERBOSITY     = summary|ops|debug     (default: ops)
+#   Ironcliw_UI_NO_ANSI       = true/false            (default: false)
+#   Ironcliw_UI_NO_ANIMATION  = true/false            (default: false)
+#   Ironcliw_EVENT_BUS_QUEUE_SIZE = int               (default: 1000)
+#   Ironcliw_EVENT_BUS_ENABLED    = true/false        (default: true)
 # =============================================================================
 
 class SupervisorEventType(Enum):
@@ -7095,8 +7095,8 @@ class SupervisorEventBus:
         self._handlers: List[Callable] = []
         self._queue: Optional[asyncio.Queue] = None
         self._consumer_task: Optional[asyncio.Task] = None
-        self._enabled: bool = _get_env_bool("JARVIS_EVENT_BUS_ENABLED", True)
-        self._max_queue: int = _get_env_int("JARVIS_EVENT_BUS_QUEUE_SIZE", 1000)
+        self._enabled: bool = _get_env_bool("Ironcliw_EVENT_BUS_ENABLED", True)
+        self._max_queue: int = _get_env_int("Ironcliw_EVENT_BUS_QUEUE_SIZE", 1000)
         self._started: bool = False
         self._dropped: int = 0
 
@@ -7433,14 +7433,14 @@ def _create_cli_renderer(
     Factory: auto-detect TTY capabilities and create appropriate renderer.
 
     Auto-detection logic (when ``ui_mode == "auto"``):
-      1. If JARVIS_LOG_JSON is set → JsonCliRenderer
+      1. If Ironcliw_LOG_JSON is set → JsonCliRenderer
       2. If stdout is not a TTY → PlainCliRenderer
       3. If Rich is available → RichCliRenderer
       4. Fallback → PlainCliRenderer
     """
     mode = ui_mode
     if mode == "auto":
-        if _get_env_bool("JARVIS_LOG_JSON", False):
+        if _get_env_bool("Ironcliw_LOG_JSON", False):
             mode = "json"
         elif not sys.stdout.isatty():
             mode = "plain"
@@ -7761,7 +7761,7 @@ class StartupIssueCollector:
 
         print()
         print(f"{border_color}{'━' * 78}{RESET}")
-        print(f"  🏥 JARVIS STARTUP HEALTH REPORT  {health_status}  (⏱ {elapsed:.2f}s)")
+        print(f"  🏥 Ironcliw STARTUP HEALTH REPORT  {health_status}  (⏱ {elapsed:.2f}s)")
         print(f"{border_color}{'━' * 78}{RESET}")
 
         # Summary counts
@@ -7879,7 +7879,7 @@ class StartupIssueCollector:
         _rich_console.print()
         _rich_console.print(Panel(
             content,
-            title="[jarvis.highlight]🏥 JARVIS Health Report[/jarvis.highlight]",
+            title="[jarvis.highlight]🏥 Ironcliw Health Report[/jarvis.highlight]",
             border_style=border_style,
             box=box.ROUNDED,
             padding=(1, 2),
@@ -9264,7 +9264,7 @@ class SmartWatchdog:
     v223.0: Enterprise-Grade Progress-Aware Component Monitor.
     
     SmartWatchdog provides intelligent, async, non-blocking monitoring of
-    component startup (GCP VMs, JARVIS Prime, etc.) with three core rules:
+    component startup (GCP VMs, Ironcliw Prime, etc.) with three core rules:
     
     1. LIVENESS RULE: If progress_pct > last_seen, the component is alive.
        Reset the stall timer and optionally extend the deadline.
@@ -9281,12 +9281,12 @@ class SmartWatchdog:
     - Graceful degradation with exponential backoff
     
     Environment Configuration (NO HARDCODING):
-    - JARVIS_WATCHDOG_POLL_INTERVAL: Seconds between polls (default: 10)
-    - JARVIS_GCP_STALL_THRESHOLD: Seconds without progress = stall (default: 180)
-    - JARVIS_GCP_MAX_TIMEOUT: Hard timeout cap (default: 1800)
-    - JARVIS_WATCHDOG_CONSECUTIVE_FAILURES: Failures before action (default: 3)
-    - JARVIS_WATCHDOG_EXTENSION_BUFFER: Seconds to extend on progress (default: 60)
-    - JARVIS_WATCHDOG_LIVENESS_ENABLED: Enable deadline extension (default: true)
+    - Ironcliw_WATCHDOG_POLL_INTERVAL: Seconds between polls (default: 10)
+    - Ironcliw_GCP_STALL_THRESHOLD: Seconds without progress = stall (default: 180)
+    - Ironcliw_GCP_MAX_TIMEOUT: Hard timeout cap (default: 1800)
+    - Ironcliw_WATCHDOG_CONSECUTIVE_FAILURES: Failures before action (default: 3)
+    - Ironcliw_WATCHDOG_EXTENSION_BUFFER: Seconds to extend on progress (default: 60)
+    - Ironcliw_WATCHDOG_LIVENESS_ENABLED: Enable deadline extension (default: true)
     
     Usage:
         watchdog = SmartWatchdog(
@@ -9325,12 +9325,12 @@ class SmartWatchdog:
             endpoint: Health endpoint URL (e.g., "http://10.128.0.5:8001/health/startup")
             component_name: Human-readable name for logging
             logger: Logger instance (uses print if None)
-            poll_interval: Override JARVIS_WATCHDOG_POLL_INTERVAL
-            stall_threshold: Override JARVIS_GCP_STALL_THRESHOLD
-            max_timeout: Override JARVIS_GCP_MAX_TIMEOUT
-            consecutive_failures_threshold: Override JARVIS_WATCHDOG_CONSECUTIVE_FAILURES
-            extension_buffer: Override JARVIS_WATCHDOG_EXTENSION_BUFFER
-            liveness_enabled: Override JARVIS_WATCHDOG_LIVENESS_ENABLED
+            poll_interval: Override Ironcliw_WATCHDOG_POLL_INTERVAL
+            stall_threshold: Override Ironcliw_GCP_STALL_THRESHOLD
+            max_timeout: Override Ironcliw_GCP_MAX_TIMEOUT
+            consecutive_failures_threshold: Override Ironcliw_WATCHDOG_CONSECUTIVE_FAILURES
+            extension_buffer: Override Ironcliw_WATCHDOG_EXTENSION_BUFFER
+            liveness_enabled: Override Ironcliw_WATCHDOG_LIVENESS_ENABLED
             progress_callback: Async callback called on each successful poll
         """
         self.endpoint = endpoint
@@ -10156,7 +10156,7 @@ class ScaleToZeroCostOptimizer(ResourceManagerBase):
 # =============================================================================
 class DynamicPortManager(ResourceManagerBase):
     """
-    Ultra-robust Dynamic Port Manager for JARVIS startup.
+    Ultra-robust Dynamic Port Manager for Ironcliw startup.
 
     Features:
     - Environment-driven configuration (zero hardcoding)
@@ -10167,12 +10167,12 @@ class DynamicPortManager(ResourceManagerBase):
     - Distributed locking for port reservation
 
     Environment Configuration:
-    - JARVIS_PORT: Primary API port (default: 8010)
-    - JARVIS_FALLBACK_PORTS: Comma-separated fallback ports (default: 8001,8002,8003)
-    - JARVIS_WEBSOCKET_PORT: WebSocket port (default: 8765)
-    - JARVIS_DYNAMIC_PORT_ENABLED: Enable dynamic range (default: true)
-    - JARVIS_DYNAMIC_PORT_START: Dynamic range start (default: 49152)
-    - JARVIS_DYNAMIC_PORT_END: Dynamic range end (default: 65535)
+    - Ironcliw_PORT: Primary API port (default: 8010)
+    - Ironcliw_FALLBACK_PORTS: Comma-separated fallback ports (default: 8001,8002,8003)
+    - Ironcliw_WEBSOCKET_PORT: WebSocket port (default: 8765)
+    - Ironcliw_DYNAMIC_PORT_ENABLED: Enable dynamic range (default: true)
+    - Ironcliw_DYNAMIC_PORT_START: Dynamic range start (default: 49152)
+    - Ironcliw_DYNAMIC_PORT_END: Dynamic range end (default: 65535)
     """
 
     # macOS UE (Uninterruptible Sleep) state indicators
@@ -10185,15 +10185,15 @@ class DynamicPortManager(ResourceManagerBase):
         # v233.1: Harmonize port default with backend/main.py and frontend (8010).
         # Previous default (8000) caused DynamicPortManager to select 8000 before
         # assign_all_ports() could apply DEFAULT_BACKEND_PORT = 8010.
-        self.primary_port = int(os.getenv("JARVIS_PORT", os.getenv("BACKEND_PORT", os.getenv("JARVIS_BACKEND_PORT", "8010"))))
+        self.primary_port = int(os.getenv("Ironcliw_PORT", os.getenv("BACKEND_PORT", os.getenv("Ironcliw_BACKEND_PORT", "8010"))))
 
-        fallback_str = os.getenv("JARVIS_FALLBACK_PORTS", "8000,8011,8012")
+        fallback_str = os.getenv("Ironcliw_FALLBACK_PORTS", "8000,8011,8012")
         self.fallback_ports = [int(p.strip()) for p in fallback_str.split(",") if p.strip()]
 
-        self.websocket_port = int(os.getenv("JARVIS_WEBSOCKET_PORT", "8765"))
-        self.dynamic_port_enabled = os.getenv("JARVIS_DYNAMIC_PORT_ENABLED", "true").lower() == "true"
-        self.dynamic_port_start = int(os.getenv("JARVIS_DYNAMIC_PORT_START", "49152"))
-        self.dynamic_port_end = int(os.getenv("JARVIS_DYNAMIC_PORT_END", "65535"))
+        self.websocket_port = int(os.getenv("Ironcliw_WEBSOCKET_PORT", "8765"))
+        self.dynamic_port_enabled = os.getenv("Ironcliw_DYNAMIC_PORT_ENABLED", "true").lower() == "true"
+        self.dynamic_port_start = int(os.getenv("Ironcliw_DYNAMIC_PORT_START", "49152"))
+        self.dynamic_port_end = int(os.getenv("Ironcliw_DYNAMIC_PORT_END", "65535"))
 
         # State
         self.selected_port: Optional[int] = None
@@ -10541,7 +10541,7 @@ async def assign_all_ports(
     port_manager: Optional[DynamicPortManager] = None,
 ) -> PortAssignment:
     """
-    Coordinated port assignment for all JARVIS services.
+    Coordinated port assignment for all Ironcliw services.
 
     This function assigns non-overlapping ports for all services in a single
     atomic operation, preventing race conditions and port conflicts.
@@ -10565,7 +10565,7 @@ async def assign_all_ports(
     # v233.0: Harmonize with backend/main.py and frontend DynamicConfigService
     # Both default to 8010 via BACKEND_PORT env var. Previous mismatch (8000 vs 8010)
     # caused frontend connection failures when Docker occupied 8010.
-    DEFAULT_BACKEND_PORT = int(os.getenv("BACKEND_PORT", os.getenv("JARVIS_BACKEND_PORT", "8010")))
+    DEFAULT_BACKEND_PORT = int(os.getenv("BACKEND_PORT", os.getenv("Ironcliw_BACKEND_PORT", "8010")))
     DEFAULT_WEBSOCKET_PORT = 8765
     DEFAULT_LOADING_PORT = 3000
     DEFAULT_FRONTEND_PORT = 3001
@@ -10574,10 +10574,10 @@ async def assign_all_ports(
     MIN_PORT_SEPARATION = 10
 
     # Read from environment or use defaults
-    backend_port = int(os.getenv("JARVIS_BACKEND_PORT", "0"))
-    websocket_port = int(os.getenv("JARVIS_WEBSOCKET_PORT", "0"))
-    loading_port = int(os.getenv("JARVIS_LOADING_PORT", "0"))
-    frontend_port = int(os.getenv("JARVIS_FRONTEND_PORT", "0"))
+    backend_port = int(os.getenv("Ironcliw_BACKEND_PORT", "0"))
+    websocket_port = int(os.getenv("Ironcliw_WEBSOCKET_PORT", "0"))
+    loading_port = int(os.getenv("Ironcliw_LOADING_PORT", "0"))
+    frontend_port = int(os.getenv("Ironcliw_FRONTEND_PORT", "0"))
 
     assignment_method = "explicit"
     conflicts_resolved = 0
@@ -11389,7 +11389,7 @@ class ResourceManagerRegistry:
             pending_tasks: Dict[asyncio.Task, str] = {}
             pending_log_interval = max(
                 5.0,
-                float(os.environ.get("JARVIS_RESOURCE_PENDING_LOG_INTERVAL", "15.0")),
+                float(os.environ.get("Ironcliw_RESOURCE_PENDING_LOG_INTERVAL", "15.0")),
             )
             last_pending_log = start_monotonic
 
@@ -12640,7 +12640,7 @@ class LazyAsyncLock:
 # =============================================================================
 class GlobalSessionManager:
     """
-    Async-safe singleton manager for JARVIS session tracking.
+    Async-safe singleton manager for Ironcliw session tracking.
 
     Features:
     - Singleton pattern with thread-safe initialization
@@ -12982,7 +12982,7 @@ class SupervisorRestartManager:
     Cross-repo process restart manager for supervisor-level services.
 
     Manages automatic restart of:
-    - JARVIS-Prime (local inference server)
+    - Ironcliw-Prime (local inference server)
     - Reactor-Core (training/ML services)
 
     Features:
@@ -13002,10 +13002,10 @@ class SupervisorRestartManager:
         self._logger = logger or logging.getLogger("SupervisorRestartManager")
 
         # Environment-driven configuration
-        self.max_restarts = int(os.getenv("JARVIS_SUPERVISOR_MAX_RESTARTS", "3"))
-        self.max_backoff = float(os.getenv("JARVIS_SUPERVISOR_MAX_BACKOFF", "60.0"))
-        self.restart_cooldown = float(os.getenv("JARVIS_SUPERVISOR_RESTART_COOLDOWN", "600.0"))
-        self.base_backoff = float(os.getenv("JARVIS_SUPERVISOR_BASE_BACKOFF", "2.0"))
+        self.max_restarts = int(os.getenv("Ironcliw_SUPERVISOR_MAX_RESTARTS", "3"))
+        self.max_backoff = float(os.getenv("Ironcliw_SUPERVISOR_MAX_BACKOFF", "60.0"))
+        self.restart_cooldown = float(os.getenv("Ironcliw_SUPERVISOR_RESTART_COOLDOWN", "600.0"))
+        self.base_backoff = float(os.getenv("Ironcliw_SUPERVISOR_BASE_BACKOFF", "2.0"))
 
     def register(
         self,
@@ -13158,9 +13158,9 @@ class TrinityLaunchConfig:
 
     # Repo Discovery Settings
     jprime_repo_path: Optional[Path] = field(default_factory=lambda: Path(os.getenv(
-        "JARVIS_PRIME_PATH",
+        "Ironcliw_PRIME_PATH",
         str(Path.home() / "Documents" / "repos" / "jarvis-prime")
-    )) if os.getenv("JARVIS_PRIME_PATH") or (Path.home() / "Documents" / "repos" / "jarvis-prime").exists() else None)
+    )) if os.getenv("Ironcliw_PRIME_PATH") or (Path.home() / "Documents" / "repos" / "jarvis-prime").exists() else None)
 
     reactor_core_repo_path: Optional[Path] = field(default_factory=lambda: Path(os.getenv(
         "REACTOR_CORE_PATH",
@@ -13255,7 +13255,7 @@ class TrinityLaunchConfig:
 
     # Port Configuration
     jprime_ports: List[int] = field(default_factory=lambda:
-        [int(p) for p in os.getenv("TRINITY_JPRIME_PORTS", os.getenv("JARVIS_PRIME_PORT", "8001")).split(",")]
+        [int(p) for p in os.getenv("TRINITY_JPRIME_PORTS", os.getenv("Ironcliw_PRIME_PORT", "8001")).split(",")]
     )
     reactor_core_ports: List[int] = field(default_factory=lambda:
         [int(p) for p in os.getenv("TRINITY_REACTOR_PORTS", "8090").split(",")]
@@ -13302,7 +13302,7 @@ class TrinityLaunchConfig:
 
     # API Port
     jarvis_api_port: int = field(default_factory=lambda:
-        int(os.getenv("JARVIS_API_PORT", "8010"))  # v238.1: Was 8080, collided with loading server
+        int(os.getenv("Ironcliw_API_PORT", "8010"))  # v238.1: Was 8080, collided with loading server
     )
 
     def __post_init__(self):
@@ -13321,7 +13321,7 @@ class DynamicRepoDiscovery:
     Intelligent repo discovery system that finds Trinity repos dynamically.
 
     Discovery strategies (in order):
-    1. Environment variables (JARVIS_PRIME_PATH, REACTOR_CORE_PATH)
+    1. Environment variables (Ironcliw_PRIME_PATH, REACTOR_CORE_PATH)
     2. User config file (~/.jarvis/repos.json)
     3. Common repo locations (~/Documents/repos, ~/repos, ~/code, etc.)
     4. Git remote scanning (looks for known repo URLs)
@@ -13676,10 +13676,10 @@ class AsyncVoiceNarrator:
     - Platform-aware (macOS only, graceful fallback)
 
     Environment Variables:
-    - JARVIS_VOICE_ENABLED: Enable/disable voice (default: true)
-    - JARVIS_VOICE_NAME: Voice name (default: Daniel)
-    - JARVIS_VOICE_RATE: Speech rate 90-300 (default: 175)
-    - JARVIS_OWNER_NAME: Owner name for personalization (default: auto-detect)
+    - Ironcliw_VOICE_ENABLED: Enable/disable voice (default: true)
+    - Ironcliw_VOICE_NAME: Voice name (default: Daniel)
+    - Ironcliw_VOICE_RATE: Speech rate 90-300 (default: 175)
+    - Ironcliw_OWNER_NAME: Owner name for personalization (default: auto-detect)
     """
 
     # Zone completion messages with personality
@@ -13731,19 +13731,19 @@ class AsyncVoiceNarrator:
         Default behavior is deterministic Daniel voice unless explicit
         canonical enforcement is disabled.
         """
-        force_daniel = cls._env_flag("JARVIS_FORCE_DANIEL_VOICE", "true")
+        force_daniel = cls._env_flag("Ironcliw_FORCE_DANIEL_VOICE", "true")
         if force_daniel:
             canonical = "Daniel"
         else:
-            canonical = os.getenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel").strip() or "Daniel"
+            canonical = os.getenv("Ironcliw_CANONICAL_VOICE_NAME", "Daniel").strip() or "Daniel"
 
-        if cls._env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+        if cls._env_flag("Ironcliw_ENFORCE_CANONICAL_VOICE", "true"):
             return canonical
 
         if requested and requested.strip():
             return requested.strip()
 
-        env_voice = os.getenv("JARVIS_VOICE_NAME", "").strip()
+        env_voice = os.getenv("Ironcliw_VOICE_NAME", "").strip()
         return env_voice or canonical
 
     def __init__(
@@ -13755,17 +13755,17 @@ class AsyncVoiceNarrator:
     ):
         # Configuration from environment with overrides
         if enabled is None:
-            enabled = os.getenv("JARVIS_VOICE_ENABLED", "true").lower() == "true"
+            enabled = os.getenv("Ironcliw_VOICE_ENABLED", "true").lower() == "true"
         self.enabled = enabled and platform.system() == "Darwin"
 
         # Enforce canonical startup voice identity.
-        os.environ["JARVIS_FORCE_DANIEL_VOICE"] = "true"
-        os.environ["JARVIS_ENFORCE_CANONICAL_VOICE"] = "true"
-        os.environ["JARVIS_CANONICAL_VOICE_NAME"] = "Daniel"
-        os.environ["JARVIS_VOICE_NAME"] = "Daniel"
+        os.environ["Ironcliw_FORCE_DANIEL_VOICE"] = "true"
+        os.environ["Ironcliw_ENFORCE_CANONICAL_VOICE"] = "true"
+        os.environ["Ironcliw_CANONICAL_VOICE_NAME"] = "Daniel"
+        os.environ["Ironcliw_VOICE_NAME"] = "Daniel"
         self.voice = self._resolve_voice_name(voice)
-        self.rate = rate or int(os.getenv("JARVIS_VOICE_RATE", "175"))
-        self._owner_name = owner_name or os.getenv("JARVIS_OWNER_NAME", "")
+        self.rate = rate or int(os.getenv("Ironcliw_VOICE_RATE", "175"))
+        self._owner_name = owner_name or os.getenv("Ironcliw_OWNER_NAME", "")
 
         # Process management
         self._process: Optional[asyncio.subprocess.Process] = None
@@ -13797,8 +13797,8 @@ class AsyncVoiceNarrator:
         self._startup_announced = False
 
         if self.enabled:
-            os.environ.setdefault("JARVIS_CANONICAL_VOICE_NAME", self.voice)
-            os.environ.setdefault("JARVIS_VOICE_NAME", self.voice)
+            os.environ.setdefault("Ironcliw_CANONICAL_VOICE_NAME", self.voice)
+            os.environ.setdefault("Ironcliw_VOICE_NAME", self.voice)
             _unified_logger.debug(f"Voice narrator initialized: voice={self.voice}, rate={self.rate}")
 
     async def start_queue_processor(self) -> None:
@@ -13967,11 +13967,11 @@ class AsyncVoiceNarrator:
         self._last_spoken_text = text
         self._last_spoken_time = now
         use_unified_orchestrator = self._env_flag(
-            "JARVIS_SUPERVISOR_USE_UNIFIED_VOICE_ORCHESTRATOR",
+            "Ironcliw_SUPERVISOR_USE_UNIFIED_VOICE_ORCHESTRATOR",
             "true",
         )
         allow_direct_say_fallback = self._env_flag(
-            "JARVIS_SUPERVISOR_ALLOW_DIRECT_SAY_FALLBACK",
+            "Ironcliw_SUPERVISOR_ALLOW_DIRECT_SAY_FALLBACK",
             "false",
         )
         if use_unified_orchestrator:
@@ -14086,7 +14086,7 @@ class AsyncVoiceNarrator:
         if self._owner_name:
             return self._owner_name
         # Try to get from environment or default
-        name = os.getenv("JARVIS_OWNER_NAME") or os.getenv("USER", "")
+        name = os.getenv("Ironcliw_OWNER_NAME") or os.getenv("USER", "")
         # Capitalize first letter
         return name.capitalize() if name else "there"
 
@@ -14168,7 +14168,7 @@ class AsyncVoiceNarrator:
             return
 
         self._startup_announced = True
-        await self.speak("JARVIS kernel initializing.", wait=True, priority=VoicePriority.HIGH)
+        await self.speak("Ironcliw kernel initializing.", wait=True, priority=VoicePriority.HIGH)
 
     async def narrate_startup_complete(self, duration_sec: float = 0) -> None:
         """Narrate successful startup completion with personalized greeting."""
@@ -14321,9 +14321,9 @@ class AsyncVoiceNarrator:
             return
 
         component_names = {
-            "prime": "JARVIS Prime",
+            "prime": "Ironcliw Prime",
             "reactor": "Reactor Core",
-            "body": "JARVIS Body",
+            "body": "Ironcliw Body",
         }
         name = component_names.get(component.lower(), component)
 
@@ -14621,7 +14621,7 @@ class ResourceStatus:
 # =============================================================================
 class IntelligentResourceOrchestrator:
     """
-    Intelligent Resource Orchestrator for JARVIS Startup.
+    Intelligent Resource Orchestrator for Ironcliw Startup.
 
     This is a comprehensive, async, parallel, intelligent, and dynamic resource
     management system that integrates:
@@ -14642,9 +14642,9 @@ class IntelligentResourceOrchestrator:
     """
 
     # Thresholds (configurable via environment)
-    CLOUD_THRESHOLD_GB = _get_env_float("JARVIS_CLOUD_THRESHOLD_GB", 6.0)
-    CRITICAL_THRESHOLD_GB = _get_env_float("JARVIS_CRITICAL_THRESHOLD_GB", 2.0)
-    OPTIMIZE_THRESHOLD_GB = _get_env_float("JARVIS_OPTIMIZE_THRESHOLD_GB", 4.0)
+    CLOUD_THRESHOLD_GB = _get_env_float("Ironcliw_CLOUD_THRESHOLD_GB", 6.0)
+    CRITICAL_THRESHOLD_GB = _get_env_float("Ironcliw_CRITICAL_THRESHOLD_GB", 2.0)
+    OPTIMIZE_THRESHOLD_GB = _get_env_float("Ironcliw_OPTIMIZE_THRESHOLD_GB", 4.0)
 
     def __init__(self, config: SystemKernelConfig):
         self.config = config
@@ -14663,8 +14663,8 @@ class IntelligentResourceOrchestrator:
 
     # v258.3: Planned workload estimates for predictive capacity planning.
     # These are used to predict post-startup RAM, not just current snapshot.
-    _MACOS_BASE_CONSUMPTION_GB = _get_env_float("JARVIS_MACOS_BASE_GB", 5.0)
-    _PLANNED_ML_WORKLOAD_GB_FALLBACK = _get_env_float("JARVIS_PLANNED_ML_GB", 4.6)
+    _MACOS_BASE_CONSUMPTION_GB = _get_env_float("Ironcliw_MACOS_BASE_GB", 5.0)
+    _PLANNED_ML_WORKLOAD_GB_FALLBACK = _get_env_float("Ironcliw_PLANNED_ML_GB", 4.6)
     # Static fallback: whisper_medium(2.0) + speechbrain(0.3) + ecapa(0.2) + pytorch(0.5)
     #        + transformers(0.3) + neural_mesh(0.8) + warmup(0.5) = 4.6GB
 
@@ -14862,8 +14862,8 @@ class IntelligentResourceOrchestrator:
         actions: List[str] = []
 
         required_ports = [
-            int(os.getenv("JARVIS_API_PORT", "8010")),  # v238.1: Was 8080
-            int(os.getenv("JARVIS_WS_PORT", "8081")),
+            int(os.getenv("Ironcliw_API_PORT", "8010")),  # v238.1: Was 8080
+            int(os.getenv("Ironcliw_WS_PORT", "8081")),
         ]
 
         # Use async_check_port for non-blocking parallel port checks
@@ -14940,9 +14940,9 @@ class IntelligentResourceOrchestrator:
 # =============================================================================
 class VMSessionTracker:
     """
-    Track VM ownership per JARVIS session to prevent multi-terminal conflicts.
+    Track VM ownership per Ironcliw session to prevent multi-terminal conflicts.
 
-    Each JARVIS instance (terminal session) gets a unique session_id.
+    Each Ironcliw instance (terminal session) gets a unique session_id.
     VMs are tagged with their owning session, ensuring cleanup only affects
     VMs owned by the terminating session.
 
@@ -15338,10 +15338,10 @@ class ProcessRestartManager:
     - All thresholds configurable via environment variables
 
     Environment Variables:
-        JARVIS_MAX_RESTARTS: Maximum restart attempts (default: 5)
-        JARVIS_MAX_BACKOFF: Maximum backoff delay in seconds (default: 30.0)
-        JARVIS_RESTART_COOLDOWN: Seconds of stability before resetting restart count (default: 300.0)
-        JARVIS_BASE_BACKOFF: Initial backoff delay in seconds (default: 1.0)
+        Ironcliw_MAX_RESTARTS: Maximum restart attempts (default: 5)
+        Ironcliw_MAX_BACKOFF: Maximum backoff delay in seconds (default: 30.0)
+        Ironcliw_RESTART_COOLDOWN: Seconds of stability before resetting restart count (default: 300.0)
+        Ironcliw_BASE_BACKOFF: Initial backoff delay in seconds (default: 1.0)
     """
 
     def __init__(self):
@@ -15351,10 +15351,10 @@ class ProcessRestartManager:
         self._shutdown_requested = False
 
         # Environment-driven configuration
-        self.max_restarts = int(os.getenv("JARVIS_MAX_RESTARTS", "5"))
-        self.max_backoff = float(os.getenv("JARVIS_MAX_BACKOFF", "30.0"))
-        self.restart_cooldown = float(os.getenv("JARVIS_RESTART_COOLDOWN", "300.0"))
-        self.base_backoff = float(os.getenv("JARVIS_BASE_BACKOFF", "1.0"))
+        self.max_restarts = int(os.getenv("Ironcliw_MAX_RESTARTS", "5"))
+        self.max_backoff = float(os.getenv("Ironcliw_MAX_BACKOFF", "30.0"))
+        self.restart_cooldown = float(os.getenv("Ironcliw_RESTART_COOLDOWN", "300.0"))
+        self.base_backoff = float(os.getenv("Ironcliw_BASE_BACKOFF", "1.0"))
 
         self._logger = logging.getLogger("ProcessRestartManager")
 
@@ -15484,7 +15484,7 @@ class ProcessRestartManager:
                         f"[v210.0] OOM detected for '{name}' - GCP failover recommended"
                     )
                     # Continue with restart but signal GCP mode
-                    os.environ["JARVIS_FORCE_GCP_MODE"] = "1"
+                    os.environ["Ironcliw_FORCE_GCP_MODE"] = "1"
                 
             except Exception as e:
                 self._logger.debug(f"[v210.0] Crash recovery coordinator error: {e}")
@@ -15860,7 +15860,7 @@ class StartupPhase(Enum):
     INTELLIGENCE = "intelligence"       # ML/Intelligence layer startup
     TRINITY = "trinity"                 # Trinity cross-repo startup
     BACKEND = "backend"                 # Backend server startup
-    JARVIS_START = "jarvis_start"       # Full JARVIS system startup
+    Ironcliw_START = "jarvis_start"       # Full Ironcliw system startup
     COMPLETE = "complete"               # Startup completed successfully
     FAILED = "failed"                   # Startup failed
 
@@ -16055,8 +16055,8 @@ CHROME_MINIMAL_STABILITY_FLAGS: List[str] = [
 
 # === CDP PORT CONFIGURATION ===
 # v197.6: Dynamic CDP port detection to avoid port conflicts
-CDP_PORT_RANGE_START = int(os.environ.get("JARVIS_CDP_PORT_START", "9222"))
-CDP_PORT_RANGE_END = int(os.environ.get("JARVIS_CDP_PORT_END", "9232"))
+CDP_PORT_RANGE_START = int(os.environ.get("Ironcliw_CDP_PORT_START", "9222"))
+CDP_PORT_RANGE_END = int(os.environ.get("Ironcliw_CDP_PORT_END", "9232"))
 _current_cdp_port: Optional[int] = None  # Cached active CDP port
 
 def _is_port_available(port: int) -> bool:
@@ -16751,20 +16751,20 @@ def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
 
 # Global browser state management
 # v225.1: Use BOTH module-local flag AND environment variable for cross-process coordination
-# The environment variable JARVIS_BROWSER_OPENED ensures multiple processes don't open duplicate windows
-_browser_opened_this_startup: bool = os.environ.get("JARVIS_BROWSER_OPENED", "").lower() == "true"
+# The environment variable Ironcliw_BROWSER_OPENED ensures multiple processes don't open duplicate windows
+_browser_opened_this_startup: bool = os.environ.get("Ironcliw_BROWSER_OPENED", "").lower() == "true"
 _browser_lock: Optional[asyncio.Lock] = None
 
 def _mark_browser_opened():
     """Mark browser as opened both locally and in environment for cross-process coordination."""
     global _browser_opened_this_startup
     _browser_opened_this_startup = True
-    os.environ["JARVIS_BROWSER_OPENED"] = "true"
+    os.environ["Ironcliw_BROWSER_OPENED"] = "true"
 
 def _is_browser_opened() -> bool:
     """Check if browser was already opened (local flag OR environment variable)."""
     global _browser_opened_this_startup
-    return _browser_opened_this_startup or os.environ.get("JARVIS_BROWSER_OPENED", "").lower() == "true"
+    return _browser_opened_this_startup or os.environ.get("Ironcliw_BROWSER_OPENED", "").lower() == "true"
 
 def _get_browser_lock() -> asyncio.Lock:
     """Get or create the global browser lock (lazy init for Python 3.9)."""
@@ -16775,13 +16775,13 @@ def _get_browser_lock() -> asyncio.Lock:
 
 class IntelligentChromeIncognitoManager:
     """
-    Advanced Chrome Incognito Window Manager for JARVIS.
+    Advanced Chrome Incognito Window Manager for Ironcliw.
 
     DESIGN PHILOSOPHY: INCOGNITO ONLY, SINGLE WINDOW, ZERO DUPLICATES
 
     This manager ensures:
     1. ONLY Chrome Incognito mode is used - NEVER regular Chrome windows
-    2. EXACTLY ONE incognito window/tab with JARVIS at any time
+    2. EXACTLY ONE incognito window/tab with Ironcliw at any time
     3. Intelligent deduplication - closes ALL duplicates automatically
     4. Cache-free experience - bypasses all cached CSS, JS, assets
     5. Robust async operations with retry logic and error recovery
@@ -16814,12 +16814,12 @@ class IntelligentChromeIncognitoManager:
         self._logger = logging.getLogger("ChromeIncognito")
 
         # Load URL patterns from config
-        self.JARVIS_URL_PATTERNS = self._load_url_patterns()
+        self.Ironcliw_URL_PATTERNS = self._load_url_patterns()
 
         self._logger.info("🔒 IntelligentChromeIncognitoManager initialized (INCOGNITO-ONLY mode)")
 
     def _load_url_patterns(self) -> List[str]:
-        """Load JARVIS URL patterns from configuration file."""
+        """Load Ironcliw URL patterns from configuration file."""
         config_paths = [
             Path.cwd() / 'backend' / 'config' / 'startup_progress_config.json',
             Path.cwd() / 'backend' / 'config' / 'browser_config.json',
@@ -16844,11 +16844,11 @@ class IntelligentChromeIncognitoManager:
 
     async def ensure_single_incognito_window(self, url: str, force_new: bool = False) -> Dict[str, Any]:
         """
-        Ensure exactly ONE Chrome Incognito window with JARVIS.
+        Ensure exactly ONE Chrome Incognito window with Ironcliw.
 
         This is the main entry point. It will:
-        1. Close ALL regular Chrome windows with JARVIS tabs
-        2. Close ALL duplicate incognito windows with JARVIS tabs
+        1. Close ALL regular Chrome windows with Ironcliw tabs
+        2. Close ALL duplicate incognito windows with Ironcliw tabs
         3. Keep or create exactly ONE incognito window
         4. Navigate that window to the specified URL
 
@@ -16925,7 +16925,7 @@ class IntelligentChromeIncognitoManager:
                         result['action'] = 'created'
                         return result
 
-                    # Close ALL regular Chrome windows with JARVIS tabs
+                    # Close ALL regular Chrome windows with Ironcliw tabs
                     if scan_result['regular_jarvis_windows']:
                         closed = await self._close_regular_jarvis_windows(
                             scan_result['regular_jarvis_windows']
@@ -17033,7 +17033,7 @@ class IntelligentChromeIncognitoManager:
                 'total_windows': 0
             }
 
-        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+        patterns_str = ', '.join(f'"{p}"' for p in self.Ironcliw_URL_PATTERNS)
 
         applescript = f'''
         tell application "System Events"
@@ -17255,7 +17255,7 @@ class IntelligentChromeIncognitoManager:
                 url=url,
                 incognito=True,
                 kill_existing=True,  # Clean slate - kill any unstable Chrome
-                headless=False,  # We want visible Chrome for JARVIS UI
+                headless=False,  # We want visible Chrome for Ironcliw UI
             )
             
             if success:
@@ -17404,7 +17404,7 @@ class IntelligentChromeIncognitoManager:
             return False
 
     async def _close_regular_jarvis_windows(self, window_indices: List[int]) -> int:
-        """Close regular (non-incognito) Chrome windows with JARVIS tabs."""
+        """Close regular (non-incognito) Chrome windows with Ironcliw tabs."""
         closed = 0
         for idx in sorted(window_indices, reverse=True):  # Close in reverse order
             try:
@@ -17507,7 +17507,7 @@ class IntelligentChromeIncognitoManager:
             'operation_count': self._operation_count,
             'error_count': self._error_count,
             'last_operation_time': self._last_operation_time.isoformat() if self._last_operation_time else None,
-            'patterns_loaded': len(self.JARVIS_URL_PATTERNS),
+            'patterns_loaded': len(self.Ironcliw_URL_PATTERNS),
         }
 
 # Global Chrome manager singleton
@@ -17558,7 +17558,7 @@ class BrowserCrashMonitor:
     v197.1: System-wide browser crash monitoring and recovery coordination.
     
     This monitor:
-    1. Tracks all browser crashes across JARVIS subsystems
+    1. Tracks all browser crashes across Ironcliw subsystems
     2. Correlates crashes with memory pressure
     3. Coordinates recovery attempts across subsystems
     4. Provides crash statistics for diagnostics
@@ -18008,7 +18008,7 @@ def get_browser_stability_manager():
 
 class AdvancedStartupBootstrapper:
     """
-    Advanced Startup Bootstrapper for JARVIS AI System.
+    Advanced Startup Bootstrapper for Ironcliw AI System.
 
     Features:
     - 🔍 Dynamic path discovery (zero hardcoding)
@@ -18074,7 +18074,7 @@ class AdvancedStartupBootstrapper:
         cwd = Path.cwd().resolve()
 
         # Method 3: Environment variable override
-        env_root = os.environ.get('JARVIS_ROOT')
+        env_root = os.environ.get('Ironcliw_ROOT')
 
         # Determine project root by checking for marker files/dirs
         candidate_roots = [script_dir, cwd]
@@ -18119,7 +18119,7 @@ class AdvancedStartupBootstrapper:
         self._paths['venv_python'] = self._discover_venv_python()
 
     def _is_project_root(self, path: Path) -> bool:
-        """Check if path is the JARVIS project root."""
+        """Check if path is the Ironcliw project root."""
         markers = [
             path / 'backend' / 'main.py',
             path / 'unified_supervisor.py',
@@ -18164,7 +18164,7 @@ class AdvancedStartupBootstrapper:
         Priority: CLI arg → ENV var → git branch → default
         """
         # Check environment variable
-        env_var = os.environ.get('JARVIS_ENV', '').lower()
+        env_var = os.environ.get('Ironcliw_ENV', '').lower()
         for env_name, patterns in self.ENV_PATTERNS.items():
             if env_var in patterns:
                 return env_name
@@ -18263,15 +18263,15 @@ class AdvancedStartupBootstrapper:
         overrides = {}
 
         env_mappings = {
-            'JARVIS_BACKEND_PORT': ('backend', 'port', int),
-            'JARVIS_FRONTEND_PORT': ('frontend', 'port', int),
-            'JARVIS_HOST': ('backend', 'host', str),
-            'JARVIS_WORKERS': ('backend', 'workers', int),
-            'JARVIS_LOG_LEVEL': ('logging', 'level', str),
-            'JARVIS_PARALLEL_INIT': ('startup', 'parallel_init', lambda x: x.lower() == 'true'),
-            'JARVIS_VOICE_UNLOCK': ('features', 'voice_unlock', lambda x: x.lower() == 'true'),
-            'JARVIS_VISION': ('features', 'vision', lambda x: x.lower() == 'true'),
-            'JARVIS_AUTONOMOUS': ('features', 'autonomous', lambda x: x.lower() == 'true'),
+            'Ironcliw_BACKEND_PORT': ('backend', 'port', int),
+            'Ironcliw_FRONTEND_PORT': ('frontend', 'port', int),
+            'Ironcliw_HOST': ('backend', 'host', str),
+            'Ironcliw_WORKERS': ('backend', 'workers', int),
+            'Ironcliw_LOG_LEVEL': ('logging', 'level', str),
+            'Ironcliw_PARALLEL_INIT': ('startup', 'parallel_init', lambda x: x.lower() == 'true'),
+            'Ironcliw_VOICE_UNLOCK': ('features', 'voice_unlock', lambda x: x.lower() == 'true'),
+            'Ironcliw_VISION': ('features', 'vision', lambda x: x.lower() == 'true'),
+            'Ironcliw_AUTONOMOUS': ('features', 'autonomous', lambda x: x.lower() == 'true'),
         }
 
         for env_key, (section, key, converter) in env_mappings.items():
@@ -18438,7 +18438,7 @@ class ParallelProcessCleaner:
         self._my_pid = os.getpid()
         self._my_parent = os.getppid()
 
-        # Process patterns for JARVIS discovery
+        # Process patterns for Ironcliw discovery
         self.jarvis_patterns = [
             "run_supervisor.py",
             "start_system.py",
@@ -18466,7 +18466,7 @@ class ParallelProcessCleaner:
 
     async def discover_and_cleanup(self) -> Tuple[int, List[ProcessInfo]]:
         """
-        Discover and cleanup existing JARVIS instances.
+        Discover and cleanup existing Ironcliw instances.
 
         v97.0: Includes lock holder cleanup as Phase 0 to prevent
         30-second ownership acquisition timeouts.
@@ -18591,7 +18591,7 @@ class ParallelProcessCleaner:
 
     def _discover_from_process_list(self) -> Dict[int, ProcessInfo]:
         """
-        Scan process list for JARVIS processes (runs in thread).
+        Scan process list for Ironcliw processes (runs in thread).
 
         v132.4: Added SystemExit protection.
         """
@@ -18965,11 +18965,11 @@ class ZombieProcessInfo:
 
 class ComprehensiveZombieCleanup:
     """
-    v109.7: Comprehensive Zombie Cleanup System for JARVIS Ecosystem.
+    v109.7: Comprehensive Zombie Cleanup System for Ironcliw Ecosystem.
 
     Provides ultra-robust cleanup across all three repos:
-    - JARVIS (main AI agent) - port 8010
-    - JARVIS-Prime (J-Prime Mind) - port 8001
+    - Ironcliw (main AI agent) - port 8010
+    - Ironcliw-Prime (J-Prime Mind) - port 8001
     - Reactor-Core (Nerves) - port 8090
 
     Features:
@@ -20235,7 +20235,7 @@ class IntelligentModelManager:
     - Version registry with rollback
     - Model health monitoring
 
-    This manager ensures JARVIS always has the best available model
+    This manager ensures Ironcliw always has the best available model
     for the current system resources.
     """
 
@@ -20434,7 +20434,7 @@ class IntelligentModelManager:
 
     async def ensure_model_available(self) -> Dict[str, Any]:
         """
-        Ensure a model is available for JARVIS-Prime.
+        Ensure a model is available for Ironcliw-Prime.
 
         Returns:
             Status dict with:
@@ -21621,8 +21621,8 @@ class HybridWorkloadRouter(IntelligenceManagerBase):
             "service_account": service_account,
             "has_credentials_file": has_credentials,
             "has_gcloud": has_gcloud,
-            "repo_url": os.getenv("JARVIS_REPO_URL", "https://github.com/drussell23/JARVIS-AI-Agent.git"),
-            "branch": os.getenv("JARVIS_BRANCH", "main"),
+            "repo_url": os.getenv("Ironcliw_REPO_URL", "https://github.com/drussell23/Ironcliw-AI-Agent.git"),
+            "branch": os.getenv("Ironcliw_BRANCH", "main"),
         }
 
     async def _deploy_gcp_instance(
@@ -21762,14 +21762,14 @@ class HybridWorkloadRouter(IntelligenceManagerBase):
         components: List[str]
     ) -> str:
         """Generate VM startup script."""
-        repo_url = gcp_config.get("repo_url", "https://github.com/drussell23/JARVIS-AI-Agent.git")
+        repo_url = gcp_config.get("repo_url", "https://github.com/drussell23/Ironcliw-AI-Agent.git")
         branch = gcp_config.get("branch", "main")
 
         return f'''#!/bin/bash
 set -e
 
 # Log startup
-echo "=== JARVIS GCP Instance Starting ===" | tee /var/log/jarvis-startup.log
+echo "=== Ironcliw GCP Instance Starting ===" | tee /var/log/jarvis-startup.log
 
 # Install dependencies
 apt-get update -qq
@@ -21788,20 +21788,20 @@ pip install -r requirements.txt
 
 # Start components
 cd backend
-export JARVIS_MODE=gcp
-export JARVIS_COMPONENTS="{','.join(components)}"
+export Ironcliw_MODE=gcp
+export Ironcliw_COMPONENTS="{','.join(components)}"
 export BACKEND_PORT=8010
 
 # Start backend
 python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8010 &
 
 # Signal ready
-echo "JARVIS_READY" > /tmp/jarvis_ready
+echo "Ironcliw_READY" > /tmp/jarvis_ready
 curl -X POST http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/jarvis/ready \\
     -H "Metadata-Flavor: Google" \\
     -d "true" 2>/dev/null || true
 
-echo "=== JARVIS GCP Instance Ready ===" | tee -a /var/log/jarvis-startup.log
+echo "=== Ironcliw GCP Instance Ready ===" | tee -a /var/log/jarvis-startup.log
 '''
 
     async def _wait_for_gcp_ready(self, instance_id: str, timeout: int = 300) -> bool:
@@ -22351,7 +22351,7 @@ class IntelligenceRegistry:
         Each manager gets an individual timeout (env-var configurable) so one
         hanging manager cannot block the entire intelligence phase.
         """
-        requested_timeout = _get_env_float("JARVIS_INTEL_MANAGER_TIMEOUT", 30.0)
+        requested_timeout = _get_env_float("Ironcliw_INTEL_MANAGER_TIMEOUT", 30.0)
         _per_mgr_timeout = max(5.0, requested_timeout)
         self._last_init_errors = {}
         results: Dict[str, bool] = {}
@@ -22422,7 +22422,7 @@ class PersistentConversationMemoryAgent:
     Responsibilities:
     - Load high-signal historical interactions and preferences on boot
     - Persist significant conversations, decisions, and preferences to SQLite
-    - Publish cross-repo memory snapshot for JARVIS/Prime/Reactor coordination
+    - Publish cross-repo memory snapshot for Ironcliw/Prime/Reactor coordination
     - Provide bounded, async, non-blocking ingestion with deterministic shutdown
     """
 
@@ -22432,24 +22432,24 @@ class PersistentConversationMemoryAgent:
         self.session_id = f"memory_{uuid.uuid4().hex[:12]}"
         self._logger = logging.getLogger("jarvis.memory_agent")
 
-        self._queue_maxsize = max(100, int(os.getenv("JARVIS_MEMORY_QUEUE_SIZE", "2000")))
-        self._worker_count = max(1, int(os.getenv("JARVIS_MEMORY_WORKERS", "2")))
-        self._drain_timeout = float(os.getenv("JARVIS_MEMORY_DRAIN_TIMEOUT", "20.0"))
-        self._init_timeout = float(os.getenv("JARVIS_MEMORY_INIT_TIMEOUT", "25.0"))
+        self._queue_maxsize = max(100, int(os.getenv("Ironcliw_MEMORY_QUEUE_SIZE", "2000")))
+        self._worker_count = max(1, int(os.getenv("Ironcliw_MEMORY_WORKERS", "2")))
+        self._drain_timeout = float(os.getenv("Ironcliw_MEMORY_DRAIN_TIMEOUT", "20.0"))
+        self._init_timeout = float(os.getenv("Ironcliw_MEMORY_INIT_TIMEOUT", "25.0"))
         self._boot_load_timeout = float(
-            os.getenv("JARVIS_MEMORY_BOOT_LOAD_TIMEOUT", "8.0")
+            os.getenv("Ironcliw_MEMORY_BOOT_LOAD_TIMEOUT", "8.0")
         )
         self._boot_retry_attempts = max(
-            1, int(os.getenv("JARVIS_MEMORY_BOOT_RETRY_ATTEMPTS", "3"))
+            1, int(os.getenv("Ironcliw_MEMORY_BOOT_RETRY_ATTEMPTS", "3"))
         )
         self._boot_retry_backoff = float(
-            os.getenv("JARVIS_MEMORY_BOOT_RETRY_BACKOFF", "2.0")
+            os.getenv("Ironcliw_MEMORY_BOOT_RETRY_BACKOFF", "2.0")
         )
         self._boot_interaction_limit = max(
-            10, int(os.getenv("JARVIS_MEMORY_BOOT_INTERACTIONS", "200"))
+            10, int(os.getenv("Ironcliw_MEMORY_BOOT_INTERACTIONS", "200"))
         )
         self._boot_preference_limit = max(
-            10, int(os.getenv("JARVIS_MEMORY_BOOT_PREFERENCES", "200"))
+            10, int(os.getenv("Ironcliw_MEMORY_BOOT_PREFERENCES", "200"))
         )
         default_stage1_interactions = min(self._boot_interaction_limit, 40)
         default_stage1_preferences = min(self._boot_preference_limit, 40)
@@ -22457,14 +22457,14 @@ class PersistentConversationMemoryAgent:
             5,
             min(
                 self._boot_interaction_limit,
-                int(os.getenv("JARVIS_MEMORY_BOOT_STAGE1_INTERACTIONS", str(default_stage1_interactions))),
+                int(os.getenv("Ironcliw_MEMORY_BOOT_STAGE1_INTERACTIONS", str(default_stage1_interactions))),
             ),
         )
         self._boot_stage1_preference_limit = max(
             5,
             min(
                 self._boot_preference_limit,
-                int(os.getenv("JARVIS_MEMORY_BOOT_STAGE1_PREFERENCES", str(default_stage1_preferences))),
+                int(os.getenv("Ironcliw_MEMORY_BOOT_STAGE1_PREFERENCES", str(default_stage1_preferences))),
             ),
         )
         default_stage1_timeout = max(1.0, min(self._boot_load_timeout, self._init_timeout * 0.4))
@@ -22474,7 +22474,7 @@ class PersistentConversationMemoryAgent:
                 self._boot_load_timeout,
                 float(
                     os.getenv(
-                        "JARVIS_MEMORY_BOOT_STAGE1_TIMEOUT",
+                        "Ironcliw_MEMORY_BOOT_STAGE1_TIMEOUT",
                         f"{default_stage1_timeout:.1f}",
                     )
                 ),
@@ -22482,17 +22482,17 @@ class PersistentConversationMemoryAgent:
         )
         self._boot_query_timeout = max(
             0.5,
-            float(os.getenv("JARVIS_MEMORY_BOOT_QUERY_TIMEOUT", "6.0")),
+            float(os.getenv("Ironcliw_MEMORY_BOOT_QUERY_TIMEOUT", "6.0")),
         )
         self._boot_cache_max_age = max(
             30.0,
-            float(os.getenv("JARVIS_MEMORY_BOOT_CACHE_MAX_AGE", "1800.0")),
+            float(os.getenv("Ironcliw_MEMORY_BOOT_CACHE_MAX_AGE", "1800.0")),
         )
         self._min_preference_confidence = float(
-            os.getenv("JARVIS_MEMORY_MIN_PREF_CONFIDENCE", "0.55")
+            os.getenv("Ironcliw_MEMORY_MIN_PREF_CONFIDENCE", "0.55")
         )
         self._persist_only_significant = (
-            os.getenv("JARVIS_MEMORY_SIGNIFICANT_ONLY", "true").lower()
+            os.getenv("Ironcliw_MEMORY_SIGNIFICANT_ONLY", "true").lower()
             in ("1", "true", "yes")
         )
 
@@ -22542,16 +22542,16 @@ class PersistentConversationMemoryAgent:
 
         # Stage 0.5: Capture startup pressure and dynamically shape stage-1 load.
         _pressure_cpu_threshold = float(
-            os.getenv("JARVIS_MEMORY_BOOT_PRESSURE_CPU_THRESHOLD", "92.0")
+            os.getenv("Ironcliw_MEMORY_BOOT_PRESSURE_CPU_THRESHOLD", "92.0")
         )
         _pressure_mem_threshold = float(
-            os.getenv("JARVIS_MEMORY_BOOT_PRESSURE_MEMORY_THRESHOLD", "84.0")
+            os.getenv("Ironcliw_MEMORY_BOOT_PRESSURE_MEMORY_THRESHOLD", "84.0")
         )
         _stage1_limit_cap = max(
             5,
             int(
                 os.getenv(
-                    "JARVIS_MEMORY_BOOT_STAGE1_PRESSURE_LIMIT",
+                    "Ironcliw_MEMORY_BOOT_STAGE1_PRESSURE_LIMIT",
                     "12",
                 )
             ),
@@ -22560,7 +22560,7 @@ class PersistentConversationMemoryAgent:
             1.0,
             float(
                 os.getenv(
-                    "JARVIS_MEMORY_BOOT_STAGE1_PRESSURE_TIMEOUT_SCALE",
+                    "Ironcliw_MEMORY_BOOT_STAGE1_PRESSURE_TIMEOUT_SCALE",
                     "1.6",
                 )
             ),
@@ -22569,7 +22569,7 @@ class PersistentConversationMemoryAgent:
             1.0,
             float(
                 os.getenv(
-                    "JARVIS_MEMORY_BOOT_STAGE1_TIMEOUT_CAP",
+                    "Ironcliw_MEMORY_BOOT_STAGE1_TIMEOUT_CAP",
                     str(max(self._init_timeout, self._boot_load_timeout)),
                 )
             ),
@@ -22613,7 +22613,7 @@ class PersistentConversationMemoryAgent:
         # Under severe startup pressure, avoid blocking startup on a DB roundtrip.
         _defer_under_compound_pressure = (
             os.getenv(
-                "JARVIS_MEMORY_BOOT_DEFER_UNDER_COMPOUND_PRESSURE", "true"
+                "Ironcliw_MEMORY_BOOT_DEFER_UNDER_COMPOUND_PRESSURE", "true"
             ).lower()
             in ("1", "true", "yes")
         )
@@ -23182,7 +23182,7 @@ class PersistentConversationMemoryAgent:
         # v265.0: Add timeout — get_learning_database() can hang if Cloud SQL
         # or FAISS index loading is slow. Without this, the outer stage-1 timeout
         # fires on asyncio.shield() which doesn't actually cancel the inner task.
-        _db_init_timeout = float(os.environ.get("JARVIS_LEARNING_DB_INIT_TIMEOUT", "10.0"))
+        _db_init_timeout = float(os.environ.get("Ironcliw_LEARNING_DB_INIT_TIMEOUT", "10.0"))
         return await asyncio.wait_for(
             get_learning_database(
                 config={"enable_ml_features": False},
@@ -23402,22 +23402,22 @@ class PersistentConversationMemoryAgent:
 # ZONE 4.5: LEARNING GOALS DISCOVERY SYSTEM
 # =============================================================================
 # v108.0: Intelligent learning goals discovery with reactor-core integration
-# Analyzes experiences, logs, and corrections to discover what JARVIS needs to learn
+# Analyzes experiences, logs, and corrections to discover what Ironcliw needs to learn
 
 class DiscoverySource(Enum):
     """Sources of discovered learning topics."""
 
-    CORRECTION = "correction"  # User corrected JARVIS
+    CORRECTION = "correction"  # User corrected Ironcliw
     FAILED_INTERACTION = "failed_interaction"  # Low quality_score
     USER_QUESTION = "user_question"  # User asked about something
-    UNKNOWN_TERM = "unknown_term"  # JARVIS didn't recognize a term
+    UNKNOWN_TERM = "unknown_term"  # Ironcliw didn't recognize a term
     TRENDING = "trending"  # Frequently mentioned topic
     MANUAL = "manual"  # Manually added topic
 
 @dataclass
 class DiscoveredTopic:
     """
-    A topic discovered for JARVIS to learn.
+    A topic discovered for Ironcliw to learn.
 
     Attributes:
         topic: The topic name/identifier
@@ -23481,7 +23481,7 @@ class IntelligentLearningGoalsDiscovery:
     - Safe Scout integration for automated scraping
     - Real-time progress broadcasts
 
-    This class analyzes JARVIS's interactions to discover what topics
+    This class analyzes Ironcliw's interactions to discover what topics
     it needs to learn about to improve future responses.
     """
 
@@ -23998,7 +23998,7 @@ class IntelligentLearningGoalsDiscovery:
 
     async def discover_from_logs(self, log_dir: Path) -> List[DiscoveredTopic]:
         """
-        Discover topics from JARVIS log files.
+        Discover topics from Ironcliw log files.
 
         Args:
             log_dir: Directory containing log files
@@ -24210,7 +24210,7 @@ class CollectiveAI:
     - Proactive recommendation generation
     - Adaptive learning from system interactions
 
-    This is the highest level of JARVIS's intelligence, combining
+    This is the highest level of Ironcliw's intelligence, combining
     all subsystems into a unified understanding.
     """
 
@@ -24416,7 +24416,7 @@ class CollectiveAI:
 
 class DataFlywheelManager:
     """
-    Self-improving learning loop that continuously improves JARVIS.
+    Self-improving learning loop that continuously improves Ironcliw.
 
     The Data Flywheel captures user interactions, extracts learning signals,
     and feeds them back into the training pipeline for continuous improvement.
@@ -24792,8 +24792,8 @@ class TrinityHealthMonitor:
     heartbeat-only implementation when the backend module is not importable.
 
     Monitors health of:
-    - JARVIS (main body)
-    - JARVIS Prime (Tier-0 brain)
+    - Ironcliw (main body)
+    - Ironcliw Prime (Tier-0 brain)
     - Reactor Core (training pipeline)
 
     Features:
@@ -25490,12 +25490,12 @@ class OuroborosEngine:
     """
     Self-improvement engine using autonomous code evolution.
 
-    The Ouroboros Engine enables JARVIS to improve its own code through:
+    The Ouroboros Engine enables Ironcliw to improve its own code through:
     - Genetic algorithm for multi-path improvement
     - AST-based code analysis and semantic diff
     - Test-driven validation with mutation testing
     - Git-based rollback protection
-    - LLM-powered code generation via JARVIS Prime
+    - LLM-powered code generation via Ironcliw Prime
 
     Safety Features:
     - Sandbox execution for testing changes
@@ -25512,7 +25512,7 @@ class OuroborosEngine:
         require_approval: bool = True,
         min_test_coverage: float = 0.8,
     ) -> None:
-        self._project_root = project_root or Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent"
+        self._project_root = project_root or Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent"
         self._enable_auto_improve = enable_auto_improve
         self._max_changes_per_hour = max_changes_per_hour
         self._require_approval = require_approval
@@ -25530,8 +25530,8 @@ class OuroborosEngine:
         # Improvement goals queue
         self._improvement_goals: List[Dict[str, Any]] = []
 
-        # LLM client (JARVIS Prime)
-        self._jprime_url = os.getenv("JARVIS_PRIME_URL", f"http://localhost:{os.getenv('JARVIS_PRIME_PORT', '8001')}")  # v238.0: Dynamic port
+        # LLM client (Ironcliw Prime)
+        self._jprime_url = os.getenv("Ironcliw_PRIME_URL", f"http://localhost:{os.getenv('Ironcliw_PRIME_PORT', '8001')}")  # v238.0: Dynamic port
 
         # Git integration
         self._git_enabled = self._check_git_available()
@@ -25639,7 +25639,7 @@ class OuroborosEngine:
         improvement_goal: str,
         context: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Generate improved code via JARVIS Prime."""
+        """Generate improved code via Ironcliw Prime."""
         prompt = f"""You are an expert code improvement assistant. Your task is to improve the following code file.
 
 FILE: {target_file}
@@ -26729,7 +26729,7 @@ class CrossRepoExperienceForwarder:
     """
     Forwards learning experiences to Reactor Core for training.
 
-    Handles the JARVIS → Reactor Core data pipeline:
+    Handles the Ironcliw → Reactor Core data pipeline:
     - Batch collection of user interactions
     - Quality filtering and validation
     - Retry with exponential backoff
@@ -27290,7 +27290,7 @@ class DistributedStateCoordinator:
     """
     Cross-repo state synchronization using file-based coordination.
 
-    Manages distributed state across JARVIS, JARVIS Prime, and Reactor Core:
+    Manages distributed state across Ironcliw, Ironcliw Prime, and Reactor Core:
     - State versioning with vector clocks
     - Conflict resolution (last-writer-wins with merge)
     - State snapshots and recovery
@@ -27947,11 +27947,11 @@ class TrinityOrchestrationEngine:
 
 class IntelligentWorkloadBalancer:
     """
-    Intelligent workload distribution across JARVIS components.
+    Intelligent workload distribution across Ironcliw components.
 
     Balances requests across:
     - Local processing (Mac)
-    - JARVIS Prime (Tier-0 brain)
+    - Ironcliw Prime (Tier-0 brain)
     - Reactor Core (training)
     - Cloud Run (overflow)
     - GCP Spot VMs (batch processing)
@@ -29333,7 +29333,7 @@ class DynamicConfigurationManager:
 
         # Load from environment
         for key in self._schema.keys():
-            env_key = f"JARVIS_{key.upper()}"
+            env_key = f"Ironcliw_{key.upper()}"
             env_value = os.environ.get(env_key)
             if env_value is not None:
                 self.set(key, env_value)
@@ -31992,9 +31992,9 @@ class SecretVaultManager:
 
     def _load_from_env(self) -> None:
         """Load secrets from environment variables."""
-        # Look for JARVIS_SECRET_* environment variables
+        # Look for Ironcliw_SECRET_* environment variables
         for key, value in os.environ.items():
-            if key.startswith("JARVIS_SECRET_"):
+            if key.startswith("Ironcliw_SECRET_"):
                 name = key[14:].lower()
                 self._secrets[name] = SecretEntry(
                     name=name,
@@ -41509,7 +41509,7 @@ class ConfigurationManager:
     async def _load_defaults(self) -> None:
         """Load default configuration values."""
         defaults = {
-            "app.name": "JARVIS",
+            "app.name": "Ironcliw",
             "app.version": "1.0.0",
             "app.debug": False,
             "server.host": "0.0.0.0",
@@ -41530,7 +41530,7 @@ class ConfigurationManager:
 
     async def _load_from_environment(self) -> None:
         """Load configuration from environment variables."""
-        prefix = "JARVIS_"
+        prefix = "Ironcliw_"
         for key, value in os.environ.items():
             if key.startswith(prefix):
                 config_key = key[len(prefix):].lower().replace("__", ".")
@@ -54321,11 +54321,11 @@ class ZombieProcessInfo:
 
 class ComprehensiveZombieCleanup:
     """
-    Comprehensive Zombie Cleanup System for JARVIS Ecosystem.
+    Comprehensive Zombie Cleanup System for Ironcliw Ecosystem.
 
     This system provides ultra-robust cleanup across all services:
-    - JARVIS (main backend) - typically port 8010
-    - JARVIS-Prime (J-Prime Mind) - typically port 8001
+    - Ironcliw (main backend) - typically port 8010
+    - Ironcliw-Prime (J-Prime Mind) - typically port 8001
     - Reactor-Core (Nerves) - typically port 8090
 
     Features:
@@ -54399,7 +54399,7 @@ class ComprehensiveZombieCleanup:
             ports["jarvis-websocket"] = [ws_port]
 
         # Trinity ports from environment
-        jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
+        jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("Ironcliw_PRIME_PORT", "8001")))
         reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", os.getenv("REACTOR_CORE_PORT", "8090")))
         ports["jarvis-prime"] = [jprime_port]
         ports["reactor-core"] = [reactor_port]
@@ -54613,7 +54613,7 @@ class ComprehensiveZombieCleanup:
         return discovered
 
     def _discover_from_patterns(self) -> Dict[int, ZombieProcessInfo]:
-        """Discover processes matching JARVIS patterns."""
+        """Discover processes matching Ironcliw patterns."""
         try:
             import psutil
         except (ImportError, SystemExit):
@@ -54684,7 +54684,7 @@ class ComprehensiveZombieCleanup:
                     cmdline = " ".join(proc.info.get('cmdline') or [])
                     cmdline_lower = cmdline.lower()
 
-                    # Only check JARVIS-related processes
+                    # Only check Ironcliw-related processes
                     is_jarvis_related = any(
                         re.search(pattern, cmdline_lower)
                         for pattern in self._process_patterns
@@ -55332,20 +55332,20 @@ class HotReloadWatcher:
     def __init__(self, config: SystemKernelConfig, logger: UnifiedLogger) -> None:
         self.config = config
         self.logger = logger
-        self.repo_root = Path(os.getenv("JARVIS_PROJECT_ROOT", str(Path(__file__).parent)))
+        self.repo_root = Path(os.getenv("Ironcliw_PROJECT_ROOT", str(Path(__file__).parent)))
         self.frontend_dir = self.repo_root / "frontend"
         self.backend_dir = self.repo_root / "backend"
 
         # Configuration from environment
         self.enabled = self.config.hot_reload_enabled
-        self.grace_period = int(os.getenv("JARVIS_RELOAD_GRACE_PERIOD", "120"))
+        self.grace_period = int(os.getenv("Ironcliw_RELOAD_GRACE_PERIOD", "120"))
         self.check_interval = self.config.reload_check_interval
-        self.cooldown_seconds = int(os.getenv("JARVIS_RELOAD_COOLDOWN", "10"))
-        self.verbose = os.getenv("JARVIS_RELOAD_VERBOSE", "false").lower() == "true"
+        self.cooldown_seconds = int(os.getenv("Ironcliw_RELOAD_COOLDOWN", "10"))
+        self.verbose = os.getenv("Ironcliw_RELOAD_VERBOSE", "false").lower() == "true"
 
         # Frontend-specific config
-        self.frontend_auto_rebuild = os.getenv("JARVIS_FRONTEND_AUTO_REBUILD", "true").lower() == "true"
-        self.frontend_dev_server_port = int(os.getenv("JARVIS_FRONTEND_DEV_PORT", "3000"))
+        self.frontend_auto_rebuild = os.getenv("Ironcliw_FRONTEND_AUTO_REBUILD", "true").lower() == "true"
+        self.frontend_dev_server_port = int(os.getenv("Ironcliw_FRONTEND_DEV_PORT", "3000"))
 
         # Intelligent file type registry
         self._type_registry = IntelligentFileTypeRegistry(self.repo_root, logger)
@@ -55437,7 +55437,7 @@ class HotReloadWatcher:
             return True
 
         if not self.frontend_auto_rebuild:
-            self.logger.info("   ⚠️ Frontend auto-rebuild disabled (JARVIS_FRONTEND_AUTO_REBUILD=false)")
+            self.logger.info("   ⚠️ Frontend auto-rebuild disabled (Ironcliw_FRONTEND_AUTO_REBUILD=false)")
             return False
 
         if not self.frontend_dir.exists():
@@ -55954,7 +55954,7 @@ class PhaseConfig:
 
 class StartupWatchdog:
     """
-    v186.0: Dead Man's Switch for JARVIS startup phases.
+    v186.0: Dead Man's Switch for Ironcliw startup phases.
     
     Monitors startup progress and takes graduated action if a phase stalls:
     1. warn - Log warning, continue waiting
@@ -55969,10 +55969,10 @@ class StartupWatchdog:
     - Environment-driven configuration
     
     Environment Variables:
-        JARVIS_DMS_ENABLED: Enable watchdog (default: true)
-        JARVIS_DMS_STALL_THRESHOLD: Seconds with no progress = stall (default: 60)
-        JARVIS_DMS_CHECK_INTERVAL: Check frequency in seconds (default: 5)
-        JARVIS_DMS_RECOVERY_MODE: graduated, aggressive, passive (default: graduated)
+        Ironcliw_DMS_ENABLED: Enable watchdog (default: true)
+        Ironcliw_DMS_STALL_THRESHOLD: Seconds with no progress = stall (default: 60)
+        Ironcliw_DMS_CHECK_INTERVAL: Check frequency in seconds (default: 5)
+        Ironcliw_DMS_RECOVERY_MODE: graduated, aggressive, passive (default: graduated)
     """
     
     # v192.0: INTELLIGENT PHASE TIMEOUT SYNCHRONIZATION
@@ -55983,21 +55983,21 @@ class StartupWatchdog:
     # DMS uses registered timeout, falling back to defaults only if not registered.
     #
     # Operational timeout sources:
-    # - resources: JARVIS_RESOURCE_TIMEOUT (default 300s)
+    # - resources: Ironcliw_RESOURCE_TIMEOUT (default 300s)
     # - trinity: HOLLOW_CLIENT_TIMEOUT_MULTIPLIER * base (up to 300s)
-    # - backend: JARVIS_BACKEND_STARTUP_TIMEOUT (default 90s)
+    # - backend: Ironcliw_BACKEND_STARTUP_TIMEOUT (default 90s)
     #
-    # Environment overrides: JARVIS_DMS_TIMEOUT_<PHASE>=<seconds>
+    # Environment overrides: Ironcliw_DMS_TIMEOUT_<PHASE>=<seconds>
     # v210.0: Added 'two_tier' phase for VBIA/Watchdog initialization
     DEFAULT_PHASES: Dict[str, PhaseConfig] = {
         "clean_slate": PhaseConfig("Clean Slate", 30.0, 0, 5, "diagnostic"),
         "loading_server": PhaseConfig("Loading Server", 45.0, 5, 15, "restart"),
         "preflight": PhaseConfig("Preflight", 60.0, 15, 25, "diagnostic"),
-        # v192.0: Resources timeout synced with JARVIS_RESOURCE_TIMEOUT (default 300s + 30s buffer)
+        # v192.0: Resources timeout synced with Ironcliw_RESOURCE_TIMEOUT (default 300s + 30s buffer)
         "resources": PhaseConfig("Resources", 330.0, 25, 45, "restart"),
         # v232.1: Backend recovery changed from "restart" to "diagnostic".
         # Restarting mid-model-load is destructive — kills Prime at 87%.
-        # Timeout increased from 120→360s (JARVIS_BACKEND_STARTUP_TIMEOUT default 300 + 60s buffer).
+        # Timeout increased from 120→360s (Ironcliw_BACKEND_STARTUP_TIMEOUT default 300 + 60s buffer).
         "backend": PhaseConfig("Backend", 360.0, 45, 55, "diagnostic"),
         "intelligence": PhaseConfig("Intelligence", 120.0, 55, 65, "diagnostic"),  # v192.0: Increased
         # v210.0: Two-Tier Security phase (VBIA Adapter + Agentic Watchdog)
@@ -56009,14 +56009,14 @@ class StartupWatchdog:
         # v236.1: enterprise progress_start fixed from 75→80 to match actual update_phase(80)
         "enterprise": PhaseConfig("Enterprise", 120.0, 80, 85, "diagnostic"),
         # v3.2: Permissions phase — macOS Screen Recording TCC check (v264.0).
-        # Timeout 40s = 10s operational (JARVIS_PERMISSION_CHECK_TIMEOUT) + 30s buffer.
+        # Timeout 40s = 10s operational (Ironcliw_PERMISSION_CHECK_TIMEOUT) + 30s buffer.
         # Non-critical: diagnostic only, never restart for a permission check.
         "permissions": PhaseConfig("Permissions", 40.0, 85, 85, "diagnostic"),
         # v258.3: Ghost Display moved before AGI OS to avoid CPU contention with ML loading
         # v240.0: Ghost Display — software-defined virtual display via BetterDisplay
         "ghost_display": PhaseConfig("Ghost Display", 45.0, 85, 86, "diagnostic"),
         # v236.1: AGI OS phase — autonomous features initialization
-        # Timeout 90s = 60s operational (JARVIS_AGI_OS_TIMEOUT) + 30s DMS buffer.
+        # Timeout 90s = 60s operational (Ironcliw_AGI_OS_TIMEOUT) + 30s DMS buffer.
         # register_phase_timeout() will overwrite with computed value, but this
         # provides the correct fallback if operational_timeout is not passed.
         "agi_os": PhaseConfig("AGI OS", 90.0, 86, 90, "diagnostic"),  # v258.3: 85-88 → 86-90
@@ -56049,10 +56049,10 @@ class StartupWatchdog:
         self._rollback_callback = rollback_callback
         
         # Configuration from environment
-        self._enabled = _get_env_bool("JARVIS_DMS_ENABLED", True)
-        self._stall_threshold = _get_env_float("JARVIS_DMS_STALL_THRESHOLD", 60.0)
-        self._check_interval = _get_env_float("JARVIS_DMS_CHECK_INTERVAL", 5.0)
-        self._recovery_mode = os.environ.get("JARVIS_DMS_RECOVERY_MODE", "graduated").strip().lower()
+        self._enabled = _get_env_bool("Ironcliw_DMS_ENABLED", True)
+        self._stall_threshold = _get_env_float("Ironcliw_DMS_STALL_THRESHOLD", 60.0)
+        self._check_interval = _get_env_float("Ironcliw_DMS_CHECK_INTERVAL", 5.0)
+        self._recovery_mode = os.environ.get("Ironcliw_DMS_RECOVERY_MODE", "graduated").strip().lower()
         if self._recovery_mode not in {"graduated", "aggressive", "passive"}:
             self._logger.warning(
                 f"[DMS] Invalid recovery mode '{self._recovery_mode}' - using 'graduated'"
@@ -56060,10 +56060,10 @@ class StartupWatchdog:
             self._recovery_mode = "graduated"
 
         # v187.0: Apply environment overrides for phase timeouts
-        # e.g., JARVIS_DMS_TIMEOUT_TRINITY=300 sets Trinity to 5 minutes
+        # e.g., Ironcliw_DMS_TIMEOUT_TRINITY=300 sets Trinity to 5 minutes
         self._phase_configs = dict(self.DEFAULT_PHASES)  # Copy defaults
         for phase_key, phase_config in self._phase_configs.items():
-            env_key = f"JARVIS_DMS_TIMEOUT_{phase_key.upper()}"
+            env_key = f"Ironcliw_DMS_TIMEOUT_{phase_key.upper()}"
             env_value = os.environ.get(env_key)
             if env_value:
                 try:
@@ -56122,22 +56122,22 @@ class StartupWatchdog:
         # minimum spacing between escalation steps.
         self._last_timeout_action_time: Dict[str, float] = {}
         self._escalation_cooldown = _get_env_float(
-            "JARVIS_DMS_ESCALATION_COOLDOWN", 60.0
+            "Ironcliw_DMS_ESCALATION_COOLDOWN", 60.0
         )
         # v250.1: Stall handler also needs cooldown — same rapid-fire bug.
         # Without this, stall handler escalates warn→diag→restart×3→rollback
         # in 25 seconds (5s check interval × 5 escalation steps). With cooldown,
-        # each escalation step waits JARVIS_DMS_STALL_ESCALATION_COOLDOWN (default
+        # each escalation step waits Ironcliw_DMS_STALL_ESCALATION_COOLDOWN (default
         # 15s) before the next, giving the init time to complete.
         self._last_stall_action_time: Dict[str, float] = {}
         self._stall_escalation_cooldown = _get_env_float(
-            "JARVIS_DMS_STALL_ESCALATION_COOLDOWN", 15.0
+            "Ironcliw_DMS_STALL_ESCALATION_COOLDOWN", 15.0
         )
 
         # v232.2: Progress-aware watchdog — don't kill processes that are advancing
         self._progress_history: List[Tuple[float, int]] = []  # (timestamp, progress)
         self._progress_advancing_window = _get_env_float(
-            "JARVIS_DMS_PROGRESS_WINDOW", 120.0
+            "Ironcliw_DMS_PROGRESS_WINDOW", 120.0
         )  # Consider progress "advancing" if it changed within this window
 
         # v3.2: Parallel initializer coordination — DMS defers to parallel_init's
@@ -56192,8 +56192,8 @@ class StartupWatchdog:
 
         # v232.2: Memory pressure circuit breaker
         rate = self._get_progress_rate()
-        _ram_pct_threshold = _get_env_float("JARVIS_DMS_RAM_PRESSURE_PCT", 90.0)
-        _min_rate_threshold = _get_env_float("JARVIS_DMS_MIN_PROGRESS_RATE", 0.05)
+        _ram_pct_threshold = _get_env_float("Ironcliw_DMS_RAM_PRESSURE_PCT", 90.0)
+        _min_rate_threshold = _get_env_float("Ironcliw_DMS_MIN_PROGRESS_RATE", 0.05)
         try:
             import psutil as _psutil_check
             ram_pct = _psutil_check.virtual_memory().percent
@@ -56412,7 +56412,7 @@ class StartupWatchdog:
     async def start(self) -> None:
         """Start the watchdog background task."""
         if not self._enabled:
-            self._logger.debug("[DMS] Dead Man's Switch disabled via JARVIS_DMS_ENABLED=false")
+            self._logger.debug("[DMS] Dead Man's Switch disabled via Ironcliw_DMS_ENABLED=false")
             return
         
         if self._running:
@@ -57313,7 +57313,7 @@ class SemanticReadinessChecker:
 
 class TrinityIntegrator:
     """
-    Cross-repo integration for JARVIS Trinity architecture.
+    Cross-repo integration for Ironcliw Trinity architecture.
 
     Manages J-Prime (Mind) and Reactor-Core (Nerves) components:
     - Dynamic repo discovery
@@ -57322,7 +57322,7 @@ class TrinityIntegrator:
     - Coordinated shutdown
 
     The Trinity architecture:
-    - JARVIS (Body) - Main AI agent, this codebase
+    - Ironcliw (Body) - Main AI agent, this codebase
     - J-Prime (Mind) - Local LLM inference, tier-0 brain
     - Reactor-Core (Nerves) - Training pipeline, model optimization
 
@@ -57391,8 +57391,8 @@ class TrinityIntegrator:
         if jprime_path:
             # v238.0: Default 8001 (was 8000). Aligns with trinity_config.py v192.2
             # which changed to 8001 to avoid conflicts with unified_supervisor.
-            # Resolution chain: TRINITY_JPRIME_PORT → JARVIS_PRIME_PORT → 8001
-            jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
+            # Resolution chain: TRINITY_JPRIME_PORT → Ironcliw_PRIME_PORT → 8001
+            jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("Ironcliw_PRIME_PORT", "8001")))
             self._jprime = TrinityComponent(
                 name="jarvis-prime",
                 repo_path=jprime_path,
@@ -57530,8 +57530,8 @@ class TrinityIntegrator:
         should_skip_prime = skip_prime or invincible_node_ready
         
         # v220.2: Check if Prime was already started by early pre-warm task
-        early_prime_pid = os.environ.get("JARVIS_EARLY_PRIME_PID")
-        early_prime_port = os.environ.get("JARVIS_EARLY_PRIME_PORT")
+        early_prime_pid = os.environ.get("Ironcliw_EARLY_PRIME_PID")
+        early_prime_port = os.environ.get("Ironcliw_EARLY_PRIME_PORT")
         prime_already_started = False
         
         if early_prime_pid and self._jprime and not should_skip_prime:
@@ -57560,17 +57560,17 @@ class TrinityIntegrator:
                 # This signals the Early Prime monitor to stop (it will use handoff=True
                 # to preserve max_progress_seen). Trinity monitor will pick up seamlessly.
                 self.logger.info("[Trinity] 🔄 Initiating Early Prime → Trinity handoff (preserving progress)")
-                del os.environ["JARVIS_EARLY_PRIME_PID"]
-                if "JARVIS_EARLY_PRIME_PORT" in os.environ:
-                    del os.environ["JARVIS_EARLY_PRIME_PORT"]
+                del os.environ["Ironcliw_EARLY_PRIME_PID"]
+                if "Ironcliw_EARLY_PRIME_PORT" in os.environ:
+                    del os.environ["Ironcliw_EARLY_PRIME_PORT"]
                     
             except (ValueError, ProcessLookupError, OSError) as e:
                 self.logger.debug(f"[Trinity] Early Prime process not found or dead: {e}")
                 # Clear stale env vars
-                if "JARVIS_EARLY_PRIME_PID" in os.environ:
-                    del os.environ["JARVIS_EARLY_PRIME_PID"]
-                if "JARVIS_EARLY_PRIME_PORT" in os.environ:
-                    del os.environ["JARVIS_EARLY_PRIME_PORT"]
+                if "Ironcliw_EARLY_PRIME_PID" in os.environ:
+                    del os.environ["Ironcliw_EARLY_PRIME_PID"]
+                if "Ironcliw_EARLY_PRIME_PORT" in os.environ:
+                    del os.environ["Ironcliw_EARLY_PRIME_PORT"]
 
         if should_skip_prime and self._jprime:
             self.logger.info(
@@ -57667,12 +57667,12 @@ class TrinityIntegrator:
             
             # Map component name to ComponentType
             component_type_map = {
-                "jarvis-prime": ComponentType.JARVIS_PRIME,
-                "jarvis_prime": ComponentType.JARVIS_PRIME,
+                "jarvis-prime": ComponentType.Ironcliw_PRIME,
+                "jarvis_prime": ComponentType.Ironcliw_PRIME,
                 "reactor-core": ComponentType.REACTOR_CORE,
                 "reactor_core": ComponentType.REACTOR_CORE,
-                "jarvis-body": ComponentType.JARVIS_BODY,
-                "jarvis_body": ComponentType.JARVIS_BODY,
+                "jarvis-body": ComponentType.Ironcliw_BODY,
+                "jarvis_body": ComponentType.Ironcliw_BODY,
             }
             
             comp_type = component_type_map.get(component.name.lower().replace("-", "_"))
@@ -57755,8 +57755,8 @@ class TrinityIntegrator:
 
         Strategy:
         1. Check if preferred port is available
-        2. If not, identify and kill stale JARVIS/Trinity processes on that port
-        3. If still occupied by non-JARVIS process, try fallback ports
+        2. If not, identify and kill stale Ironcliw/Trinity processes on that port
+        3. If still occupied by non-Ironcliw process, try fallback ports
         4. Return the port that will be used (may differ from original)
 
         Args:
@@ -57819,7 +57819,7 @@ class TrinityIntegrator:
             return None
 
         def _is_jarvis_process(pid: int) -> bool:
-            """Check if a PID belongs to a JARVIS/Trinity process (safe to kill)."""
+            """Check if a PID belongs to a Ironcliw/Trinity process (safe to kill)."""
             try:
                 import psutil
                 proc = psutil.Process(pid)
@@ -57835,7 +57835,7 @@ class TrinityIntegrator:
                 return False
 
         async def _kill_process_on_port(port: int) -> bool:
-            """Kill the process holding a port if it's a JARVIS process."""
+            """Kill the process holding a port if it's a Ironcliw process."""
             # v201.0: Use asyncio.to_thread() to avoid blocking the event loop
             pid = await asyncio.to_thread(_get_pid_on_port, port)
             if not pid:
@@ -57848,18 +57848,18 @@ class TrinityIntegrator:
                 self.logger.warning(f"[Trinity]   Port {port} held by current process - cannot free")
                 return False
 
-            # Only kill JARVIS-related processes
+            # Only kill Ironcliw-related processes
             # v201.0: Use asyncio.to_thread() to avoid blocking
             is_jarvis = await asyncio.to_thread(_is_jarvis_process, pid)
             if not is_jarvis:
                 self.logger.warning(
-                    f"[Trinity]   Port {port} held by non-JARVIS process (PID {pid}) - "
+                    f"[Trinity]   Port {port} held by non-Ironcliw process (PID {pid}) - "
                     f"will try fallback port"
                 )
                 return False
 
-            # Kill the stale JARVIS process
-            self.logger.info(f"[Trinity]   🔪 Killing stale JARVIS process on port {port} (PID {pid})...")
+            # Kill the stale Ironcliw process
+            self.logger.info(f"[Trinity]   🔪 Killing stale Ironcliw process on port {port} (PID {pid})...")
             try:
                 os.kill(pid, signal.SIGTERM)
                 await asyncio.sleep(0.5)  # Give it time to terminate
@@ -58146,7 +58146,7 @@ class TrinityIntegrator:
         #
         # The fix ensures:
         # 1. Port is verified available BEFORE launching
-        # 2. Stale JARVIS processes are killed if holding the port
+        # 2. Stale Ironcliw processes are killed if holding the port
         # 3. Fallback to alternative port if original cannot be freed
         # =====================================================================
         try:
@@ -58171,30 +58171,30 @@ class TrinityIntegrator:
             # v238.0: Signal to child processes that they're orchestrated by
             # the unified supervisor. Prevents duplicate startup attempts from
             # other supervisors (e.g., reactor-core's run_supervisor.py).
-            env["JARVIS_ORCHESTRATED_BY"] = "unified_supervisor"
-            env["JARVIS_SUPERVISOR_PID"] = str(os.getpid())
+            env["Ironcliw_ORCHESTRATED_BY"] = "unified_supervisor"
+            env["Ironcliw_SUPERVISOR_PID"] = str(os.getpid())
 
             # v216.0: jarvis-prime specific optimizations
             # These enable local ML on hardware with <32GB RAM (e.g., 16GB MacBooks)
-            # and speed up startup since JARVIS body is already running
+            # and speed up startup since Ironcliw body is already running
             if component.name == "jarvis-prime":
                 # Allow local ML model loading even on 16GB RAM
                 # This enables TinyLlama/small models to run locally
-                if "JARVIS_HARDWARE_PROFILE" not in env:
-                    env["JARVIS_HARDWARE_PROFILE"] = "FULL"
-                    self.logger.debug("[Trinity]   → Set JARVIS_HARDWARE_PROFILE=FULL for local ML")
+                if "Ironcliw_HARDWARE_PROFILE" not in env:
+                    env["Ironcliw_HARDWARE_PROFILE"] = "FULL"
+                    self.logger.debug("[Trinity]   → Set Ironcliw_HARDWARE_PROFILE=FULL for local ML")
 
-                # Reduce startup grace period since JARVIS body is already running
+                # Reduce startup grace period since Ironcliw body is already running
                 # Default is 120s, but we only need ~30s when launched by supervisor
-                if "JARVIS_STARTUP_GRACE_PERIOD" not in env:
-                    env["JARVIS_STARTUP_GRACE_PERIOD"] = "30"
-                    self.logger.debug("[Trinity]   → Set JARVIS_STARTUP_GRACE_PERIOD=30s")
+                if "Ironcliw_STARTUP_GRACE_PERIOD" not in env:
+                    env["Ironcliw_STARTUP_GRACE_PERIOD"] = "30"
+                    self.logger.debug("[Trinity]   → Set Ironcliw_STARTUP_GRACE_PERIOD=30s")
 
                 # Reduce retry attempts for faster startup
                 # Default is 10, but 3 is enough when launched by supervisor
-                if "JARVIS_MAX_STARTUP_RETRIES" not in env:
-                    env["JARVIS_MAX_STARTUP_RETRIES"] = "3"
-                    self.logger.debug("[Trinity]   → Set JARVIS_MAX_STARTUP_RETRIES=3")
+                if "Ironcliw_MAX_STARTUP_RETRIES" not in env:
+                    env["Ironcliw_MAX_STARTUP_RETRIES"] = "3"
+                    self.logger.debug("[Trinity]   → Set Ironcliw_MAX_STARTUP_RETRIES=3")
 
             self.logger.info(f"[Trinity]   Launching: {venv_python} {launch_script} --port {component.port}")
 
@@ -58285,11 +58285,11 @@ class TrinityIntegrator:
                         f"OPTIONAL component, system continues"
                     )
                     self.logger.info(
-                        f"[Trinity]   💡 {component.name} is optional. Core JARVIS functionality remains available."
+                        f"[Trinity]   💡 {component.name} is optional. Core Ironcliw functionality remains available."
                     )
                     if component.name == "jarvis-prime":
                         self.logger.info(
-                            "[Trinity]   💡 Tip: Set JARVIS_PRIME_PATH env var or check ~/Documents/repos/jarvis-prime"
+                            "[Trinity]   💡 Tip: Set Ironcliw_PRIME_PATH env var or check ~/Documents/repos/jarvis-prime"
                         )
                 else:
                     # ERROR for required components (if any are configured as required)
@@ -58476,10 +58476,10 @@ class TrinityIntegrator:
                 pass
 
             _pa_max_deadline = timeout * _pa_ram_multiplier
-            _pa_max_extensions = int(os.environ.get("JARVIS_HEALTH_MAX_EXTENSIONS", "8"))
-            _pa_extension_buffer = float(os.environ.get("JARVIS_HEALTH_EXTENSION_BUFFER", "120.0"))
-            _pa_stall_threshold = float(os.environ.get("JARVIS_HEALTH_STALL_THRESHOLD", "120.0"))
-            _pa_near_completion_pct = float(os.environ.get("JARVIS_HEALTH_NEAR_COMPLETE_PCT", "85.0"))
+            _pa_max_extensions = int(os.environ.get("Ironcliw_HEALTH_MAX_EXTENSIONS", "8"))
+            _pa_extension_buffer = float(os.environ.get("Ironcliw_HEALTH_EXTENSION_BUFFER", "120.0"))
+            _pa_stall_threshold = float(os.environ.get("Ironcliw_HEALTH_STALL_THRESHOLD", "120.0"))
+            _pa_near_completion_pct = float(os.environ.get("Ironcliw_HEALTH_NEAR_COMPLETE_PCT", "85.0"))
         else:
             _pa_max_deadline = timeout
             _pa_max_extensions = 0
@@ -58495,7 +58495,7 @@ class TrinityIntegrator:
         # v233.1: Periodic diagnostic logging + proactive stall detection
         self._pa_stall_warned = False
         _pa_last_diag_time = start_time
-        _pa_diag_interval = float(os.environ.get("JARVIS_HEALTH_DIAG_INTERVAL", "30.0"))
+        _pa_diag_interval = float(os.environ.get("Ironcliw_HEALTH_DIAG_INTERVAL", "30.0"))
         _progress_source = "unknown"  # Default; updated per-iteration in model loading block
 
         # Create a reusable session for efficiency
@@ -58629,7 +58629,7 @@ class TrinityIntegrator:
                             _progress_source = "time_estimate"
                             _est_total = _pa_effective_deadline if _pa_effective_deadline > 0 else timeout
                             # v233.1: Configurable estimate cap (90 default, not 95)
-                            _progress_estimate_cap = int(os.environ.get("JARVIS_PROGRESS_ESTIMATE_CAP", "90"))
+                            _progress_estimate_cap = int(os.environ.get("Ironcliw_PROGRESS_ESTIMATE_CAP", "90"))
                             progress_pct = min(_progress_estimate_cap, int((elapsed / _est_total) * 100))
                         
                         # Get model name and stage from response
@@ -58690,17 +58690,17 @@ class TrinityIntegrator:
                     # v232.0: Readiness probe — verify actual inference works
                     if result.component_type == ComponentType.PRIME:
                         _smoke_enabled = os.environ.get(
-                            "JARVIS_READINESS_SMOKE_TEST", "true"
+                            "Ironcliw_READINESS_SMOKE_TEST", "true"
                         ).lower() in ("true", "1", "yes")
                         _smoke_hollow = (
-                            os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "") == "true"
+                            os.environ.get("Ironcliw_HOLLOW_CLIENT_ACTIVE", "") == "true"
                         )
 
                         if _smoke_enabled and not _smoke_hollow:
                             # v233.1: RAM-aware smoke test timeout for cold-start scenarios.
                             # First inference after model load on low-RAM machines triggers
                             # memory page faults that make 10s timeout always fail.
-                            _smoke_explicit = os.environ.get("JARVIS_SMOKE_TEST_TIMEOUT", "")
+                            _smoke_explicit = os.environ.get("Ironcliw_SMOKE_TEST_TIMEOUT", "")
                             if _smoke_explicit:
                                 _smoke_timeout = float(_smoke_explicit)
                             else:
@@ -58720,7 +58720,7 @@ class TrinityIntegrator:
                                 except Exception:
                                     pass
 
-                            _smoke_retries = int(os.environ.get("JARVIS_SMOKE_TEST_RETRIES", "2"))
+                            _smoke_retries = int(os.environ.get("Ironcliw_SMOKE_TEST_RETRIES", "2"))
 
                             self.logger.info(
                                 f"[Trinity] 🔬 Smoke test for {component.name}: "
@@ -58737,7 +58737,7 @@ class TrinityIntegrator:
                                 )
                             else:
                                 _smoke_blocking = os.environ.get(
-                                    "JARVIS_SMOKE_TEST_BLOCKING", "false"
+                                    "Ironcliw_SMOKE_TEST_BLOCKING", "false"
                                 ).lower() in ("true", "1", "yes")
                                 if _smoke_blocking:
                                     self.logger.error(
@@ -58829,7 +58829,7 @@ class TrinityIntegrator:
                         _pa_last_progress = _pa_current_progress
 
                     # v233.1: PROACTIVE stall warning — fires early, not just when deadline is near
-                    _pa_proactive_stall_s = float(os.environ.get("JARVIS_HEALTH_STALL_WARN_SECONDS", "90.0"))
+                    _pa_proactive_stall_s = float(os.environ.get("Ironcliw_HEALTH_STALL_WARN_SECONDS", "90.0"))
                     if _pa_proactive_stall_s > 0:
                         _pa_stall_dur = time.time() - _pa_last_progress_time
                         if (
@@ -59177,7 +59177,7 @@ class TrinityIntegrator:
 
         # v215.0: Add clear guidance for optional components
         if is_optional:
-            log_fn(f"[Trinity]   ✓ {component_name} is OPTIONAL - JARVIS continues without it")
+            log_fn(f"[Trinity]   ✓ {component_name} is OPTIONAL - Ironcliw continues without it")
             log_fn(f"[Trinity]   💡 Core voice commands, vision, and automation still work")
         
         log_fn(f"[Trinity] ─────────────────────────────────────────────")
@@ -59908,7 +59908,7 @@ class TrinityIntegrator:
 # =============================================================================
 # ZONE 5.8: UNIFIED TRINITY CONNECTOR (Enhanced Cross-Repo Orchestration)
 # =============================================================================
-#  - Master orchestrator for JARVIS, JARVIS Prime, and Reactor Core
+#  - Master orchestrator for Ironcliw, Ironcliw Prime, and Reactor Core
 #  - Cross-repo self-improvement with diff preview and approval
 #  - Atomic multi-repo transactions with 2PC
 #  - Distributed health consensus
@@ -59917,7 +59917,7 @@ class TrinityIntegrator:
 
 class UnifiedTrinityConnector:
     """
-    Master orchestrator that connects JARVIS, JARVIS Prime, and Reactor Core.
+    Master orchestrator that connects Ironcliw, Ironcliw Prime, and Reactor Core.
 
     This is the single point of coordination for the entire Trinity system,
     providing:
@@ -59932,8 +59932,8 @@ class UnifiedTrinityConnector:
     - UnifiedTrinityConnector handles cross-repo coordination (improvements, 2PC)
 
     Configuration (all from environment):
-    - JARVIS_PATH: Main JARVIS repo path (default: current directory)
-    - JARVIS_PRIME_PATH: Prime repo path (default: sibling dir)
+    - Ironcliw_PATH: Main Ironcliw repo path (default: current directory)
+    - Ironcliw_PRIME_PATH: Prime repo path (default: sibling dir)
     - REACTOR_CORE_PATH: Reactor repo path (default: sibling dir)
     - TRINITY_CONNECTOR_ENABLED: Enable/disable connector (default: true)
     """
@@ -59950,12 +59950,12 @@ class UnifiedTrinityConnector:
 
         # Repository paths (from environment)
         self._jarvis_path = Path(os.environ.get(
-            "JARVIS_PATH",
+            "Ironcliw_PATH",
             Path(__file__).parent
         ))
         self._prime_path = Path(os.environ.get(
-            "JARVIS_PRIME_PATH",
-            self._jarvis_path.parent / "JARVIS-Prime"
+            "Ironcliw_PRIME_PATH",
+            self._jarvis_path.parent / "Ironcliw-Prime"
         ))
         self._reactor_path = Path(os.environ.get(
             "REACTOR_CORE_PATH",
@@ -59997,7 +59997,7 @@ class UnifiedTrinityConnector:
         Initialize the Trinity connector.
 
         Sets up all enhanced components and establishes connections
-        to JARVIS Prime and Reactor Core.
+        to Ironcliw Prime and Reactor Core.
 
         Args:
             websocket_manager: WebSocket manager for real-time UI updates
@@ -60020,7 +60020,7 @@ class UnifiedTrinityConnector:
         self.logger.info("  UNIFIED TRINITY CONNECTOR v2.0")
         self.logger.info("=" * 60)
         self.logger.info(f"  Session: {self._session_id}")
-        self.logger.info(f"  JARVIS: {self._jarvis_path}")
+        self.logger.info(f"  Ironcliw: {self._jarvis_path}")
         self.logger.info(f"  Prime: {self._prime_path}")
         self.logger.info(f"  Reactor: {self._reactor_path}")
         self.logger.info("=" * 60)
@@ -60112,20 +60112,20 @@ class UnifiedTrinityConnector:
 
     async def _validate_repositories(self) -> None:
         """Validate all repository connections."""
-        # JARVIS (always available - we're in it)
+        # Ironcliw (always available - we're in it)
         self._health["jarvis"] = True
-        self.logger.info(f"  - JARVIS: ✓ (local)")
+        self.logger.info(f"  - Ironcliw: ✓ (local)")
 
-        # JARVIS Prime
+        # Ironcliw Prime
         if self._prime_path.exists():
             prime_git = self._prime_path / ".git"
             if prime_git.exists():
                 self._health["prime"] = True
-                self.logger.info(f"  - JARVIS Prime: ✓ ({self._prime_path})")
+                self.logger.info(f"  - Ironcliw Prime: ✓ ({self._prime_path})")
             else:
-                self.logger.warning(f"  - JARVIS Prime: ⚠ not a git repo")
+                self.logger.warning(f"  - Ironcliw Prime: ⚠ not a git repo")
         else:
-            self.logger.warning(f"  - JARVIS Prime: ⚠ not found ({self._prime_path})")
+            self.logger.warning(f"  - Ironcliw Prime: ⚠ not found ({self._prime_path})")
 
         # Reactor Core
         if self._reactor_path.exists():
@@ -60490,12 +60490,12 @@ def get_trinity_connector() -> UnifiedTrinityConnector:
         if MODULAR_ORCHESTRATOR_AVAILABLE and _modular_get_service_registry is not None:
             try:
                 registry = _modular_get_service_registry()
-                # Register JARVIS as the local service
+                # Register Ironcliw as the local service
                 registry.register(
                     name="jarvis",
-                    service_type=ModularServiceType.JARVIS,
+                    service_type=ModularServiceType.Ironcliw,
                     host="localhost",
-                    port=int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
+                    port=int(os.getenv("Ironcliw_BACKEND_PORT", "8010")),
                     health_endpoint="/health",
                 )
                 _logger = logging.getLogger("unified_supervisor.trinity")
@@ -60846,12 +60846,12 @@ class IPCServer:
             pass
 
 # =============================================================================
-# ZONE 6.3: JARVIS SYSTEM KERNEL
+# ZONE 6.3: Ironcliw SYSTEM KERNEL
 # =============================================================================
 
 class JarvisSystemKernel:
     """
-    The brain that ties the entire JARVIS system together.
+    The brain that ties the entire Ironcliw system together.
 
     This is the central coordinator that:
     - Initializes all managers in the correct order
@@ -61006,7 +61006,7 @@ class JarvisSystemKernel:
         # v238.0: Real-Time Voice Conversation (Audio Bus Infrastructure)
         self._audio_bus = None
         self._audio_bus_enabled: bool = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
         self._conversation_pipeline = None
         self._mode_dispatcher = None
@@ -61066,7 +61066,7 @@ class JarvisSystemKernel:
         if self.config.voice_enabled and STARTUP_NARRATOR_AVAILABLE:
             try:
                 self._startup_narrator = _get_backend_startup_narrator(
-                    user_name=os.environ.get("JARVIS_USER_NAME", "Sir")
+                    user_name=os.environ.get("Ironcliw_USER_NAME", "Sir")
                 )
             except Exception:
                 pass
@@ -61092,7 +61092,7 @@ class JarvisSystemKernel:
         # =====================================================================
         # v244.0: Integration components
         # - Agentic Watchdog (safety kill-switch for Computer Use)
-        # - Cross-Repo State (JARVIS ↔ Prime ↔ Reactor coordination)
+        # - Cross-Repo State (Ironcliw ↔ Prime ↔ Reactor coordination)
         # - AgenticTaskRunner (agentic execution engine)
         # NOTE: TieredVBIAAdapter and TieredCommandRouter were replaced by
         # J-Prime's Phi classifier (commit 167fcecb). Voice auth uses
@@ -61148,7 +61148,7 @@ class JarvisSystemKernel:
 
         # v239.0: System Service Registry (10 priority services)
         self._system_services_enabled: bool = os.getenv(
-            "JARVIS_SYSTEM_SERVICES_ENABLED", "false"
+            "Ironcliw_SYSTEM_SERVICES_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
         self._service_registry: Optional[SystemServiceRegistry] = None
         if self._system_services_enabled:
@@ -61194,48 +61194,48 @@ class JarvisSystemKernel:
             name="observability",
             service=ObservabilityPipeline(
                 service_name="jarvis",
-                metrics_flush_interval=float(os.getenv("JARVIS_METRICS_FLUSH_INTERVAL", "10")),
+                metrics_flush_interval=float(os.getenv("Ironcliw_METRICS_FLUSH_INTERVAL", "10")),
                 storage_path=Path(os.getenv(
-                    "JARVIS_TELEMETRY_DIR",
+                    "Ironcliw_TELEMETRY_DIR",
                     str(Path.home() / ".jarvis" / "telemetry"),
                 )),
             ),
             phase=1,
-            enabled_env="JARVIS_SERVICE_OBSERVABILITY_ENABLED",
+            enabled_env="Ironcliw_SERVICE_OBSERVABILITY_ENABLED",
         ))
         _r(ServiceDescriptor(
             name="health_aggregator",
             service=HealthAggregator(
-                check_interval=float(os.getenv("JARVIS_HEALTH_CHECK_INTERVAL", "30")),
+                check_interval=float(os.getenv("Ironcliw_HEALTH_CHECK_INTERVAL", "30")),
             ),
             phase=1,
             depends_on=["observability"],
-            enabled_env="JARVIS_SERVICE_HEALTH_ENABLED",
+            enabled_env="Ironcliw_SERVICE_HEALTH_ENABLED",
         ))
 
         # Phase 2 (Resources) ─ cache, rate-limiter, cost, locks
         _r(ServiceDescriptor(
             name="cache_hierarchy",
             service=CacheHierarchyManager(
-                l1_max_size=int(os.getenv("JARVIS_CACHE_L1_SIZE", "100")),
-                l2_max_size=int(os.getenv("JARVIS_CACHE_L2_SIZE", "1000")),
-                l2_ttl_seconds=float(os.getenv("JARVIS_CACHE_L2_TTL", "300")),
+                l1_max_size=int(os.getenv("Ironcliw_CACHE_L1_SIZE", "100")),
+                l2_max_size=int(os.getenv("Ironcliw_CACHE_L2_SIZE", "1000")),
+                l2_ttl_seconds=float(os.getenv("Ironcliw_CACHE_L2_TTL", "300")),
                 l3_dir=Path(os.getenv(
-                    "JARVIS_CACHE_L3_DIR",
+                    "Ironcliw_CACHE_L3_DIR",
                     str(Path.home() / ".jarvis" / "cache"),
                 )),
             ),
             phase=2,
-            enabled_env="JARVIS_SERVICE_CACHE_ENABLED",
+            enabled_env="Ironcliw_SERVICE_CACHE_ENABLED",
         ))
         _r(ServiceDescriptor(
             name="rate_limiter",
             service=TokenBucketRateLimiter(
-                rate=float(os.getenv("JARVIS_RATE_LIMIT_RPS", "10")),
-                capacity=int(os.getenv("JARVIS_RATE_LIMIT_CAPACITY", "100")),
+                rate=float(os.getenv("Ironcliw_RATE_LIMIT_RPS", "10")),
+                capacity=int(os.getenv("Ironcliw_RATE_LIMIT_CAPACITY", "100")),
             ),
             phase=2,
-            enabled_env="JARVIS_SERVICE_RATELIMIT_ENABLED",
+            enabled_env="Ironcliw_SERVICE_RATELIMIT_ENABLED",
         ))
         _r(ServiceDescriptor(
             name="cost_tracker",
@@ -61243,36 +61243,36 @@ class JarvisSystemKernel:
                 config=self._config if hasattr(self, "_config") else None,
             ),
             phase=2,
-            enabled_env="JARVIS_SERVICE_COST_ENABLED",
+            enabled_env="Ironcliw_SERVICE_COST_ENABLED",
         ))
         _r(ServiceDescriptor(
             name="lock_manager",
             service=DistributedLockManager(
-                lock_timeout_seconds=float(os.getenv("JARVIS_LOCK_TIMEOUT", "30")),
-                heartbeat_interval=float(os.getenv("JARVIS_LOCK_HEARTBEAT", "5")),
+                lock_timeout_seconds=float(os.getenv("Ironcliw_LOCK_TIMEOUT", "30")),
+                heartbeat_interval=float(os.getenv("Ironcliw_LOCK_HEARTBEAT", "5")),
                 storage_path=Path(os.getenv(
-                    "JARVIS_LOCK_DIR", 
+                    "Ironcliw_LOCK_DIR", 
                     str(Path(tempfile.gettempdir()) / ".jarvis" / "state" / "locks"),
                 )),
             ),
             phase=2,
             depends_on=["health_aggregator"],
-            enabled_env="JARVIS_SERVICE_LOCKS_ENABLED",
+            enabled_env="Ironcliw_SERVICE_LOCKS_ENABLED",
         ))
 
         # Phase 3 (Backend) ─ task queue
         _r(ServiceDescriptor(
             name="task_queue",
             service=TaskQueueManager(
-                max_workers=int(os.getenv("JARVIS_TASK_WORKERS", "10")),
+                max_workers=int(os.getenv("Ironcliw_TASK_WORKERS", "10")),
                 storage_path=Path(os.getenv(
-                    "JARVIS_TASK_QUEUE_DIR",
+                    "Ironcliw_TASK_QUEUE_DIR",
                     str(Path.home() / ".jarvis" / "task_queue"),
                 )),
             ),
             phase=3,
             depends_on=["health_aggregator"],
-            enabled_env="JARVIS_SERVICE_TASKQUEUE_ENABLED",
+            enabled_env="Ironcliw_SERVICE_TASKQUEUE_ENABLED",
         ))
 
         # Phase 4 (Intelligence) ─ event sourcing + message broker
@@ -61280,38 +61280,38 @@ class JarvisSystemKernel:
             name="event_sourcing",
             service=EventSourcingManager(
                 event_dir=Path(os.getenv(
-                    "JARVIS_EVENT_DIR",
+                    "Ironcliw_EVENT_DIR",
                     str(Path.home() / ".jarvis" / "events"),
                 )),
-                snapshot_interval=int(os.getenv("JARVIS_EVENT_SNAPSHOT_INTERVAL", "1000")),
+                snapshot_interval=int(os.getenv("Ironcliw_EVENT_SNAPSHOT_INTERVAL", "1000")),
             ),
             phase=4,
             depends_on=["observability"],
-            enabled_env="JARVIS_SERVICE_EVENTSOURCING_ENABLED",
+            enabled_env="Ironcliw_SERVICE_EVENTSOURCING_ENABLED",
         ))
         _r(ServiceDescriptor(
             name="message_broker",
             service=MessageBroker(
-                delivery_timeout=float(os.getenv("JARVIS_BROKER_DELIVERY_TIMEOUT", "30")),
-                max_retries=int(os.getenv("JARVIS_BROKER_MAX_RETRIES", "3")),
+                delivery_timeout=float(os.getenv("Ironcliw_BROKER_DELIVERY_TIMEOUT", "30")),
+                max_retries=int(os.getenv("Ironcliw_BROKER_MAX_RETRIES", "3")),
             ),
             phase=4,
             depends_on=["observability", "health_aggregator"],
-            enabled_env="JARVIS_SERVICE_BROKER_ENABLED",
+            enabled_env="Ironcliw_SERVICE_BROKER_ENABLED",
         ))
 
         # Phase 5 (Trinity) ─ graceful degradation
         _r(ServiceDescriptor(
             name="degradation_manager",
             service=GracefulDegradationManager(
-                memory_threshold_high=float(os.getenv("JARVIS_DEGRADE_MEM_HIGH", "85")),
-                memory_threshold_extreme=float(os.getenv("JARVIS_DEGRADE_MEM_EXTREME", "95")),
-                cpu_threshold_high=float(os.getenv("JARVIS_DEGRADE_CPU_HIGH", "80")),
-                cpu_threshold_extreme=float(os.getenv("JARVIS_DEGRADE_CPU_EXTREME", "95")),
+                memory_threshold_high=float(os.getenv("Ironcliw_DEGRADE_MEM_HIGH", "85")),
+                memory_threshold_extreme=float(os.getenv("Ironcliw_DEGRADE_MEM_EXTREME", "95")),
+                cpu_threshold_high=float(os.getenv("Ironcliw_DEGRADE_CPU_HIGH", "80")),
+                cpu_threshold_extreme=float(os.getenv("Ironcliw_DEGRADE_CPU_EXTREME", "95")),
             ),
             phase=5,
             depends_on=["health_aggregator", "observability"],
-            enabled_env="JARVIS_SERVICE_DEGRADATION_ENABLED",
+            enabled_env="Ironcliw_SERVICE_DEGRADATION_ENABLED",
         ))
 
         logger.info("[Kernel] Service registry: 10 services registered across phases 1-5")
@@ -61403,22 +61403,22 @@ class JarvisSystemKernel:
         prime_url = f"http://{node_ip}:{port}"
         
         # Set the primary Prime URL - this is the single source of truth
-        os.environ["JARVIS_PRIME_URL"] = prime_url
+        os.environ["Ironcliw_PRIME_URL"] = prime_url
         
         # Also set cloud-specific URLs for components that use them
         os.environ["GCP_PRIME_ENDPOINT"] = prime_url
-        os.environ["JARVIS_PRIME_CLOUD_RUN_URL"] = prime_url
+        os.environ["Ironcliw_PRIME_CLOUD_RUN_URL"] = prime_url
         # v234.0: Also set for UnifiedModelServing's PrimeAPIClient
-        os.environ["JARVIS_PRIME_API_URL"] = prime_url
+        os.environ["Ironcliw_PRIME_API_URL"] = prime_url
         
         # Set a flag indicating hollow client is active (for dynamic behavior)
-        os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
-        os.environ["JARVIS_INVINCIBLE_NODE_IP"] = node_ip
-        os.environ["JARVIS_INVINCIBLE_NODE_PORT"] = str(port)
+        os.environ["Ironcliw_HOLLOW_CLIENT_ACTIVE"] = "true"
+        os.environ["Ironcliw_INVINCIBLE_NODE_IP"] = node_ip
+        os.environ["Ironcliw_INVINCIBLE_NODE_PORT"] = str(port)
         
         self.logger.info(
             f"[InvincibleNode] v219.0 URL propagation ({source}): "
-            f"JARVIS_PRIME_URL={prime_url}"
+            f"Ironcliw_PRIME_URL={prime_url}"
         )
 
         # v232.0: Notify PrimeRouter singleton of GCP endpoint promotion
@@ -61561,12 +61561,12 @@ class JarvisSystemKernel:
             reason: Why the URL is being cleared (for logging)
         """
         # Clear the hollow client flag
-        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
-        os.environ.pop("JARVIS_INVINCIBLE_NODE_IP", None)
-        os.environ.pop("JARVIS_INVINCIBLE_NODE_PORT", None)
+        os.environ.pop("Ironcliw_HOLLOW_CLIENT_ACTIVE", None)
+        os.environ.pop("Ironcliw_INVINCIBLE_NODE_IP", None)
+        os.environ.pop("Ironcliw_INVINCIBLE_NODE_PORT", None)
         
-        # Note: We don't clear JARVIS_PRIME_URL here because local Prime
-        # might still be running. The client should check JARVIS_HOLLOW_CLIENT_ACTIVE
+        # Note: We don't clear Ironcliw_PRIME_URL here because local Prime
+        # might still be running. The client should check Ironcliw_HOLLOW_CLIENT_ACTIVE
         # to determine routing behavior.
         
         self.logger.info(
@@ -61627,12 +61627,12 @@ class JarvisSystemKernel:
         3. FAIL FAST RULE: If status == "error", kill immediately
         
         Environment Variables (all configurable, NO hardcoding):
-        - JARVIS_WATCHDOG_POLL_INTERVAL: Polling interval (default: 10s)
-        - JARVIS_GCP_STALL_THRESHOLD: Stall timeout (default: 180s)
-        - JARVIS_GCP_MAX_TIMEOUT: Hard timeout cap (default: 1800s)
-        - JARVIS_WATCHDOG_CONSECUTIVE_FAILURES: Network jitter tolerance (default: 3)
-        - JARVIS_WATCHDOG_EXTENSION_BUFFER: Deadline extension on progress (default: 60s)
-        - JARVIS_WATCHDOG_LIVENESS_ENABLED: Enable deadline extension (default: true)
+        - Ironcliw_WATCHDOG_POLL_INTERVAL: Polling interval (default: 10s)
+        - Ironcliw_GCP_STALL_THRESHOLD: Stall timeout (default: 180s)
+        - Ironcliw_GCP_MAX_TIMEOUT: Hard timeout cap (default: 1800s)
+        - Ironcliw_WATCHDOG_CONSECUTIVE_FAILURES: Network jitter tolerance (default: 3)
+        - Ironcliw_WATCHDOG_EXTENSION_BUFFER: Deadline extension on progress (default: 60s)
+        - Ironcliw_WATCHDOG_LIVENESS_ENABLED: Enable deadline extension (default: true)
         
         Usage:
             # Watch GCP VM startup
@@ -61652,7 +61652,7 @@ class JarvisSystemKernel:
         Args:
             endpoint: Full URL to the /health/startup endpoint
             component_name: Human-readable name for logging
-            base_timeout: Initial timeout (overrides JARVIS_GCP_MAX_TIMEOUT)
+            base_timeout: Initial timeout (overrides Ironcliw_GCP_MAX_TIMEOUT)
             progress_callback: Optional async callback for dashboard updates
         
         Returns:
@@ -62115,7 +62115,7 @@ class JarvisSystemKernel:
                 setattr(self, _recov_attr, None)
 
         # v237.0/v251.0: Stop AGI OS + Neural Mesh + agents (prevents dangling tasks)
-        agi_stop_timeout = max(1.0, _get_env_float("JARVIS_AGI_OS_STOP_TIMEOUT", 45.0))
+        agi_stop_timeout = max(1.0, _get_env_float("Ironcliw_AGI_OS_STOP_TIMEOUT", 45.0))
         try:
             from agi_os import stop_agi_os
             await asyncio.wait_for(stop_agi_os(), timeout=agi_stop_timeout)
@@ -62342,7 +62342,7 @@ class JarvisSystemKernel:
         # v262.0: Give tasks time to run their finally blocks (e.g., await session.close()).
         # Timeout prevents a hung finally block from stalling the entire shutdown.
         if background_tasks:
-            _bg_cleanup_timeout = _get_env_float("JARVIS_BACKGROUND_TASK_CLEANUP_TIMEOUT", 10.0)
+            _bg_cleanup_timeout = _get_env_float("Ironcliw_BACKGROUND_TASK_CLEANUP_TIMEOUT", 10.0)
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*background_tasks, return_exceptions=True),
@@ -62636,14 +62636,14 @@ class JarvisSystemKernel:
         This method explicitly supports two operating modes:
 
         **Supervisor Mode (in-process):**
-        - Starts JARVIS Backend using uvicorn.Server directly
+        - Starts Ironcliw Backend using uvicorn.Server directly
         - Shares memory space with the kernel
         - Faster startup, lower overhead
         - Best for development and single-user deployments
         - Signals handled centrally by the kernel
 
         **Standalone Mode (subprocess):**
-        - Starts JARVIS Backend as a separate subprocess
+        - Starts Ironcliw Backend as a separate subprocess
         - Process isolation for stability
         - Can survive kernel restarts
         - Best for production and multi-user deployments
@@ -62658,7 +62658,7 @@ class JarvisSystemKernel:
 
         Priority:
             1. Explicit CLI flags (--in-process or --subprocess)
-            2. Environment variable JARVIS_BACKEND_MODE
+            2. Environment variable Ironcliw_BACKEND_MODE
             3. Config file setting
             4. Default: Supervisor mode for dev, Standalone for production
         """
@@ -62676,16 +62676,16 @@ class JarvisSystemKernel:
             mode_source = "CLI flag --subprocess"
 
         # Priority 2: Environment variable (if no CLI flag)
-        elif os.environ.get("JARVIS_BACKEND_MODE"):
-            env_mode = os.environ.get("JARVIS_BACKEND_MODE", "").lower()
+        elif os.environ.get("Ironcliw_BACKEND_MODE"):
+            env_mode = os.environ.get("Ironcliw_BACKEND_MODE", "").lower()
             if env_mode in ("inprocess", "in-process", "in_process", "supervisor"):
                 self.config.in_process_backend = True
                 selected_mode = "supervisor"
-                mode_source = "environment variable JARVIS_BACKEND_MODE"
+                mode_source = "environment variable Ironcliw_BACKEND_MODE"
             elif env_mode in ("subprocess", "standalone", "isolated"):
                 self.config.in_process_backend = False
                 selected_mode = "standalone"
-                mode_source = "environment variable JARVIS_BACKEND_MODE"
+                mode_source = "environment variable Ironcliw_BACKEND_MODE"
 
         # Priority 3: Config already has a setting (from config file)
         elif hasattr(self.config, "_mode_from_config") and self.config._mode_from_config:
@@ -62815,7 +62815,7 @@ class JarvisSystemKernel:
         # v181.0: Calculate effective startup timeout based on enabled features
         # Base timeout from environment or config
         base_timeout = float(os.environ.get(
-            "JARVIS_STARTUP_TIMEOUT",
+            "Ironcliw_STARTUP_TIMEOUT",
             str(DEFAULT_STARTUP_TIMEOUT)
         ))
 
@@ -63095,7 +63095,7 @@ class JarvisSystemKernel:
             return 1
 
     # v228.1: ASCII art logo (compact, no FIGlet dependency)
-    _JARVIS_ASCII_LOGO = (
+    _Ironcliw_ASCII_LOGO = (
         "     ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗\n"
         "     ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝\n"
         "     ██║███████║██████╔╝██║   ██║██║███████╗\n"
@@ -63130,14 +63130,14 @@ class JarvisSystemKernel:
         - Dramatic ASCII art logo with gradient styling
         - Emoji-coded zone architecture tree
         - Color-coded feature badges and capability tags
-        - System-of-systems identity (JARVIS + Prime + Reactor)
+        - System-of-systems identity (Ironcliw + Prime + Reactor)
         - Professional double-border panel styling
         - Graceful plain-text fallback for non-Rich terminals
         """
         if RICH_AVAILABLE and _rich_console:
             try:
                 # 🎆 ASCII art logo with vibrant styling
-                logo_text = RichText(self._JARVIS_ASCII_LOGO, style="jarvis.logo")
+                logo_text = RichText(self._Ironcliw_ASCII_LOGO, style="jarvis.logo")
 
                 # 🏷️ Version badge with build identity
                 version_line = RichText()
@@ -63150,7 +63150,7 @@ class JarvisSystemKernel:
 
                 # 🏗️ System identity — the three pillars
                 system_identity = RichText()
-                system_identity.append("🏠 JARVIS Body", style="bold bright_cyan")
+                system_identity.append("🏠 Ironcliw Body", style="bold bright_cyan")
                 system_identity.append("  ←→  ", style="dim bright_white")
                 system_identity.append("🧠 J-Prime Mind", style="bold bright_magenta")
                 system_identity.append("  ←→  ", style="dim bright_white")
@@ -63226,7 +63226,7 @@ class JarvisSystemKernel:
         # =====================================================================
         self.logger.info("")
         self.logger.info("╔═══════════════════════════════════════════════════════════════════════╗")
-        self.logger.info("║           ⚡ JARVIS UNIFIED SYSTEM KERNEL ⚡                          ║")
+        self.logger.info("║           ⚡ Ironcliw UNIFIED SYSTEM KERNEL ⚡                          ║")
         self.logger.info("║                  Enterprise Edition v238.0                            ║")
         self.logger.info("╠═══════════════════════════════════════════════════════════════════════╣")
         self.logger.info("║  🏠 Body  ←→  🧠 Mind  ←→  ⚛️  Reactor                                ║")
@@ -63261,7 +63261,7 @@ class JarvisSystemKernel:
             degraded_components: List of optional components in degraded state
         """
         backend_port = self.config.backend_port
-        frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
+        frontend_port = int(os.environ.get("Ironcliw_FRONTEND_PORT", "3000"))
         blocking_components = blocking_components or []
         degraded_components = degraded_components or []
         
@@ -63270,12 +63270,12 @@ class JarvisSystemKernel:
             tier_text_rich = "[bold green]🟢 FULLY READY TIER REACHED[/bold green]"
             tier_color = "green"
             tier_text_plain = "🟢 FULLY READY TIER REACHED"
-            status_text = "🎯 JARVIS is ready!"
+            status_text = "🎯 Ironcliw is ready!"
         else:
             tier_text_rich = "[bold yellow]🟡 INTERACTIVE TIER (DEGRADED)[/bold yellow]"
             tier_color = "yellow"
             tier_text_plain = "🟡 INTERACTIVE TIER (DEGRADED)"
-            status_text = "⚠️  JARVIS is running in DEGRADED mode"
+            status_text = "⚠️  Ironcliw is running in DEGRADED mode"
         
         if RICH_AVAILABLE and _rich_console:
             # =========================================================================
@@ -63332,7 +63332,7 @@ class JarvisSystemKernel:
 
                 # Voice commands
                 voice_branch = access_tree.add("🎙️ [jarvis.label]Voice Commands[/jarvis.label]")
-                voice_branch.add("[jarvis.metric]'Hey JARVIS'[/jarvis.metric] [jarvis.dim]— Activate[/jarvis.dim]")
+                voice_branch.add("[jarvis.metric]'Hey Ironcliw'[/jarvis.metric] [jarvis.dim]— Activate[/jarvis.dim]")
                 voice_branch.add("[jarvis.metric]'What can you do?'[/jarvis.metric] [jarvis.dim]— Capabilities[/jarvis.dim]")
                 voice_branch.add("[jarvis.metric]'Can you see my screen?'[/jarvis.metric] [jarvis.dim]— Vision test[/jarvis.dim]")
 
@@ -63398,7 +63398,7 @@ class JarvisSystemKernel:
         self.logger.info(f"  💚 Health:       http://localhost:{backend_port}/health")
         self.logger.info("")
         self.logger.info("🎙️ Voice Commands:")
-        self.logger.info("  🗣️  Say 'Hey JARVIS' to activate")
+        self.logger.info("  🗣️  Say 'Hey Ironcliw' to activate")
         self.logger.info("  🤔 'What can you do?' — List capabilities")
         self.logger.info("  👁️  'Can you see my screen?' — Vision test")
         self.logger.info("")
@@ -63434,7 +63434,7 @@ class JarvisSystemKernel:
         """
         if not self._narrator:
             return
-        _timeout = _get_env_float("JARVIS_NARRATOR_CALL_TIMEOUT", 10.0)
+        _timeout = _get_env_float("Ironcliw_NARRATOR_CALL_TIMEOUT", 10.0)
         try:
             await asyncio.wait_for(coro, timeout=_timeout)
         except asyncio.TimeoutError:
@@ -63451,7 +63451,7 @@ class JarvisSystemKernel:
         """
         Broadcast startup progress with timeout. Never blocks startup.
         """
-        _timeout = _get_env_float("JARVIS_BROADCAST_CALL_TIMEOUT", 5.0)
+        _timeout = _get_env_float("Ironcliw_BROADCAST_CALL_TIMEOUT", 5.0)
         try:
             await asyncio.wait_for(
                 self._broadcast_startup_progress(stage, message, progress, metadata),
@@ -63480,7 +63480,7 @@ class JarvisSystemKernel:
         # in startup phase and suppress transient metric-based degradation.
         # v258.4: Also publish to Trinity IPC for cross-repo consumers.
         _publish_system_phase_to_trinity("startup", {"started_at": time.time()})
-        os.environ["JARVIS_STARTUP_TIMESTAMP"] = str(time.time())
+        os.environ["Ironcliw_STARTUP_TIMESTAMP"] = str(time.time())
 
         try:
             from intelligence.cloud_database_adapter import register_supervisor_proxy_management
@@ -63534,7 +63534,7 @@ class JarvisSystemKernel:
             self._startup_state_machine = None
 
         # v197.1: Initialize live progress dashboard for real-time CLI feedback
-        # v197.3: Now supports display modes - set JARVIS_DASHBOARD_MODE=passthrough to see logs
+        # v197.3: Now supports display modes - set Ironcliw_DASHBOARD_MODE=passthrough to see logs
         dashboard = get_live_dashboard(enabled=sys.stdout.isatty())
         dashboard.start()
 
@@ -63542,7 +63542,7 @@ class JarvisSystemKernel:
         # v265.0: Add timeout — bare await could hang if event bus has I/O issues
         _event_bus = get_event_bus()
         # v265.5: CPU-aware timeout + env var override
-        _eb_timeout = _get_env_float("JARVIS_EVENT_BUS_START_TIMEOUT", 10.0)
+        _eb_timeout = _get_env_float("Ironcliw_EVENT_BUS_START_TIMEOUT", 10.0)
         try:
             import psutil as _eb_ps
             _eb_cpu = _eb_ps.cpu_percent(interval=None)
@@ -63605,16 +63605,16 @@ class JarvisSystemKernel:
         # validate_and_optimize() is 100% local (psutil, shutil, socket localhost)
         # — no GCP/network calls. Determines startup_mode before any phase runs.
         # =====================================================================
-        _resource_check_timeout = _get_env_float("JARVIS_RESOURCE_CHECK_TIMEOUT", 3.0)
+        _resource_check_timeout = _get_env_float("Ironcliw_RESOURCE_CHECK_TIMEOUT", 3.0)
         _resource_check_timeout_max = _get_env_float(
-            "JARVIS_RESOURCE_CHECK_TIMEOUT_MAX",
+            "Ironcliw_RESOURCE_CHECK_TIMEOUT_MAX",
             max(_resource_check_timeout * 2.0, _resource_check_timeout + 2.0),
         )
         _resource_timeout_cpu_threshold = _get_env_float(
-            "JARVIS_RESOURCE_CHECK_TIMEOUT_CPU_THRESHOLD", 90.0
+            "Ironcliw_RESOURCE_CHECK_TIMEOUT_CPU_THRESHOLD", 90.0
         )
         _resource_timeout_mem_threshold = _get_env_float(
-            "JARVIS_RESOURCE_CHECK_TIMEOUT_MEM_THRESHOLD", 85.0
+            "Ironcliw_RESOURCE_CHECK_TIMEOUT_MEM_THRESHOLD", 85.0
         )
         try:
             if PSUTIL_AVAILABLE:
@@ -63645,16 +63645,16 @@ class JarvisSystemKernel:
         ) -> str:
             """Apply deterministic, memory-aware fallback when preflight cannot decide."""
             _available_gb = _read_available_memory_gb()
-            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "cloud_first")
+            _current_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "cloud_first")
             _fallback_mode = _resolve_local_startup_mode_on_cloud_unavailable(
                 _current_mode,
                 available_gb=_available_gb,
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback_mode
-            if not os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "").strip():
-                os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _fallback_mode
+            os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _fallback_mode
+            if not os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "").strip():
+                os.environ["Ironcliw_STARTUP_DESIRED_MODE"] = _fallback_mode
             if _available_gb is not None:
-                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_available_gb:.2f}"
+                os.environ["Ironcliw_MEASURED_AVAILABLE_GB"] = f"{_available_gb:.2f}"
 
             _msg = (
                 f"Resource preflight {reason}; startup mode set to {_fallback_mode}"
@@ -63667,7 +63667,7 @@ class JarvisSystemKernel:
             issue_collector.add_warning(
                 _msg,
                 IssueCategory.SYSTEM,
-                suggestion="Check system pressure and JARVIS resource preflight configuration",
+                suggestion="Check system pressure and Ironcliw resource preflight configuration",
             )
             return _fallback_mode
 
@@ -63678,12 +63678,12 @@ class JarvisSystemKernel:
             )
             self._startup_resource_status = _rs
             _startup_mem_mode = _rs.startup_mode or "local_full"
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _startup_mem_mode
-            if not os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "").strip():
-                os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _startup_mem_mode
+            os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _startup_mem_mode
+            if not os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "").strip():
+                os.environ["Ironcliw_STARTUP_DESIRED_MODE"] = _startup_mem_mode
             # v258.3 (GCP-5): Share measured memory snapshot with OOM bridge
             # so it doesn't re-measure (race condition between two psutil calls).
-            os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_rs.memory_available_gb:.2f}"
+            os.environ["Ironcliw_MEASURED_AVAILABLE_GB"] = f"{_rs.memory_available_gb:.2f}"
             if _rs.is_cloud_mode:
                 self._update_component_status(
                     "resources", "cloud_mode",
@@ -63713,7 +63713,7 @@ class JarvisSystemKernel:
         # =====================================================================
         # v258.3 (Gap GCP-2): STARTUP MODE RE-EVALUATION HELPER
         # =====================================================================
-        # The initial JARVIS_STARTUP_MEMORY_MODE decision is made before Phase 0.
+        # The initial Ironcliw_STARTUP_MEMORY_MODE decision is made before Phase 0.
         # Memory conditions can change during startup (apps closing, GC freeing
         # RAM, or conversely ML models eating RAM). This helper re-measures and
         # upgrades/downgrades the mode at strategic phase boundaries.
@@ -63733,14 +63733,14 @@ class JarvisSystemKernel:
                 import psutil
                 _mem = psutil.virtual_memory()
                 _avail_gb = _mem.available / (1024**3)
-                _current = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _current = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
                 _current_sev = _REEVAL_SEVERITY.get(_current, 0)
 
                 # Same thresholds as IntelligentResourceOrchestrator
-                _critical = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
-                _cloud = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
-                _optimize = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
-                _planned_ml = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+                _critical = float(os.getenv("Ironcliw_CRITICAL_THRESHOLD_GB", "2.0"))
+                _cloud = float(os.getenv("Ironcliw_CLOUD_THRESHOLD_GB", "6.0"))
+                _optimize = float(os.getenv("Ironcliw_OPTIMIZE_THRESHOLD_GB", "4.0"))
+                _planned_ml = float(os.getenv("Ironcliw_PLANNED_ML_GB", "4.6"))
                 _predicted = max(0.0, _avail_gb - _planned_ml)
 
                 # Determine what mode SHOULD be based on current conditions
@@ -63756,7 +63756,7 @@ class JarvisSystemKernel:
                 # If OOM bridge is unavailable, cloud execution cannot be trusted
                 # during startup. Clamp cloud candidates to deterministic sequential.
                 if (
-                    os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0"
+                    os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE") == "0"
                     and _ideal in ("cloud_first", "cloud_only")
                 ):
                     _ideal = "sequential"
@@ -63766,7 +63766,7 @@ class JarvisSystemKernel:
                 # Only change if significantly different (at least 1 severity level)
                 # v266.2: During startup, mode can only degrade (never recover upward).
                 # Upward recovery only after startup completes.
-                _startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE", "") == "true"
+                _startup_complete = os.environ.get("Ironcliw_STARTUP_COMPLETE", "") == "true"
                 _is_degradation = _ideal_sev > _current_sev
                 _can_change = _is_degradation or _startup_complete
                 if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current and _can_change:
@@ -63775,16 +63775,16 @@ class JarvisSystemKernel:
                         "[ModeReeval] %s: %s desired=%s effective=%s→%s (avail=%.1fGB, predicted=%.1fGB)",
                         phase_label,
                         _direction,
-                        os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _current),
+                        os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", _current),
                         _current,
                         _ideal,
                         _avail_gb,
                         _predicted,
                     )
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal
-                    os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _ideal
+                    os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _ideal
+                    os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _ideal
                     # Update shared measurement for downstream consumers
-                    os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb:.2f}"
+                    os.environ["Ironcliw_MEASURED_AVAILABLE_GB"] = f"{_avail_gb:.2f}"
                     add_dashboard_log(
                         f"Mode {_direction}: {_current} → {_ideal} "
                         f"(avail={_avail_gb:.1f}GB)", "INFO"
@@ -63794,7 +63794,7 @@ class JarvisSystemKernel:
                         "[ModeReeval] %s: mode %s still correct (avail=%.1fGB)",
                         phase_label, _current, _avail_gb,
                     )
-                    os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _current
+                    os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _current
             except Exception as _reeval_err:
                 self.logger.debug("[ModeReeval] %s failed: %s", phase_label, _reeval_err)
 
@@ -63812,7 +63812,7 @@ class JarvisSystemKernel:
             """Register a component as loaded at a specific location."""
             _loaded_components[name] = location
             # Publish via env var for cross-component visibility (JSON dict)
-            os.environ["JARVIS_LOADED_COMPONENTS"] = json.dumps(_loaded_components)
+            os.environ["Ironcliw_LOADED_COMPONENTS"] = json.dumps(_loaded_components)
 
         def _is_loaded_locally(name: str) -> bool:
             """Check if a component is already loaded locally."""
@@ -63849,7 +63849,7 @@ class JarvisSystemKernel:
 
         if _ssm: await _ssm.start_component("clean_slate")
         # v265.0: Add timeout — clean slate runs BEFORE DMS, so no watchdog protection
-        _clean_slate_timeout = _get_env_float("JARVIS_CLEAN_SLATE_TIMEOUT", 30.0)
+        _clean_slate_timeout = _get_env_float("Ironcliw_CLEAN_SLATE_TIMEOUT", 30.0)
         try:
             await asyncio.wait_for(self._phase_clean_slate(), timeout=_clean_slate_timeout)
         except asyncio.TimeoutError:
@@ -63881,7 +63881,7 @@ class JarvisSystemKernel:
         # downstream code uses legacy paths.
         # =====================================================================
         if self._audio_bus_enabled:
-            _ab_timeout = _get_env_float("JARVIS_AUDIO_BUS_INIT_TIMEOUT", 10.0)
+            _ab_timeout = _get_env_float("Ironcliw_AUDIO_BUS_INIT_TIMEOUT", 10.0)
             try:
                 # v266.4: Import AudioBus in thread executor.
                 # The import chain triggers `import sounddevice` which
@@ -63937,14 +63937,14 @@ class JarvisSystemKernel:
         else:
             self._component_status["audio_infrastructure"] = {
                 "status": "disabled",
-                "message": "JARVIS_AUDIO_BUS_ENABLED not set",
+                "message": "Ironcliw_AUDIO_BUS_ENABLED not set",
             }
 
         # v186.0: Start voice narrator queue processor for non-blocking speech
         # This MUST be started before any narrate_* calls to prevent blocking
         # v266.1: Add timeout — narrator queue/TTS can hang indefinitely if
         # audio device is held or TTS engine is stuck.
-        _narrator_init_timeout = _get_env_float("JARVIS_NARRATOR_INIT_TIMEOUT", 10.0)
+        _narrator_init_timeout = _get_env_float("Ironcliw_NARRATOR_INIT_TIMEOUT", 10.0)
         if self._narrator:
             try:
                 await asyncio.wait_for(
@@ -63983,7 +63983,7 @@ class JarvisSystemKernel:
             try:
                 await _narrate_backend_phase(
                     BackendStartupPhase.SUPERVISOR_INIT,
-                    "Initializing JARVIS supervisor",
+                    "Initializing Ironcliw supervisor",
                     5.0,
                     "start",
                 )
@@ -63996,8 +63996,8 @@ class JarvisSystemKernel:
         # Initialize and start the startup watchdog to detect stalled phases.
         # Provides graduated recovery: warn → diagnostic → restart → rollback.
         # =====================================================================
-        _dms_start_timeout = _get_env_float("JARVIS_DMS_START_TIMEOUT", 10.0)
-        _require_watchdog = _get_env_bool("JARVIS_REQUIRE_STARTUP_WATCHDOG", True)
+        _dms_start_timeout = _get_env_float("Ironcliw_DMS_START_TIMEOUT", 10.0)
+        _require_watchdog = _get_env_bool("Ironcliw_REQUIRE_STARTUP_WATCHDOG", True)
         self._startup_watchdog = None
         _dms_error_detail = ""
 
@@ -64016,7 +64016,7 @@ class JarvisSystemKernel:
             )
 
             if _require_watchdog and not _candidate_watchdog.enabled:
-                _dms_error_detail = "disabled via JARVIS_DMS_ENABLED=false"
+                _dms_error_detail = "disabled via Ironcliw_DMS_ENABLED=false"
             else:
                 self._startup_watchdog = _candidate_watchdog
                 self._update_component_status(
@@ -64047,7 +64047,7 @@ class JarvisSystemKernel:
             )
             if _require_watchdog:
                 self.logger.error(
-                    "[Kernel] Startup aborted: JARVIS_REQUIRE_STARTUP_WATCHDOG=true"
+                    "[Kernel] Startup aborted: Ironcliw_REQUIRE_STARTUP_WATCHDOG=true"
                 )
                 return 1
             # v265.5: Schedule background DMS recovery — system must not run
@@ -64084,7 +64084,7 @@ class JarvisSystemKernel:
             )
 
         # v232.2: Set initial execution mode for DMS dynamic constraints
-        _golden_active = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+        _golden_active = os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
         _gcp_enabled = getattr(self.config, 'invincible_node_enabled', False)
         if self._startup_watchdog:
             if _golden_active and _gcp_enabled:
@@ -64131,19 +64131,19 @@ class JarvisSystemKernel:
 
         # v255.0 / v266.3: OOM Prevention Bridge — proactive memory check before heavy init.
         # Uses auto_offload=False to avoid GCP network calls during pre-flight.
-        # Only overrides JARVIS_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
+        # Only overrides Ironcliw_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
         # severe than the current mode set by the ResourceOrchestrator (Step 1).
         # v266.3: Single retry on failure, then unconditional degradation to local fallback.
         # v270.0: Increased from 3/5s to 10/15s. On constrained memory (<=4GB available),
         # credential discovery, module imports, and memory telemetry take 10-30s under
         # I/O pressure. The old 8s total was the primary contributor to 28s+ startup
         # delays (OOMBridge timed out → degrade → GCP probe → retry cascade).
-        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 10.0)
-        _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 15.0)
+        _oom_preflight_timeout = _get_env_float("Ironcliw_OOM_PREFLIGHT_TIMEOUT", 10.0)
+        _oom_retry_timeout = _get_env_float("Ironcliw_OOM_RETRY_TIMEOUT", 15.0)
         self._startup_memory_decision = None
         _oom_attempts = [_oom_preflight_timeout, _oom_retry_timeout]
         _oom_succeeded = False  # v266.3: Read by GCP probe to log bridge status
-        os.environ.setdefault("JARVIS_OOMBRIDGE_AVAILABLE", "1")
+        os.environ.setdefault("Ironcliw_OOMBRIDGE_AVAILABLE", "1")
 
         def _startup_mode_severity(mode: str) -> int:
             # Higher number = more degraded / restrictive.
@@ -64158,15 +64158,15 @@ class JarvisSystemKernel:
             return _severity.get((mode or "local_full").strip().lower(), 0)
 
         def _apply_effective_mode_degradation(new_mode: str, reason: str) -> None:
-            current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            current_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
             current_sev = _startup_mode_severity(current_mode)
             new_sev = _startup_mode_severity(new_mode)
             # Startup mode is monotonic during boot: never recover to less-severe mode here.
             if new_sev > current_sev:
-                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = new_mode
+                os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = new_mode
                 self.logger.warning(
                     "[StartupMode] degrade desired=%s effective=%s→%s reason=%s",
-                    os.environ.get("JARVIS_STARTUP_DESIRED_MODE", current_mode),
+                    os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", current_mode),
                     current_mode,
                     new_mode,
                     reason,
@@ -64174,7 +64174,7 @@ class JarvisSystemKernel:
             else:
                 self.logger.info(
                     "[StartupMode] keep desired=%s effective=%s candidate=%s reason=%s",
-                    os.environ.get("JARVIS_STARTUP_DESIRED_MODE", current_mode),
+                    os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", current_mode),
                     current_mode,
                     new_mode,
                     reason,
@@ -64215,7 +64215,7 @@ class JarvisSystemKernel:
                     )
 
                 _oom_succeeded = True
-                os.environ["JARVIS_OOMBRIDGE_AVAILABLE"] = "1"
+                os.environ["Ironcliw_OOMBRIDGE_AVAILABLE"] = "1"
                 break  # Success — exit retry loop
             except asyncio.CancelledError:
                 raise
@@ -64254,7 +64254,7 @@ class JarvisSystemKernel:
                 # Unconditionally degrade to local fallback regardless of current mode.
                 _apply_effective_mode_degradation(_guard_mode, reason="oombridge_unavailable")
                 # v266.3: Signal to Phase 2/3 gates that cloud modes are not viable.
-                os.environ["JARVIS_OOMBRIDGE_AVAILABLE"] = "0"
+                os.environ["Ironcliw_OOMBRIDGE_AVAILABLE"] = "0"
 
                 _oom_err_str = str(_oom_err) or type(_oom_err).__name__
                 _oom_msg = (
@@ -64281,11 +64281,11 @@ class JarvisSystemKernel:
         # v266.3: Use desired_mode (operator intent) not effective_mode (runtime safety).
         # If OOMBridge failed, effective_mode may be degraded to sequential, but
         # operator intended cloud — GCP probe should still run for background recovery.
-        _startup_desired_mode = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full")
-        _startup_effective_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
-        os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _startup_effective_mode
+        _startup_desired_mode = os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "local_full")
+        _startup_effective_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
+        os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _startup_effective_mode
         _cloud_recovery_candidate = (
-            os.environ.get("JARVIS_CLOUD_RECOVERY_CANDIDATE", "false").strip().lower()
+            os.environ.get("Ironcliw_CLOUD_RECOVERY_CANDIDATE", "false").strip().lower()
             in {"1", "true", "yes", "on"}
         )
         if _startup_desired_mode in ("cloud_first", "cloud_only") and _startup_effective_mode not in (
@@ -64293,22 +64293,22 @@ class JarvisSystemKernel:
             "cloud_only",
         ):
             _cloud_recovery_candidate = True
-            os.environ["JARVIS_CLOUD_RECOVERY_CANDIDATE"] = "true"
+            os.environ["Ironcliw_CLOUD_RECOVERY_CANDIDATE"] = "true"
             self.logger.info(
                 "[StartupMode] cloud recovery candidate armed "
                 "(desired=%s effective=%s oombridge_available=%s)",
                 _startup_desired_mode,
                 _startup_effective_mode,
-                os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+                os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE", "1"),
             )
         else:
-            os.environ["JARVIS_CLOUD_RECOVERY_CANDIDATE"] = "true" if _cloud_recovery_candidate else "false"
+            os.environ["Ironcliw_CLOUD_RECOVERY_CANDIDATE"] = "true" if _cloud_recovery_candidate else "false"
 
         self.logger.info(
             "[StartupMode] desired=%s effective=%s bridge_available=%s probe_candidate=%s",
             _startup_desired_mode,
             _startup_effective_mode,
-            os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+            os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE", "1"),
             _cloud_recovery_candidate,
         )
         self._gcp_probe_passed = False
@@ -64320,17 +64320,17 @@ class JarvisSystemKernel:
         ):
             # v266.3: _startup_mode_now = effective mode (may be degraded by OOMBridge).
             # Used for fallback logic within the probe; distinct from _startup_desired_mode.
-            _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
-            _gcp_probe_timeout_base = _get_env_float("JARVIS_GCP_PROBE_TIMEOUT", 5.0)
+            _startup_mode_now = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
+            _gcp_probe_timeout_base = _get_env_float("Ironcliw_GCP_PROBE_TIMEOUT", 5.0)
             _gcp_probe_pressure_timeout = _get_env_float(
-                "JARVIS_GCP_PROBE_PRESSURE_TIMEOUT",
+                "Ironcliw_GCP_PROBE_PRESSURE_TIMEOUT",
                 max(_gcp_probe_timeout_base * 2.0, 8.0),
             )
             _gcp_probe_pressure_cpu_threshold = _get_env_float(
-                "JARVIS_GCP_PROBE_PRESSURE_CPU_THRESHOLD", 90.0
+                "Ironcliw_GCP_PROBE_PRESSURE_CPU_THRESHOLD", 90.0
             )
             _gcp_probe_pressure_memory_threshold = _get_env_float(
-                "JARVIS_GCP_PROBE_PRESSURE_MEMORY_THRESHOLD", 82.0
+                "Ironcliw_GCP_PROBE_PRESSURE_MEMORY_THRESHOLD", 82.0
             )
             _probe_cpu_percent = 0.0
             _probe_memory_percent = 0.0
@@ -64361,7 +64361,7 @@ class JarvisSystemKernel:
             _gcp_strategy_timeout = max(
                 1.0,
                 min(
-                    _get_env_float("JARVIS_GCP_PROBE_STRATEGY_TIMEOUT", 3.0),
+                    _get_env_float("Ironcliw_GCP_PROBE_STRATEGY_TIMEOUT", 3.0),
                     _gcp_probe_timeout * 0.8,
                 ),
             )
@@ -64371,7 +64371,7 @@ class JarvisSystemKernel:
                 ) -> bool:
                     """Check invincible node health endpoint when IP is configured."""
                     # Strategy 1: Check invincible node IP if configured
-                    _node_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP")
+                    _node_ip = os.environ.get("Ironcliw_INVINCIBLE_NODE_IP")
                     if not _node_ip:
                         return False
                     try:
@@ -64449,7 +64449,7 @@ class JarvisSystemKernel:
                         "[GCPProbe] GCP unreachable — falling back from %s to %s",
                         _startup_mode_now, _fallback,
                     )
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
+                    os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _fallback
                     _startup_mode_now = _fallback
                     issue_collector.add_warning(
                         f"GCP probe unreachable during {_previous_mode}; fell back to {_fallback}",
@@ -64462,7 +64462,7 @@ class JarvisSystemKernel:
             except asyncio.TimeoutError:
                 if _probe_under_pressure:
                     if _startup_mode_now == "cloud_only":
-                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_first"
+                        os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = "cloud_first"
                         _startup_mode_now = "cloud_first"
 
                     self.logger.warning(
@@ -64493,14 +64493,14 @@ class JarvisSystemKernel:
                                 return
 
                             _current_mode = os.environ.get(
-                                "JARVIS_STARTUP_MEMORY_MODE", _startup_mode_now
+                                "Ironcliw_STARTUP_MEMORY_MODE", _startup_mode_now
                             )
                             if _current_mode in ("cloud_first", "cloud_only"):
                                 _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
                                     _current_mode,
                                     available_gb=_read_available_memory_gb(),
                                 )
-                                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
+                                os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _fallback
                                 self.logger.warning(
                                     "[GCPProbe] Deferred probe unreachable — falling back from %s to %s",
                                     _current_mode,
@@ -64519,7 +64519,7 @@ class JarvisSystemKernel:
                             self.logger.warning(
                                 "[GCPProbe] Deferred probe timed out after %.0fs — keeping %s",
                                 _deferred_timeout,
-                                os.environ.get("JARVIS_STARTUP_MEMORY_MODE", _startup_mode_now),
+                                os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", _startup_mode_now),
                             )
                         except Exception as _deferred_err:
                             self.logger.debug(
@@ -64543,12 +64543,12 @@ class JarvisSystemKernel:
                         _gcp_probe_timeout,
                         _fallback,
                     )
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
+                    os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _fallback
                     _startup_mode_now = _fallback
                     issue_collector.add_warning(
                         f"GCP probe timed out during {_previous_mode}; switched to {_fallback}",
                         IssueCategory.GCP,
-                        suggestion="Increase JARVIS_GCP_PROBE_TIMEOUT if network latency is expected",
+                        suggestion="Increase Ironcliw_GCP_PROBE_TIMEOUT if network latency is expected",
                     )
             except Exception as _probe_err:
                 self.logger.debug("[GCPProbe] Probe failed: %s", _probe_err)
@@ -64557,16 +64557,16 @@ class JarvisSystemKernel:
         # via GCPHybridPrimeRouter state machine. See design doc:
         # docs/plans/2026-02-22-gcp-pressure-driven-lifecycle-design.md
 
-        if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true":
+        if self.config.trinity_enabled and os.getenv("Ironcliw_EARLY_PRIME_PREWARM", "true").lower() == "true":
             # Check golden image + GCP indicators
-            _use_golden_image = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+            _use_golden_image = os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
             _has_static_ip = bool(os.getenv("GCP_VM_STATIC_IP_NAME", ""))
-            _hollow_client = os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true"
+            _hollow_client = os.getenv("Ironcliw_HOLLOW_CLIENT", "false").lower() == "true"
             _gcp_enabled = any([
                 os.getenv("GCP_ENABLED", "false").lower() == "true",
                 os.getenv("GCP_VM_ENABLED", "false").lower() == "true",
-                os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true",
-                os.getenv("JARVIS_GCP_ENABLED", "false").lower() == "true",
+                os.getenv("Ironcliw_SPOT_VM_ENABLED", "false").lower() == "true",
+                os.getenv("Ironcliw_GCP_ENABLED", "false").lower() == "true",
             ])
             _use_gcp_inference = os.getenv("USE_GCP_INFERENCE", "false").lower() == "true"
             _gcp_prime_endpoint = os.getenv("GCP_PRIME_ENDPOINT", "")
@@ -64590,9 +64590,9 @@ class JarvisSystemKernel:
             # Hedge strategy (v230.0) remains valid on 32GB+ machines where local
             # Prime CAN load in parallel as a genuine fallback.
             _cloud_only_mode = (
-                os.getenv("JARVIS_CLOUD_ONLY", "false").lower() == "true"
-                or os.getenv("JARVIS_SKIP_LOCAL_PREWARM", "false").lower() == "true"
-                or os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "false"
+                os.getenv("Ironcliw_CLOUD_ONLY", "false").lower() == "true"
+                or os.getenv("Ironcliw_SKIP_LOCAL_PREWARM", "false").lower() == "true"
+                or os.getenv("Ironcliw_EARLY_PRIME_PREWARM", "true").lower() == "false"
             )
 
             if _use_golden_image and (_has_static_ip or _gcp_enabled):
@@ -64691,7 +64691,7 @@ class JarvisSystemKernel:
                 self._early_prime_skipped_for_cloud = True
                 add_dashboard_log("Cloud-only inference mode: skipping local LLM loading", "INFO")
         
-        if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true" and not _skip_local_prewarm:
+        if self.config.trinity_enabled and os.getenv("Ironcliw_EARLY_PRIME_PREWARM", "true").lower() == "true" and not _skip_local_prewarm:
             self.logger.info("[Kernel] 🚀 Starting EARLY PRIME PRE-WARM (12-minute LLM load begins NOW)")
             add_dashboard_log("Starting early Prime pre-warm (LLM loading)", "INFO")
             
@@ -64700,12 +64700,12 @@ class JarvisSystemKernel:
                 Start Prime subprocess early to begin LLM loading immediately.
                 This runs in parallel with all startup phases.
                 
-                v220.2.1: Enhanced startup script detection for JARVIS-Prime repo structure.
+                v220.2.1: Enhanced startup script detection for Ironcliw-Prime repo structure.
                 """
                 try:
                     # Import TrinityIntegrator to start Prime
-                    prime_repo = os.getenv("JARVIS_PRIME_REPO_PATH", os.path.expanduser("~/Documents/repos/JARVIS-Prime"))
-                    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
+                    prime_repo = os.getenv("Ironcliw_PRIME_REPO_PATH", os.path.expanduser("~/Documents/repos/Ironcliw-Prime"))
+                    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("Ironcliw_PRIME_PORT", "8001")))
                     
                     if not os.path.exists(prime_repo):
                         self.logger.warning(f"[EarlyPrime] Prime repo not found: {prime_repo}")
@@ -64723,7 +64723,7 @@ class JarvisSystemKernel:
                     )
                     
                     # v220.2.1: Search for startup script in order of preference
-                    # JARVIS-Prime uses run_server.py as the main entry point
+                    # Ironcliw-Prime uses run_server.py as the main entry point
                     startup_candidates = [
                         os.path.join(prime_repo, "run_server.py"),         # Primary entry
                         os.path.join(prime_repo, "run_supervisor.py"),     # Alternative
@@ -64749,9 +64749,9 @@ class JarvisSystemKernel:
                     
                     # Prepare environment with startup grace period
                     env = os.environ.copy()
-                    env["JARVIS_EARLY_PREWARM"] = "true"
-                    env["JARVIS_PORT"] = str(prime_port)
-                    env["JARVIS_STARTUP_GRACE_PERIOD"] = "720"  # 12 minutes
+                    env["Ironcliw_EARLY_PREWARM"] = "true"
+                    env["Ironcliw_PORT"] = str(prime_port)
+                    env["Ironcliw_STARTUP_GRACE_PERIOD"] = "720"  # 12 minutes
                     
                     self.logger.info(f"[EarlyPrime] Starting Prime at port {prime_port} using {os.path.basename(startup_script)}...")
                     
@@ -64767,8 +64767,8 @@ class JarvisSystemKernel:
                     self.logger.success(f"[EarlyPrime] Prime subprocess started (PID: {process.pid})")
                     
                     # Store PID for later use by TrinityIntegrator
-                    os.environ["JARVIS_EARLY_PRIME_PID"] = str(process.pid)
-                    os.environ["JARVIS_EARLY_PRIME_PORT"] = str(prime_port)
+                    os.environ["Ironcliw_EARLY_PRIME_PID"] = str(process.pid)
+                    os.environ["Ironcliw_EARLY_PRIME_PORT"] = str(prime_port)
                     
                     # v220.3: Start background health monitor to update dashboard
                     # This continuously polls Prime's health and updates the progress bar
@@ -64790,7 +64790,7 @@ class JarvisSystemKernel:
                         while True:
                             try:
                                 # Check if Trinity has taken over (env var cleared)
-                                if "JARVIS_EARLY_PRIME_PID" not in os.environ:
+                                if "Ironcliw_EARLY_PRIME_PID" not in os.environ:
                                     # v221.0: CRITICAL FIX - DON'T reset progress on handoff!
                                     # Trinity will continue monitoring from where we left off.
                                     # Just stop this monitor - Trinity will pick up seamlessly.
@@ -64817,7 +64817,7 @@ class JarvisSystemKernel:
                                                 # Get progress from various fields
                                                 # v233.1: Track progress source for transparency
                                                 _ep_source = "health_endpoint"
-                                                _ep_grace = float(os.environ.get("JARVIS_STARTUP_GRACE_PERIOD", "720"))
+                                                _ep_grace = float(os.environ.get("Ironcliw_STARTUP_GRACE_PERIOD", "720"))
                                                 progress = data.get("startup_progress", 0)
                                                 if not progress:
                                                     progress = data.get("model_load_progress_pct", 0)
@@ -64826,7 +64826,7 @@ class JarvisSystemKernel:
                                                 if not progress:
                                                     # v233.1: Estimate from elapsed time (configurable)
                                                     _ep_source = "time_estimate"
-                                                    _ep_estimate_cap = int(os.environ.get("JARVIS_PROGRESS_ESTIMATE_CAP", "90"))
+                                                    _ep_estimate_cap = int(os.environ.get("Ironcliw_PROGRESS_ESTIMATE_CAP", "90"))
                                                     progress = min(_ep_estimate_cap, int((elapsed / _ep_grace) * 100))
                                                 
                                                 # Never go backwards
@@ -64866,7 +64866,7 @@ class JarvisSystemKernel:
                                 except aiohttp.ClientError:
                                     # Prime not responding yet - estimate progress
                                     # v233.1: Use configurable grace period
-                                    _ep_grace_ce = float(os.environ.get("JARVIS_STARTUP_GRACE_PERIOD", "720"))
+                                    _ep_grace_ce = float(os.environ.get("Ironcliw_STARTUP_GRACE_PERIOD", "720"))
                                     progress = min(50, max(_last_progress, int((elapsed / _ep_grace_ce) * 100)))
                                     _last_progress = progress
                                     remaining = max(0, int(_ep_grace_ce - elapsed))
@@ -64908,8 +64908,8 @@ class JarvisSystemKernel:
                     self.logger.warning(f"[EarlyPrime] Pre-warm failed (non-fatal): {e}")
                     update_dashboard_model_loading(active=False)
                     # Clear any partial state
-                    if "JARVIS_EARLY_PRIME_PID" in os.environ:
-                        del os.environ["JARVIS_EARLY_PRIME_PID"]
+                    if "Ironcliw_EARLY_PRIME_PID" in os.environ:
+                        del os.environ["Ironcliw_EARLY_PRIME_PID"]
             
             # Fire and forget - don't block startup
             self._early_prime_task = create_safe_task(
@@ -64944,10 +64944,10 @@ class JarvisSystemKernel:
         # kills startup before the VM is ready.
         if _skip_local_prewarm and self._early_prime_skipped_for_cloud:
             _should_proactive_vm = (
-                os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+                os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
                 or os.getenv("GCP_ENABLED", "false").lower() == "true"
                 or os.getenv("GCP_VM_ENABLED", "false").lower() == "true"
-                or os.getenv("JARVIS_GCP_ENABLED", "false").lower() == "true"
+                or os.getenv("Ironcliw_GCP_ENABLED", "false").lower() == "true"
             )
             if _should_proactive_vm:
                 self.logger.info(
@@ -64999,10 +64999,10 @@ class JarvisSystemKernel:
 
                         _port = int(os.getenv(
                             "TRINITY_JPRIME_PORT",
-                            os.getenv("JARVIS_PRIME_PORT", "8001"),
+                            os.getenv("Ironcliw_PRIME_PORT", "8001"),
                         ))
                         _timeout = float(os.getenv(
-                            "JARVIS_GCP_RECOVERY_TIMEOUT", "450"
+                            "Ironcliw_GCP_RECOVERY_TIMEOUT", "450"
                         ))
                         success, ip, status_msg = await manager.ensure_static_vm_ready(
                             port=_port,
@@ -65076,7 +65076,7 @@ class JarvisSystemKernel:
             if _ssm: await _ssm.start_component("loading_experience")
             # v265.0: Add timeout — loading experience starts Chrome/loading server,
             # which can hang if Chrome is unresponsive or port is blocked
-            _loading_exp_timeout = _get_env_float("JARVIS_LOADING_EXPERIENCE_TIMEOUT", 30.0)
+            _loading_exp_timeout = _get_env_float("Ironcliw_LOADING_EXPERIENCE_TIMEOUT", 30.0)
             try:
                 await asyncio.wait_for(
                     self._phase_loading_experience(), timeout=_loading_exp_timeout
@@ -65160,7 +65160,7 @@ class JarvisSystemKernel:
             if _ssm: await _ssm.start_component("preflight")
             # v270.0: Outer timeout — bare await could hang indefinitely if any
             # preflight sub-operation stalls (lock handover, zombie scan, IPC bind).
-            _preflight_timeout = _get_env_float("JARVIS_PREFLIGHT_TIMEOUT", 90.0)
+            _preflight_timeout = _get_env_float("Ironcliw_PREFLIGHT_TIMEOUT", 90.0)
             try:
                 _preflight_ok = await asyncio.wait_for(
                     self._phase_preflight(), timeout=_preflight_timeout
@@ -65229,7 +65229,7 @@ class JarvisSystemKernel:
             issue_collector.set_current_zone("Zone 3")
             # v192.0: Compute resource timeout and register with DMS for synchronized monitoring
             # This ensures DMS timeout >= operational timeout, preventing false timeout triggers
-            resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
+            resource_timeout = float(os.environ.get("Ironcliw_RESOURCE_TIMEOUT", "300.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("resources", 15, operational_timeout=resource_timeout)
                 await self._safe_narrate(self._narrator.narrate_phase_start("resources"), "phase_start(resources)")
@@ -65302,7 +65302,7 @@ class JarvisSystemKernel:
             # v192.0: Register backend operational timeout with DMS
             # v232.1: Increased from 90→300s. Backend includes Prime model loading
             # which takes 300-600s on 16GB Mac with memory pressure.
-            backend_timeout = float(os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0"))
+            backend_timeout = float(os.environ.get("Ironcliw_BACKEND_STARTUP_TIMEOUT", "300.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("backend", 30, operational_timeout=backend_timeout)
                 await self._safe_narrate(self._narrator.narrate_phase_start("backend"), "phase_start(backend)")
@@ -65378,7 +65378,7 @@ class JarvisSystemKernel:
                     self._voice_orchestrator = VoiceOrchestrator()
                     # v265.0: Add timeout — IPC server start could hang
                     # v265.5: CPU-aware scaling + env var override
-                    _vo_timeout = _get_env_float("JARVIS_VOICE_ORCH_START_TIMEOUT", 15.0)
+                    _vo_timeout = _get_env_float("Ironcliw_VOICE_ORCH_START_TIMEOUT", 15.0)
                     try:
                         import psutil as _vo_ps
                         _vo_cpu = _vo_ps.cpu_percent(interval=None)
@@ -65436,7 +65436,7 @@ class JarvisSystemKernel:
             issue_collector.set_current_zone("Zone 4")
             # v260.0: Harmonized intelligence timeout — PhaseConfig says 120s,
             # env var default was 90s (mismatch). Now both use 120s default.
-            intelligence_timeout = _get_env_float("JARVIS_INTELLIGENCE_TIMEOUT", 120.0)
+            intelligence_timeout = _get_env_float("Ironcliw_INTELLIGENCE_TIMEOUT", 120.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("intelligence", 50, operational_timeout=intelligence_timeout)
                 await self._safe_narrate(self._narrator.narrate_phase_start("intelligence"), "phase_start(intelligence)")
@@ -65526,7 +65526,7 @@ class JarvisSystemKernel:
             if self.config.ecapa_enabled:
                 async def _run_ecapa_verification_bg() -> None:
                     """ECAPA verification with CPU backpressure gate."""
-                    _ecapa_bg_timeout = _get_env_float("JARVIS_ECAPA_BG_TIMEOUT", 90.0)
+                    _ecapa_bg_timeout = _get_env_float("Ironcliw_ECAPA_BG_TIMEOUT", 90.0)
 
                     try:
                         # v3.0: Check Cloud SQL gate — if UNAVAILABLE, skip
@@ -65609,7 +65609,7 @@ class JarvisSystemKernel:
             # is ready. Non-fatal — degraded mode without autonomous goal pursuit.
             # =====================================================================
             # v265.0: Add timeout — previously bare await could hang indefinitely
-            _agent_runtime_timeout = _get_env_float("JARVIS_AGENT_RUNTIME_TIMEOUT", 30.0)
+            _agent_runtime_timeout = _get_env_float("Ironcliw_AGENT_RUNTIME_TIMEOUT", 30.0)
             # v265.4: CPU-aware timeout — extend under pressure
             try:
                 import psutil as _art_psutil
@@ -65649,7 +65649,7 @@ class JarvisSystemKernel:
                     self._schedule_audio_bus_recovery("phase4_audio_bus_missing")
                 else:
                     # v266.1: Timeout guard — audio device init can hang if device held
-                    _audio_wire_timeout = _get_env_float("JARVIS_AUDIO_WIRE_TIMEOUT", 15.0)
+                    _audio_wire_timeout = _get_env_float("Ironcliw_AUDIO_WIRE_TIMEOUT", 15.0)
                     try:
                         await asyncio.wait_for(
                             self._attempt_wire_audio_pipeline(context="startup"),
@@ -65693,7 +65693,7 @@ class JarvisSystemKernel:
             # cleanup at line 62228 covers the normal path, but if intelligence phase
             # timeout cancels before reaching it, the active flag may leak.
             update_dashboard_model_loading(active=False)
-            two_tier_timeout = float(os.environ.get("JARVIS_TWO_TIER_TIMEOUT", "60.0"))
+            two_tier_timeout = float(os.environ.get("Ironcliw_TWO_TIER_TIMEOUT", "60.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("two_tier", 55, operational_timeout=two_tier_timeout)
 
@@ -65703,7 +65703,7 @@ class JarvisSystemKernel:
             # parallel init had failures), use a reduced fast-path timeout instead of
             # burning 80s on components that will cascade-fail.
             if _ssm: await _ssm.start_component("two_tier_security")
-            _two_tier_init_timeout = _get_env_float("JARVIS_TWO_TIER_INIT_TIMEOUT", 80.0)
+            _two_tier_init_timeout = _get_env_float("Ironcliw_TWO_TIER_INIT_TIMEOUT", 80.0)
             # v265.4: CPU-aware outer timeout — extend under pressure
             try:
                 import psutil as _tt_psutil
@@ -65780,7 +65780,7 @@ class JarvisSystemKernel:
                 except Exception:
                     pass
             if _infra_degraded:
-                _fast_timeout = _get_env_float("JARVIS_TWO_TIER_FAST_TIMEOUT", 30.0)
+                _fast_timeout = _get_env_float("Ironcliw_TWO_TIER_FAST_TIMEOUT", 30.0)
                 _two_tier_init_timeout = min(_two_tier_init_timeout, _fast_timeout)
             try:
                 _two_tier_ok = await asyncio.wait_for(
@@ -65806,7 +65806,7 @@ class JarvisSystemKernel:
                 issue_collector.add_warning(
                     f"Two-Tier Security timed out ({_two_tier_init_timeout:.0f}s)",
                     IssueCategory.INTELLIGENCE,
-                    suggestion="Increase JARVIS_TWO_TIER_INIT_TIMEOUT or check component health"
+                    suggestion="Increase Ironcliw_TWO_TIER_INIT_TIMEOUT or check component health"
                 )
 
             # v256.1: Reset two_tier stall timer by advancing progress (R3-#3).
@@ -65846,9 +65846,9 @@ class JarvisSystemKernel:
             # By starting WebSocket here (between Intelligence and Trinity),
             # we ensure the server is ready when Trinity components connect.
             # =====================================================================
-            if os.getenv("JARVIS_WEBSOCKET_ENABLED", "true").lower() == "true":
+            if os.getenv("Ironcliw_WEBSOCKET_ENABLED", "true").lower() == "true":
                 # v265.0: Add timeouts — previously bare awaits could hang
-                _ws_init_timeout = _get_env_float("JARVIS_WEBSOCKET_INIT_TIMEOUT", 15.0)
+                _ws_init_timeout = _get_env_float("Ironcliw_WEBSOCKET_INIT_TIMEOUT", 15.0)
                 try:
                     self.logger.info("[Kernel] Pre-Trinity WebSocket hub initialization...")
                     ws_result = await asyncio.wait_for(
@@ -65930,8 +65930,8 @@ class JarvisSystemKernel:
             # and use it consistently everywhere.
             # =====================================================================
 
-            # Step 1: Read the explicit JARVIS_TRINITY_TIMEOUT if set (user override)
-            explicit_trinity_timeout = os.environ.get("JARVIS_TRINITY_TIMEOUT")
+            # Step 1: Read the explicit Ironcliw_TRINITY_TIMEOUT if set (user override)
+            explicit_trinity_timeout = os.environ.get("Ironcliw_TRINITY_TIMEOUT")
 
             # Step 2: Calculate dynamic timeout based on GCP/Hollow Client mode
             trinity_base_timeout = 180.0  # Base: Prime (90s) + Reactor (60s) + buffer (30s)
@@ -65943,7 +65943,7 @@ class JarvisSystemKernel:
                 os.environ.get("HOLLOW_CLIENT_MODE", "").lower() in ("true", "1", "yes"),
                 os.environ.get("GCP_PRIME_ENDPOINT", "") != "",
                 os.environ.get("USE_GCP_INFERENCE", "").lower() in ("true", "1", "yes"),
-                os.environ.get("JARVIS_GCP_OFFLOAD_ACTIVE", "").lower() in ("true", "1", "yes"),
+                os.environ.get("Ironcliw_GCP_OFFLOAD_ACTIVE", "").lower() in ("true", "1", "yes"),
             ]
 
             # Detect if we need extended timeout for GCP operations
@@ -65964,7 +65964,7 @@ class JarvisSystemKernel:
                 # User explicitly set a timeout - use it
                 effective_trinity_timeout = float(explicit_trinity_timeout)
                 self.logger.info(
-                    f"[Trinity] Using explicit timeout from JARVIS_TRINITY_TIMEOUT: {effective_trinity_timeout:.0f}s"
+                    f"[Trinity] Using explicit timeout from Ironcliw_TRINITY_TIMEOUT: {effective_trinity_timeout:.0f}s"
                 )
             elif needs_gcp_timeout:
                 # v198.2: GCP mode timeout = GCP_VM + fallback + orchestration buffer
@@ -65992,7 +65992,7 @@ class JarvisSystemKernel:
             trinity_progress_aware_cap = min(
                 TRINITY_MAX_EXTENDED_TIMEOUT, effective_trinity_timeout * 2
             )
-            trinity_outer_buffer = _get_env_float("JARVIS_TRINITY_OUTER_BUFFER", 180.0)
+            trinity_outer_buffer = _get_env_float("Ironcliw_TRINITY_OUTER_BUFFER", 180.0)
             effective_trinity_outer_timeout = trinity_progress_aware_cap + trinity_outer_buffer
             self._effective_trinity_progress_cap = trinity_progress_aware_cap
             self._effective_trinity_outer_timeout = effective_trinity_outer_timeout
@@ -66018,7 +66018,7 @@ class JarvisSystemKernel:
                 # v258.2: Wrap narrator calls in timeouts — previously unbounded awaits
                 # that could block indefinitely if TTS engine hangs, preventing
                 # _phase_trinity() from starting and the heartbeat from being created.
-                _narrator_timeout = _get_env_float("JARVIS_TRINITY_NARRATOR_TIMEOUT", 10.0)
+                _narrator_timeout = _get_env_float("Ironcliw_TRINITY_NARRATOR_TIMEOUT", 10.0)
                 if self._narrator:
                     try:
                         # v261.0: Shield narration — TTS should finish even if we move on
@@ -66094,8 +66094,8 @@ class JarvisSystemKernel:
                 # v170.0: Explicitly log when Trinity is disabled
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
                 self.logger.info("[Kernel] Phase 5: Trinity - SKIPPED (disabled)")
-                self.logger.info(f"[Kernel]   Set JARVIS_TRINITY_ENABLED=true or --trinity to enable")
-                self.logger.info("[Kernel]   Trinity connects: JARVIS + J-Prime + Reactor-Core")
+                self.logger.info(f"[Kernel]   Set Ironcliw_TRINITY_ENABLED=true or --trinity to enable")
+                self.logger.info("[Kernel]   Trinity connects: Ironcliw + J-Prime + Reactor-Core")
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
                 if _ssm: await _ssm.skip_component("trinity", "Disabled via config")
 
@@ -66133,7 +66133,7 @@ class JarvisSystemKernel:
                     shutdown_reactor_core,
                 )
                 # v265.5: CPU-aware timeout + env var override
-                _rc_timeout = _get_env_float("JARVIS_REACTOR_CORE_INIT_TIMEOUT", 30.0)
+                _rc_timeout = _get_env_float("Ironcliw_REACTOR_CORE_INIT_TIMEOUT", 30.0)
                 try:
                     import psutil as _rc_ps
                     _rc_cpu = _rc_ps.cpu_percent(interval=None)
@@ -66159,7 +66159,7 @@ class JarvisSystemKernel:
             try:
                 from backend.autonomy.reactor_core_watcher import start_reactor_core_watcher
                 # v265.5: CPU-aware timeout + env var override
-                _rcw_timeout = _get_env_float("JARVIS_REACTOR_WATCHER_TIMEOUT", 15.0)
+                _rcw_timeout = _get_env_float("Ironcliw_REACTOR_WATCHER_TIMEOUT", 15.0)
                 try:
                     import psutil as _rcw_ps
                     _rcw_cpu = _rcw_ps.cpu_percent(interval=None)
@@ -66185,7 +66185,7 @@ class JarvisSystemKernel:
             issue_collector.set_current_phase("Phase 6: Enterprise Services")
             issue_collector.set_current_zone("Zone 6.4")
             # v192.0: Register enterprise operational timeout with DMS
-            enterprise_timeout = float(os.environ.get("JARVIS_ENTERPRISE_TIMEOUT", "90.0"))
+            enterprise_timeout = float(os.environ.get("Ironcliw_ENTERPRISE_TIMEOUT", "90.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("enterprise", 80, operational_timeout=enterprise_timeout)
                 await self._safe_narrate(self._narrator.narrate_phase_start("enterprise"), "phase_start(enterprise)")
@@ -66264,7 +66264,7 @@ class JarvisSystemKernel:
             self._current_startup_progress = 85
             issue_collector.set_current_phase("Phase 6.4: Permissions")
             issue_collector.set_current_zone("Zone 6.4")
-            perm_check_timeout = _get_env_float("JARVIS_PERMISSION_CHECK_TIMEOUT", 10.0)
+            perm_check_timeout = _get_env_float("Ironcliw_PERMISSION_CHECK_TIMEOUT", 10.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase(
                     "permissions", 85, operational_timeout=perm_check_timeout
@@ -66312,7 +66312,7 @@ class JarvisSystemKernel:
             self._current_startup_progress = 85
             issue_collector.set_current_phase("Phase 6.5: Ghost Display")
             issue_collector.set_current_zone("Zone 6.5")
-            ghost_display_timeout = _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0)
+            ghost_display_timeout = _get_env_float("Ironcliw_GHOST_DISPLAY_TIMEOUT", 30.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase(
                     "ghost_display", 85, operational_timeout=ghost_display_timeout
@@ -66410,13 +66410,13 @@ class JarvisSystemKernel:
             # - Post-startup Steps 3-5 hanging indefinitely
             # - stop_agi_os() cleanup itself hanging
             # - Event loop blockage preventing internal timeout from firing
-            _agi_os_init_timeout_val = _get_env_float("JARVIS_AGI_OS_INIT_TIMEOUT", 270.0)
+            _agi_os_init_timeout_val = _get_env_float("Ironcliw_AGI_OS_INIT_TIMEOUT", 270.0)
             # v262.0 R3.1: Cap outer timeout BELOW PHASE_HOLD_HARD_CAP to avoid race.
             # Default: min(270+30, 300-15) = min(300, 285) = 285s.
             # This ensures outer timeout fires 15s BEFORE ProgressController's hard cap,
             # preventing conflicting error handling (both trying to recover simultaneously).
             _agi_os_outer_timeout = _get_env_float(
-                "JARVIS_AGI_OS_OUTER_TIMEOUT",
+                "Ironcliw_AGI_OS_OUTER_TIMEOUT",
                 min(
                     _agi_os_init_timeout_val + 30.0,
                     max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 15.0),
@@ -66441,7 +66441,7 @@ class JarvisSystemKernel:
             # We allow a bounded startup budget, then continue with AGI OS
             # completing in the background via a tracked task.
             _agi_os_startup_budget = _get_env_float(
-                "JARVIS_AGI_OS_STARTUP_BUDGET",
+                "Ironcliw_AGI_OS_STARTUP_BUDGET",
                 min(45.0, max(15.0, _agi_os_outer_timeout * 0.2)),
             )
             _agi_os_startup_budget = max(
@@ -66560,7 +66560,7 @@ class JarvisSystemKernel:
             self._current_startup_progress = 90
             issue_collector.set_current_phase("Phase 6.8: Visual Pipeline")
             issue_collector.set_current_zone("Zone 6.8")
-            visual_pipeline_timeout = _get_env_float("JARVIS_VISUAL_PIPELINE_TIMEOUT", 45.0)
+            visual_pipeline_timeout = _get_env_float("Ironcliw_VISUAL_PIPELINE_TIMEOUT", 45.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase(
                     "visual_pipeline", 90, operational_timeout=visual_pipeline_timeout
@@ -66569,7 +66569,7 @@ class JarvisSystemKernel:
             # v262.0: Outer timeout for Visual Pipeline (derived from internal timeout + grace)
             _vp_inner_timeout = visual_pipeline_timeout
             _vp_outer_timeout = _get_env_float(
-                "JARVIS_VISUAL_PIPELINE_OUTER_TIMEOUT",
+                "Ironcliw_VISUAL_PIPELINE_OUTER_TIMEOUT",
                 _vp_inner_timeout + 15.0,
             )
             if _ssm: await _ssm.start_component("visual_pipeline")
@@ -66638,7 +66638,7 @@ class JarvisSystemKernel:
             # PHASE 7: FRONTEND TRANSITION (v117.0)
             # =================================================================
             # Start the React frontend and transition browser from loading
-            # page to the main JARVIS UI.
+            # page to the main Ironcliw UI.
             # =================================================================
             self._current_startup_phase = "frontend"
             self._current_startup_progress = 93
@@ -66659,7 +66659,7 @@ class JarvisSystemKernel:
             # Chrome redirect (potentially indefinite via AppleScript),
             # loading server stop (~44s). Practical ceiling: 180s.
             _fe_outer_timeout = _get_env_float(
-                "JARVIS_FRONTEND_PHASE_TIMEOUT", 180.0
+                "Ironcliw_FRONTEND_PHASE_TIMEOUT", 180.0
             )
             # v265.6: CPU-aware timeout scaling — frontend builds (npm install,
             # TypeScript compile, self-heal build) are CPU-intensive.  Under
@@ -66715,7 +66715,7 @@ class JarvisSystemKernel:
 
             await self._safe_broadcast(
                 stage="complete",
-                message="JARVIS is ready!",
+                message="Ironcliw is ready!",
                 progress=100,
                 metadata={
                     "icon": "check-circle",
@@ -66756,7 +66756,7 @@ class JarvisSystemKernel:
             # per-service timeouts but the overall call can still hang if
             # network probing stalls at a lower level.
             _verify_outer_timeout = _get_env_float(
-                "JARVIS_VERIFY_OUTER_TIMEOUT",
+                "Ironcliw_VERIFY_OUTER_TIMEOUT",
                 self._get_verification_timeout() + 15.0,
             )
             try:
@@ -66894,7 +66894,7 @@ class JarvisSystemKernel:
             # Send final 100% progress to loading page
             await self._safe_broadcast(
                 stage="complete",
-                message="JARVIS startup complete!",
+                message="Ironcliw startup complete!",
                 progress=100,
                 metadata={
                     "icon": "check",
@@ -66960,11 +66960,11 @@ class JarvisSystemKernel:
             # startup can never hang at 100% waiting on narration/event sinks.
             completion_step_timeout = max(
                 0.25,
-                _get_env_float("JARVIS_STARTUP_COMPLETION_STEP_TIMEOUT", 8.0),
+                _get_env_float("Ironcliw_STARTUP_COMPLETION_STEP_TIMEOUT", 8.0),
             )
             completion_total_timeout = max(
                 completion_step_timeout,
-                _get_env_float("JARVIS_STARTUP_COMPLETION_TOTAL_TIMEOUT", 20.0),
+                _get_env_float("Ironcliw_STARTUP_COMPLETION_TOTAL_TIMEOUT", 20.0),
             )
             completion_deadline = time.monotonic() + completion_total_timeout
 
@@ -67122,7 +67122,7 @@ class JarvisSystemKernel:
                     lock_result = await backend_cleanup_stale_locks(
                         force=False,
                         timeout=5.0,
-                        cross_repo=True  # Clean JARVIS, J-Prime, Reactor locks
+                        cross_repo=True  # Clean Ironcliw, J-Prime, Reactor locks
                     )
                     if hasattr(lock_result, 'success') and lock_result.success:
                         reason = getattr(lock_result, 'reason', 'cleaned')
@@ -67153,12 +67153,12 @@ class JarvisSystemKernel:
             # v192.0: INTELLIGENT KERNEL TAKEOVER PROTOCOL
             # Advanced takeover with:
             # - IPC-based health verification (not just PID alive check)
-            # - Cross-repo process discovery (JARVIS, Prime, Reactor)
+            # - Cross-repo process discovery (Ironcliw, Prime, Reactor)
             # - Graceful handover protocol with timeout
             # - Async parallel process scanning
             # =====================================================================
             # v265.5: CPU-aware handover timeout + env var override
-            _takeover_timeout = _get_env_float("JARVIS_KERNEL_HANDOVER_TIMEOUT", 30.0)
+            _takeover_timeout = _get_env_float("Ironcliw_KERNEL_HANDOVER_TIMEOUT", 30.0)
             try:
                 import psutil as _tk_ps
                 _tk_cpu = _tk_ps.cpu_percent(interval=None)
@@ -67199,7 +67199,7 @@ class JarvisSystemKernel:
             if not takeover_result.success and not self._force:
                 lock_wait_seconds = max(
                     0.0,
-                    _get_env_float("JARVIS_STARTUP_LOCK_WAIT_SECONDS", 20.0),
+                    _get_env_float("Ironcliw_STARTUP_LOCK_WAIT_SECONDS", 20.0),
                 )
                 if lock_wait_seconds > 0:
                     wait_deadline = time.monotonic() + lock_wait_seconds
@@ -67386,9 +67386,9 @@ class JarvisSystemKernel:
                 self.logger.info(f"[Kernel] Cleaned {cleanup_result['zombies_killed']} zombie processes")
 
             # v119.0: Signal cleanup done to prevent redundant cleanup by other scripts
-            os.environ["JARVIS_CLEANUP_DONE"] = "1"
-            os.environ["JARVIS_CLEANUP_TIMESTAMP"] = str(int(time.time()))
-            self.logger.debug("[Kernel] Set JARVIS_CLEANUP_DONE=1")
+            os.environ["Ironcliw_CLEANUP_DONE"] = "1"
+            os.environ["Ironcliw_CLEANUP_TIMESTAMP"] = str(int(time.time()))
+            self.logger.debug("[Kernel] Set Ironcliw_CLEANUP_DONE=1")
 
             # Install signal handlers
             loop = asyncio.get_running_loop()
@@ -67529,15 +67529,15 @@ class JarvisSystemKernel:
         if self._voice_sidecar_process is None and sidecar_cfg.command:
             try:
                 env = os.environ.copy()
-                env.setdefault("JARVIS_VOICE_SIDECAR_TRANSPORT", sidecar_cfg.transport)
-                env.setdefault("JARVIS_VOICE_SIDECAR_BASE_URL", sidecar_cfg.base_url)
-                env.setdefault("JARVIS_VOICE_SIDECAR_SOCKET", sidecar_cfg.unix_socket_path)
+                env.setdefault("Ironcliw_VOICE_SIDECAR_TRANSPORT", sidecar_cfg.transport)
+                env.setdefault("Ironcliw_VOICE_SIDECAR_BASE_URL", sidecar_cfg.base_url)
+                env.setdefault("Ironcliw_VOICE_SIDECAR_SOCKET", sidecar_cfg.unix_socket_path)
                 env.setdefault(
-                    "JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT",
+                    "Ironcliw_VOICE_SIDECAR_CONTROL_TIMEOUT",
                     str(sidecar_cfg.control_timeout),
                 )
                 env.setdefault(
-                    "JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT",
+                    "Ironcliw_VOICE_SIDECAR_HEALTH_TIMEOUT",
                     str(sidecar_cfg.health_timeout),
                 )
 
@@ -67602,8 +67602,8 @@ class JarvisSystemKernel:
                 )
                 return True
 
-            os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
-            os.environ["JARVIS_VOICE_SIDECAR_GATE"] = "closed"
+            os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
+            os.environ["Ironcliw_VOICE_SIDECAR_GATE"] = "closed"
             self._update_component_status(
                 "voice_sidecar",
                 "degraded",
@@ -67702,23 +67702,23 @@ class JarvisSystemKernel:
 
         # v183.0: Resource initialization timeout - increased from 60s to 300s
         # GCP/Docker init often takes 2-4 minutes, 60s was causing premature timeouts
-        resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
+        resource_timeout = float(os.environ.get("Ironcliw_RESOURCE_TIMEOUT", "300.0"))
 
         # v266.2: Memory gate — re-evaluate mode at phase boundary
         try:
             import psutil as _ps2
             _mem2 = _ps2.virtual_memory()
             _avail_gb2 = _mem2.available / (1024**3)
-            _current_mode2 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _current_mode2 = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
             # NOTE: Mirrors _REEVAL_SEVERITY / _reevaluate_startup_mode() threshold logic.
             _sev_map = {
                 "local_full": 0, "local_optimized": 1, "sequential": 2,
                 "cloud_first": 3, "cloud_only": 4, "minimal": 5,
             }
-            _critical2 = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
-            _cloud2 = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
-            _optimize2 = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
-            _planned_ml2 = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+            _critical2 = float(os.getenv("Ironcliw_CRITICAL_THRESHOLD_GB", "2.0"))
+            _cloud2 = float(os.getenv("Ironcliw_CLOUD_THRESHOLD_GB", "6.0"))
+            _optimize2 = float(os.getenv("Ironcliw_OPTIMIZE_THRESHOLD_GB", "4.0"))
+            _planned_ml2 = float(os.getenv("Ironcliw_PLANNED_ML_GB", "4.6"))
             _predicted2 = max(0.0, _avail_gb2 - _planned_ml2)
 
             if _avail_gb2 < _critical2:
@@ -67732,7 +67732,7 @@ class JarvisSystemKernel:
 
             # v266.3: If OOMBridge is broken, cloud modes can't execute.
             # Clamp to best available local mode instead.
-            if os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0":
+            if os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE") == "0":
                 if _ideal2 in ("cloud_first", "cloud_only"):
                     _ideal2 = "sequential"
 
@@ -67740,31 +67740,31 @@ class JarvisSystemKernel:
             _ideal_sev2 = _sev_map.get(_ideal2, 0)
             # Monotonic: only degrade during startup (never recover upward)
             if _ideal_sev2 > _cur_sev2:
-                _desired_mode2 = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _current_mode2)
+                _desired_mode2 = os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", _current_mode2)
                 self.logger.info(
                     "[v266.2] Phase 2 gate: desired=%s effective=%s→%s (avail=%.1fGB)",
                     _desired_mode2, _current_mode2, _ideal2, _avail_gb2,
                 )
-                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal2
-                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _ideal2
-                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb2:.2f}"
+                os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _ideal2
+                os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _ideal2
+                os.environ["Ironcliw_MEASURED_AVAILABLE_GB"] = f"{_avail_gb2:.2f}"
                 _current_mode2 = _ideal2
             else:
-                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _current_mode2
+                os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _current_mode2
 
             if _current_mode2 in ("cloud_only", "minimal"):
                 self.logger.warning(
                     "[v266.2] Phase 2: mode=%s — deferring heavy local resources",
                     _current_mode2,
                 )
-                os.environ["JARVIS_CAPABILITY_DOCKER"] = "deferred"
-                os.environ["JARVIS_CAPABILITY_LOCAL_STORAGE"] = "deferred"
+                os.environ["Ironcliw_CAPABILITY_DOCKER"] = "deferred"
+                os.environ["Ironcliw_CAPABILITY_LOCAL_STORAGE"] = "deferred"
         except Exception as _gate2_err:
             self.logger.debug("[v266.2] Phase 2 memory gate error: %s", _gate2_err)
 
         # Voice sidecar control-plane bootstrap (optional, config-driven).
         # v270.0: Add timeout — sidecar IPC/health handshake can stall.
-        _sidecar_timeout = _get_env_float("JARVIS_VOICE_SIDECAR_TIMEOUT", 30.0)
+        _sidecar_timeout = _get_env_float("Ironcliw_VOICE_SIDECAR_TIMEOUT", 30.0)
         if self.config.voice_sidecar_enabled:
             try:
                 sidecar_ready = await asyncio.wait_for(
@@ -68005,7 +68005,7 @@ class JarvisSystemKernel:
                 
                 # v220.1: Update dashboard with GCP starting status
                 # v229.0: Include deployment mode for user transparency
-                _gcp_deploy_mode = "golden-image" if os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true" else "standard"
+                _gcp_deploy_mode = "golden-image" if os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true" else "standard"
                 update_dashboard_gcp_progress(
                     phase=1, 
                     phase_name="Initiating", 
@@ -68147,14 +68147,14 @@ class JarvisSystemKernel:
             # v266.0: Initialize all with per-manager timeout isolation.
             # Root fix: prevent one hung manager from stalling the entire startup.
             resource_manager_timeout = float(
-                os.environ.get("JARVIS_RESOURCE_MANAGER_TIMEOUT", "90.0")
+                os.environ.get("Ironcliw_RESOURCE_MANAGER_TIMEOUT", "90.0")
             )
             # v270.0: Force sequential init when effective mode is sequential/minimal
             # or when available RAM < 4GB. Parallel gather under memory pressure causes
             # multiple heavy imports (google-cloud, docker, etc.) to run concurrently,
             # amplifying memory usage and risking OOM.
             _effective_mode_for_parallel = os.environ.get(
-                "JARVIS_STARTUP_MEMORY_MODE", "local_full"
+                "Ironcliw_STARTUP_MEMORY_MODE", "local_full"
             )
             _force_sequential = _effective_mode_for_parallel in ("sequential", "minimal")
             if not _force_sequential:
@@ -68216,7 +68216,7 @@ class JarvisSystemKernel:
                     except Exception:
                         quick_check_timeout = 15.0  # Fallback
                 else:
-                    quick_check_timeout = float(os.environ.get("JARVIS_INVINCIBLE_QUICK_CHECK_TIMEOUT", "15.0"))
+                    quick_check_timeout = float(os.environ.get("Ironcliw_INVINCIBLE_QUICK_CHECK_TIMEOUT", "15.0"))
                 
                 try:
                     self.logger.info(f"[InvincibleNode] Quick check (max {quick_check_timeout:.0f}s)...")
@@ -68247,7 +68247,7 @@ class JarvisSystemKernel:
                         self._propagate_invincible_node_url(node_ip, source="quick_check")
                         
                         # v229.0: CLOUD TAKEOVER — terminate redundant local Early Prime
-                        _early_prime_pid_str = os.environ.get("JARVIS_EARLY_PRIME_PID")
+                        _early_prime_pid_str = os.environ.get("Ironcliw_EARLY_PRIME_PID")
                         if _early_prime_pid_str:
                             try:
                                 _early_pid = int(_early_prime_pid_str)
@@ -68257,10 +68257,10 @@ class JarvisSystemKernel:
                                     f"[InvincibleNode] v229.0 ☁️ Terminated local Early Prime (PID: {_early_pid}) "
                                     f"— cloud VM ready via quick check"
                                 )
-                                if "JARVIS_EARLY_PRIME_PID" in os.environ:
-                                    del os.environ["JARVIS_EARLY_PRIME_PID"]
-                                if "JARVIS_EARLY_PRIME_PORT" in os.environ:
-                                    del os.environ["JARVIS_EARLY_PRIME_PORT"]
+                                if "Ironcliw_EARLY_PRIME_PID" in os.environ:
+                                    del os.environ["Ironcliw_EARLY_PRIME_PID"]
+                                if "Ironcliw_EARLY_PRIME_PORT" in os.environ:
+                                    del os.environ["Ironcliw_EARLY_PRIME_PORT"]
                             except (ValueError, ProcessLookupError, OSError):
                                 pass
                         
@@ -68318,7 +68318,7 @@ class JarvisSystemKernel:
                     
                     # v220.1: Update dashboard - continuing in background
                     # v229.0: Show deployment mode so user knows what's happening
-                    _bg_deploy_mode = "golden-image" if os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true" else "standard"
+                    _bg_deploy_mode = "golden-image" if os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true" else "standard"
                     _bg_msg = f"VM starting ({_bg_deploy_mode})" if _bg_deploy_mode == "golden-image" else "VM starting (standard install ~10min)"
                     update_dashboard_gcp_progress(
                         phase=4, phase_name="Background",
@@ -68343,7 +68343,7 @@ class JarvisSystemKernel:
                                     background_timeout = 600.0  # Fallback
                             else:
                                 background_timeout = float(os.environ.get(
-                                    "JARVIS_INVINCIBLE_BACKGROUND_TIMEOUT", "600.0"
+                                    "Ironcliw_INVINCIBLE_BACKGROUND_TIMEOUT", "600.0"
                                 ))
                             
                             # v220.1: Report background monitoring progress
@@ -68364,13 +68364,13 @@ class JarvisSystemKernel:
                                     await asyncio.sleep(5.0)  # Update every 5 seconds
 
                                     # v233.2: Compute deployment mode early — needed for deferral window
-                                    _is_golden = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+                                    _is_golden = os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
 
                                     # v233.2: Configurable deferral window — 60s for golden image
                                     # because Phase 0 boot (VM + metadata + Python) takes 30-60s.
                                     _syn_deferral_default = "60" if _is_golden else "15"
                                     _syn_deferral_s = float(os.environ.get(
-                                        "JARVIS_SYNTHETIC_DEFERRAL_SECONDS", _syn_deferral_default
+                                        "Ironcliw_SYNTHETIC_DEFERRAL_SECONDS", _syn_deferral_default
                                     ))
                                     if _last_real_gcp_progress_update > 0:
                                         age = time.time() - _last_real_gcp_progress_update
@@ -68455,7 +68455,7 @@ class JarvisSystemKernel:
                                 # v229.0: CLOUD TAKEOVER - Stop local Early Prime if still running
                                 # When GCP VM becomes ready, local LLM loading is redundant.
                                 # Kill the local process to free RAM and avoid confusion.
-                                _early_prime_pid_str = os.environ.get("JARVIS_EARLY_PRIME_PID")
+                                _early_prime_pid_str = os.environ.get("Ironcliw_EARLY_PRIME_PID")
                                 if _early_prime_pid_str:
                                     try:
                                         _early_pid = int(_early_prime_pid_str)
@@ -68466,10 +68466,10 @@ class JarvisSystemKernel:
                                             f"— cloud VM is ready, local LLM loading no longer needed"
                                         )
                                         # Clear env vars so Trinity doesn't adopt the dead process
-                                        if "JARVIS_EARLY_PRIME_PID" in os.environ:
-                                            del os.environ["JARVIS_EARLY_PRIME_PID"]
-                                        if "JARVIS_EARLY_PRIME_PORT" in os.environ:
-                                            del os.environ["JARVIS_EARLY_PRIME_PORT"]
+                                        if "Ironcliw_EARLY_PRIME_PID" in os.environ:
+                                            del os.environ["Ironcliw_EARLY_PRIME_PID"]
+                                        if "Ironcliw_EARLY_PRIME_PORT" in os.environ:
+                                            del os.environ["Ironcliw_EARLY_PRIME_PORT"]
                                     except (ValueError, ProcessLookupError, OSError) as kill_err:
                                         self.logger.debug(
                                             f"[InvincibleNode] Early Prime already stopped: {kill_err}"
@@ -68578,7 +68578,7 @@ class JarvisSystemKernel:
                 # Scan range in batches to avoid a single giant gather on busy hosts.
                 batch_size = max(
                     8,
-                    int(os.environ.get("JARVIS_PORT_FALLBACK_BATCH_SIZE", "24")),
+                    int(os.environ.get("Ironcliw_PORT_FALLBACK_BATCH_SIZE", "24")),
                 )
                 port_found = False
                 for idx in range(0, len(candidate_ports), batch_size):
@@ -68651,7 +68651,7 @@ class JarvisSystemKernel:
             self.logger.success(f"[Kernel] Backend port: {self.config.backend_port}")
 
             # Set environment variable for child processes
-            os.environ["JARVIS_BACKEND_PORT"] = str(self.config.backend_port)
+            os.environ["Ironcliw_BACKEND_PORT"] = str(self.config.backend_port)
 
             ready_count = sum(1 for v in results.values() if v)
             self.logger.success(f"[Kernel] Resources: {ready_count}/{len(results)} initialized")
@@ -68809,16 +68809,16 @@ class JarvisSystemKernel:
             import psutil as _ps3
             _mem3 = _ps3.virtual_memory()
             _avail_gb3 = _mem3.available / (1024**3)
-            _current_mode3 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _current_mode3 = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
             # NOTE: Mirrors _REEVAL_SEVERITY / _reevaluate_startup_mode() threshold logic.
             _sev_map3 = {
                 "local_full": 0, "local_optimized": 1, "sequential": 2,
                 "cloud_first": 3, "cloud_only": 4, "minimal": 5,
             }
-            _critical3 = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
-            _cloud3 = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
-            _optimize3 = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
-            _planned_ml3 = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+            _critical3 = float(os.getenv("Ironcliw_CRITICAL_THRESHOLD_GB", "2.0"))
+            _cloud3 = float(os.getenv("Ironcliw_CLOUD_THRESHOLD_GB", "6.0"))
+            _optimize3 = float(os.getenv("Ironcliw_OPTIMIZE_THRESHOLD_GB", "4.0"))
+            _planned_ml3 = float(os.getenv("Ironcliw_PLANNED_ML_GB", "4.6"))
             _predicted3 = max(0.0, _avail_gb3 - _planned_ml3)
 
             if _avail_gb3 < _critical3:
@@ -68832,7 +68832,7 @@ class JarvisSystemKernel:
 
             # v266.3: If OOMBridge is broken, cloud modes can't execute.
             # Clamp to best available local mode instead.
-            if os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0":
+            if os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE") == "0":
                 if _ideal3 in ("cloud_first", "cloud_only"):
                     _ideal3 = "sequential"
 
@@ -68840,26 +68840,26 @@ class JarvisSystemKernel:
             _ideal_sev3 = _sev_map3.get(_ideal3, 0)
             # Monotonic: only degrade during startup (never recover upward)
             if _ideal_sev3 > _cur_sev3:
-                _desired_mode3 = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _current_mode3)
+                _desired_mode3 = os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", _current_mode3)
                 self.logger.info(
                     "[v266.2] Phase 3 gate: desired=%s effective=%s→%s (avail=%.1fGB)",
                     _desired_mode3, _current_mode3, _ideal3, _avail_gb3,
                 )
-                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal3
-                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _ideal3
-                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb3:.2f}"
+                os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _ideal3
+                os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _ideal3
+                os.environ["Ironcliw_MEASURED_AVAILABLE_GB"] = f"{_avail_gb3:.2f}"
                 _current_mode3 = _ideal3
             else:
-                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _current_mode3
+                os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = _current_mode3
 
             if _current_mode3 in ("cloud_first", "cloud_only", "minimal"):
                 if _avail_gb3 < 2.0:
                     self.logger.warning(
                         "[v266.2] Phase 3: mode=%s, available=%.1fGB "
-                        "— setting JARVIS_BACKEND_MINIMAL=true",
+                        "— setting Ironcliw_BACKEND_MINIMAL=true",
                         _current_mode3, _avail_gb3,
                     )
-                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                    os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
         except Exception as _gate3_err:
             self.logger.debug("[v266.2] Phase 3 memory gate error: %s", _gate3_err)
 
@@ -68879,9 +68879,9 @@ class JarvisSystemKernel:
                 self.logger.warning(
                     "[VoiceSidecar] Gate closed in backend phase — continuing in minimal backend mode"
                 )
-                os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
 
-            _be_sidecar_timeout = _get_env_float("JARVIS_VOICE_SIDECAR_TIMEOUT", 30.0)
+            _be_sidecar_timeout = _get_env_float("Ironcliw_VOICE_SIDECAR_TIMEOUT", 30.0)
             try:
                 worker_started = await asyncio.wait_for(
                     self._start_voice_worker_via_sidecar(reason="phase_backend"),
@@ -68917,7 +68917,7 @@ class JarvisSystemKernel:
             # v270.0: Backend launch (in-process or subprocess) can hang on port
             # binding, model loading, or health polling. Use backend_timeout from
             # env (default 300s) as outer deadline.
-            _be_launch_timeout = float(os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0"))
+            _be_launch_timeout = float(os.environ.get("Ironcliw_BACKEND_STARTUP_TIMEOUT", "300.0"))
             if self.config.in_process_backend:
                 try:
                     success = await asyncio.wait_for(
@@ -69062,10 +69062,10 @@ class JarvisSystemKernel:
             )
 
             startup_timeout = float(
-                os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0")
+                os.environ.get("Ironcliw_BACKEND_STARTUP_TIMEOUT", "300.0")
             )
             uvicorn_boot_timeout = float(
-                os.environ.get("JARVIS_BACKEND_UVICORN_BOOT_TIMEOUT", "30.0")
+                os.environ.get("Ironcliw_BACKEND_UVICORN_BOOT_TIMEOUT", "30.0")
             )
             uvicorn_boot_timeout = min(startup_timeout, max(5.0, uvicorn_boot_timeout))
             start_monotonic = time.monotonic()
@@ -69230,11 +69230,11 @@ class JarvisSystemKernel:
                 deduped_pythonpath.append(part)
 
             env["PYTHONPATH"] = os.pathsep.join(deduped_pythonpath)
-            env["JARVIS_BACKEND_PORT"] = str(self.config.backend_port)
+            env["Ironcliw_BACKEND_PORT"] = str(self.config.backend_port)
             env["BACKEND_PORT"] = str(self.config.backend_port)
-            env["JARVIS_KERNEL_PID"] = str(os.getpid())
-            env.setdefault("JARVIS_SUPERVISED", "1")
-            env.setdefault("JARVIS_MANAGED_BY_SUPERVISOR", "1")
+            env["Ironcliw_KERNEL_PID"] = str(os.getpid())
+            env.setdefault("Ironcliw_SUPERVISED", "1")
+            env.setdefault("Ironcliw_MANAGED_BY_SUPERVISOR", "1")
 
             self.logger.info(
                 f"[Kernel] Backend launch mode: {launch_mode} "
@@ -69248,8 +69248,8 @@ class JarvisSystemKernel:
                 _adm_avail_mb = _adm_mem.available / (1024 ** 2)
                 _adm_needed_mb = 500 + 500  # 500MB estimated + 500MB safety margin
                 if _adm_avail_mb < _adm_needed_mb:
-                    _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
-                    _desired_mode = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _cur_mode)
+                    _cur_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
+                    _desired_mode = os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", _cur_mode)
                     _sev_map_adm = {
                         "local_full": 0,
                         "local_optimized": 1,
@@ -69259,21 +69259,21 @@ class JarvisSystemKernel:
                         "minimal": 5,
                     }
                     if _sev_map_adm.get(_cur_mode, 0) < _sev_map_adm["sequential"]:
-                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "sequential"
-                        os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = "sequential"
+                        os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = "sequential"
+                        os.environ["Ironcliw_STARTUP_EFFECTIVE_MODE"] = "sequential"
                     self.logger.warning(
                         "[v266.2] Backend admission low memory "
                         "(desired=%s effective=%s avail=%.0fMB need=%.0fMB) "
                         "— forcing minimal control-plane backend",
                         _desired_mode,
-                        os.environ.get("JARVIS_STARTUP_MEMORY_MODE", _cur_mode),
+                        os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", _cur_mode),
                         _adm_avail_mb,
                         _adm_needed_mb,
                     )
-                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                    os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
                     # Fail-closed for non-cloud startup if memory is critically low.
                     if _adm_avail_mb < 256:
-                        _mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", _cur_mode)
+                        _mode_now = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", _cur_mode)
                         if _mode_now not in ("cloud_first", "cloud_only"):
                             self.logger.error(
                                 "[v266.2] Backend admission denied: %.0fMB available in %s mode",
@@ -69307,8 +69307,8 @@ class JarvisSystemKernel:
                 )
 
             health_timeout = _get_env_float(
-                "JARVIS_BACKEND_SUBPROCESS_HEALTH_TIMEOUT",
-                _get_env_float("JARVIS_BACKEND_STARTUP_TIMEOUT", 300.0),
+                "Ironcliw_BACKEND_SUBPROCESS_HEALTH_TIMEOUT",
+                _get_env_float("Ironcliw_BACKEND_STARTUP_TIMEOUT", 300.0),
             )
             health_timeout = max(10.0, health_timeout)
 
@@ -69348,20 +69348,20 @@ class JarvisSystemKernel:
                 )
                 # Inline mode escalation (can't access nested _reevaluate_startup_mode)
                 try:
-                    _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                    _cur_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
                     _sev_map_oom = {
                         "local_full": 0, "local_optimized": 1, "sequential": 2,
                         "cloud_first": 3, "cloud_only": 4, "minimal": 5,
                     }
                     _cur_sev_oom = _sev_map_oom.get(_cur_mode, 0)
                     if _cur_sev_oom < 4:  # Not yet cloud_only
-                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_only"
+                        os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = "cloud_only"
                         self.logger.warning(
                             "[v266.2] ENOMEM: mode escalated %s → cloud_only", _cur_mode
                         )
                 except Exception:
                     pass
-                os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
                 return False
             raise  # Non-ENOMEM OSErrors propagate to caller for loud failure
         except MemoryError:
@@ -69369,14 +69369,14 @@ class JarvisSystemKernel:
                 "[v266.2] Backend subprocess MemoryError. Escalating startup mode."
             )
             try:
-                _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _cur_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
                 _sev_map_mem = {
                     "local_full": 0, "local_optimized": 1, "sequential": 2,
                     "cloud_first": 3, "cloud_only": 4, "minimal": 5,
                 }
                 _cur_sev_mem = _sev_map_mem.get(_cur_mode, 0)
                 if _cur_sev_mem < 4:
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_only"
+                    os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = "cloud_only"
                     self.logger.warning(
                         "[v266.2] MemoryError: mode escalated %s → cloud_only", _cur_mode
                     )
@@ -69393,12 +69393,12 @@ class JarvisSystemKernel:
         
         v215.0: Enhanced to verify WebSocket readiness in addition to HTTP health.
         
-        This fixes the "Not connected to JARVIS" error that occurs when:
+        This fixes the "Not connected to Ironcliw" error that occurs when:
         1. Backend HTTP endpoints become ready
         2. Supervisor marks backend as "complete"
         3. Frontend attempts WebSocket connection
         4. WebSocket endpoints aren't fully initialized yet
-        5. Connection fails → "❌ Not connected to JARVIS"
+        5. Connection fails → "❌ Not connected to Ironcliw"
         
         The fix verifies /health/ready includes websocket_ready: true before
         signaling that the backend is ready for frontend connections.
@@ -69511,7 +69511,7 @@ class JarvisSystemKernel:
         # health endpoint response is slow because uvicorn workers compete
         # for CPU with model loading and import resolution.
         remaining_timeout = timeout - (time.time() - start_time)
-        _ws_base = _get_env_float("JARVIS_BACKEND_WS_READINESS_TIMEOUT", 30.0)
+        _ws_base = _get_env_float("Ironcliw_BACKEND_WS_READINESS_TIMEOUT", 30.0)
         try:
             import psutil as _ws_psutil
             _ws_cpu = _ws_psutil.cpu_percent(interval=None)
@@ -69525,15 +69525,15 @@ class JarvisSystemKernel:
         ws_start_time = time.time()
 
         require_readiness_endpoint = _get_env_bool(
-            "JARVIS_BACKEND_REQUIRE_READINESS_ENDPOINT", False
+            "Ironcliw_BACKEND_REQUIRE_READINESS_ENDPOINT", False
         )
         legacy_grace = max(
             1.0,
-            _get_env_float("JARVIS_BACKEND_LEGACY_READINESS_GRACE", 5.0),
+            _get_env_float("Ironcliw_BACKEND_LEGACY_READINESS_GRACE", 5.0),
         )
         legacy_success_target = max(
             1,
-            _get_env_int("JARVIS_BACKEND_LEGACY_HEALTH_SUCCESS_COUNT", 2),
+            _get_env_int("Ironcliw_BACKEND_LEGACY_HEALTH_SUCCESS_COUNT", 2),
         )
         readiness_missing_since = 0.0
         legacy_successes = 0
@@ -69648,11 +69648,11 @@ class JarvisSystemKernel:
         # Timeout waiting for WebSocket readiness.
         # Default is strict readiness (fail startup) to avoid false-positive
         # healthy states where HTTP works but core interactive channels do not.
-        allow_degraded = _get_env_bool("JARVIS_BACKEND_ALLOW_WS_DEGRADED", False)
+        allow_degraded = _get_env_bool("Ironcliw_BACKEND_ALLOW_WS_DEGRADED", False)
         if allow_degraded:
             self.logger.warning(
                 "[Kernel] ⚠ WebSocket readiness timeout - allowing degraded startup "
-                "because JARVIS_BACKEND_ALLOW_WS_DEGRADED=true"
+                "because Ironcliw_BACKEND_ALLOW_WS_DEGRADED=true"
             )
             return True
 
@@ -69931,7 +69931,7 @@ class JarvisSystemKernel:
                         ModelProvider,
                     )
                     # v265.5: CPU-aware timeout + env var override
-                    _ms_timeout = _get_env_float("JARVIS_MODEL_SERVING_INIT_TIMEOUT", 30.0)
+                    _ms_timeout = _get_env_float("Ironcliw_MODEL_SERVING_INIT_TIMEOUT", 30.0)
                     try:
                         import psutil as _ms_psutil
                         _ms_cpu = _ms_psutil.cpu_percent(interval=None)
@@ -69972,13 +69972,13 @@ class JarvisSystemKernel:
                                 break
                         if not _any_found:
                             _auto = os.getenv(
-                                "JARVIS_PRIME_AUTO_DOWNLOAD", "auto"
+                                "Ironcliw_PRIME_AUTO_DOWNLOAD", "auto"
                             ).lower().strip()
                             # v236.0: Downgrade to INFO when GCP handles inference
                             _has_gcp = (
                                 self._invincible_node_ready
                                 or self._pending_gcp_endpoint
-                                or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))
+                                or bool(os.environ.get("Ironcliw_INVINCIBLE_NODE_IP"))
                             )
 
                             # v266.3: If policy allows, start background provisioning
@@ -70014,7 +70014,7 @@ class JarvisSystemKernel:
                                     "[Kernel] v234.2: Tier 2 local inference "
                                     "unavailable — no GGUF model found. "
                                     f"Auto-download: {_auto}. "
-                                    "Set JARVIS_PRIME_AUTO_DOWNLOAD=auto or "
+                                    "Set Ironcliw_PRIME_AUTO_DOWNLOAD=auto or "
                                     f"place a model in {PRIME_MODELS_DIR}"
                                     f"{_suffix}"
                                 )
@@ -70195,12 +70195,12 @@ class JarvisSystemKernel:
 
         Non-fatal on failure: kernel continues, but startup status is marked degraded.
         """
-        enabled = os.getenv("JARVIS_MEMORY_AGENT_ENABLED", "true").lower() in (
+        enabled = os.getenv("Ironcliw_MEMORY_AGENT_ENABLED", "true").lower() in (
             "1", "true", "yes"
         )
         if not enabled:
             self._update_component_status(
-                "conversation_memory", "skipped", "Disabled via JARVIS_MEMORY_AGENT_ENABLED"
+                "conversation_memory", "skipped", "Disabled via Ironcliw_MEMORY_AGENT_ENABLED"
             )
             return True
 
@@ -70211,7 +70211,7 @@ class JarvisSystemKernel:
             "conversation_memory", "running", "Loading persistent conversation memory..."
         )
 
-        init_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
+        init_timeout = float(os.getenv("Ironcliw_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
         # v265.5: CPU-aware timeout scaling — Cloud SQL connection + SQLite
         # fallback path both involve I/O that slows dramatically under CPU pressure.
         try:
@@ -70297,9 +70297,9 @@ class JarvisSystemKernel:
 
     async def _retry_initialize_persistent_memory_agent(self) -> None:
         """Retry persistent memory initialization after startup proceeds."""
-        attempts = max(1, int(os.getenv("JARVIS_MEMORY_AGENT_RETRY_ATTEMPTS", "3")))
-        base_delay = float(os.getenv("JARVIS_MEMORY_AGENT_RETRY_BACKOFF", "4.0"))
-        init_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
+        attempts = max(1, int(os.getenv("Ironcliw_MEMORY_AGENT_RETRY_ATTEMPTS", "3")))
+        base_delay = float(os.getenv("Ironcliw_MEMORY_AGENT_RETRY_BACKOFF", "4.0"))
+        init_timeout = float(os.getenv("Ironcliw_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
         # v265.5: CPU-aware timeout scaling for retry loop (same formula as
         # initial attempt) — retries happen later in boot when CPU may still
         # be under load from parallel services.
@@ -70383,7 +70383,7 @@ class JarvisSystemKernel:
         if self._persistent_memory_agent is None:
             return
 
-        stop_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_STOP_TIMEOUT", "20.0"))
+        stop_timeout = float(os.getenv("Ironcliw_MEMORY_AGENT_STOP_TIMEOUT", "20.0"))
         try:
             await asyncio.wait_for(
                 self._persistent_memory_agent.stop(),
@@ -70471,7 +70471,7 @@ class JarvisSystemKernel:
     # =========================================================================
     # Initialize integration components:
     # - Agentic Watchdog (safety kill-switch for Computer Use)
-    # - Cross-Repo State (JARVIS <-> Prime <-> Reactor coordination)
+    # - Cross-Repo State (Ironcliw <-> Prime <-> Reactor coordination)
     # - AgenticTaskRunner (autonomous task execution)
     # =========================================================================
 
@@ -70514,7 +70514,7 @@ class JarvisSystemKernel:
                 # Offload imports to a worker thread and bound them with a timeout.
                 _two_tier_import_timeout = max(
                     3.0,
-                    _get_env_float("JARVIS_TWO_TIER_IMPORT_TIMEOUT", 20.0),
+                    _get_env_float("Ironcliw_TWO_TIER_IMPORT_TIMEOUT", 20.0),
                 )
 
                 async def _import_two_tier_module(*module_names: str):
@@ -70602,7 +70602,7 @@ class JarvisSystemKernel:
                     if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
                         return
                     await self._broadcast_progress(58, "cross_repo_init", "Initializing Cross-Repo State...")
-                    _cross_repo_timeout = float(os.environ.get("JARVIS_CROSS_REPO_INIT_TIMEOUT", "30.0"))
+                    _cross_repo_timeout = float(os.environ.get("Ironcliw_CROSS_REPO_INIT_TIMEOUT", "30.0"))
                     _import_completed = False
                     try:
                         _cross_repo_mod = await _import_two_tier_module(
@@ -70703,7 +70703,7 @@ class JarvisSystemKernel:
                             if self._startup_watchdog:
                                 self._startup_watchdog.update_phase(
                                     "two_tier", _micro_progress,
-                                    operational_timeout=_get_env_float("JARVIS_TWO_TIER_TIMEOUT", 60.0),
+                                    operational_timeout=_get_env_float("Ironcliw_TWO_TIER_TIMEOUT", 60.0),
                                 )
                             # Only write if actually advancing
                             if _micro_progress > _current:
@@ -70833,7 +70833,7 @@ class JarvisSystemKernel:
                                 raise AttributeError("create_agentic_runner not available")
 
                             # v265.4: CPU-aware runner timeout — extend under pressure
-                            _runner_base_timeout = _get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0)
+                            _runner_base_timeout = _get_env_float("Ironcliw_AGENTIC_RUNNER_TIMEOUT", 60.0)
                             try:
                                 import psutil as _runner_psutil
                                 _runner_cpu = _runner_psutil.cpu_percent(interval=None)
@@ -71048,7 +71048,7 @@ class JarvisSystemKernel:
                 # (voice, approval, events, intelligence, orchestrator).
                 # Previously: operational=60, init=90 — neural mesh alone could
                 # take 300s (3 inner steps × 90-120s each), guaranteeing timeout.
-                agi_os_operational_timeout = _get_env_float("JARVIS_AGI_OS_TIMEOUT", 90.0)
+                agi_os_operational_timeout = _get_env_float("Ironcliw_AGI_OS_TIMEOUT", 90.0)
                 # v254.1: Raised default init timeout to 300s.
                 # AGI OS coordinator has 6 phases summing to ~220s:
                 # (components 35 + intelligence 45 + neural_mesh 100 + hybrid 5 +
@@ -71058,14 +71058,14 @@ class JarvisSystemKernel:
                 # v256.0: Default 300→270 to align with PHASE_HOLD_HARD_CAP (300-30=270).
                 # Eliminates "Clamping" warning. 270s is sufficient (phases need ≤220s).
                 agi_os_init_timeout = _get_env_float(
-                    "JARVIS_AGI_OS_INIT_TIMEOUT",
+                    "Ironcliw_AGI_OS_INIT_TIMEOUT",
                     270.0,
                 )
                 # Keep AGI init bounded below the phase-hold hard cap to avoid
                 # "active but no progress" false-stall loops when env values are
                 # oversized relative to global startup guardrails.
                 agi_os_init_timeout_cap = _get_env_float(
-                    "JARVIS_AGI_OS_INIT_TIMEOUT_CAP",
+                    "Ironcliw_AGI_OS_INIT_TIMEOUT_CAP",
                     max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 30.0),
                 )
                 if agi_os_init_timeout > agi_os_init_timeout_cap:
@@ -71087,9 +71087,9 @@ class JarvisSystemKernel:
                     pass
 
                 # v258.3: Synchronize DMS timeout with actual init timeout.
-                # Previously, DMS was registered with JARVIS_AGI_OS_TIMEOUT (90s)
+                # Previously, DMS was registered with Ironcliw_AGI_OS_TIMEOUT (90s)
                 # at Phase 6.5 entry (line 62139), giving a DMS limit of 90+30=120s.
-                # But the actual init runs up to JARVIS_AGI_OS_INIT_TIMEOUT (270s).
+                # But the actual init runs up to Ironcliw_AGI_OS_INIT_TIMEOUT (270s).
                 # This disconnect caused DMS TIMEOUT at 120-180s while init still
                 # had 90+ seconds remaining.
                 if startup_watchdog:
@@ -71105,7 +71105,7 @@ class JarvisSystemKernel:
                                 "Initializing AGI Operating System... Neural Mesh active.",
                                 wait=False,
                             ),
-                            timeout=_get_env_float("JARVIS_AGI_OS_NARRATOR_TIMEOUT", 5.0),
+                            timeout=_get_env_float("Ironcliw_AGI_OS_NARRATOR_TIMEOUT", 5.0),
                         )
 
                 # =====================================================================
@@ -71140,7 +71140,7 @@ class JarvisSystemKernel:
                     _agi_progress_broadcast_timeout = max(
                         0.1,
                         _get_env_float(
-                            "JARVIS_AGI_OS_PROGRESS_BROADCAST_TIMEOUT", 0.75
+                            "Ironcliw_AGI_OS_PROGRESS_BROADCAST_TIMEOUT", 0.75
                         ),
                     )
 
@@ -71187,13 +71187,13 @@ class JarvisSystemKernel:
                         # at 86%. Keep explicit activity heartbeats while preserving
                         # a deterministic hard timeout.
                         startup_heartbeat = _get_env_float(
-                            "JARVIS_AGI_OS_START_HEARTBEAT", 10.0
+                            "Ironcliw_AGI_OS_START_HEARTBEAT", 10.0
                         )
                         startup_cancel_grace = _get_env_float(
-                            "JARVIS_AGI_OS_START_CANCEL_GRACE", 8.0
+                            "Ironcliw_AGI_OS_START_CANCEL_GRACE", 8.0
                         )
                         startup_budget_reserve = _get_env_float(
-                            "JARVIS_AGI_OS_SUPERVISOR_RESERVE", 10.0
+                            "Ironcliw_AGI_OS_SUPERVISOR_RESERVE", 10.0
                         )
                         startup_budget_seconds = max(
                             30.0, agi_os_init_timeout - startup_budget_reserve
@@ -71202,7 +71202,7 @@ class JarvisSystemKernel:
                             start_agi_os(
                                 progress_callback=_agi_os_progress,
                                 startup_budget_seconds=startup_budget_seconds,
-                                memory_mode=os.getenv("JARVIS_STARTUP_MEMORY_MODE", "local_full"),  # v255.0
+                                memory_mode=os.getenv("Ironcliw_STARTUP_MEMORY_MODE", "local_full"),  # v255.0
                             ),
                             name="kernel_agi_os_startup",
                         )
@@ -71338,7 +71338,7 @@ class JarvisSystemKernel:
                         startup_watchdog.update_phase("agi_os", 89)
                     self._mark_startup_activity("agi_os:verify_voice_pre", stage="agi_os")
                     try:
-                        _verify_timeout = _get_env_float("JARVIS_AGI_OS_VERIFY_TIMEOUT", 5.0)
+                        _verify_timeout = _get_env_float("Ironcliw_AGI_OS_VERIFY_TIMEOUT", 5.0)
                         voice_comm = await asyncio.wait_for(
                             get_voice_communicator(), timeout=_verify_timeout,
                         )
@@ -71434,13 +71434,13 @@ class JarvisSystemKernel:
             True if ghost display initialized or skipped, False on error
         """
         # Skip if disabled via env var
-        if not _get_env_bool("JARVIS_GHOST_DISPLAY_ENABLED", True):
-            self.logger.info("[GhostDisplay] Ghost Display disabled via JARVIS_GHOST_DISPLAY_ENABLED")
+        if not _get_env_bool("Ironcliw_GHOST_DISPLAY_ENABLED", True):
+            self.logger.info("[GhostDisplay] Ghost Display disabled via Ironcliw_GHOST_DISPLAY_ENABLED")
             self._update_component_status("ghost_display", "skipped", "Disabled via config")
             return True
 
         self._update_component_status("ghost_display", "running", "Initializing Ghost Display...")
-        timeout = _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0)
+        timeout = _get_env_float("Ironcliw_GHOST_DISPLAY_TIMEOUT", 30.0)
 
         try:
             # Import PhantomHardwareManager (dual-import for Python dual-module aliasing)
@@ -71501,8 +71501,8 @@ class JarvisSystemKernel:
     async def _run_ghost_display_initialization(self, phantom_mgr) -> bool:
         """Run the full Ghost Display bring-up sequence."""
         registration_wait = _get_env_float(
-            "JARVIS_GHOST_REGISTRATION_WAIT_SECONDS",
-            _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0) * 0.6,
+            "Ironcliw_GHOST_REGISTRATION_WAIT_SECONDS",
+            _get_env_float("Ironcliw_GHOST_DISPLAY_TIMEOUT", 30.0) * 0.6,
         )
         try:
             success, error = await phantom_mgr.ensure_ghost_display_exists_async(
@@ -71546,7 +71546,7 @@ class JarvisSystemKernel:
         # Crash recovery is non-blocking follow-up work. Running it inline can
         # consume the startup budget and misclassify a healthy ghost display
         # bring-up as failed.
-        if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
+        if _get_env_bool("Ironcliw_GHOST_CRASH_RECOVERY", True):
             self._start_ghost_display_crash_recovery()
 
         self._update_component_status("ghost_display", "complete", "Ghost Display ready")
@@ -71618,7 +71618,7 @@ class JarvisSystemKernel:
         """
         v240.0: Audit for stranded windows from previous sessions and repatriate them.
 
-        Stranded windows are those that were on the Ghost Display when JARVIS crashed.
+        Stranded windows are those that were on the Ghost Display when Ironcliw crashed.
         The GhostPersistenceManager persists window state to disk before teleportation,
         enabling recovery even after full kernel crash.
         """
@@ -71637,8 +71637,8 @@ class JarvisSystemKernel:
 
             pm = get_persistence_manager()
             # v265.5: CPU-aware timeouts for ghost display recovery
-            _gd_startup_to = _get_env_float("JARVIS_GHOST_PERSIST_STARTUP_TIMEOUT", 10.0)
-            _gd_repat_to = _get_env_float("JARVIS_GHOST_REPATRIATION_TIMEOUT", 15.0)
+            _gd_startup_to = _get_env_float("Ironcliw_GHOST_PERSIST_STARTUP_TIMEOUT", 10.0)
+            _gd_repat_to = _get_env_float("Ironcliw_GHOST_REPATRIATION_TIMEOUT", 15.0)
             try:
                 import psutil as _gd_ps
                 _gd_cpu = _gd_ps.cpu_percent(interval=None)
@@ -71728,20 +71728,20 @@ class JarvisSystemKernel:
         v240.0: Background health monitoring for Ghost Display.
 
         Periodically checks if the BetterDisplay virtual display is still alive.
-        After JARVIS_GHOST_MAX_HEALTH_FAILURES consecutive failures, attempts
+        After Ironcliw_GHOST_MAX_HEALTH_FAILURES consecutive failures, attempts
         auto-recovery by re-creating the display.
 
         Env vars:
-            JARVIS_GHOST_HEALTH_INTERVAL: Check frequency (default: 30.0s)
-            JARVIS_GHOST_MAX_HEALTH_FAILURES: Failures before recovery (default: 3)
-            JARVIS_GHOST_DISPLAY_TIMEOUT: Recovery creation timeout (default: 30.0s)
+            Ironcliw_GHOST_HEALTH_INTERVAL: Check frequency (default: 30.0s)
+            Ironcliw_GHOST_MAX_HEALTH_FAILURES: Failures before recovery (default: 3)
+            Ironcliw_GHOST_DISPLAY_TIMEOUT: Recovery creation timeout (default: 30.0s)
         """
-        interval = _get_env_float("JARVIS_GHOST_HEALTH_INTERVAL", 30.0)
-        max_failures = int(os.environ.get("JARVIS_GHOST_MAX_HEALTH_FAILURES", "3"))
+        interval = _get_env_float("Ironcliw_GHOST_HEALTH_INTERVAL", 30.0)
+        max_failures = int(os.environ.get("Ironcliw_GHOST_MAX_HEALTH_FAILURES", "3"))
         consecutive_failures = 0
 
         # v265.5: CPU-aware timeout for health check polling
-        _ghost_health_timeout = _get_env_float("JARVIS_GHOST_HEALTH_CHECK_TIMEOUT", 10.0)
+        _ghost_health_timeout = _get_env_float("Ironcliw_GHOST_HEALTH_CHECK_TIMEOUT", 10.0)
 
         while not self._shutdown_event.is_set():
             try:
@@ -71779,7 +71779,7 @@ class JarvisSystemKernel:
                         )
                         try:
                             recovery_timeout = _get_env_float(
-                                "JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0
+                                "Ironcliw_GHOST_DISPLAY_TIMEOUT", 30.0
                             )
                             success, error = await asyncio.wait_for(
                                 phantom_mgr.ensure_ghost_display_exists_async(),
@@ -71893,7 +71893,7 @@ class JarvisSystemKernel:
                     self.logger.debug(f"[Permissions] Request dialog error: {e}")
 
                 # Start background re-check loop
-                recheck_enabled = _get_env_bool("JARVIS_SCREEN_OBSERVATION_ENABLED", True)
+                recheck_enabled = _get_env_bool("Ironcliw_SCREEN_OBSERVATION_ENABLED", True)
                 if recheck_enabled:
                     self._screen_recording_check_task = create_safe_task(
                         self._permission_recheck_loop(),
@@ -71909,11 +71909,11 @@ class JarvisSystemKernel:
         v264.0: Background loop that polls Screen Recording permission until granted.
 
         Env vars:
-            JARVIS_PERMISSION_RECHECK_INTERVAL: Poll interval (default: 10.0s)
-            JARVIS_PERMISSION_RECHECK_MAX: Max attempts (default: 60)
+            Ironcliw_PERMISSION_RECHECK_INTERVAL: Poll interval (default: 10.0s)
+            Ironcliw_PERMISSION_RECHECK_MAX: Max attempts (default: 60)
         """
-        interval = _get_env_float("JARVIS_PERMISSION_RECHECK_INTERVAL", 10.0)
-        max_attempts = int(os.environ.get("JARVIS_PERMISSION_RECHECK_MAX", "60"))
+        interval = _get_env_float("Ironcliw_PERMISSION_RECHECK_INTERVAL", 10.0)
+        max_attempts = int(os.environ.get("Ironcliw_PERMISSION_RECHECK_MAX", "60"))
 
         # Reuse permission classes stored by _check_startup_permissions() to avoid
         # triple-duplicated dual-path import blocks. If somehow not set (shouldn't
@@ -71967,7 +71967,7 @@ class JarvisSystemKernel:
 
                     # Activate screen observation now
                     try:
-                        obs_timeout = _get_env_float("JARVIS_SCREEN_OBSERVATION_TIMEOUT", 10.0)
+                        obs_timeout = _get_env_float("Ironcliw_SCREEN_OBSERVATION_TIMEOUT", 10.0)
                         await asyncio.wait_for(
                             self._activate_screen_observation(), timeout=obs_timeout
                         )
@@ -72020,8 +72020,8 @@ class JarvisSystemKernel:
                 self.logger.debug("[ScreenObservation] Already active — skipping")
                 return
 
-            if not _get_env_bool("JARVIS_SCREEN_OBSERVATION_ENABLED", True):
-                self.logger.info("[ScreenObservation] Disabled via JARVIS_SCREEN_OBSERVATION_ENABLED")
+            if not _get_env_bool("Ironcliw_SCREEN_OBSERVATION_ENABLED", True):
+                self.logger.info("[ScreenObservation] Disabled via Ironcliw_SCREEN_OBSERVATION_ENABLED")
                 return
 
             # Import MemoryAwareScreenAnalyzer
@@ -72141,7 +72141,7 @@ class JarvisSystemKernel:
                     self._logger = sup_logger
                     self._last_error_time: float = 0.0
                     self._error_throttle_seconds = _get_env_float(
-                        "JARVIS_SCREEN_ERROR_THROTTLE", 30.0
+                        "Ironcliw_SCREEN_ERROR_THROTTLE", 30.0
                     )
 
                 async def on_app_changed(self, payload: dict) -> None:
@@ -72229,8 +72229,8 @@ class JarvisSystemKernel:
             True if visual pipeline initialized or skipped, False on error
         """
         # Step 1: Pre-checks
-        if not _get_env_bool("JARVIS_VISUAL_PIPELINE_ENABLED", True):
-            self.logger.info("[VisualPipeline] Disabled via JARVIS_VISUAL_PIPELINE_ENABLED")
+        if not _get_env_bool("Ironcliw_VISUAL_PIPELINE_ENABLED", True):
+            self.logger.info("[VisualPipeline] Disabled via Ironcliw_VISUAL_PIPELINE_ENABLED")
             self._update_component_status("visual_pipeline", "skipped", "Disabled via config")
             return True
 
@@ -72272,7 +72272,7 @@ class JarvisSystemKernel:
 
             if get_ghost_hands is not None:
                 try:
-                    init_timeout = _get_env_float("JARVIS_GHOST_HANDS_INIT_TIMEOUT", 10.0)
+                    init_timeout = _get_env_float("Ironcliw_GHOST_HANDS_INIT_TIMEOUT", 10.0)
                     if asyncio.iscoroutinefunction(get_ghost_hands):
                         result = await asyncio.wait_for(get_ghost_hands(), timeout=init_timeout)
                     else:
@@ -72312,7 +72312,7 @@ class JarvisSystemKernel:
 
             if NOpticNerve is not None:
                 try:
-                    verify_timeout = _get_env_float("JARVIS_N_OPTIC_VERIFY_TIMEOUT", 10.0)
+                    verify_timeout = _get_env_float("Ironcliw_N_OPTIC_VERIFY_TIMEOUT", 10.0)
                     nerve = NOpticNerve.get_instance()
                     if nerve and not getattr(nerve, '_is_running', False):
                         await asyncio.wait_for(nerve.start(), timeout=verify_timeout)
@@ -72347,7 +72347,7 @@ class JarvisSystemKernel:
                         pass
 
                 if FastCaptureEngine is not None:
-                    ferrari_timeout = _get_env_float("JARVIS_FERRARI_VERIFY_TIMEOUT", 10.0)
+                    ferrari_timeout = _get_env_float("Ironcliw_FERRARI_VERIFY_TIMEOUT", 10.0)
                     engine = FastCaptureEngine()
                     # Quick health check in executor (C++ call, avoid blocking event loop)
                     loop = asyncio.get_running_loop()
@@ -72416,7 +72416,7 @@ class JarvisSystemKernel:
             # v264.0 Step 7: Activate real-time screen observation (if permission granted)
             if self._screen_recording_granted:
                 try:
-                    obs_timeout = _get_env_float("JARVIS_SCREEN_OBSERVATION_TIMEOUT", 10.0)
+                    obs_timeout = _get_env_float("Ironcliw_SCREEN_OBSERVATION_TIMEOUT", 10.0)
                     await asyncio.wait_for(
                         self._activate_screen_observation(), timeout=obs_timeout
                     )
@@ -72544,13 +72544,13 @@ class JarvisSystemKernel:
         MosaicWatcher is NOT health-checked (managed by VisualMonitorAgent).
 
         Env vars:
-            JARVIS_VISUAL_PIPELINE_GRACE_PERIOD: Delay before first check (default: 30.0s)
-            JARVIS_VISUAL_PIPELINE_HEALTH_INTERVAL: Check frequency (default: 30.0s)
-            JARVIS_VISUAL_PIPELINE_MAX_FAILURES: Failures before recovery (default: 3)
+            Ironcliw_VISUAL_PIPELINE_GRACE_PERIOD: Delay before first check (default: 30.0s)
+            Ironcliw_VISUAL_PIPELINE_HEALTH_INTERVAL: Check frequency (default: 30.0s)
+            Ironcliw_VISUAL_PIPELINE_MAX_FAILURES: Failures before recovery (default: 3)
         """
-        grace_period = _get_env_float("JARVIS_VISUAL_PIPELINE_GRACE_PERIOD", 30.0)
-        interval = _get_env_float("JARVIS_VISUAL_PIPELINE_HEALTH_INTERVAL", 30.0)
-        max_failures = int(os.environ.get("JARVIS_VISUAL_PIPELINE_MAX_FAILURES", "3"))
+        grace_period = _get_env_float("Ironcliw_VISUAL_PIPELINE_GRACE_PERIOD", 30.0)
+        interval = _get_env_float("Ironcliw_VISUAL_PIPELINE_HEALTH_INTERVAL", 30.0)
+        max_failures = int(os.environ.get("Ironcliw_VISUAL_PIPELINE_MAX_FAILURES", "3"))
 
         ghost_hands_failures = 0
         n_optic_failures = 0
@@ -72562,7 +72562,7 @@ class JarvisSystemKernel:
             return
 
         # v265.5: CPU-aware recovery timeout for visual pipeline components
-        _vp_recovery_timeout = _get_env_float("JARVIS_VISUAL_PIPELINE_RECOVERY_TIMEOUT", 10.0)
+        _vp_recovery_timeout = _get_env_float("Ironcliw_VISUAL_PIPELINE_RECOVERY_TIMEOUT", 10.0)
 
         while not self._shutdown_event.is_set():
             try:
@@ -72668,10 +72668,10 @@ class JarvisSystemKernel:
         This avoids session-long voice degradation from transient startup
         contention (audio device busy, delayed dependency import, etc.).
         """
-        initial_delay = _get_env_float("JARVIS_AUDIO_RECOVERY_INITIAL_DELAY", 5.0)
-        retry_interval = _get_env_float("JARVIS_AUDIO_RECOVERY_RETRY_INTERVAL", 15.0)
-        max_attempts = _get_env_int("JARVIS_AUDIO_RECOVERY_MAX_ATTEMPTS", 12)
-        start_timeout = _get_env_float("JARVIS_AUDIO_BUS_RECOVERY_TIMEOUT", 12.0)
+        initial_delay = _get_env_float("Ironcliw_AUDIO_RECOVERY_INITIAL_DELAY", 5.0)
+        retry_interval = _get_env_float("Ironcliw_AUDIO_RECOVERY_RETRY_INTERVAL", 15.0)
+        max_attempts = _get_env_int("Ironcliw_AUDIO_RECOVERY_MAX_ATTEMPTS", 12)
+        start_timeout = _get_env_float("Ironcliw_AUDIO_BUS_RECOVERY_TIMEOUT", 12.0)
 
         try:
             await asyncio.sleep(initial_delay)
@@ -72772,8 +72772,8 @@ class JarvisSystemKernel:
             from backend.audio.audio_pipeline_bootstrap import wire_conversation_pipeline
 
             # v265.5: CPU-aware timeouts for speech state + pipeline wiring
-            _speech_state_timeout = _get_env_float("JARVIS_SPEECH_STATE_TIMEOUT", 10.0)
-            _pipeline_wire_timeout = _get_env_float("JARVIS_PIPELINE_WIRE_TIMEOUT", 30.0)
+            _speech_state_timeout = _get_env_float("Ironcliw_SPEECH_STATE_TIMEOUT", 10.0)
+            _pipeline_wire_timeout = _get_env_float("Ironcliw_PIPELINE_WIRE_TIMEOUT", 30.0)
             try:
                 import psutil as _ap_psutil
                 _ap_cpu = _ap_psutil.cpu_percent(interval=None)
@@ -72845,10 +72845,10 @@ class JarvisSystemKernel:
 
     async def _dms_recovery_loop(self, initial_reason: str) -> None:
         """Retry DMS init with CPU-aware backoff."""
-        _delay = _get_env_float("JARVIS_DMS_RECOVERY_INITIAL_DELAY", 15.0)
-        _max = _get_env_int("JARVIS_DMS_RECOVERY_MAX_ATTEMPTS", 6)
-        _interval = _get_env_float("JARVIS_DMS_RECOVERY_INTERVAL", 15.0)
-        _timeout = _get_env_float("JARVIS_DMS_RECOVERY_TIMEOUT", 15.0)
+        _delay = _get_env_float("Ironcliw_DMS_RECOVERY_INITIAL_DELAY", 15.0)
+        _max = _get_env_int("Ironcliw_DMS_RECOVERY_MAX_ATTEMPTS", 6)
+        _interval = _get_env_float("Ironcliw_DMS_RECOVERY_INTERVAL", 15.0)
+        _timeout = _get_env_float("Ironcliw_DMS_RECOVERY_TIMEOUT", 15.0)
 
         try:
             await asyncio.sleep(_delay)
@@ -72942,9 +72942,9 @@ class JarvisSystemKernel:
 
     async def _resilience_recovery_loop(self, initial_reason: str) -> None:
         """Retry StartupResilience init with exponential backoff."""
-        _delay = _get_env_float("JARVIS_RESILIENCE_RECOVERY_DELAY", 10.0)
-        _max = _get_env_int("JARVIS_RESILIENCE_RECOVERY_MAX_ATTEMPTS", 5)
-        _interval = _get_env_float("JARVIS_RESILIENCE_RECOVERY_INTERVAL", 30.0)
+        _delay = _get_env_float("Ironcliw_RESILIENCE_RECOVERY_DELAY", 10.0)
+        _max = _get_env_int("Ironcliw_RESILIENCE_RECOVERY_MAX_ATTEMPTS", 5)
+        _interval = _get_env_float("Ironcliw_RESILIENCE_RECOVERY_INTERVAL", 30.0)
 
         try:
             await asyncio.sleep(_delay)
@@ -72996,10 +72996,10 @@ class JarvisSystemKernel:
 
     async def _model_serving_recovery_loop(self, initial_reason: str) -> None:
         """Retry UnifiedModelServing init with CPU-aware timeout."""
-        _delay = _get_env_float("JARVIS_MODEL_SERVING_RECOVERY_DELAY", 20.0)
-        _max = _get_env_int("JARVIS_MODEL_SERVING_RECOVERY_MAX_ATTEMPTS", 4)
-        _interval = _get_env_float("JARVIS_MODEL_SERVING_RECOVERY_INTERVAL", 30.0)
-        _base_timeout = _get_env_float("JARVIS_MODEL_SERVING_INIT_TIMEOUT", 30.0)
+        _delay = _get_env_float("Ironcliw_MODEL_SERVING_RECOVERY_DELAY", 20.0)
+        _max = _get_env_int("Ironcliw_MODEL_SERVING_RECOVERY_MAX_ATTEMPTS", 4)
+        _interval = _get_env_float("Ironcliw_MODEL_SERVING_RECOVERY_INTERVAL", 30.0)
+        _base_timeout = _get_env_float("Ironcliw_MODEL_SERVING_INIT_TIMEOUT", 30.0)
 
         try:
             await asyncio.sleep(_delay)
@@ -73087,11 +73087,11 @@ class JarvisSystemKernel:
         scaling per iteration.
 
         Env vars:
-            JARVIS_TRINITY_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
-            JARVIS_TRINITY_RECOVERY_MAX_ATTEMPTS: Max retries (default: 6)
+            Ironcliw_TRINITY_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
+            Ironcliw_TRINITY_RECOVERY_MAX_ATTEMPTS: Max retries (default: 6)
         """
-        _base_interval = _get_env_float("JARVIS_TRINITY_RECOVERY_INTERVAL", 30.0)
-        _max = int(os.environ.get("JARVIS_TRINITY_RECOVERY_MAX_ATTEMPTS", "6"))
+        _base_interval = _get_env_float("Ironcliw_TRINITY_RECOVERY_INTERVAL", 30.0)
+        _max = int(os.environ.get("Ironcliw_TRINITY_RECOVERY_MAX_ATTEMPTS", "6"))
 
         # Initial grace period — let other startup phases finish first
         try:
@@ -73158,7 +73158,7 @@ class JarvisSystemKernel:
                             )
                             # Try starting just this component
                             try:
-                                _start_timeout = _get_env_float("JARVIS_TRINITY_RECOVERY_START_TIMEOUT", 60.0)
+                                _start_timeout = _get_env_float("Ironcliw_TRINITY_RECOVERY_START_TIMEOUT", 60.0)
                                 invincible_ready = getattr(self, '_invincible_node_ready', False)
                                 skip_prime = (comp_key != "jarvis-prime")
                                 _result = await asyncio.wait_for(
@@ -73230,11 +73230,11 @@ class JarvisSystemKernel:
         during Phase 6. Uses bounded retries with CPU-aware backoff.
 
         Env vars:
-            JARVIS_ENTERPRISE_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
-            JARVIS_ENTERPRISE_RECOVERY_MAX_ATTEMPTS: Max retries (default: 4)
+            Ironcliw_ENTERPRISE_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
+            Ironcliw_ENTERPRISE_RECOVERY_MAX_ATTEMPTS: Max retries (default: 4)
         """
-        _base_interval = _get_env_float("JARVIS_ENTERPRISE_RECOVERY_INTERVAL", 30.0)
-        _max = int(os.environ.get("JARVIS_ENTERPRISE_RECOVERY_MAX_ATTEMPTS", "4"))
+        _base_interval = _get_env_float("Ironcliw_ENTERPRISE_RECOVERY_INTERVAL", 30.0)
+        _max = int(os.environ.get("Ironcliw_ENTERPRISE_RECOVERY_MAX_ATTEMPTS", "4"))
 
         # Map internal names to initializer coroutine factories
         _service_initializers = {
@@ -73289,8 +73289,8 @@ class JarvisSystemKernel:
                     display_name, init_fn = _service_initializers[svc_key]
 
                     _svc_timeout = _get_env_float(
-                        f"JARVIS_SERVICE_TIMEOUT_{svc_key.upper()}",
-                        _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0),
+                        f"Ironcliw_SERVICE_TIMEOUT_{svc_key.upper()}",
+                        _get_env_float("Ironcliw_SERVICE_TIMEOUT", 30.0),
                     )
                     # CPU-aware timeout for the retry
                     try:
@@ -73370,12 +73370,12 @@ class JarvisSystemKernel:
         schedules background recovery.
 
         Env vars:
-            JARVIS_AUDIO_HEALTH_INTERVAL: Check frequency (default: 30.0s)
-            JARVIS_AUDIO_HEALTH_GRACE: Delay before first check (default: 15.0s)
+            Ironcliw_AUDIO_HEALTH_INTERVAL: Check frequency (default: 30.0s)
+            Ironcliw_AUDIO_HEALTH_GRACE: Delay before first check (default: 15.0s)
         """
-        grace = _get_env_float("JARVIS_AUDIO_HEALTH_GRACE", 15.0)
-        interval = _get_env_float("JARVIS_AUDIO_HEALTH_INTERVAL", 30.0)
-        max_restart_attempts = _get_env_int("JARVIS_AUDIO_HEALTH_MAX_RESTART_ATTEMPTS", 3)
+        grace = _get_env_float("Ironcliw_AUDIO_HEALTH_GRACE", 15.0)
+        interval = _get_env_float("Ironcliw_AUDIO_HEALTH_INTERVAL", 30.0)
+        max_restart_attempts = _get_env_int("Ironcliw_AUDIO_HEALTH_MAX_RESTART_ATTEMPTS", 3)
 
         try:
             await asyncio.sleep(grace)
@@ -73603,8 +73603,8 @@ class JarvisSystemKernel:
         max_extensions = 5  # Prevent infinite extension
 
         # v232.0: RAM-Aware Model Loading Stall Budget
-        _ml_stall_budget_base = float(os.environ.get("JARVIS_MODEL_STALL_BUDGET", "300"))
-        _ml_stall_budget_max = float(os.environ.get("JARVIS_MODEL_STALL_BUDGET_MAX", "600"))
+        _ml_stall_budget_base = float(os.environ.get("Ironcliw_MODEL_STALL_BUDGET", "300"))
+        _ml_stall_budget_max = float(os.environ.get("Ironcliw_MODEL_STALL_BUDGET_MAX", "600"))
         _ml_stall_budget = _ml_stall_budget_base
         _ml_stall_diag_logged = False
         _ml_stall_last_mem_check = 0.0
@@ -73742,7 +73742,7 @@ class JarvisSystemKernel:
                         # Set up Hollow Client routing
                         _gcp_url = f"http://{_inv_ip}:8001"
                         os.environ["GCP_PRIME_ENDPOINT"] = _gcp_url
-                        os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                        os.environ["Ironcliw_GCP_OFFLOAD_ACTIVE"] = "true"
 
                         # Propagate to PrimeClient + PrimeRouter for hot-swap
                         try:
@@ -73816,7 +73816,7 @@ class JarvisSystemKernel:
                     import aiohttp as _aiohttp
                     # v224.0: Resolve Prime's actual port from multiple sources.
                     # Priority: 1) cross-repo state file, 2) TRINITY_JPRIME_PORT env,
-                    # 3) JARVIS_PRIME_PORT env, 4) default 8001 (v238.0 aligned)
+                    # 3) Ironcliw_PRIME_PORT env, 4) default 8001 (v238.0 aligned)
                     prime_port = None
                     try:
                         import json as _json
@@ -73832,7 +73832,7 @@ class JarvisSystemKernel:
                     if prime_port is None:
                         prime_port = int(os.environ.get(
                             "TRINITY_JPRIME_PORT",
-                            os.environ.get("JARVIS_PRIME_PORT", "8001")
+                            os.environ.get("Ironcliw_PRIME_PORT", "8001")
                         ))
                     async with _aiohttp.ClientSession() as _sess:
                         async with _sess.get(
@@ -73915,17 +73915,17 @@ class JarvisSystemKernel:
                 # v224.0: Phase-aware stall thresholds — different phases have
                 # legitimately different durations. Read from env vars with defaults.
                 _phase_stall_thresholds = {
-                    "importing_ml_libraries": float(os.environ.get("JARVIS_STALL_THRESH_IMPORT", "60")),
-                    "initializing_bridge": float(os.environ.get("JARVIS_STALL_THRESH_BRIDGE", "30")),
-                    "initializing_trinity": float(os.environ.get("JARVIS_STALL_THRESH_TRINITY", "60")),
-                    "initializing_agi_hub": float(os.environ.get("JARVIS_STALL_THRESH_AGI", "180")),
-                    "initializing_neural_orchestrator": float(os.environ.get("JARVIS_STALL_THRESH_NEURAL", "60")),
-                    "resolving_model": float(os.environ.get("JARVIS_STALL_THRESH_RESOLVE", "60")),
-                    "configuring_hardware": float(os.environ.get("JARVIS_STALL_THRESH_HARDWARE", "30")),
-                    "loading_model": float(os.environ.get("JARVIS_STALL_THRESH_MODEL", "120")),
-                    "marking_ready": float(os.environ.get("JARVIS_STALL_THRESH_READY", "15")),
+                    "importing_ml_libraries": float(os.environ.get("Ironcliw_STALL_THRESH_IMPORT", "60")),
+                    "initializing_bridge": float(os.environ.get("Ironcliw_STALL_THRESH_BRIDGE", "30")),
+                    "initializing_trinity": float(os.environ.get("Ironcliw_STALL_THRESH_TRINITY", "60")),
+                    "initializing_agi_hub": float(os.environ.get("Ironcliw_STALL_THRESH_AGI", "180")),
+                    "initializing_neural_orchestrator": float(os.environ.get("Ironcliw_STALL_THRESH_NEURAL", "60")),
+                    "resolving_model": float(os.environ.get("Ironcliw_STALL_THRESH_RESOLVE", "60")),
+                    "configuring_hardware": float(os.environ.get("Ironcliw_STALL_THRESH_HARDWARE", "30")),
+                    "loading_model": float(os.environ.get("Ironcliw_STALL_THRESH_MODEL", "120")),
+                    "marking_ready": float(os.environ.get("Ironcliw_STALL_THRESH_READY", "15")),
                 }
-                _default_phase_stall = float(os.environ.get("JARVIS_STALL_THRESH_DEFAULT", "90"))
+                _default_phase_stall = float(os.environ.get("Ironcliw_STALL_THRESH_DEFAULT", "90"))
                 effective_stall_threshold = (
                     _phase_stall_thresholds.get(current_phase_name, _default_phase_stall)
                     if current_phase_name
@@ -73967,7 +73967,7 @@ class JarvisSystemKernel:
                         import aiohttp as _cd_aiohttp
                         _cd_port = int(os.environ.get(
                             "TRINITY_JPRIME_PORT",
-                            os.environ.get("JARVIS_PRIME_PORT", "8001")
+                            os.environ.get("Ironcliw_PRIME_PORT", "8001")
                         ))
                         async with _cd_aiohttp.ClientSession() as _cd_sess:
                             async with _cd_sess.get(
@@ -74189,11 +74189,11 @@ class JarvisSystemKernel:
 
         Self-terminates after: success, GCP takeover, or max_wait timeout.
         """
-        _base_interval = _get_env_float("JARVIS_JPRIME_WATCH_INTERVAL", 5.0)
-        _max_interval = _get_env_float("JARVIS_JPRIME_WATCH_MAX_INTERVAL", 30.0)
-        _max_wait = _get_env_float("JARVIS_JPRIME_WATCH_MAX_WAIT", 900.0)  # 15 min
-        _port = int(os.environ.get("JARVIS_EARLY_PRIME_PORT",
-                                   os.environ.get("TRINITY_JPRIME_PORT", os.environ.get("JARVIS_PRIME_PORT", "8001"))))
+        _base_interval = _get_env_float("Ironcliw_JPRIME_WATCH_INTERVAL", 5.0)
+        _max_interval = _get_env_float("Ironcliw_JPRIME_WATCH_MAX_INTERVAL", 30.0)
+        _max_wait = _get_env_float("Ironcliw_JPRIME_WATCH_MAX_WAIT", 900.0)  # 15 min
+        _port = int(os.environ.get("Ironcliw_EARLY_PRIME_PORT",
+                                   os.environ.get("TRINITY_JPRIME_PORT", os.environ.get("Ironcliw_PRIME_PORT", "8001"))))
         _url = f"http://localhost:{_port}"
 
         start_time = time.time()
@@ -74334,7 +74334,7 @@ class JarvisSystemKernel:
             )
         )
         _phase_deadline = _phase_start + max(30.0, _phase_timeout_budget)
-        _startup_reserve_budget = _get_env_float("JARVIS_TRINITY_STARTUP_RESERVE", 120.0)
+        _startup_reserve_budget = _get_env_float("Ironcliw_TRINITY_STARTUP_RESERVE", 120.0)
 
         def _remaining_phase_budget(*, reserve: float = 0.0) -> float:
             return max(0.0, _phase_deadline - _phase_loop.time() - max(0.0, reserve))
@@ -74472,7 +74472,7 @@ class JarvisSystemKernel:
                 self.logger.info("[Trinity] TRINITY CROSS-REPO INTEGRATION (v197.1)")
                 self.logger.info("[Trinity] ═══════════════════════════════════════════════════════")
                 self.logger.info(f"[Trinity] Enabled: {self.config.trinity_enabled}")
-                self.logger.info(f"[Trinity] Auto-restart: {os.environ.get('JARVIS_TRINITY_AUTO_RESTART', 'true')}")
+                self.logger.info(f"[Trinity] Auto-restart: {os.environ.get('Ironcliw_TRINITY_AUTO_RESTART', 'true')}")
 
                 # =====================================================================
                 # v200.0: PILLAR 1 - LOCK-GUARDED SINGLE-OWNER STARTUP
@@ -74502,7 +74502,7 @@ class JarvisSystemKernel:
                     _startup_config.log_config()
                 else:
                     _configured_trinity_budget = float(
-                        os.environ.get("JARVIS_TRINITY_BUDGET", "600.0")
+                        os.environ.get("Ironcliw_TRINITY_BUDGET", "600.0")
                     )
                     _cleanup_timeout = 30.0
                     self.logger.warning(
@@ -74581,7 +74581,7 @@ class JarvisSystemKernel:
                                 self._startup_watchdog.update_phase("trinity", 68)
 
                             # Check if Hollow Client mode was activated by orchestrator
-                            if os.environ.get("JARVIS_GCP_OFFLOAD_ACTIVE", "").lower() == "true":
+                            if os.environ.get("Ironcliw_GCP_OFFLOAD_ACTIVE", "").lower() == "true":
                                 gcp_endpoint = os.environ.get("GCP_PRIME_ENDPOINT", "")
                                 self.logger.info(
                                     f"[Trinity] Hollow Client mode ACTIVE - "
@@ -74639,7 +74639,7 @@ class JarvisSystemKernel:
                                     self.logger.warning("[Trinity] ✗ J-Prime: NOT FOUND - searched common locations:")
                                     self.logger.warning("[Trinity]   ~/Documents/repos/jarvis-prime")
                                     self.logger.warning("[Trinity]   ~/repos/jarvis-prime")
-                                    self.logger.warning("[Trinity]   Set JARVIS_PRIME_PATH env var to specify location")
+                                    self.logger.warning("[Trinity]   Set Ironcliw_PRIME_PATH env var to specify location")
 
                                 # Log Reactor discovery result
                                 reactor_status = status.get("components", {}).get("reactor-core", {})
@@ -74698,7 +74698,7 @@ class JarvisSystemKernel:
                                 #   - If stalled for >60s → stop waiting early (local is loading in parallel)
                                 #   - If local pre-warm is running (v230 hedge), wait is less critical
                                 #     but still valuable for faster inference
-                                _golden_image_active = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+                                _golden_image_active = os.getenv("Ironcliw_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
                                 _early_prime_was_skipped = getattr(self, '_early_prime_skipped_for_cloud', False)
                                 _local_is_hedge = getattr(self, '_local_prime_is_hedge_for_cloud', False)
                                 
@@ -74706,11 +74706,11 @@ class JarvisSystemKernel:
                                     # v233.3: Dynamic base wait — 90s when hedge, 240s when cloud-only
                                     # Cloud-only needs: VM create ~60s + boot ~30s + model ~60s + buffer
                                     _gw_base_wait = float(os.environ.get(
-                                        "JARVIS_GOLDEN_WAIT_BASE",
+                                        "Ironcliw_GOLDEN_WAIT_BASE",
                                         "90" if _local_is_hedge else "240"
                                     ))
                                     _gw_max_wait = float(os.environ.get(
-                                        "JARVIS_GOLDEN_WAIT_MAX",
+                                        "Ironcliw_GOLDEN_WAIT_MAX",
                                         "300" if _local_is_hedge else "600"
                                     ))
                                     # Keep golden wait inside the remaining Trinity phase budget.
@@ -74723,7 +74723,7 @@ class JarvisSystemKernel:
                                     _gw_max_wait = min(_gw_max_wait, _gw_phase_cap)
                                     _gw_poll_interval = 5.0
                                     _gw_stall_threshold = float(os.environ.get(
-                                        "JARVIS_GOLDEN_STALL_THRESHOLD", "60"
+                                        "Ironcliw_GOLDEN_STALL_THRESHOLD", "60"
                                     ))
                                     _gw_max_extensions = 4
 
@@ -74731,11 +74731,11 @@ class JarvisSystemKernel:
                                     # v232.1: Increased default from 2→3 to allow 2 actual recovery
                                     # attempts before final blacklist (stall N with remaining=0)
                                     _gw_max_stall_retries = int(os.environ.get(
-                                        "JARVIS_GCP_MAX_STALL_RETRIES", "3"
+                                        "Ironcliw_GCP_MAX_STALL_RETRIES", "3"
                                     ))
                                     _gw_stall_count = 0
                                     _gw_cooldown_secs = float(os.environ.get(
-                                        "JARVIS_GCP_STALL_COOLDOWN", "60"
+                                        "Ironcliw_GCP_STALL_COOLDOWN", "60"
                                     ))
 
                                     _gw_effective_wait = _gw_base_wait
@@ -74812,7 +74812,7 @@ class JarvisSystemKernel:
                                         # v233.2: Phase 0 fast-fail + no-APARS detection
                                         _gw_effective_stall_threshold = _gw_stall_threshold
                                         _gw_phase0_timeout = float(os.environ.get(
-                                            "JARVIS_GCP_PHASE0_TIMEOUT", "120"
+                                            "Ironcliw_GCP_PHASE0_TIMEOUT", "120"
                                         ))
 
                                         # Detect: NO APARS data at all after timeout
@@ -74826,7 +74826,7 @@ class JarvisSystemKernel:
                                             _gw_effective_stall_threshold = min(
                                                 _gw_stall_threshold,
                                                 float(os.environ.get(
-                                                    "JARVIS_GCP_PHASE0_STALL_THRESHOLD", "30"
+                                                    "Ironcliw_GCP_PHASE0_STALL_THRESHOLD", "30"
                                                 ))
                                             )
                                             self.logger.warning(
@@ -74844,7 +74844,7 @@ class JarvisSystemKernel:
                                             _gw_effective_stall_threshold = min(
                                                 _gw_stall_threshold,
                                                 float(os.environ.get(
-                                                    "JARVIS_GCP_PHASE0_STALL_THRESHOLD", "30"
+                                                    "Ironcliw_GCP_PHASE0_STALL_THRESHOLD", "30"
                                                 ))
                                             )
                                             if _gw_effective_stall_threshold < _gw_stall_threshold:
@@ -74860,7 +74860,7 @@ class JarvisSystemKernel:
                                         _gw_allow_stall_detection = (
                                             _local_is_hedge
                                             or os.environ.get(
-                                                "JARVIS_GCP_STALL_DETECT_ALWAYS", "true"
+                                                "Ironcliw_GCP_STALL_DETECT_ALWAYS", "true"
                                             ).lower() == "true"
                                         )
                                         if (
@@ -74960,7 +74960,7 @@ class JarvisSystemKernel:
 
                                             # ── v233.0: Three-tier fallback — try standard GCP before local ──
                                             _try_standard = os.environ.get(
-                                                "JARVIS_GCP_TRY_STANDARD_ON_GOLDEN_FAIL", "true"
+                                                "Ironcliw_GCP_TRY_STANDARD_ON_GOLDEN_FAIL", "true"
                                             ).lower() == "true"
                                             _standard_attempted = False
 
@@ -74989,7 +74989,7 @@ class JarvisSystemKernel:
                                                     _standard_timeout = _cap_phase_timeout(
                                                         float(
                                                             os.environ.get(
-                                                                "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT",
+                                                                "Ironcliw_GCP_STANDARD_FALLBACK_TIMEOUT",
                                                                 "900",
                                                             )
                                                         ),
@@ -75021,9 +75021,9 @@ class JarvisSystemKernel:
                                                                 pass
 
                                                             # Temporarily disable golden image so _create_static_vm uses standard
-                                                            _orig_golden = os.environ.get("JARVIS_GCP_USE_GOLDEN_IMAGE")
+                                                            _orig_golden = os.environ.get("Ironcliw_GCP_USE_GOLDEN_IMAGE")
                                                             try:
-                                                                os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = "false"
+                                                                os.environ["Ironcliw_GCP_USE_GOLDEN_IMAGE"] = "false"
 
                                                                 try:
                                                                     update_dashboard_gcp_progress(
@@ -75057,9 +75057,9 @@ class JarvisSystemKernel:
                                                             finally:
                                                                 # Restore golden image env var
                                                                 if _orig_golden is not None:
-                                                                    os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = _orig_golden
+                                                                    os.environ["Ironcliw_GCP_USE_GOLDEN_IMAGE"] = _orig_golden
                                                                 else:
-                                                                    os.environ.pop("JARVIS_GCP_USE_GOLDEN_IMAGE", None)
+                                                                    os.environ.pop("Ironcliw_GCP_USE_GOLDEN_IMAGE", None)
                                                         else:
                                                             self.logger.warning(
                                                                 "[Trinity] VM manager not available for standard fallback"
@@ -75224,7 +75224,7 @@ class JarvisSystemKernel:
 
                                         # ── v233.0: Three-tier fallback — try standard GCP before local ──
                                         _try_standard_timeout = os.environ.get(
-                                            "JARVIS_GCP_TRY_STANDARD_ON_GOLDEN_FAIL", "true"
+                                            "Ironcliw_GCP_TRY_STANDARD_ON_GOLDEN_FAIL", "true"
                                         ).lower() == "true"
                                         _standard_timeout_attempted = False
 
@@ -75253,7 +75253,7 @@ class JarvisSystemKernel:
                                                 _std_fb_timeout = _cap_phase_timeout(
                                                     float(
                                                         os.environ.get(
-                                                            "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT",
+                                                            "Ironcliw_GCP_STANDARD_FALLBACK_TIMEOUT",
                                                             "900",
                                                         )
                                                     ),
@@ -75284,9 +75284,9 @@ class JarvisSystemKernel:
                                                         except Exception:
                                                             pass
 
-                                                        _orig_golden_t = os.environ.get("JARVIS_GCP_USE_GOLDEN_IMAGE")
+                                                        _orig_golden_t = os.environ.get("Ironcliw_GCP_USE_GOLDEN_IMAGE")
                                                         try:
-                                                            os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = "false"
+                                                            os.environ["Ironcliw_GCP_USE_GOLDEN_IMAGE"] = "false"
 
                                                             try:
                                                                 update_dashboard_gcp_progress(
@@ -75319,9 +75319,9 @@ class JarvisSystemKernel:
                                                                 )
                                                         finally:
                                                             if _orig_golden_t is not None:
-                                                                os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = _orig_golden_t
+                                                                os.environ["Ironcliw_GCP_USE_GOLDEN_IMAGE"] = _orig_golden_t
                                                             else:
-                                                                os.environ.pop("JARVIS_GCP_USE_GOLDEN_IMAGE", None)
+                                                                os.environ.pop("Ironcliw_GCP_USE_GOLDEN_IMAGE", None)
                                                     else:
                                                         self.logger.warning(
                                                             "[Trinity] VM manager not available for standard fallback"
@@ -75398,7 +75398,7 @@ class JarvisSystemKernel:
 
                                 # v219.0: If ready and URL not yet propagated, do it now
                                 if invincible_ready and invincible_ip:
-                                    hollow_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "") == "true"
+                                    hollow_active = os.environ.get("Ironcliw_HOLLOW_CLIENT_ACTIVE", "") == "true"
                                     if not hollow_active:
                                         self._propagate_invincible_node_url(invincible_ip, source="trinity_prestart")
                                         self.logger.info(f"[Trinity] v219.0 Late URL propagation before Trinity start: {invincible_ip}")
@@ -75486,7 +75486,7 @@ class JarvisSystemKernel:
                                 _trinity_startup_error = True
                                 _trinity_startup_timed_out = True  # v222.0: Track for result handling
                                 self.logger.error(f"[Trinity] Trinity phase timeout after {trinity_budget}s")
-                                self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_BUDGET if startup needs more time")
+                                self.logger.warning("[Trinity] Consider increasing Ironcliw_TRINITY_BUDGET if startup needs more time")
                                 # v228.0: Check live health before blanket-marking error
                                 for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
                                     actual_port = self._get_component_port(comp_status_key)
@@ -75603,7 +75603,7 @@ class JarvisSystemKernel:
                         self.logger.warning("[Trinity] ✗ J-Prime: NOT FOUND - searched common locations:")
                         self.logger.warning("[Trinity]   ~/Documents/repos/jarvis-prime")
                         self.logger.warning("[Trinity]   ~/repos/jarvis-prime")
-                        self.logger.warning("[Trinity]   Set JARVIS_PRIME_PATH env var to specify location")
+                        self.logger.warning("[Trinity]   Set Ironcliw_PRIME_PATH env var to specify location")
 
                     # Log Reactor discovery result
                     reactor_status = status.get("components", {}).get("reactor-core", {})
@@ -75651,7 +75651,7 @@ class JarvisSystemKernel:
                     
                     # v219.0: If ready and URL not yet propagated, do it now
                     if invincible_ready and invincible_ip:
-                        hollow_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "") == "true"
+                        hollow_active = os.environ.get("Ironcliw_HOLLOW_CLIENT_ACTIVE", "") == "true"
                         if not hollow_active:
                             self._propagate_invincible_node_url(invincible_ip, source="trinity_prestart_legacy")
                             self.logger.info(f"[Trinity] v219.0 Late URL propagation before Trinity start: {invincible_ip}")
@@ -75755,7 +75755,7 @@ class JarvisSystemKernel:
                     # v180.0: TRINITY AUTO-RESTART WATCHDOG
                     # Start background task to monitor and restart crashed components.
                     # =====================================================================
-                    auto_restart = os.environ.get("JARVIS_TRINITY_AUTO_RESTART", "true").lower() == "true"
+                    auto_restart = os.environ.get("Ironcliw_TRINITY_AUTO_RESTART", "true").lower() == "true"
                     if auto_restart and started_count > 0:
                         watchdog_task = create_safe_task(
                             self._trinity_watchdog_loop(),
@@ -75822,7 +75822,7 @@ class JarvisSystemKernel:
                 elif total_count == 0 and not _trinity_startup_timed_out:
                     # v222.0: Only mark as "skipped" if Trinity was NOT attempted
                     # If we timed out, status was already set to "error" above
-                    self.logger.info("[Trinity] No Trinity components configured - running JARVIS standalone")
+                    self.logger.info("[Trinity] No Trinity components configured - running Ironcliw standalone")
                     # v182.0: Mark as skipped when no components configured
                     self._update_component_status("jarvis_prime", "skipped", "Not configured")
                     self._update_component_status("reactor_core", "skipped", "Not configured")
@@ -76005,8 +76005,8 @@ class JarvisSystemKernel:
         - Maximum restart attempts before giving up
         - Diagnostic logging for crashes
         """
-        check_interval = float(os.environ.get("JARVIS_TRINITY_CHECK_INTERVAL", "30.0"))
-        max_restart_attempts = int(os.environ.get("JARVIS_TRINITY_MAX_RESTARTS", "3"))
+        check_interval = float(os.environ.get("Ironcliw_TRINITY_CHECK_INTERVAL", "30.0"))
+        max_restart_attempts = int(os.environ.get("Ironcliw_TRINITY_MAX_RESTARTS", "3"))
 
         restart_counts: Dict[str, int] = {}
         backoff_until: Dict[str, float] = {}
@@ -76336,9 +76336,9 @@ class JarvisSystemKernel:
         services can continue in background and reconcile status when ready.
         """
         with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
-            service_timeout = max(5.0, _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0))
+            service_timeout = max(5.0, _get_env_float("Ironcliw_SERVICE_TIMEOUT", 30.0))
             continue_on_timeout = os.getenv(
-                "JARVIS_ZONE6_CONTINUE_ON_TIMEOUT", "true"
+                "Ironcliw_ZONE6_CONTINUE_ON_TIMEOUT", "true"
             ).lower() in ("1", "true", "yes", "on")
             self.logger.info(
                 f"[Zone6] Initializing 5 enterprise services "
@@ -76361,7 +76361,7 @@ class JarvisSystemKernel:
             # Compute per-service adaptive timeouts with env overrides.
             service_timeouts: Dict[str, float] = {}
             for display_name, internal_name, _ in services:
-                env_key = f"JARVIS_SERVICE_TIMEOUT_{internal_name.upper()}"
+                env_key = f"Ironcliw_SERVICE_TIMEOUT_{internal_name.upper()}"
                 requested = max(5.0, _get_env_float(env_key, service_timeout))
                 adaptive = await self._get_adaptive_timeout(requested)
                 service_timeouts[internal_name] = max(5.0, adaptive)
@@ -76568,7 +76568,7 @@ class JarvisSystemKernel:
                     # check blocks (e.g., network call in a provider), the
                     # entire enterprise phase stalls.
                     # v265.5: CPU-aware timeout + env var override
-                    _health_agg_timeout = _get_env_float("JARVIS_HEALTH_AGG_TIMEOUT", 15.0)
+                    _health_agg_timeout = _get_env_float("Ironcliw_HEALTH_AGG_TIMEOUT", 15.0)
                     try:
                         import psutil as _ha_ps
                         _ha_cpu = _ha_ps.cpu_percent(interval=None)
@@ -76767,7 +76767,7 @@ class JarvisSystemKernel:
                 # awareness, event sourcing, and coordinated shutdown.
                 _xrepo_phase = 7
 
-                # Adapter: JARVIS-Prime (PrimeRouter singleton)
+                # Adapter: Ironcliw-Prime (PrimeRouter singleton)
                 try:
                     from backend.core.prime_router import PrimeRouter as _PR
 
@@ -76804,7 +76804,7 @@ class JarvisSystemKernel:
                         name="prime_router", service=_PrimeRouterAdapter(),
                         phase=_xrepo_phase,
                         depends_on=["health_aggregator"],
-                        enabled_env="JARVIS_SERVICE_PRIME_ENABLED",
+                        enabled_env="Ironcliw_SERVICE_PRIME_ENABLED",
                     ))
                 except ImportError:
                     self.logger.debug("[Kernel] PrimeRouter not importable — skipping SSR registration")
@@ -76846,7 +76846,7 @@ class JarvisSystemKernel:
                         name="reactor_core", service=_ReactorCoreAdapter(),
                         phase=_xrepo_phase,
                         depends_on=["health_aggregator"],
-                        enabled_env="JARVIS_SERVICE_REACTOR_ENABLED",
+                        enabled_env="Ironcliw_SERVICE_REACTOR_ENABLED",
                     ))
                 except ImportError:
                     self.logger.debug("[Kernel] ReactorCoreClient not importable — skipping SSR registration")
@@ -76882,7 +76882,7 @@ class JarvisSystemKernel:
                         name="reactor_watcher", service=_ReactorWatcherAdapter(self),
                         phase=_xrepo_phase,
                         depends_on=["reactor_core"],
-                        enabled_env="JARVIS_SERVICE_REACTOR_WATCHER_ENABLED",
+                        enabled_env="Ironcliw_SERVICE_REACTOR_WATCHER_ENABLED",
                     ))
                 except Exception as e:
                     self.logger.debug(f"[Kernel] ReactorWatcher SSR adapter error: {e}")
@@ -76929,7 +76929,7 @@ class JarvisSystemKernel:
                     # Wire into GDM — register cross-repo features for degradation
                     _gd = self._service_registry.get("degradation_manager")
                     if _gd and hasattr(_gd, 'register_feature'):
-                        _gd.register_feature("prime_inference", priority=1, description="JARVIS-Prime inference")
+                        _gd.register_feature("prime_inference", priority=1, description="Ironcliw-Prime inference")
                         _gd.register_feature("reactor_training", priority=3, description="Reactor-Core training")
                         _gd.register_feature("model_auto_deploy", priority=3, description="Auto-deploy new models")
 
@@ -77128,7 +77128,7 @@ class JarvisSystemKernel:
         1. Detect crash markers (cloud_lock.json, memory_pressure.json, heartbeat)
         2. Clear stale state files from crashed runs
         3. Clean up orphaned semaphores
-        4. Prevent multiple JARVIS instances
+        4. Prevent multiple Ironcliw instances
         5. Register shutdown handlers for future crash recovery
 
         Returns:
@@ -77153,8 +77153,8 @@ class JarvisSystemKernel:
             # directories. Each detector returns a CrashSignal with confidence
             # score - we only act when signals exceed threshold.
             # =================================================================
-            trinity_dir = JARVIS_HOME / "trinity"
-            cross_repo_dir = JARVIS_HOME / "cross_repo"
+            trinity_dir = Ironcliw_HOME / "trinity"
+            cross_repo_dir = Ironcliw_HOME / "cross_repo"
 
             # Ensure directories exist (parallel)
             await asyncio.gather(
@@ -77328,9 +77328,9 @@ class JarvisSystemKernel:
                     return ("orchestrator", 0.4, True, state_file, "stat_failed")
 
             async def detect_stale_ports() -> tuple:
-                """Detect processes holding JARVIS ports without proper registration."""
+                """Detect processes holding Ironcliw ports without proper registration."""
                 # Trinity ports to check
-                ports_to_check = [8001, 8010, 8090]  # J-Prime, JARVIS, Reactor
+                ports_to_check = [8001, 8010, 8090]  # J-Prime, Ironcliw, Reactor
                 stale_pids = []
                 try:
                     import psutil
@@ -77338,7 +77338,7 @@ class JarvisSystemKernel:
                         if conn.laddr.port in ports_to_check and conn.status == 'LISTEN':
                             try:
                                 proc = psutil.Process(conn.pid)
-                                # Check if it's a zombie or if cmdline doesn't contain JARVIS
+                                # Check if it's a zombie or if cmdline doesn't contain Ironcliw
                                 if proc.status() == 'zombie':
                                     stale_pids.append(conn.pid)
                             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -77412,11 +77412,11 @@ class JarvisSystemKernel:
             # was detected (confidence >= 0.8), remove ALL .dlm.lock files
             # regardless of expiry since the owning process is dead.
             try:
-                dlm_lock_dir = JARVIS_HOME / "cross_repo" / "locks"
+                dlm_lock_dir = Ironcliw_HOME / "cross_repo" / "locks"
                 if dlm_lock_dir.exists():
                     dlm_cleaned = 0
                     import time as _time
-                    _dlm_max_files = int(os.environ.get("JARVIS_DLM_CLEANUP_MAX_LOCK_FILES", "200"))
+                    _dlm_max_files = int(os.environ.get("Ironcliw_DLM_CLEANUP_MAX_LOCK_FILES", "200"))
                     for _dlm_idx, dlm_file in enumerate(dlm_lock_dir.glob("*.dlm.lock")):
                         if _dlm_idx >= _dlm_max_files:
                             self.logger.debug(
@@ -77467,7 +77467,7 @@ class JarvisSystemKernel:
                 # backend_port.json — written by kernel, cleaned on graceful exit but
                 # persists after crash. Contains {"port": N, "timestamp": T}
                 try:
-                    _port_state = JARVIS_HOME / "backend_port.json"
+                    _port_state = Ironcliw_HOME / "backend_port.json"
                     if _port_state.exists():
                         await asyncio.to_thread(_port_state.unlink)
                         stale_cleaned += 1
@@ -77536,7 +77536,7 @@ class JarvisSystemKernel:
             if GRACEFUL_SHUTDOWN_AVAILABLE and cleanup_orphaned_semaphores:
                 try:
                     # v253.1: Timeout to prevent infinite stall
-                    _sem_timeout = float(os.environ.get("JARVIS_SEMAPHORE_CLEANUP_TIMEOUT", "10.0"))
+                    _sem_timeout = float(os.environ.get("Ironcliw_SEMAPHORE_CLEANUP_TIMEOUT", "10.0"))
                     semaphore_result = await asyncio.wait_for(
                         cleanup_orphaned_semaphores(), timeout=_sem_timeout,
                     )
@@ -77560,7 +77560,7 @@ class JarvisSystemKernel:
                     self.logger.debug(f"[Clean Slate] Semaphore cleanup failed: {e}")
 
             # =================================================================
-            # STEP 3: Prevent multiple JARVIS instances
+            # STEP 3: Prevent multiple Ironcliw instances
             # =================================================================
             if PROCESS_CLEANUP_MANAGER_AVAILABLE and prevent_multiple_jarvis_instances:
                 try:
@@ -77618,7 +77618,7 @@ class JarvisSystemKernel:
             _gcp_enabled = any([
                 os.getenv("GCP_ENABLED", "false").lower() == "true",
                 os.getenv("GCP_VM_ENABLED", "false").lower() == "true",
-                os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true",
+                os.getenv("Ironcliw_SPOT_VM_ENABLED", "false").lower() == "true",
             ])
 
             if _gcp_enabled:
@@ -77631,7 +77631,7 @@ class JarvisSystemKernel:
 
                         if _gcp_mgr and _gcp_mgr.initialized:
                             _gcp_timeout = float(os.environ.get(
-                                "JARVIS_GCP_ORPHAN_CLEANUP_TIMEOUT", "60.0"
+                                "Ironcliw_GCP_ORPHAN_CLEANUP_TIMEOUT", "60.0"
                             ))
                             _orphan_results = await asyncio.wait_for(
                                 _gcp_mgr.cleanup_orphaned_gcp_instances(max_age_hours=3.0),
@@ -77678,7 +77678,7 @@ class JarvisSystemKernel:
         1. Start the loading server (serves progress page with WebSocket streaming)
         2. Wait for server health with adaptive backoff
         3. Open Chrome Incognito to the loading page with query params
-        4. Set JARVIS_SUPERVISOR_LOADING=1 to coordinate with other processes
+        4. Set Ironcliw_SUPERVISOR_LOADING=1 to coordinate with other processes
         5. Voice narration for accessibility
 
         Returns:
@@ -77730,7 +77730,7 @@ class JarvisSystemKernel:
                         chrome_manager = get_chrome_manager()
                         # v265.3: AppleScript can hang if Chrome unresponsive
                         _chrome_load_timeout = float(os.environ.get(
-                            "JARVIS_CHROME_REDIRECT_TIMEOUT", "30.0"
+                            "Ironcliw_CHROME_REDIRECT_TIMEOUT", "30.0"
                         ))
                         try:
                             result = await asyncio.wait_for(
@@ -77748,8 +77748,8 @@ class JarvisSystemKernel:
                             self.logger.success(f"[Kernel] Chrome Incognito opened ({action})")
 
                             # Step 3: Set environment variable to signal other processes
-                            os.environ["JARVIS_SUPERVISOR_LOADING"] = "1"
-                            self.logger.debug("[Kernel] Set JARVIS_SUPERVISOR_LOADING=1")
+                            os.environ["Ironcliw_SUPERVISOR_LOADING"] = "1"
+                            self.logger.debug("[Kernel] Set Ironcliw_SUPERVISOR_LOADING=1")
 
                             # v182.0: Send initial progress with REAL component status
                             self._update_component_status("loading_server", "complete", "Loading server ready")
@@ -77758,7 +77758,7 @@ class JarvisSystemKernel:
                                 self._update_component_status("preflight", "running", "Preflight checks in progress")
                             await self._broadcast_component_update(
                                 stage="initializing",
-                                message="JARVIS kernel starting...",
+                                message="Ironcliw kernel starting...",
                             )
                         else:
                             error = result.get("error", "unknown")
@@ -77784,14 +77784,14 @@ class JarvisSystemKernel:
                 self._update_component_status("preflight", "running", "Preflight checks in progress")
             await self._broadcast_component_update(
                 stage="initializing",
-                message="JARVIS kernel starting...",
+                message="Ironcliw kernel starting...",
             )
 
         # Step 4: Voice narration (if enabled)
         if self._narrator and loading_server_started:
             try:
                 await self._narrator.speak(
-                    "Loading page ready. Starting JARVIS core.",
+                    "Loading page ready. Starting Ironcliw core.",
                     wait=False
                 )
             except Exception as e:
@@ -77804,7 +77804,7 @@ class JarvisSystemKernel:
     # PHASE 7: FRONTEND TRANSITION (v117.0)
     # =========================================================================
     # Starts the React frontend and transitions the browser from the
-    # loading page to the main JARVIS UI.
+    # loading page to the main Ironcliw UI.
     # =========================================================================
 
     async def _ensure_frontend_start_task(self, caller: str = "unknown") -> asyncio.Task:
@@ -77872,7 +77872,7 @@ class JarvisSystemKernel:
         This phase:
         1. Start the React frontend (npm start)
         2. Wait for frontend to be ready
-        3. Set JARVIS_STARTUP_COMPLETE=true to signal completion
+        3. Set Ironcliw_STARTUP_COMPLETE=true to signal completion
         4. Redirect Chrome from loading page to frontend URL
         5. Gracefully stop the loading server (gives Chrome time to redirect)
 
@@ -77887,7 +77887,7 @@ class JarvisSystemKernel:
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
 
         frontend_started = False
-        frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
+        frontend_port = int(os.environ.get("Ironcliw_FRONTEND_PORT", "3000"))
 
         # v260.1: Frontend phase progress milestones (93→99)
         # Previously the entire frontend phase ran at 93% with no updates,
@@ -77914,7 +77914,7 @@ class JarvisSystemKernel:
             try:
                 # Wait for warmup task with timeout
                 warmup_timeout = _get_env_float(
-                    "JARVIS_FRONTEND_WARMUP_WAIT_TIMEOUT",
+                    "Ironcliw_FRONTEND_WARMUP_WAIT_TIMEOUT",
                     90.0,
                 )
                 frontend_started = bool(
@@ -77953,11 +77953,11 @@ class JarvisSystemKernel:
                 self._update_component_status("frontend", "running", "Starting React frontend...")
                 await self._broadcast_progress(95, "frontend", "Starting React frontend...")
 
-                wait_timeout = _get_env_float("JARVIS_FRONTEND_START_WAIT_TIMEOUT", 120.0)
+                wait_timeout = _get_env_float("Ironcliw_FRONTEND_START_WAIT_TIMEOUT", 120.0)
                 if warmup_pending:
                     wait_timeout = min(
                         wait_timeout,
-                        _get_env_float("JARVIS_FRONTEND_HANDOFF_TIMEOUT", 45.0),
+                        _get_env_float("Ironcliw_FRONTEND_HANDOFF_TIMEOUT", 45.0),
                     )
 
                 frontend_started, startup_pending = await self._wait_for_frontend_start(
@@ -77992,7 +77992,7 @@ class JarvisSystemKernel:
             # v260.1: Advance progress for Trinity wait step
             self._current_startup_progress = 97
             self.logger.info("[Kernel] Waiting for Trinity components to complete...")
-            trinity_wait_timeout = float(os.environ.get("JARVIS_TRINITY_WAIT_TIMEOUT", "30.0"))
+            trinity_wait_timeout = float(os.environ.get("Ironcliw_TRINITY_WAIT_TIMEOUT", "30.0"))
             # v265.5: CPU-aware scaling — Trinity components (frontend build,
             # model loading) all compete for CPU during late startup.
             try:
@@ -78034,8 +78034,8 @@ class JarvisSystemKernel:
 
         # Step 3: Mark startup as complete (before redirect)
         # This signals the loading server to allow graceful Chrome disconnect
-        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
-        self.logger.debug("[Kernel] Set JARVIS_STARTUP_COMPLETE=true")
+        os.environ["Ironcliw_STARTUP_COMPLETE"] = "true"
+        self.logger.debug("[Kernel] Set Ironcliw_STARTUP_COMPLETE=true")
 
         # Step 3: Redirect Chrome to the main frontend
         # v119.0: Use browser lock for cross-process safety
@@ -78054,7 +78054,7 @@ class JarvisSystemKernel:
                         # v265.3: AppleScript calls can hang indefinitely
                         # if Chrome is unresponsive or a system dialog blocks.
                         _chrome_timeout = float(os.environ.get(
-                            "JARVIS_CHROME_REDIRECT_TIMEOUT", "30.0"
+                            "Ironcliw_CHROME_REDIRECT_TIMEOUT", "30.0"
                         ))
                         try:
                             result = await asyncio.wait_for(
@@ -78089,7 +78089,7 @@ class JarvisSystemKernel:
             # v198.1: Wait briefly for Chrome redirect to stabilize before stopping
             # The loading server also has transition grace period protection
             redirect_stabilization_delay = float(
-                os.environ.get("JARVIS_REDIRECT_STABILIZATION_DELAY", "1.0")
+                os.environ.get("Ironcliw_REDIRECT_STABILIZATION_DELAY", "1.0")
             )
             await asyncio.sleep(redirect_stabilization_delay)
             # The graceful shutdown will wait for Chrome to naturally disconnect
@@ -78099,7 +78099,7 @@ class JarvisSystemKernel:
             if self._narrator:
                 try:
                     await self._narrator.speak(
-                        "JARVIS interface ready.",
+                        "Ironcliw interface ready.",
                         wait=False
                     )
                 except Exception:
@@ -78110,7 +78110,7 @@ class JarvisSystemKernel:
             await self._stop_loading_server()
 
         # Clear the supervisor loading flag
-        os.environ.pop("JARVIS_SUPERVISOR_LOADING", None)
+        os.environ.pop("Ironcliw_SUPERVISOR_LOADING", None)
 
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
         return True  # Always succeed - frontend is optional
@@ -78119,7 +78119,7 @@ class JarvisSystemKernel:
     # LOADING SERVER AND FRONTEND MANAGEMENT
     # =========================================================================
     # Manages the loading page display during startup and React frontend
-    # lifecycle for the main JARVIS UI.
+    # lifecycle for the main Ironcliw UI.
     # =========================================================================
 
     def _register_loading_server_process(self, process: asyncio.subprocess.Process) -> None:
@@ -78206,9 +78206,9 @@ class JarvisSystemKernel:
         if existing_pythonpath:
             pythonpath_parts.append(existing_pythonpath)
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-        env["JARVIS_KERNEL_PID"] = str(os.getpid())
-        frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
-        env["JARVIS_FRONTEND_PORT"] = str(frontend_port)
+        env["Ironcliw_KERNEL_PID"] = str(os.getpid())
+        frontend_port = int(os.environ.get("Ironcliw_FRONTEND_PORT", "3000"))
+        env["Ironcliw_FRONTEND_PORT"] = str(frontend_port)
 
         # Step 3: Retry loop with port increment on failure
         await self._stop_loading_server_heartbeat()
@@ -78524,7 +78524,7 @@ class JarvisSystemKernel:
         try:
             await self._broadcast_startup_progress(
                 stage="complete",
-                message="JARVIS startup complete",
+                message="Ironcliw startup complete",
                 progress=100,
                 metadata={"final": True}
             )
@@ -78630,7 +78630,7 @@ class JarvisSystemKernel:
 
         try:
             # Check if startup is complete - if so, give Chrome time to redirect
-            startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE") == "true"
+            startup_complete = os.environ.get("Ironcliw_STARTUP_COMPLETE") == "true"
 
             if startup_complete:
                 self.logger.debug("[LoadingServer] Waiting for Chrome to complete redirect...")
@@ -78721,7 +78721,7 @@ class JarvisSystemKernel:
         # After a crash, the previous React dev server may still be running as an
         # orphan. `npm start` detects "Something is already running on port 3000"
         # and exits with code 0 — a silent failure that looks like success.
-        frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
+        frontend_port = int(os.environ.get("Ironcliw_FRONTEND_PORT", "3000"))
         try:
             await self._cleanup_stale_port_process(frontend_port, "frontend")
         except Exception as e:
@@ -78749,7 +78749,7 @@ class JarvisSystemKernel:
                 self.logger.success("[Frontend] Dependencies installed")
 
             # Configure frontend environment
-            frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
+            frontend_port = int(os.environ.get("Ironcliw_FRONTEND_PORT", "3000"))
             env = os.environ.copy()
             env["PORT"] = str(frontend_port)
             env["BROWSER"] = "none"  # Don't auto-open browser
@@ -78920,7 +78920,7 @@ class JarvisSystemKernel:
                     
                     await asyncio.wait_for(
                         self._frontend_process.wait(),
-                        timeout=_get_env_float("JARVIS_FRONTEND_GRACEFUL_TIMEOUT", 10.0),
+                        timeout=_get_env_float("Ironcliw_FRONTEND_GRACEFUL_TIMEOUT", 10.0),
                     )
                 except asyncio.TimeoutError:
                     # Force kill if graceful shutdown fails
@@ -78935,7 +78935,7 @@ class JarvisSystemKernel:
                     try:
                         await asyncio.wait_for(
                             self._frontend_process.wait(),
-                            timeout=_get_env_float("JARVIS_FRONTEND_KILL_TIMEOUT", 5.0),
+                            timeout=_get_env_float("Ironcliw_FRONTEND_KILL_TIMEOUT", 5.0),
                         )
                     except asyncio.TimeoutError:
                         pass  # v253.2: Bounded wait
@@ -78989,7 +78989,7 @@ class JarvisSystemKernel:
             )
             stdout, _ = await asyncio.wait_for(
                 lsof_proc.communicate(),
-                timeout=_get_env_float("JARVIS_PORT_CLEANUP_LSOF_TIMEOUT", 5.0),
+                timeout=_get_env_float("Ironcliw_PORT_CLEANUP_LSOF_TIMEOUT", 5.0),
             )
         except asyncio.TimeoutError:
             self.logger.debug(f"[{label}] lsof timed out checking port {port}")
@@ -79069,7 +79069,7 @@ class JarvisSystemKernel:
                 continue
 
             # Wait for graceful exit
-            sigterm_wait = _get_env_float("JARVIS_PORT_CLEANUP_SIGTERM_WAIT", 5.0)
+            sigterm_wait = _get_env_float("Ironcliw_PORT_CLEANUP_SIGTERM_WAIT", 5.0)
             exited = False
             deadline = time.time() + sigterm_wait
             while time.time() < deadline:
@@ -79452,13 +79452,13 @@ class JarvisSystemKernel:
         """
         Check if all Trinity components are ready.
 
-        v182.0: All three components (JARVIS Body, Prime, Reactor) must be ready
+        v182.0: All three components (Ironcliw Body, Prime, Reactor) must be ready
         before the loading page should redirect to the main UI.
 
         Returns:
             True if all Trinity components are ready
         """
-        # JARVIS Body (backend) is required
+        # Ironcliw Body (backend) is required
         if not self._trinity_ready.get("jarvis_body", False):
             return False
 
@@ -79663,7 +79663,7 @@ class JarvisSystemKernel:
         return {
             "jarvis_body": {
                 "status": "ready" if self._trinity_ready.get("jarvis_body") else "pending",
-                "label": "JARVIS Body",
+                "label": "Ironcliw Body",
                 "icon": "🦾",
             },
             "jarvis_prime": {
@@ -80187,7 +80187,7 @@ class JarvisSystemKernel:
                 # Reduced increment since dynamic progress now tracks actual work
                 increment = min(1, max(0.3, 0.05 * elapsed / 10))
                 # v233.1: Allow heartbeat up to 99% (100% reserved for explicit completion broadcast)
-                _heartbeat_cap = int(os.environ.get("JARVIS_HEARTBEAT_PROGRESS_CAP", "99"))
+                _heartbeat_cap = int(os.environ.get("Ironcliw_HEARTBEAT_PROGRESS_CAP", "99"))
                 effective_progress = min(_heartbeat_cap, base_progress + increment)
 
                 # Enforce monotonic: never send lower than previous
@@ -80416,13 +80416,13 @@ class JarvisSystemKernel:
             if self._backend_server or self._backend_server_task:
                 await self._stop_backend_in_process(
                     reason="cleanup",
-                    timeout=_get_env_float("JARVIS_BACKEND_INPROC_STOP_TIMEOUT", 15.0),
+                    timeout=_get_env_float("Ironcliw_BACKEND_INPROC_STOP_TIMEOUT", 15.0),
                     force_cancel_on_timeout=True,
                 )
 
             # Stop AGI OS + Neural Mesh before broad task cancellation so
             # subsystem-owned loops can unwind in dependency order.
-            agi_stop_timeout = max(1.0, _get_env_float("JARVIS_AGI_OS_STOP_TIMEOUT", 45.0))
+            agi_stop_timeout = max(1.0, _get_env_float("Ironcliw_AGI_OS_STOP_TIMEOUT", 45.0))
             try:
                 from agi_os import stop_agi_os
                 await asyncio.wait_for(stop_agi_os(), timeout=agi_stop_timeout)
@@ -80488,7 +80488,7 @@ class JarvisSystemKernel:
                 from core.hybrid_orchestrator import stop_orchestrator
                 await asyncio.wait_for(
                     stop_orchestrator(),
-                    timeout=_get_env_float("JARVIS_HYBRID_ORCH_STOP_TIMEOUT", 10.0),
+                    timeout=_get_env_float("Ironcliw_HYBRID_ORCH_STOP_TIMEOUT", 10.0),
                 )
                 self.logger.debug("[Kernel] Hybrid orchestrator stopped")
             except Exception as hy_err:
@@ -80503,7 +80503,7 @@ class JarvisSystemKernel:
                     from backend.intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
                 await asyncio.wait_for(
                     shutdown_lifecycle_manager(),
-                    timeout=_get_env_float("JARVIS_MODEL_LIFECYCLE_STOP_TIMEOUT", 10.0),
+                    timeout=_get_env_float("Ironcliw_MODEL_LIFECYCLE_STOP_TIMEOUT", 10.0),
                 )
                 self.logger.debug("[Kernel] Model lifecycle manager stopped")
             except Exception as ml_err:
@@ -80613,7 +80613,7 @@ class JarvisSystemKernel:
                                         reason="session_shutdown",
                                         action=VMAction.STOP,
                                     ),
-                                    timeout=_get_env_float("JARVIS_VM_STOP_TIMEOUT", 15.0),
+                                    timeout=_get_env_float("Ironcliw_VM_STOP_TIMEOUT", 15.0),
                                 )
                                 self.logger.info(f"[Kernel] VM '{vm_name}' stopped for session shutdown")
                             except asyncio.TimeoutError:
@@ -80639,7 +80639,7 @@ class JarvisSystemKernel:
                     try:
                         await asyncio.wait_for(
                             shutdown_orchestrator(),
-                            timeout=_get_env_float("JARVIS_CROSS_REPO_STOP_TIMEOUT", 15.0),
+                            timeout=_get_env_float("Ironcliw_CROSS_REPO_STOP_TIMEOUT", 15.0),
                         )
                         self.logger.info("[Kernel] Cross-repo orchestrator shutdown complete")
                     except asyncio.TimeoutError:
@@ -80671,7 +80671,7 @@ class JarvisSystemKernel:
                     try:
                         await asyncio.wait_for(
                             self._backend_process.wait(),
-                            timeout=_get_env_float("JARVIS_BACKEND_PROC_STOP_TIMEOUT", 10.0),
+                            timeout=_get_env_float("Ironcliw_BACKEND_PROC_STOP_TIMEOUT", 10.0),
                         )
                     except asyncio.TimeoutError:
                         try:
@@ -80811,12 +80811,12 @@ class JarvisSystemKernel:
             "jarvis": {
                 "ouroboros_simulator": {
                     "available": (repo_root / "backend" / "core" / "ouroboros" / "simulator.py").exists(),
-                    "enabled": _flag("JARVIS_OUROBOROS_SIMULATOR_ENABLED", "true"),
+                    "enabled": _flag("Ironcliw_OUROBOROS_SIMULATOR_ENABLED", "true"),
                     "activation_policy": "runtime_introspection",
                 },
                 "ecapa_cloud_service": {
                     "available": (repo_root / "backend" / "cloud_services" / "ecapa_cloud_service.py").exists(),
-                    "enabled": _flag("JARVIS_ECAPA_SIDECAR_ENABLED", "false"),
+                    "enabled": _flag("Ironcliw_ECAPA_SIDECAR_ENABLED", "false"),
                     "activation_policy": "voice_backend_sidecar",
                 },
             },
@@ -80875,10 +80875,10 @@ class JarvisSystemKernel:
             "entry_point": "unified_supervisor",  # v119.0: Identify entry point
             "readiness": self._readiness_manager.get_status() if self._readiness_manager else {},
             "startup_modes": {
-                "desired_mode": os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full"),
-                "effective_mode": os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full"),
-                "cloud_recovery_candidate": os.environ.get("JARVIS_CLOUD_RECOVERY_CANDIDATE", "false"),
-                "oombridge_available": os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+                "desired_mode": os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "local_full"),
+                "effective_mode": os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full"),
+                "cloud_recovery_candidate": os.environ.get("Ironcliw_CLOUD_RECOVERY_CANDIDATE", "false"),
+                "oombridge_available": os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE", "1"),
             },
         }
 
@@ -80916,11 +80916,11 @@ class JarvisSystemKernel:
             status["conversation_memory"] = self._persistent_memory_agent.get_stats()
 
         status["startup_modes"] = {
-            "desired_mode": os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full"),
-            "effective_mode": os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full"),
-            "cloud_recovery_candidate": os.environ.get("JARVIS_CLOUD_RECOVERY_CANDIDATE", "false"),
-            "oombridge_available": os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
-            "backend_minimal": os.environ.get("JARVIS_BACKEND_MINIMAL", "false"),
+            "desired_mode": os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "local_full"),
+            "effective_mode": os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full"),
+            "cloud_recovery_candidate": os.environ.get("Ironcliw_CLOUD_RECOVERY_CANDIDATE", "false"),
+            "oombridge_available": os.environ.get("Ironcliw_OOMBRIDGE_AVAILABLE", "1"),
+            "backend_minimal": os.environ.get("Ironcliw_BACKEND_MINIMAL", "false"),
         }
 
         try:
@@ -81187,7 +81187,7 @@ class JarvisSystemKernel:
         """
         Validate Trinity repository availability and health.
 
-        Checks that JARVIS-Prime and Reactor-Core repositories are present
+        Checks that Ironcliw-Prime and Reactor-Core repositories are present
         and properly configured for cross-repo coordination.
 
         Returns:
@@ -81199,7 +81199,7 @@ class JarvisSystemKernel:
             "reactor": {"found": False, "path": None, "issues": []},
         }
 
-        # Check JARVIS-Prime
+        # Check Ironcliw-Prime
         if self.config.prime_repo_path:
             prime_path = self.config.prime_repo_path
             result["prime"]["path"] = str(prime_path)
@@ -81277,7 +81277,7 @@ class JarvisSystemKernel:
             import psutil
 
             # Memory quota (default: 80% of available)
-            mem_quota_percent = float(os.environ.get("JARVIS_MEM_QUOTA_PERCENT", "80"))
+            mem_quota_percent = float(os.environ.get("Ironcliw_MEM_QUOTA_PERCENT", "80"))
             mem_current = psutil.virtual_memory().percent
             result["quotas"]["memory"] = {
                 "current_percent": mem_current,
@@ -81289,7 +81289,7 @@ class JarvisSystemKernel:
                 result["within_limits"] = False
 
             # CPU quota (informational)
-            cpu_quota_percent = float(os.environ.get("JARVIS_CPU_QUOTA_PERCENT", "90"))
+            cpu_quota_percent = float(os.environ.get("Ironcliw_CPU_QUOTA_PERCENT", "90"))
             cpu_current = await asyncio.to_thread(psutil.cpu_percent, 0.1)
             result["quotas"]["cpu"] = {
                 "current_percent": cpu_current,
@@ -81298,7 +81298,7 @@ class JarvisSystemKernel:
             }
 
             # Disk quota
-            disk_quota_gb = float(os.environ.get("JARVIS_DISK_QUOTA_GB", "1"))
+            disk_quota_gb = float(os.environ.get("Ironcliw_DISK_QUOTA_GB", "1"))
             disk_free_gb = psutil.disk_usage('/').free / (1024**3)
             result["quotas"]["disk"] = {
                 "free_gb": round(disk_free_gb, 2),
@@ -81442,7 +81442,7 @@ class JarvisSystemKernel:
         async def probe_docker() -> Dict[str, Any]:
             """Probe Docker ECAPA backend (non-blocking, never auto-starts)."""
             probe = {"available": False, "healthy": False, "endpoint": None, "latency_ms": 0}
-            skip_docker = os.environ.get("JARVIS_SKIP_DOCKER", "false").lower() == "true"
+            skip_docker = os.environ.get("Ironcliw_SKIP_DOCKER", "false").lower() == "true"
             if skip_docker:
                 return probe
             try:
@@ -81452,7 +81452,7 @@ class JarvisSystemKernel:
                 if health.get("healthy"):
                     probe["available"] = True
                     container_name = os.environ.get(
-                        "JARVIS_ECAPA_CONTAINER", "jarvis-ecapa-cloud"
+                        "Ironcliw_ECAPA_CONTAINER", "jarvis-ecapa-cloud"
                     )
                     check = await asyncio.create_subprocess_exec(
                         "docker", "ps", "--filter", f"name={container_name}",
@@ -81463,7 +81463,7 @@ class JarvisSystemKernel:
                     stdout, _ = await asyncio.wait_for(check.communicate(), timeout=3.0)
                     if container_name in stdout.decode():
                         import aiohttp
-                        ecapa_port = int(os.environ.get("JARVIS_ECAPA_PORT", "8015"))
+                        ecapa_port = int(os.environ.get("Ironcliw_ECAPA_PORT", "8015"))
                         t0 = asyncio.get_running_loop().time()
                         async with aiohttp.ClientSession() as sess:
                             async with sess.get(
@@ -81495,7 +81495,7 @@ class JarvisSystemKernel:
             If Cloud Run is cold-starting, background warmup handles it.
             """
             probe = {"available": False, "healthy": False, "endpoint": None, "latency_ms": 0}
-            cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
+            cloud_endpoint = os.environ.get("Ironcliw_CLOUD_ML_ENDPOINT", "")
             if not cloud_endpoint:
                 return probe
             probe["available"] = True
@@ -81685,7 +81685,7 @@ class JarvisSystemKernel:
         # =====================================================================
         # Phase 2: Intelligent Backend Selection (zero-blocking)
         # =====================================================================
-        force_backend = os.environ.get("JARVIS_ECAPA_FORCE_BACKEND", "").lower()
+        force_backend = os.environ.get("Ironcliw_ECAPA_FORCE_BACKEND", "").lower()
         if force_backend:
             if force_backend == "docker" and docker_probe.get("healthy"):
                 result["selected_backend"] = "docker"
@@ -81755,16 +81755,16 @@ class JarvisSystemKernel:
         # =====================================================================
         backend = result["selected_backend"]
         if backend == "docker":
-            os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = result["endpoint"] or ""
-            os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
-            os.environ["JARVIS_ECAPA_BACKEND"] = "docker"
+            os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = result["endpoint"] or ""
+            os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "true"
+            os.environ["Ironcliw_ECAPA_BACKEND"] = "docker"
         elif backend == "cloud_run":
-            os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = result["endpoint"] or ""
-            os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
-            os.environ["JARVIS_ECAPA_BACKEND"] = "cloud_run"
+            os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = result["endpoint"] or ""
+            os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
+            os.environ["Ironcliw_ECAPA_BACKEND"] = "cloud_run"
         elif backend == "local":
-            os.environ["JARVIS_ECAPA_BACKEND"] = "local"
-            os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+            os.environ["Ironcliw_ECAPA_BACKEND"] = "local"
+            os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
 
         if backend:
             self.logger.info(
@@ -81777,7 +81777,7 @@ class JarvisSystemKernel:
             # v265.2: Background re-probe for total failure recovery.
             # If all probes failed at startup, periodically re-check and
             # enable voice biometrics when a backend becomes available
-            # (e.g., Docker daemon starts 30s after JARVIS, or speechbrain
+            # (e.g., Docker daemon starts 30s after Ironcliw, or speechbrain
             # finishes its cold import in the background thread).
             _reprobe_interval = float(os.environ.get("ECAPA_REPROBE_INTERVAL", "30"))
             _reprobe_max_wait = float(os.environ.get("ECAPA_REPROBE_MAX_WAIT", "300"))
@@ -81818,14 +81818,14 @@ class JarvisSystemKernel:
 
                         if _selected:
                             if _selected == "docker":
-                                os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = _endpoint or ""
-                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+                                os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = _endpoint or ""
+                                os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "true"
                             elif _selected == "cloud_run":
-                                os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = _endpoint or ""
-                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+                                os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = _endpoint or ""
+                                os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
                             else:
-                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
-                            os.environ["JARVIS_ECAPA_BACKEND"] = _selected
+                                os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
+                            os.environ["Ironcliw_ECAPA_BACKEND"] = _selected
                             self.logger.info(
                                 f"[ECAPA] Background re-probe found {_selected} after "
                                 f"{elapsed + _reprobe_interval:.0f}s — voice biometrics now active"
@@ -81860,7 +81860,7 @@ class JarvisSystemKernel:
         # dict with available=False — but the endpoint IS still configured
         # and worth warming up in the background.
         # =====================================================================
-        cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
+        cloud_endpoint = os.environ.get("Ironcliw_CLOUD_ML_ENDPOINT", "")
         if (
             cloud_endpoint
             and not cloud_probe.get("healthy")
@@ -81904,9 +81904,9 @@ class JarvisSystemKernel:
                                             data = await resp.json()
                                             if data.get("ecapa_ready", False):
                                                 # Hot-swap to Cloud Run
-                                                os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = cloud_endpoint
-                                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
-                                                os.environ["JARVIS_ECAPA_BACKEND"] = "cloud_run"
+                                                os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = cloud_endpoint
+                                                os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
+                                                os.environ["Ironcliw_ECAPA_BACKEND"] = "cloud_run"
                                                 self.logger.info(
                                                     f"[ECAPA] Cloud Run ready after "
                                                     f"{elapsed:.1f}s — hot-swapped from "
@@ -82005,7 +82005,7 @@ class JarvisSystemKernel:
         try:
             from voice_unlock.ml_engine_registry import get_ml_registry, ensure_ecapa_available
             _step_timeout = _remaining_budget(
-                _get_env_float("JARVIS_ECAPA_VERIFY_STEP1_TIMEOUT", 12.0)
+                _get_env_float("Ironcliw_ECAPA_VERIFY_STEP1_TIMEOUT", 12.0)
             )
             registry = await asyncio.wait_for(
                 get_ml_registry(),
@@ -82027,7 +82027,7 @@ class JarvisSystemKernel:
         # Step 2/6: Cloud Run ECAPA readiness
         if not _ensure_budget("Step 2/6"):
             return result
-        cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
+        cloud_endpoint = os.environ.get("Ironcliw_CLOUD_ML_ENDPOINT", "")
         if cloud_endpoint:
             try:
                 import aiohttp
@@ -82059,7 +82059,7 @@ class JarvisSystemKernel:
             return result
         try:
             _step3_timeout = _remaining_budget(
-                _get_env_float("JARVIS_ECAPA_VERIFY_STEP3_TIMEOUT", 25.0)
+                _get_env_float("Ironcliw_ECAPA_VERIFY_STEP3_TIMEOUT", 25.0)
             )
             local_ok, local_msg, _ = await ensure_ecapa_available(
                 timeout=_step3_timeout,
@@ -82101,7 +82101,7 @@ class JarvisSystemKernel:
             audio_bytes = buf.getvalue()
 
             _step4_timeout = _remaining_budget(
-                _get_env_float("JARVIS_ECAPA_VERIFY_STEP4_TIMEOUT", 15.0)
+                _get_env_float("Ironcliw_ECAPA_VERIFY_STEP4_TIMEOUT", 15.0)
             )
             embedding = await asyncio.wait_for(
                 extract_speaker_embedding(audio_bytes),
@@ -82142,7 +82142,7 @@ class JarvisSystemKernel:
                     # Use fast init for smoke-test integration to avoid heavyweight
                     # retries/startup work in verification context.
                     _step5_init_timeout = _remaining_budget(
-                        _get_env_float("JARVIS_ECAPA_VERIFY_STEP5_INIT_TIMEOUT", 20.0)
+                        _get_env_float("Ironcliw_ECAPA_VERIFY_STEP5_INIT_TIMEOUT", 20.0)
                     )
                     _init_method = (
                         test_svc.initialize_fast
@@ -82156,7 +82156,7 @@ class JarvisSystemKernel:
 
                     # Quick embedding extraction through the service
                     _step5_extract_timeout = _remaining_budget(
-                        _get_env_float("JARVIS_ECAPA_VERIFY_STEP5_EXTRACT_TIMEOUT", 8.0)
+                        _get_env_float("Ironcliw_ECAPA_VERIFY_STEP5_EXTRACT_TIMEOUT", 8.0)
                     )
                     _svc_embedding = await asyncio.wait_for(
                         test_svc._extract_speaker_embedding(audio_bytes),
@@ -82211,8 +82211,8 @@ class JarvisSystemKernel:
         self.logger.info(f"[ECAPA]   Step 6/6: Pipeline status: {readiness}")
 
         # Export results to environment
-        os.environ["JARVIS_ECAPA_VERIFIED"] = str(result["verification_pipeline_ready"]).lower()
-        os.environ["JARVIS_ECAPA_EMBEDDING_TESTED"] = str(
+        os.environ["Ironcliw_ECAPA_VERIFIED"] = str(result["verification_pipeline_ready"]).lower()
+        os.environ["Ironcliw_ECAPA_EMBEDDING_TESTED"] = str(
             result["embedding_extraction_tested"]
         ).lower()
 
@@ -82274,7 +82274,7 @@ class JarvisSystemKernel:
                         self.logger.info("[VoiceBio] Phase 3 ECAPA task failed — will retry in voice_biometrics")
                 else:
                     # Phase 3 still running — await it with a budget-aware timeout
-                    _phase3_wait = _get_env_float("JARVIS_VOICE_BIO_ECAPA_WAIT", 30.0)
+                    _phase3_wait = _get_env_float("Ironcliw_VOICE_BIO_ECAPA_WAIT", 30.0)
                     # v258.1: Extend Phase 6 wait budget under CPU pressure
                     try:
                         from backend.core.async_system_metrics import get_cpu_percent
@@ -82316,9 +82316,9 @@ class JarvisSystemKernel:
             # Initialize learning database (fast mode for parallel initialization)
             self.logger.info("[VoiceBio] Loading learning database (fast mode)...")
             try:
-                from intelligence.learning_database import JARVISLearningDatabase
+                from intelligence.learning_database import IroncliwLearningDatabase
 
-                learning_db = JARVISLearningDatabase()
+                learning_db = IroncliwLearningDatabase()
                 # v124.0: Use fast_mode=True for parallel initialization
                 # This reduces startup from 30+ seconds to ~5 seconds
                 await learning_db.initialize(fast_mode=True)
@@ -82541,12 +82541,12 @@ class JarvisSystemKernel:
             result["configured_port"] = result["port"]  # v224.0: Track original for fallback comparison
 
             # Set environment variables
-            os.environ["JARVIS_DB_TYPE"] = "cloudsql"
-            os.environ["JARVIS_DB_CONNECTION_NAME"] = result["connection_name"]
-            os.environ["JARVIS_DB_HOST"] = "127.0.0.1"
-            os.environ["JARVIS_DB_PORT"] = str(result["port"])
+            os.environ["Ironcliw_DB_TYPE"] = "cloudsql"
+            os.environ["Ironcliw_DB_CONNECTION_NAME"] = result["connection_name"]
+            os.environ["Ironcliw_DB_HOST"] = "127.0.0.1"
+            os.environ["Ironcliw_DB_PORT"] = str(result["port"])
             if "password" in cloud_sql_config:
-                os.environ["JARVIS_DB_PASSWORD"] = cloud_sql_config["password"]
+                os.environ["Ironcliw_DB_PASSWORD"] = cloud_sql_config["password"]
 
             # Import proxy manager
             backend_dir = self.config.backend_dir
@@ -82588,7 +82588,7 @@ class JarvisSystemKernel:
                         # downstream consumers (connection managers, etc.)
                         # connect to the right port
                         if effective_port != result.get("configured_port", effective_port):
-                            os.environ["JARVIS_DB_PORT"] = str(effective_port)
+                            os.environ["Ironcliw_DB_PORT"] = str(effective_port)
                             self.logger.info(
                                 f"[CloudSQL] ⚠️ Using fallback port {effective_port} "
                                 f"(configured: {result.get('configured_port')})"
@@ -82625,8 +82625,8 @@ class JarvisSystemKernel:
                         service_timeout = max(
                             5.0,
                             _get_env_float(
-                                "JARVIS_SERVICE_TIMEOUT_CLOUD_SQL",
-                                _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0),
+                                "Ironcliw_SERVICE_TIMEOUT_CLOUD_SQL",
+                                _get_env_float("Ironcliw_SERVICE_TIMEOUT", 30.0),
                             ),
                         )
                         configured_timeout = max(
@@ -82908,7 +82908,7 @@ class JarvisSystemKernel:
     # v116.0: WEBSOCKET HUB FOR TRINITY IPC
     # =========================================================================
     # Real-time cross-repo communication via WebSocket on port 8765.
-    # Enables JARVIS, J-Prime, and J-Reactor to communicate with <10ms latency.
+    # Enables Ironcliw, J-Prime, and J-Reactor to communicate with <10ms latency.
     # =========================================================================
 
     async def _initialize_websocket_hub(self) -> Dict[str, Any]:
@@ -82917,7 +82917,7 @@ class JarvisSystemKernel:
         v193.1: Added duplicate initialization prevention.
 
         Features:
-        - Listens on port 8765 (configurable via JARVIS_WEBSOCKET_PORT)
+        - Listens on port 8765 (configurable via Ironcliw_WEBSOCKET_PORT)
         - Real-time pub/sub messaging between repos
         - Automatic client reconnection
         - Message prioritization (critical, high, normal, low)
@@ -82934,7 +82934,7 @@ class JarvisSystemKernel:
 
         # v193.1: Check if already initialized (prevents duplicate startup)
         if hasattr(self, '_websocket_coordinator') and self._websocket_coordinator is not None:
-            ws_port = int(os.getenv("JARVIS_WEBSOCKET_PORT", "8765"))
+            ws_port = int(os.getenv("Ironcliw_WEBSOCKET_PORT", "8765"))
             self.logger.debug(f"[WebSocket] Already initialized on port {ws_port}")
             result["enabled"] = True
             result["running"] = True
@@ -82942,7 +82942,7 @@ class JarvisSystemKernel:
             return result
 
         # Check if WebSocket is explicitly disabled
-        ws_enabled = os.getenv("JARVIS_WEBSOCKET_ENABLED", "true").lower() == "true"
+        ws_enabled = os.getenv("Ironcliw_WEBSOCKET_ENABLED", "true").lower() == "true"
         if not ws_enabled:
             self.logger.info("[WebSocket] Disabled by configuration")
             return result
@@ -82957,8 +82957,8 @@ class JarvisSystemKernel:
             from core.websocket_coordinator import WebSocketCoordinator, WebSocketConfig
 
             # Get port from environment (default 8765)
-            ws_port = int(os.getenv("JARVIS_WEBSOCKET_PORT", "8765"))
-            ws_host = os.getenv("JARVIS_WEBSOCKET_HOST", "0.0.0.0")
+            ws_port = int(os.getenv("Ironcliw_WEBSOCKET_PORT", "8765"))
+            ws_host = os.getenv("Ironcliw_WEBSOCKET_HOST", "0.0.0.0")
 
             # Create coordinator in server mode
             config = WebSocketConfig(host=ws_host, port=ws_port)
@@ -82989,7 +82989,7 @@ class JarvisSystemKernel:
             self.logger.info(f"[WebSocket] WebSocket coordinator not available: {e}")
         except OSError as e:
             if "Address already in use" in str(e):
-                self.logger.info(f"[WebSocket] Port {ws_port} already in use - likely another JARVIS instance")
+                self.logger.info(f"[WebSocket] Port {ws_port} already in use - likely another Ironcliw instance")
                 result["running"] = True  # Assume another instance is running
                 result["port"] = ws_port
             else:
@@ -83022,10 +83022,10 @@ class JarvisSystemKernel:
             return None
 
         ws_router_enabled = os.environ.get(
-            "JARVIS_WS_ROUTER_ENABLED", "false"
+            "Ironcliw_WS_ROUTER_ENABLED", "false"
         ).lower() == "true"
         if not ws_router_enabled:
-            self.logger.debug("[WSRouter] TypeScript router disabled (set JARVIS_WS_ROUTER_ENABLED=true)")
+            self.logger.debug("[WSRouter] TypeScript router disabled (set Ironcliw_WS_ROUTER_ENABLED=true)")
             return None
 
         self.logger.info("[WSRouter] Starting Node.js WebSocket Router...")
@@ -83041,7 +83041,7 @@ class JarvisSystemKernel:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _npm_install_to = _get_env_float("JARVIS_NPM_INSTALL_TIMEOUT", 60.0)
+                _npm_install_to = _get_env_float("Ironcliw_NPM_INSTALL_TIMEOUT", 60.0)
                 _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_npm_install_to)
                 if proc.returncode != 0:
                     self.logger.warning(f"[WSRouter] npm install failed: {stderr.decode()[:200]}")
@@ -83061,7 +83061,7 @@ class JarvisSystemKernel:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _npm_build_to = _get_env_float("JARVIS_NPM_BUILD_TIMEOUT", 30.0)
+            _npm_build_to = _get_env_float("Ironcliw_NPM_BUILD_TIMEOUT", 30.0)
             _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_npm_build_to)
             if proc.returncode != 0:
                 self.logger.warning(f"[WSRouter] TypeScript build failed: {stderr.decode()[:200]}")
@@ -83073,7 +83073,7 @@ class JarvisSystemKernel:
             return None
 
         # Step 3: Port cleanup
-        router_port = int(os.environ.get("JARVIS_WS_ROUTER_PORT", "8765"))
+        router_port = int(os.environ.get("Ironcliw_WS_ROUTER_PORT", "8765"))
         try:
             import socket as _socket
             sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
@@ -83220,8 +83220,8 @@ class JarvisSystemKernel:
             status: Dict[str, Any] = {"healthy": False, "name": "backend"}
 
             # v260.2: Env-var configurable timeouts with memory-pressure awareness
-            _base_timeout = _get_env_float("JARVIS_VERIFY_BACKEND_TIMEOUT", 5.0)
-            _max_retries = int(_get_env_float("JARVIS_VERIFY_BACKEND_RETRIES", 2.0))
+            _base_timeout = _get_env_float("Ironcliw_VERIFY_BACKEND_TIMEOUT", 5.0)
+            _max_retries = int(_get_env_float("Ironcliw_VERIFY_BACKEND_RETRIES", 2.0))
             _check_timeout = _base_timeout
             _saw_open_port = False
             _hard_failure = False
@@ -83322,7 +83322,7 @@ class JarvisSystemKernel:
                 status["note"] = "WebSocket port not configured"
                 return status
             # v260.2: Env-var configurable timeout
-            _ws_timeout = _get_env_float("JARVIS_VERIFY_WEBSOCKET_TIMEOUT", 5.0)
+            _ws_timeout = _get_env_float("Ironcliw_VERIFY_WEBSOCKET_TIMEOUT", 5.0)
             try:
                 # Non-blocking socket check
                 port_open = await _async_port_check("localhost", port, timeout=_ws_timeout)
@@ -83340,7 +83340,7 @@ class JarvisSystemKernel:
                 return status
             port = self.config.prime_api_port
             # v260.2: Env-var configurable timeout
-            _prime_timeout = _get_env_float("JARVIS_VERIFY_PRIME_TIMEOUT", 5.0)
+            _prime_timeout = _get_env_float("Ironcliw_VERIFY_PRIME_TIMEOUT", 5.0)
             try:
                 # Non-blocking socket check
                 port_open = await _async_port_check("localhost", port, timeout=_prime_timeout)
@@ -83358,7 +83358,7 @@ class JarvisSystemKernel:
                 return status
             port = self.config.reactor_api_port
             # v260.2: Env-var configurable timeout
-            _reactor_timeout = _get_env_float("JARVIS_VERIFY_REACTOR_TIMEOUT", 5.0)
+            _reactor_timeout = _get_env_float("Ironcliw_VERIFY_REACTOR_TIMEOUT", 5.0)
             try:
                 # Non-blocking socket check
                 port_open = await _async_port_check("localhost", port, timeout=_reactor_timeout)
@@ -83425,7 +83425,7 @@ class JarvisSystemKernel:
 
         # Execute in parallel with timeout
         # v265.5: CPU-aware timeout + env var override
-        _preflight_timeout = _get_env_float("JARVIS_PREFLIGHT_CHECK_TIMEOUT", 30.0)
+        _preflight_timeout = _get_env_float("Ironcliw_PREFLIGHT_CHECK_TIMEOUT", 30.0)
         try:
             import psutil as _pf_ps
             _pf_cpu = _pf_ps.cpu_percent(interval=None)
@@ -84058,7 +84058,7 @@ class JarvisSystemKernel:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    _sh_build_to = _get_env_float("JARVIS_NPM_BUILD_TIMEOUT", 30.0)
+                    _sh_build_to = _get_env_float("Ironcliw_NPM_BUILD_TIMEOUT", 30.0)
                     _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_sh_build_to)
                     if proc.returncode == 0:
                         self.logger.info("[SelfHeal] WebSocket rebuild successful")
@@ -84330,7 +84330,7 @@ class JarvisSystemKernel:
     # =========================================================================
     # TRINITY INTEGRATION (CROSS-REPO)
     # =========================================================================
-    # First-class integration with JARVIS Prime and Reactor Core.
+    # First-class integration with Ironcliw Prime and Reactor Core.
     # Enables unified orchestration across the system of systems.
     # =========================================================================
 
@@ -84349,7 +84349,7 @@ class JarvisSystemKernel:
         if not self.config.trinity_enabled:
             return trinity_status
 
-        # Check JARVIS Prime
+        # Check Ironcliw Prime
         if self.config.prime_repo_path and self.config.prime_repo_path.exists():
             prime_status = await self._check_trinity_component(
                 "jarvis-prime",
@@ -84458,7 +84458,7 @@ class JarvisSystemKernel:
 
         try:
             env = os.environ.copy()
-            env["JARVIS_KERNEL_PID"] = str(os.getpid())
+            env["Ironcliw_KERNEL_PID"] = str(os.getpid())
             env["TRINITY_COORDINATOR"] = "jarvis"
 
             process = await asyncio.create_subprocess_exec(
@@ -84574,11 +84574,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         prog="unified_supervisor",
         description=f"""
 ╔══════════════════════════════════════════════════════════════════════════════════╗
-║  ⚡ JARVIS UNIFIED SYSTEM KERNEL v{KERNEL_VERSION:<8}                                        ║
+║  ⚡ Ironcliw UNIFIED SYSTEM KERNEL v{KERNEL_VERSION:<8}                                        ║
 ║     🏠 Body  ←→  🧠 Mind  ←→  ⚛️  Reactor                                       ║
 ╠══════════════════════════════════════════════════════════════════════════════════╣
 ║                                                                                  ║
-║  The monolithic kernel that runs the entire JARVIS AI ecosystem.                 ║
+║  The monolithic kernel that runs the entire Ironcliw AI ecosystem.                 ║
 ║  One command to rule them all — process management, orchestration,               ║
 ║  intelligence, and cross-repo integration in a single entry point.               ║
 ║                                                                                  ║
@@ -84594,21 +84594,21 @@ def create_argument_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 ⚡ Quick Start:
-  python unified_supervisor.py                  # 🚀 Start JARVIS (default)
+  python unified_supervisor.py                  # 🚀 Start Ironcliw (default)
   python unified_supervisor.py --status         # 🔍 Check if running
-  python unified_supervisor.py --shutdown       # 🛑 Stop JARVIS
-  python unified_supervisor.py --restart        # 🔄 Restart JARVIS
+  python unified_supervisor.py --shutdown       # 🛑 Stop Ironcliw
+  python unified_supervisor.py --restart        # 🔄 Restart Ironcliw
   python unified_supervisor.py --cleanup        # 🧹 Clean up zombie processes
   python unified_supervisor.py --debug          # 🔍 Start with debug logging
   python unified_supervisor.py --dashboard      # 📊 Show system dashboard
 
 🌍 Environment Variables:
-  JARVIS_MODE                 🎮 Operating mode (supervisor|standalone|minimal)
-  JARVIS_BACKEND_PORT         🔌 Backend server port (auto-detected if not set)
-  JARVIS_PRIME_PORT           🧠 J-Prime server port (default: 8001)
+  Ironcliw_MODE                 🎮 Operating mode (supervisor|standalone|minimal)
+  Ironcliw_BACKEND_PORT         🔌 Backend server port (auto-detected if not set)
+  Ironcliw_PRIME_PORT           🧠 J-Prime server port (default: 8001)
   TRINITY_REACTOR_PORT        ⚛️  Reactor Core port (default: 8090)
-  JARVIS_DEV_MODE             🛠️  Enable dev mode / hot reload (true|false)
-  JARVIS_DEBUG                🔍 Enable debug logging (true|false)
+  Ironcliw_DEV_MODE             🛠️  Enable dev mode / hot reload (true|false)
+  Ironcliw_DEBUG                🔍 Enable debug logging (true|false)
   TRINITY_ENABLED             🔱 Enable Trinity cross-repo integration (true|false)
   VISION_PROVIDER             👁️  Vision backend (auto|claude_api|jprime_llava)
         """,
@@ -85017,7 +85017,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     advanced.add_argument(
         "--version",
         action="version",
-        version=f"JARVIS Unified System Kernel v{KERNEL_VERSION}",
+        version=f"Ironcliw Unified System Kernel v{KERNEL_VERSION}",
     )
 
     return parser
@@ -85094,7 +85094,7 @@ async def handle_status() -> int:
     socket_path = Path.home() / ".jarvis" / "locks" / "kernel.sock"
     if not socket_path.exists():
         print("\n" + "="*60)
-        print("❌ JARVIS Kernel is NOT running")
+        print("❌ Ironcliw Kernel is NOT running")
         print("="*60)
         print("   No IPC socket found at", socket_path)
         print("\n   To start: python unified_supervisor.py")
@@ -85118,7 +85118,7 @@ async def handle_status() -> int:
         if response.get("success"):
             result = response.get("result", {})
             print("\n" + "="*60)
-            print("✅ JARVIS Kernel is RUNNING")
+            print("✅ Ironcliw Kernel is RUNNING")
             print("="*60)
             print(f"   State:    {result.get('state', 'unknown')}")
             print(f"   PID:      {result.get('pid', 'unknown')}")
@@ -85191,7 +85191,7 @@ async def handle_cleanup() -> int:
     set_cli_only_mode(True)
 
     print("\n" + "="*60)
-    print("🧹 JARVIS Comprehensive Zombie Cleanup")
+    print("🧹 Ironcliw Comprehensive Zombie Cleanup")
     print("="*60 + "\n")
 
     config = SystemKernelConfig()
@@ -85250,7 +85250,7 @@ async def handle_check_only(args: argparse.Namespace) -> int:
 
     print()
     print(f"{BOLD}{BLUE}╔══════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{BLUE}║  JARVIS PRE-FLIGHT CHECK                                             ║{RESET}")
+    print(f"{BOLD}{BLUE}║  Ironcliw PRE-FLIGHT CHECK                                             ║{RESET}")
     print(f"{BOLD}{BLUE}╠══════════════════════════════════════════════════════════════════════╣{RESET}")
 
     # Build config from CLI args
@@ -85427,7 +85427,7 @@ async def handle_check_only(args: argparse.Namespace) -> int:
                 print(f"{BOLD}{BLUE}║{RESET}    {DIM}→ Will attempt during startup{RESET}")
                 warnings.append("Invincible Node check failed")
     else:
-        print(f"{BOLD}{BLUE}║{RESET}    {DIM}○ Disabled (set JARVIS_INVINCIBLE_NODE_ENABLED=true to enable){RESET}")
+        print(f"{BOLD}{BLUE}║{RESET}    {DIM}○ Disabled (set Ironcliw_INVINCIBLE_NODE_ENABLED=true to enable){RESET}")
 
     # 6. Trinity (if enabled)
     print(f"{BOLD}{BLUE}║{RESET}")
@@ -85439,9 +85439,9 @@ async def handle_check_only(args: argparse.Namespace) -> int:
         # Check for jarvis-prime
         prime_paths = [
             config.prime_repo_path,
-            Path(os.getenv("JARVIS_PRIME_PATH", "")) if os.getenv("JARVIS_PRIME_PATH") else None,
+            Path(os.getenv("Ironcliw_PRIME_PATH", "")) if os.getenv("Ironcliw_PRIME_PATH") else None,
             workspace_parent / "jarvis-prime",
-            workspace_parent / "JARVIS-Prime",
+            workspace_parent / "Ironcliw-Prime",
         ]
         prime_found = any(p and p.exists() for p in prime_paths if p)
         print(f"{BOLD}{BLUE}║{RESET}    {check_mark(prime_found)} J-Prime repo: {'found' if prime_found else 'not found'}")
@@ -85494,7 +85494,7 @@ async def handle_check_only(args: argparse.Namespace) -> int:
     print(f"{BOLD}{BLUE}║{RESET}")
     print(f"{BOLD}{BLUE}║{RESET}  {CYAN}Trinity Repositories{RESET}")
 
-    prime_path = config.prime_repo_path or (Path(os.environ.get("JARVIS_PRIME_PATH", "")) if os.environ.get("JARVIS_PRIME_PATH") else None)
+    prime_path = config.prime_repo_path or (Path(os.environ.get("Ironcliw_PRIME_PATH", "")) if os.environ.get("Ironcliw_PRIME_PATH") else None)
     reactor_path = config.reactor_repo_path or (Path(os.environ.get("REACTOR_CORE_PATH", "")) if os.environ.get("REACTOR_CORE_PATH") else None)
 
     if prime_path:
@@ -85504,7 +85504,7 @@ async def handle_check_only(args: argparse.Namespace) -> int:
             warnings.append("J-Prime path does not exist")
     else:
         print(f"{BOLD}{BLUE}║{RESET}    {warn_mark()} J-Prime: Not configured")
-        warnings.append("J-Prime path not set (JARVIS_PRIME_PATH)")
+        warnings.append("J-Prime path not set (Ironcliw_PRIME_PATH)")
 
     if reactor_path:
         reactor_exists = reactor_path.exists() if isinstance(reactor_path, Path) else Path(reactor_path).exists()
@@ -85526,7 +85526,7 @@ async def handle_check_only(args: argparse.Namespace) -> int:
 
     if all_passed:
         print(f"{BOLD}{BLUE}║{RESET}  {GREEN}✓ All critical checks passed{RESET}")
-        print(f"{BOLD}{BLUE}║{RESET}  {DIM}Run without --check-only to start JARVIS{RESET}")
+        print(f"{BOLD}{BLUE}║{RESET}  {DIM}Run without --check-only to start Ironcliw{RESET}")
     else:
         print(f"{BOLD}{BLUE}║{RESET}  {RED}✗ Some checks failed - review errors above{RESET}")
 
@@ -85577,7 +85577,7 @@ async def handle_cloud_monitor() -> int:
 
     print()
     print(f"{box.BOLD}{box.BLUE}{box.header()}{box.RESET}")
-    print(f"{box.BOLD}{box.BLUE}{box.line('☁️  JARVIS INVINCIBLE NODE MONITOR')}{box.RESET}")
+    print(f"{box.BOLD}{box.BLUE}{box.line('☁️  Ironcliw INVINCIBLE NODE MONITOR')}{box.RESET}")
     print(f"{box.BOLD}{box.BLUE}{box.separator()}{box.RESET}")
 
     # Check if Invincible Node is configured
@@ -85585,7 +85585,7 @@ async def handle_cloud_monitor() -> int:
         print(box.line(f"{box.RED}⚠  Invincible Node is not configured{box.RESET}"))
         print(box.line(""))
         print(box.line("To enable, set in .env.gcp:"))
-        print(box.line("  JARVIS_INVINCIBLE_NODE_ENABLED=true"))
+        print(box.line("  Ironcliw_INVINCIBLE_NODE_ENABLED=true"))
         print(box.line("  GCP_VM_STATIC_IP_NAME=jarvis-prime-static"))
         print(box.line(""))
         print(box.line("Then deploy with:"))
@@ -85731,7 +85731,7 @@ async def handle_cloud_monitor_logs() -> int:
 
     print()
     print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
-    print("\033[1m\033[94m  ☁️  JARVIS INVINCIBLE NODE - LIVE LOGS\033[0m")
+    print("\033[1m\033[94m  ☁️  Ironcliw INVINCIBLE NODE - LIVE LOGS\033[0m")
     print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
     print()
 
@@ -85799,13 +85799,13 @@ async def handle_create_golden_image() -> int:
     
     print()
     print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
-    print("\033[1m\033[93m  🌟  JARVIS GOLDEN IMAGE BUILDER\033[0m")
+    print("\033[1m\033[93m  🌟  Ironcliw GOLDEN IMAGE BUILDER\033[0m")
     print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
     print()
     print("Creating a golden image with everything pre-installed.")
     print("This will:")
     print("  1. Create a temporary builder VM")
-    print("  2. Install Python, ML dependencies, and JARVIS-Prime")
+    print("  2. Install Python, ML dependencies, and Ironcliw-Prime")
     print("  3. Download and cache the LLM model")
     print("  4. Create a machine image from the VM")
     print("  5. Clean up the builder VM")
@@ -85848,7 +85848,7 @@ async def handle_create_golden_image() -> int:
                 print(f"   Model:   {image_info.model_name}")
             print()
             print("To use the golden image:")
-            print("  1. Set JARVIS_GCP_USE_GOLDEN_IMAGE=true")
+            print("  1. Set Ironcliw_GCP_USE_GOLDEN_IMAGE=true")
             print("  2. Run unified_supervisor.py normally")
             print()
             return 0
@@ -85872,7 +85872,7 @@ async def handle_list_golden_images() -> int:
     
     print()
     print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
-    print("\033[1m\033[94m  🌟  JARVIS GOLDEN IMAGES\033[0m")
+    print("\033[1m\033[94m  🌟  Ironcliw GOLDEN IMAGES\033[0m")
     print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
     print()
     
@@ -85924,7 +85924,7 @@ async def handle_check_golden_image() -> int:
     
     print()
     print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
-    print("\033[1m\033[94m  🌟  JARVIS GOLDEN IMAGE STATUS\033[0m")
+    print("\033[1m\033[94m  🌟  Ironcliw GOLDEN IMAGE STATUS\033[0m")
     print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
     print()
     
@@ -85980,7 +85980,7 @@ async def handle_check_golden_image() -> int:
         elif status["recommendation"] == "READY":
             if not config.use_golden_image:
                 print("Enable golden image deployment with:")
-                print("  export JARVIS_GCP_USE_GOLDEN_IMAGE=true")
+                print("  export Ironcliw_GCP_USE_GOLDEN_IMAGE=true")
         
         return 0
         
@@ -86002,7 +86002,7 @@ async def handle_cleanup_golden_images(keep_count: int) -> int:
     
     print()
     print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
-    print("\033[1m\033[93m  🧹  JARVIS GOLDEN IMAGE CLEANUP\033[0m")
+    print("\033[1m\033[93m  🧹  Ironcliw GOLDEN IMAGE CLEANUP\033[0m")
     print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
     print()
     print(f"Cleaning up old golden images, keeping {keep_count} most recent...")
@@ -86072,7 +86072,7 @@ async def _fetch_lock_status_readonly() -> Dict[str, Any]:
     Uses StartupLock.is_locked() and get_current_holder().
     
     Now also:
-    - Detects stale locks (PID dead or not JARVIS)
+    - Detects stale locks (PID dead or not Ironcliw)
     - Auto-cleans stale locks if detected
     - Reports stale lock cleanup in result
 
@@ -86110,7 +86110,7 @@ async def _fetch_lock_status_readonly() -> Dict[str, Any]:
             holder_info = lock.get_current_holder()
             result["holder_info"] = holder_info
         elif raw_holder_pid and not is_locked:
-            # v220.3: Lock file exists but process is dead/not JARVIS
+            # v220.3: Lock file exists but process is dead/not Ironcliw
             # This is a stale lock - clean it up automatically
             try:
                 lock.lock_path.unlink()
@@ -86433,7 +86433,7 @@ def _format_dashboard_output(
     # Header
     lines.append("")
     lines.append(f"{BOLD}{BLUE}" + header_line() + RESET)
-    lines.append(f"{BOLD}{BLUE}" + box_line(f"{CYAN}JARVIS SYSTEM DASHBOARD{RESET}") + RESET)
+    lines.append(f"{BOLD}{BLUE}" + box_line(f"{CYAN}Ironcliw SYSTEM DASHBOARD{RESET}") + RESET)
     lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
 
     # =========================================================================
@@ -86884,7 +86884,7 @@ async def handle_monitor_prime() -> int:
     print(box.bold(box.MAGENTA) + box.separator() + box.RESET)
 
     # Get port from environment (same source as TrinityIntegrator)
-    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
+    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("Ironcliw_PRIME_PORT", "8001")))
     prime_host = os.getenv("TRINITY_JPRIME_HOST", "localhost")
 
     # Try IPC first (kernel running)
@@ -87180,7 +87180,7 @@ async def handle_monitor_trinity() -> int:
     # 🧠 Prime section
     print(box.section_header("🧠 J-Prime — The Mind"))
     prime_data = trinity_status.get("components", {}).get("jarvis-prime", {})
-    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
+    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("Ironcliw_PRIME_PORT", "8001")))
 
     if prime_data:
         running = prime_data.get("running", False)
@@ -87286,7 +87286,7 @@ async def handle_single_task(
 
     print()
     print("╔══════════════════════════════════════════════════════════════╗")
-    print("║  🤖 JARVIS Single Task Execution                            ║")
+    print("║  🤖 Ironcliw Single Task Execution                            ║")
     print("╠══════════════════════════════════════════════════════════════╣")
     print(f"║  🎯 Goal:    {task_goal:<47}║")
     print(f"║  🎮 Mode:    {task_mode:<47}║")
@@ -87455,13 +87455,13 @@ def apply_cli_to_config(args: argparse.Namespace, config: SystemKernelConfig) ->
 
     # v249.0: UI flags → env vars (picked up by SystemKernelConfig defaults)
     if hasattr(args, 'ui') and args.ui != 'auto':
-        os.environ["JARVIS_UI_MODE"] = args.ui
+        os.environ["Ironcliw_UI_MODE"] = args.ui
     if hasattr(args, 'verbosity') and args.verbosity:
-        os.environ["JARVIS_UI_VERBOSITY"] = args.verbosity
+        os.environ["Ironcliw_UI_VERBOSITY"] = args.verbosity
     if hasattr(args, 'no_ansi') and args.no_ansi:
-        os.environ["JARVIS_UI_NO_ANSI"] = "true"
+        os.environ["Ironcliw_UI_NO_ANSI"] = "true"
     if hasattr(args, 'no_animation') and args.no_animation:
-        os.environ["JARVIS_UI_NO_ANIMATION"] = "true"
+        os.environ["Ironcliw_UI_NO_ANIMATION"] = "true"
 
     # Trinity
     if args.skip_trinity:
@@ -87640,7 +87640,7 @@ async def async_main(args: argparse.Namespace) -> int:
     _force_mode = getattr(args, 'force', False) or getattr(args, 'takeover', False)
     if not getattr(args, 'no_dashboard', False) and not _force_mode:
         print("\n" + "="*60)
-        print("  JARVIS System Status (Pre-Startup)")
+        print("  Ironcliw System Status (Pre-Startup)")
         print("="*60)
         await _show_startup_dashboard()
         print()
@@ -87787,7 +87787,7 @@ async def async_main(args: argparse.Namespace) -> int:
             try:
                 emergency_timeout = max(
                     5.0,
-                    float(os.environ.get("JARVIS_STARTUP_CANCEL_SHUTDOWN_TIMEOUT", "20.0")),
+                    float(os.environ.get("Ironcliw_STARTUP_CANCEL_SHUTDOWN_TIMEOUT", "20.0")),
                 )
                 await asyncio.wait_for(
                     asyncio.shield(
@@ -87820,7 +87820,7 @@ async def async_main(args: argparse.Namespace) -> int:
                         asyncio.gather(*lingering_tasks, return_exceptions=True),
                         timeout=max(
                             1.0,
-                            float(os.environ.get("JARVIS_STARTUP_CANCEL_TASK_DRAIN_TIMEOUT", "8.0")),
+                            float(os.environ.get("Ironcliw_STARTUP_CANCEL_TASK_DRAIN_TIMEOUT", "8.0")),
                         ),
                     )
             except Exception as task_drain_err:
@@ -87888,7 +87888,7 @@ async def async_main(args: argparse.Namespace) -> int:
                     )
                     finally_shutdown_timeout = max(
                         5.0,
-                        float(os.environ.get("JARVIS_FINALLY_SHUTDOWN_TIMEOUT", "120.0")),
+                        float(os.environ.get("Ironcliw_FINALLY_SHUTDOWN_TIMEOUT", "120.0")),
                     )
                     await asyncio.wait_for(
                         asyncio.shield(
@@ -87957,7 +87957,7 @@ async def async_main(args: argparse.Namespace) -> int:
                         task.cancel()
                     await asyncio.wait_for(
                         asyncio.gather(*pending, return_exceptions=True),
-                        timeout=float(os.environ.get("JARVIS_FINAL_TASK_DRAIN_TIMEOUT", "8.0")),
+                        timeout=float(os.environ.get("Ironcliw_FINAL_TASK_DRAIN_TIMEOUT", "8.0")),
                     )
             except asyncio.TimeoutError:
                 kernel.logger.debug("[Kernel] Final task drain timed out")
@@ -88030,7 +88030,7 @@ def _generate_launchd_plist() -> str:
 
 def main() -> int:
     """
-    Main entry point for JARVIS Unified System Kernel.
+    Main entry point for Ironcliw Unified System Kernel.
 
     Parses CLI arguments and runs the appropriate command.
 

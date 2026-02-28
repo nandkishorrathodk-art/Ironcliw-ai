@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: Aider Framework Adapter (Anthropic-Powered)
 ==================================================
 
@@ -32,7 +32,7 @@ Safety Features:
 - Error recovery
 - Protected path enforcement
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 2.0.0
 """
 

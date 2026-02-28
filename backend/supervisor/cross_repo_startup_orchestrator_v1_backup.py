@@ -1,8 +1,8 @@
-"""
+﻿"""
 Cross-Repo Startup Orchestrator v3.0 - Enterprise-Grade Process Lifecycle Manager
 ===================================================================================
 
-Dynamic service discovery and self-healing process orchestration for JARVIS ecosystem.
+Dynamic service discovery and self-healing process orchestration for Ironcliw ecosystem.
 Eliminates hardcoded ports, implements auto-healing, and provides real-time process monitoring.
 
 Features (v3.0):
@@ -21,7 +21,7 @@ Architecture:
     │                                                                  │
     │  Service Registry: ~/.jarvis/registry/services.json              │
     │  ┌────────────────┬──────────────┬─────────────────────┐         │
-    │  │   JARVIS       │   J-PRIME    │   REACTOR-CORE      │         │
+    │  │   Ironcliw       │   J-PRIME    │   REACTOR-CORE      │         │
     │  │  PID: auto     │  PID: auto   │   PID: auto         │         │
     │  │  Port: dynamic │  Port: 8002  │   Port: 8090        │         │
     │  │  Status: ✅     │  Status: ✅  │   Status: ✅        │         │
@@ -51,7 +51,7 @@ Usage:
     orchestrator = ProcessOrchestrator()
     await orchestrator.start_all_services()
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0
 """
 
@@ -72,8 +72,8 @@ logger = logging.getLogger(__name__)
 # Configuration
 # =============================================================================
 
-JARVIS_PRIME_PATH = Path(os.getenv(
-    "JARVIS_PRIME_PATH",
+Ironcliw_PRIME_PATH = Path(os.getenv(
+    "Ironcliw_PRIME_PATH",
     str(Path.home() / "Documents" / "repos" / "jarvis-prime")
 ))
 
@@ -82,10 +82,10 @@ REACTOR_CORE_PATH = Path(os.getenv(
     str(Path.home() / "Documents" / "repos" / "reactor-core")
 ))
 
-JARVIS_PRIME_PORT = int(os.getenv("JARVIS_PRIME_PORT", "8002"))
+Ironcliw_PRIME_PORT = int(os.getenv("Ironcliw_PRIME_PORT", "8002"))
 REACTOR_CORE_PORT = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
-JARVIS_PRIME_ENABLED = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+Ironcliw_PRIME_ENABLED = os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
 REACTOR_CORE_ENABLED = os.getenv("REACTOR_CORE_ENABLED", "true").lower() == "true"
 
 
@@ -98,7 +98,7 @@ async def probe_jarvis_prime() -> bool:
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"http://localhost:{JARVIS_PRIME_PORT}/health",
+                f"http://localhost:{Ironcliw_PRIME_PORT}/health",
                 timeout=aiohttp.ClientTimeout(total=5.0)
             ) as response:
                 return response.status == 200
@@ -125,30 +125,30 @@ async def probe_reactor_core() -> bool:
 # =============================================================================
 
 async def launch_jarvis_prime() -> bool:
-    """Launch JARVIS Prime in background."""
+    """Launch Ironcliw Prime in background."""
     try:
-        if not JARVIS_PRIME_PATH.exists():
-            logger.warning(f"J-Prime repo not found at {JARVIS_PRIME_PATH}")
+        if not Ironcliw_PRIME_PATH.exists():
+            logger.warning(f"J-Prime repo not found at {Ironcliw_PRIME_PATH}")
             return False
 
-        logger.info(f"Launching JARVIS Prime from {JARVIS_PRIME_PATH}...")
+        logger.info(f"Launching Ironcliw Prime from {Ironcliw_PRIME_PATH}...")
 
         # Check for main.py or server.py
-        main_script = JARVIS_PRIME_PATH / "main.py"
-        server_script = JARVIS_PRIME_PATH / "server.py"
+        main_script = Ironcliw_PRIME_PATH / "main.py"
+        server_script = Ironcliw_PRIME_PATH / "server.py"
 
         if main_script.exists():
             script_path = main_script
         elif server_script.exists():
             script_path = server_script
         else:
-            logger.error(f"No main.py or server.py found in {JARVIS_PRIME_PATH}")
+            logger.error(f"No main.py or server.py found in {Ironcliw_PRIME_PATH}")
             return False
 
         # Launch in background
         process = subprocess.Popen(
             [sys.executable, str(script_path)],
-            cwd=str(JARVIS_PRIME_PATH),
+            cwd=str(Ironcliw_PRIME_PATH),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True  # Detach from parent
@@ -219,13 +219,13 @@ async def launch_reactor_core() -> bool:
 
 async def start_all_repos() -> Dict[str, bool]:
     """
-    Start all repos (JARVIS, J-Prime, Reactor-Core) with coordinated orchestration.
+    Start all repos (Ironcliw, J-Prime, Reactor-Core) with coordinated orchestration.
 
     Returns:
         Dict mapping repo names to success status
     """
     results = {
-        "jarvis": True,  # JARVIS Core is already starting (this is run from supervisor)
+        "jarvis": True,  # Ironcliw Core is already starting (this is run from supervisor)
         "jprime": False,
         "reactor": False
     }
@@ -234,16 +234,16 @@ async def start_all_repos() -> Dict[str, bool]:
     logger.info("Cross-Repo Startup Orchestration v1.0")
     logger.info("=" * 70)
 
-    # Phase 1: JARVIS Core (already starting via run_supervisor.py)
-    logger.info("\n📍 PHASE 1: JARVIS Core (starting via supervisor)")
-    logger.info("✅ JARVIS Core initialization in progress...")
+    # Phase 1: Ironcliw Core (already starting via run_supervisor.py)
+    logger.info("\n📍 PHASE 1: Ironcliw Core (starting via supervisor)")
+    logger.info("✅ Ironcliw Core initialization in progress...")
 
     # Phase 2: External Repos (Parallel)
     logger.info("\n📍 PHASE 2: External repos startup (parallel)")
 
     tasks = []
 
-    if JARVIS_PRIME_ENABLED:
+    if Ironcliw_PRIME_ENABLED:
         logger.info("  → Probing J-Prime...")
         if await probe_jarvis_prime():
             logger.info("    ✓ J-Prime already running")
@@ -252,7 +252,7 @@ async def start_all_repos() -> Dict[str, bool]:
             logger.info("    ℹ️  J-Prime not running, launching...")
             tasks.append(asyncio.create_task(launch_jarvis_prime()))
     else:
-        logger.info("  → J-Prime disabled (JARVIS_PRIME_ENABLED=false)")
+        logger.info("  → J-Prime disabled (Ironcliw_PRIME_ENABLED=false)")
 
     if REACTOR_CORE_ENABLED:
         logger.info("  → Probing Reactor-Core...")
@@ -270,7 +270,7 @@ async def start_all_repos() -> Dict[str, bool]:
         launch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Process J-Prime result
-        if JARVIS_PRIME_ENABLED and not results["jprime"]:
+        if Ironcliw_PRIME_ENABLED and not results["jprime"]:
             jprime_result = launch_results[0] if len(launch_results) > 0 else False
             if isinstance(jprime_result, Exception):
                 logger.error(f"J-Prime launch error: {jprime_result}")
@@ -280,7 +280,7 @@ async def start_all_repos() -> Dict[str, bool]:
 
         # Process Reactor-Core result
         if REACTOR_CORE_ENABLED and not results["reactor"]:
-            reactor_idx = 1 if JARVIS_PRIME_ENABLED and not results["jprime"] else 0
+            reactor_idx = 1 if Ironcliw_PRIME_ENABLED and not results["jprime"] else 0
             if len(launch_results) > reactor_idx:
                 reactor_result = launch_results[reactor_idx]
                 if isinstance(reactor_result, Exception):
@@ -314,7 +314,7 @@ async def start_all_repos() -> Dict[str, bool]:
 
     logger.info("\n" + "=" * 70)
     logger.info("🎯 Startup Summary:")
-    logger.info(f"  JARVIS Core:   {'✅ Running' if results['jarvis'] else '❌ Failed'}")
+    logger.info(f"  Ironcliw Core:   {'✅ Running' if results['jarvis'] else '❌ Failed'}")
     logger.info(f"  J-Prime:       {'✅ Running' if results['jprime'] else '⚠️  Unavailable (degraded mode)'}")
     logger.info(f"  Reactor-Core:  {'✅ Running' if results['reactor'] else '⚠️  Unavailable (degraded mode)'}")
     logger.info("=" * 70)

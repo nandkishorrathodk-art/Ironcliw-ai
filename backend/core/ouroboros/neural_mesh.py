@@ -1,8 +1,8 @@
-"""
+﻿"""
 Neural Mesh - Cross-Repository Connection Layer v1.0
 =====================================================
 
-The nervous system that connects JARVIS (Body), JARVIS Prime (Mind),
+The nervous system that connects Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning/Evolution). Enables seamless communication
 and experience sharing across all three repositories.
 
@@ -12,7 +12,7 @@ Architecture:
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                          │
     │    ┌─────────────────┐                        ┌─────────────────┐       │
-    │    │    JARVIS       │                        │  JARVIS PRIME   │       │
+    │    │    Ironcliw       │                        │  Ironcliw PRIME   │       │
     │    │    (Body)       │◀──────────────────────▶│    (Mind)       │       │
     │    │                 │     Bi-directional     │                 │       │
     │    │  - UI/Voice     │        Neural          │  - Cognition    │       │
@@ -89,13 +89,13 @@ class MeshConfig:
     """Neural mesh configuration - all dynamic from environment."""
 
     # Repository paths
-    JARVIS_ROOT = Path(os.getenv(
-        "JARVIS_ROOT",
+    Ironcliw_ROOT = Path(os.getenv(
+        "Ironcliw_ROOT",
         Path(__file__).parent.parent.parent.parent
     ))
     PRIME_ROOT = Path(os.getenv(
-        "JARVIS_PRIME_ROOT",
-        Path.home() / "Documents/repos/JARVIS-Prime"
+        "Ironcliw_PRIME_ROOT",
+        Path.home() / "Documents/repos/Ironcliw-Prime"
     ))
     REACTOR_ROOT = Path(os.getenv(
         "REACTOR_CORE_ROOT",
@@ -103,19 +103,19 @@ class MeshConfig:
     ))
 
     # Connection endpoints
-    JARVIS_WS_URL = os.getenv("JARVIS_WS_URL", "ws://localhost:8010/ws")
-    PRIME_API_URL = os.getenv("JARVIS_PRIME_API_URL", "http://localhost:8000/v1")
+    Ironcliw_WS_URL = os.getenv("Ironcliw_WS_URL", "ws://localhost:8010/ws")
+    PRIME_API_URL = os.getenv("Ironcliw_PRIME_API_URL", "http://localhost:8000/v1")
     REACTOR_API_URL = os.getenv("REACTOR_CORE_API_URL", "http://localhost:8020/api")
 
     # Event directories for file-based communication
     @staticmethod
     def get_event_dir(repo: str) -> Path:
         dirs = {
-            "jarvis": MeshConfig.JARVIS_ROOT / ".mesh_events",
+            "jarvis": MeshConfig.Ironcliw_ROOT / ".mesh_events",
             "prime": MeshConfig.PRIME_ROOT / ".mesh_events",
             "reactor": MeshConfig.REACTOR_ROOT / ".mesh_events",
         }
-        path = dirs.get(repo, MeshConfig.JARVIS_ROOT / ".mesh_events")
+        path = dirs.get(repo, MeshConfig.Ironcliw_ROOT / ".mesh_events")
         path.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -148,7 +148,7 @@ class MeshConfig:
 
 class NodeType(str, Enum):
     """Type of node in the neural mesh."""
-    JARVIS = "jarvis"       # Body - UI, execution, sensors
+    Ironcliw = "jarvis"       # Body - UI, execution, sensors
     PRIME = "prime"         # Mind - cognition, reasoning
     REACTOR = "reactor"     # Learning - training, evolution
 
@@ -203,7 +203,7 @@ class MeshMessage:
     """A message in the neural mesh."""
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     type: MessageType = MessageType.EVENT
-    source: NodeType = NodeType.JARVIS
+    source: NodeType = NodeType.Ironcliw
     target: Optional[NodeType] = None  # None = broadcast
     priority: MessagePriority = MessagePriority.NORMAL
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -572,17 +572,17 @@ class FileConnection(MeshConnection):
 
 class NeuralMesh:
     """
-    The central nervous system connecting all JARVIS components.
+    The central nervous system connecting all Ironcliw components.
 
     Manages connections to:
-    - JARVIS (Body) - UI, execution, sensors
-    - JARVIS Prime (Mind) - Cognition, reasoning
+    - Ironcliw (Body) - UI, execution, sensors
+    - Ironcliw Prime (Mind) - Cognition, reasoning
     - Reactor Core (Learning) - Training, evolution
     """
 
     def __init__(self):
         self.logger = logging.getLogger("Ouroboros.NeuralMesh")
-        self.node_type = NodeType.JARVIS  # This instance runs in JARVIS
+        self.node_type = NodeType.Ironcliw  # This instance runs in Ironcliw
 
         # Connections to other nodes
         self._connections: Dict[NodeType, MeshConnection] = {}
@@ -648,7 +648,7 @@ class NeuralMesh:
 
     async def _setup_connections(self) -> None:
         """Setup connections to other nodes."""
-        # JARVIS Prime - try WebSocket first, then HTTP
+        # Ironcliw Prime - try WebSocket first, then HTTP
         prime_connected = False
         if MeshConfig.PRIME_ROOT.exists():
             # File-based for local development
@@ -659,13 +659,13 @@ class NeuralMesh:
             if await conn.connect():
                 self._connections[NodeType.PRIME] = conn
                 prime_connected = True
-                self.logger.info("Connected to JARVIS Prime (file-based)")
+                self.logger.info("Connected to Ironcliw Prime (file-based)")
 
         if not prime_connected:
             conn = HTTPConnection(NodeType.PRIME, MeshConfig.PRIME_API_URL)
             if await conn.connect():
                 self._connections[NodeType.PRIME] = conn
-                self.logger.info("Connected to JARVIS Prime (HTTP)")
+                self.logger.info("Connected to Ironcliw Prime (HTTP)")
 
         # Reactor Core - try HTTP, then file
         reactor_connected = False
@@ -910,7 +910,7 @@ class NeuralMesh:
         goal: str,
         context: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Request self-improvement from JARVIS Prime."""
+        """Request self-improvement from Ironcliw Prime."""
         response = await self.send(
             target=NodeType.PRIME,
             message_type=MessageType.IMPROVEMENT_REQUEST,

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Example of how JARVIS should use vision to understand and interact with the screen
+Example of how Ironcliw should use vision to understand and interact with the screen
 This demonstrates real-world usage patterns
 """
 
@@ -16,8 +16,8 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class JARVISVisionAssistant:
-    """Example JARVIS assistant with vision capabilities"""
+class IroncliwVisionAssistant:
+    """Example Ironcliw assistant with vision capabilities"""
     
     def __init__(self):
         self.vision_analyzer = None
@@ -125,9 +125,9 @@ class JARVISVisionAssistant:
             return result['description']
     
     async def demonstrate_capabilities(self):
-        """Show what JARVIS can do with vision"""
+        """Show what Ironcliw can do with vision"""
         print("\n" + "="*60)
-        print("🤖 JARVIS Vision Capabilities Demo")
+        print("🤖 Ironcliw Vision Capabilities Demo")
         print("="*60)
         
         # Test various commands
@@ -142,7 +142,7 @@ class JARVISVisionAssistant:
         for cmd in test_commands:
             response = await self.handle_command(cmd)
             print(f"\n👤 User: {cmd}")
-            print(f"🤖 JARVIS: {response[:200]}...")
+            print(f"🤖 Ironcliw: {response[:200]}...")
             await asyncio.sleep(1)  # Pause between commands
         
         # Cleanup
@@ -151,14 +151,14 @@ class JARVISVisionAssistant:
 
 async def main():
     """Run the demonstration"""
-    jarvis = JARVISVisionAssistant()
+    jarvis = IroncliwVisionAssistant()
     
     # Check if vision is available
     if not jarvis.vision_analyzer:
         print("❌ Vision not available. Set ANTHROPIC_API_KEY to enable.")
         return
     
-    print("✅ JARVIS Vision System Ready!")
+    print("✅ Ironcliw Vision System Ready!")
     print("\nTesting basic context understanding...")
     
     # Test context understanding
@@ -168,7 +168,7 @@ async def main():
     # Run full demo
     await jarvis.demonstrate_capabilities()
     
-    print("\n✅ Demo complete! JARVIS can now see and understand your screen.")
+    print("\n✅ Demo complete! Ironcliw can now see and understand your screen.")
 
 if __name__ == "__main__":
     asyncio.run(main())

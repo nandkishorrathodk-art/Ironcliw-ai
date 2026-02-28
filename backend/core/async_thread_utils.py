@@ -1,5 +1,5 @@
-"""
-Thread-Safe Asyncio Utilities for JARVIS
+﻿"""
+Thread-Safe Asyncio Utilities for Ironcliw
 =========================================
 
 Provides utilities for working with asyncio in threaded contexts,

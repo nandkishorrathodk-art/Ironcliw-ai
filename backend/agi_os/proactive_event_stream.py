@@ -1,8 +1,8 @@
-"""
-JARVIS AGI OS - Proactive Event Stream
+﻿"""
+Ironcliw AGI OS - Proactive Event Stream
 
 Event-driven architecture for autonomous notifications and actions.
-Connects all JARVIS systems into a unified event stream that enables
+Connects all Ironcliw systems into a unified event stream that enables
 proactive, intelligent behavior.
 
 Features:

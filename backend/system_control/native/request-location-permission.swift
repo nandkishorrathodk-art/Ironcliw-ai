@@ -1,9 +1,9 @@
-#!/usr/bin/env swift
+﻿#!/usr/bin/env swift
 
 import CoreLocation
 import Foundation
 
-print("🌍 JARVIS Location Permission Request")
+print("🌍 Ironcliw Location Permission Request")
 print("=====================================")
 print("")
 print("This script will request location permission for Terminal.")

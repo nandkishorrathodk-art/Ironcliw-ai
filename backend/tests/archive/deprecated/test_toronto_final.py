@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Final comprehensive test for Toronto weather selection"""
 
 import asyncio
@@ -11,7 +11,7 @@ async def test_toronto_final():
     print("🌤️ FINAL TORONTO WEATHER TEST")
     print("="*60)
     
-    from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+    from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
     from api.jarvis_factory import set_app_state
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
     from system_control.macos_controller import MacOSController
@@ -30,7 +30,7 @@ async def test_toronto_final():
     )
     set_app_state(app_state)
     
-    jarvis_api = JARVISVoiceAPI()
+    jarvis_api = IroncliwVoiceAPI()
     print("✅ Components initialized")
     
     # Make sure no other apps interfere
@@ -41,17 +41,17 @@ async def test_toronto_final():
                    capture_output=True)
     
     # Test weather command
-    print("\n3. Asking JARVIS: 'What's the weather for today?'")
+    print("\n3. Asking Ironcliw: 'What's the weather for today?'")
     print("-"*60)
     
     start_time = time.time()
-    command = JARVISCommand(text="What's the weather for today?")
+    command = IroncliwCommand(text="What's the weather for today?")
     result = await jarvis_api.process_command(command)
     elapsed = time.time() - start_time
     
     response = result.get('response', '')
     print(f"\nTime: {elapsed:.1f}s")
-    print(f"JARVIS Response: {response}")
+    print(f"Ironcliw Response: {response}")
     
     # Analyze response
     print("\n4. Analysis:")
@@ -61,11 +61,11 @@ async def test_toronto_final():
     response_lower = response.lower()
     
     if 'toronto' in response_lower:
-        print("✅ SUCCESS: JARVIS is reading Toronto weather!")
+        print("✅ SUCCESS: Ironcliw is reading Toronto weather!")
         print("   Your location is being correctly selected.")
         
     elif 'new york' in response_lower:
-        print("❌ ISSUE: JARVIS is reading New York instead of Toronto")
+        print("❌ ISSUE: Ironcliw is reading New York instead of Toronto")
         print("   The click is hitting the second item in the sidebar.")
         
         # Extract temperature to verify
@@ -78,10 +78,10 @@ async def test_toronto_final():
                 print("   This matches New York from your screenshot (79-80°F)")
             
     elif 'my location' in response_lower or 'home' in response_lower:
-        print("✅ SUCCESS: JARVIS is reading My Location (Toronto)!")
+        print("✅ SUCCESS: Ironcliw is reading My Location (Toronto)!")
         
     else:
-        print("⚠️  Could not determine which location JARVIS is reading")
+        print("⚠️  Could not determine which location Ironcliw is reading")
         
         # Extract any temperature mentioned
         import re
@@ -103,5 +103,5 @@ async def test_toronto_final():
         print("   Solution: Need to click higher in the sidebar (Y < 80)")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_toronto_final())

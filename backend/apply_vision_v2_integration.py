@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Apply Vision System v2.0 Integration to JARVIS Voice
+Apply Vision System v2.0 Integration to Ironcliw Voice
 """
 
 def apply_vision_v2_integration():
-    """Apply Vision System v2.0 integration to JARVISAgentVoice"""
+    """Apply Vision System v2.0 integration to IroncliwAgentVoice"""
     
     # Read the current jarvis_agent_voice.py
     with open('voice/jarvis_agent_voice.py', 'r') as f:
@@ -78,7 +78,7 @@ def apply_vision_v2_integration():
     print("\nTo use Vision System v2.0 with voice commands:")
     print("1. Ensure ANTHROPIC_API_KEY is set")
     print("2. Restart the backend server")
-    print("3. Try commands like: 'Hey JARVIS, what do you see on my screen?'")
+    print("3. Try commands like: 'Hey Ironcliw, what do you see on my screen?'")
 
 if __name__ == "__main__":
     apply_vision_v2_integration()

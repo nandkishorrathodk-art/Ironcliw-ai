@@ -1,6 +1,6 @@
-# JARVIS Native C++ Extensions
+﻿# Ironcliw Native C++ Extensions
 
-This directory contains high-performance C++ extensions for JARVIS that provide significant speed improvements for critical operations.
+This directory contains high-performance C++ extensions for Ironcliw that provide significant speed improvements for critical operations.
 
 > **🚀 Latest Update (2025-11-08):** Fast Capture Engine fully modernized with ScreenCaptureKit! All deprecated macOS APIs replaced with modern equivalents. See [Recent Updates](#recent-updates) below.
 
@@ -217,7 +217,7 @@ python3 -c "import vision_ml_router; print('Vision ML available')"
 
 - The C++ extensions are optional but highly recommended for performance
 - Python fallbacks ensure the system works even without C++ extensions
-- Build once and the extensions persist across JARVIS restarts
+- Build once and the extensions persist across Ironcliw restarts
 - Extensions are architecture-specific (Intel vs Apple Silicon)
 
 ---

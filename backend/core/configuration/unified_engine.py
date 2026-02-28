@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Configuration Engine v1.0
 ==================================
 
-Enterprise-grade configuration management for the JARVIS Trinity ecosystem.
-Provides centralized configuration across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade configuration management for the Ironcliw Trinity ecosystem.
+Provides centralized configuration across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 4 critical configuration patterns:
@@ -1173,7 +1173,7 @@ class UnifiedConfigurationEngine:
 
         self.logger.info(f"Saved config to {file_path}")
 
-    async def load_environment(self, prefix: str = "JARVIS_"):
+    async def load_environment(self, prefix: str = "Ironcliw_"):
         """Load configuration from environment variables."""
         await self.store.load_from_environment(prefix)
 

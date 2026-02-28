@@ -1,4 +1,4 @@
-variable "project_id" {
+﻿variable "project_id" {
   description = "The GCP Project ID"
   type        = string
   default     = "jarvis-473803"
@@ -119,19 +119,19 @@ variable "max_daily_vm_hours" {
 }
 
 # =============================================================================
-# JARVIS-PRIME CLOUD RUN (Tier-0 Brain)
+# Ironcliw-PRIME CLOUD RUN (Tier-0 Brain)
 # =============================================================================
-# Serverless deployment of JARVIS-Prime for inference.
+# Serverless deployment of Ironcliw-Prime for inference.
 # Costs ~$0 when idle (scales to zero), ~$0.02-0.05/hr when running.
 
 variable "enable_jarvis_prime" {
-  description = "Enable JARVIS-Prime Cloud Run deployment"
+  description = "Enable Ironcliw-Prime Cloud Run deployment"
   type        = bool
   default     = false # Disabled by default - enable after pushing Docker image
 }
 
 variable "jarvis_prime_image_tag" {
-  description = "Docker image tag for JARVIS-Prime"
+  description = "Docker image tag for Ironcliw-Prime"
   type        = string
   default     = "latest"
 }
@@ -149,37 +149,37 @@ variable "jarvis_prime_max_instances" {
 }
 
 variable "jarvis_prime_memory" {
-  description = "Memory allocation for JARVIS-Prime (e.g., '4Gi', '8Gi')"
+  description = "Memory allocation for Ironcliw-Prime (e.g., '4Gi', '8Gi')"
   type        = string
   default     = "4Gi" # 4GB is enough for Q4_K_M models
 }
 
 variable "jarvis_prime_cpu" {
-  description = "CPU allocation for JARVIS-Prime"
+  description = "CPU allocation for Ironcliw-Prime"
   type        = string
   default     = "2"
 }
 
 variable "jarvis_prime_model_gcs_path" {
-  description = "GCS path to GGUF model for JARVIS-Prime Cloud Run"
+  description = "GCS path to GGUF model for Ironcliw-Prime Cloud Run"
   type        = string
   default     = ""
 }
 
 # =============================================================================
-# JARVIS BACKEND CLOUD RUN (v9.4)
+# Ironcliw BACKEND CLOUD RUN (v9.4)
 # =============================================================================
-# Full JARVIS-AI-Agent backend deployment with Neural Mesh and Data Flywheel.
+# Full Ironcliw-AI-Agent backend deployment with Neural Mesh and Data Flywheel.
 # Costs ~$0 when idle (scales to zero), ~$0.05-0.15/hr when running.
 
 variable "enable_jarvis_backend" {
-  description = "Enable JARVIS Backend Cloud Run deployment"
+  description = "Enable Ironcliw Backend Cloud Run deployment"
   type        = bool
   default     = false # Disabled by default - enable after pushing Docker image
 }
 
 variable "jarvis_backend_image_tag" {
-  description = "Docker image tag for JARVIS Backend"
+  description = "Docker image tag for Ironcliw Backend"
   type        = string
   default     = "latest"
 }
@@ -197,13 +197,13 @@ variable "jarvis_backend_max_instances" {
 }
 
 variable "jarvis_backend_memory" {
-  description = "Memory allocation for JARVIS Backend (e.g., '4Gi', '8Gi')"
+  description = "Memory allocation for Ironcliw Backend (e.g., '4Gi', '8Gi')"
   type        = string
   default     = "4Gi"
 }
 
 variable "jarvis_backend_cpu" {
-  description = "CPU allocation for JARVIS Backend"
+  description = "CPU allocation for Ironcliw Backend"
   type        = string
   default     = "2"
 }
@@ -229,7 +229,7 @@ variable "neural_mesh_max_agents" {
 
 # GCS Configuration
 variable "jarvis_gcs_bucket" {
-  description = "GCS bucket for JARVIS models and data"
+  description = "GCS bucket for Ironcliw models and data"
   type        = string
   default     = ""
 }

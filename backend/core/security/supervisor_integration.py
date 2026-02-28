@@ -1,9 +1,9 @@
-"""
+﻿"""
 Security Supervisor Integration v1.0
 =====================================
 
 Provides integration between the Security System and the
-JARVIS Supervisor for centralized startup/shutdown management.
+Ironcliw Supervisor for centralized startup/shutdown management.
 
 Features:
 - Single-command initialization
@@ -122,7 +122,7 @@ class SecurityHealthReport:
 
 class SecuritySupervisorCoordinator:
     """
-    Coordinates security with the JARVIS supervisor.
+    Coordinates security with the Ironcliw supervisor.
 
     Responsibilities:
     - Initialize all security components

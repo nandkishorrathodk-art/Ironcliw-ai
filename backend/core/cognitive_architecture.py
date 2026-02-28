@@ -1,5 +1,5 @@
-"""
-JARVIS Cognitive Architecture v2.0
+﻿"""
+Ironcliw Cognitive Architecture v2.0
 ===================================
 
 Advanced AGI capabilities addressing critical reasoning gaps.
@@ -26,7 +26,7 @@ DESIGN PRINCIPLES:
     - Learnable: Improves through experience
     - Self-improving: Meta-learning from past performance
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 

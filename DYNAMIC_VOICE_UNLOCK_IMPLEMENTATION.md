@@ -1,8 +1,8 @@
-# Dynamic Voice Biometric Unlock Implementation
+﻿# Dynamic Voice Biometric Unlock Implementation
 
 ## Overview
 
-The voice biometric screen unlock system now uses **100% dynamic speaker recognition** with zero hardcoded names. JARVIS automatically recognizes the device owner's voice, compares it against the enrolled biometric data, and unlocks the screen using the verified speaker's name.
+The voice biometric screen unlock system now uses **100% dynamic speaker recognition** with zero hardcoded names. Ironcliw automatically recognizes the device owner's voice, compares it against the enrolled biometric data, and unlocks the screen using the verified speaker's name.
 
 ---
 
@@ -30,7 +30,7 @@ message = f"only the device owner {owner_name} can unlock"
 ### 1. **Voice Capture**
 When you say: **"Jarvis, unlock my screen"**
 
-JARVIS captures your audio and extracts:
+Ironcliw captures your audio and extracts:
 - Voice embedding (192D vector)
 - Acoustic features (pitch, formants, spectral characteristics)
 - Speaking patterns (rate, rhythm, energy)
@@ -88,7 +88,7 @@ unlock_result = await unlock_service.unlock_screen(
     verified_speaker=verified_speaker
 )
 
-# JARVIS responds with personalized message
+# Ironcliw responds with personalized message
 message = f"Identity confirmed, {verified_speaker}. Welcome back, {verified_speaker}. Your screen is now unlocked."
 ```
 
@@ -164,7 +164,7 @@ message = f"Identity confirmed, {verified_speaker}. Welcome back, {verified_spea
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │  7. PERSONALIZED RESPONSE                                       │
-│     JARVIS: "Identity confirmed, Derek. Welcome back, Derek.   │
+│     Ironcliw: "Identity confirmed, Derek. Welcome back, Derek.   │
 │              Your screen is now unlocked."                      │
 │                                                                 │
 │     ✅ Name used: "Derek" (from voice verification)            │
@@ -185,7 +185,7 @@ Audio       Threshold: 75%
             ✅ PASS
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 > "Identity confirmed, Derek. Initiating screen unlock sequence now. Welcome back, Derek. Your screen is now unlocked."
 
 ---
@@ -200,7 +200,7 @@ Audio       Speaker: "Guest"
             (but not owner)
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 > "Voice verified as Guest, but only the device owner Derek can unlock the screen."
 
 ---
@@ -214,7 +214,7 @@ Audio       Threshold: 75%
             ❌ FAIL
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 > "I'm sorry, I couldn't verify your voice biometrics. Confidence was 42%, but I need at least 75% to unlock your screen for security."
 
 ---
@@ -460,7 +460,7 @@ elif location == "public":
 3. Your identity is verified as "Derek" (87% confidence)
 4. Owner status is confirmed (`is_primary_user = True`)
 5. Screen unlocks using your name dynamically
-6. JARVIS responds: "Welcome back, Derek"
+6. Ironcliw responds: "Welcome back, Derek"
 
 **All without a single hardcoded "Derek" in the code!** 🎉
 

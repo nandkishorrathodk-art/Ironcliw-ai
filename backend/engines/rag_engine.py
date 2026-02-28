@@ -1,4 +1,4 @@
-import numpy as np
+﻿import numpy as np
 from typing import List, Dict, Optional, Tuple, Any, Union, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -881,7 +881,7 @@ class TrinityRAGBridge:
     """
     Async bridge connecting Trinity Knowledge Indexer to RAG pipeline.
     
-    The "Brain Bridge" that connects JARVIS's scraped web memory to his
+    The "Brain Bridge" that connects Ironcliw's scraped web memory to his
     conversational abilities. Features:
     
     - Circuit breaker pattern for resilience
@@ -2834,8 +2834,8 @@ class ServiceRegistry:
     Dynamic service discovery with health-aware routing.
     
     Services:
-    - JARVIS (this instance)
-    - JARVIS-Prime (inference)
+    - Ironcliw (this instance)
+    - Ironcliw-Prime (inference)
     - Reactor-Core (training)
     - Trinity Indexer (embedded)
     
@@ -2866,11 +2866,11 @@ class ServiceRegistry:
         return cls._instance
     
     def _register_defaults(self):
-        """Register default JARVIS ecosystem services."""
+        """Register default Ironcliw ecosystem services."""
         defaults = [
             ServiceEndpoint(
                 name="jarvis_prime",
-                url=os.getenv("JARVIS_PRIME_URL", "http://localhost:8000"),
+                url=os.getenv("Ironcliw_PRIME_URL", "http://localhost:8000"),
                 health_path="/health",
                 tags={"type": "inference"},
             ),
@@ -3025,7 +3025,7 @@ def get_service_registry() -> ServiceRegistry:
 
 class CrossRepoHealthAggregator:
     """
-    Aggregates health status across JARVIS ecosystem (JARVIS, J-Prime, Reactor-Core).
+    Aggregates health status across Ironcliw ecosystem (Ironcliw, J-Prime, Reactor-Core).
     
     Features:
     - **Dependency graph**: Knows which services depend on which
@@ -3039,10 +3039,10 @@ class CrossRepoHealthAggregator:
     
     # Service dependency graph
     DEPENDENCIES = {
-        "jarvis": [],  # JARVIS is root
-        "jarvis_prime": ["jarvis"],  # J-Prime depends on JARVIS
+        "jarvis": [],  # Ironcliw is root
+        "jarvis_prime": ["jarvis"],  # J-Prime depends on Ironcliw
         "reactor_core": ["jarvis", "jarvis_prime"],  # Reactor depends on both
-        "trinity_indexer": ["jarvis"],  # Trinity depends on JARVIS
+        "trinity_indexer": ["jarvis"],  # Trinity depends on Ironcliw
     }
     
     def __init__(self):
@@ -3813,7 +3813,7 @@ class SecurityLayer:
         self._max_context_length = int(os.getenv("SECURITY_MAX_CONTEXT_LENGTH", "100000"))
         
         # HMAC key for request signing
-        self._hmac_key = os.getenv("JARVIS_HMAC_KEY", "").encode() or os.urandom(32)
+        self._hmac_key = os.getenv("Ironcliw_HMAC_KEY", "").encode() or os.urandom(32)
         
         # Violation tracking
         self._violation_count = 0

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 import sys
 from pathlib import Path
@@ -8,13 +8,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
-Test script for JARVIS Vision System
+Test script for Ironcliw Vision System
 """
 
 import asyncio
 import logging
 import os
-from backend.vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
+from backend.vision.screen_vision import ScreenVisionSystem, IroncliwVisionIntegration
 from backend.vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 
 logging.basicConfig(level=logging.INFO)
@@ -59,11 +59,11 @@ async def test_basic_vision():
 
 
 async def test_jarvis_integration():
-    """Test JARVIS voice integration"""
-    print("\n🤖 Testing JARVIS Integration...")
+    """Test Ironcliw voice integration"""
+    print("\n🤖 Testing Ironcliw Integration...")
     
     vision_system = ScreenVisionSystem()
-    jarvis_vision = JARVISVisionIntegration(vision_system)
+    jarvis_vision = IroncliwVisionIntegration(vision_system)
     
     # Test various voice commands
     commands = [
@@ -76,7 +76,7 @@ async def test_jarvis_integration():
     for command in commands:
         print(f"\n💬 Command: '{command}'")
         response = await jarvis_vision.handle_vision_command(command)
-        print(f"🗣️  JARVIS: {response}")
+        print(f"🗣️  Ironcliw: {response}")
 
 
 async def test_claude_vision():
@@ -137,14 +137,14 @@ async def test_update_monitoring():
 async def main():
     """Run all tests"""
     print("=" * 60)
-    print("🤖 JARVIS Vision System Test Suite")
+    print("🤖 Ironcliw Vision System Test Suite")
     print("=" * 60)
     
     try:
         # Test basic vision
         await test_basic_vision()
         
-        # Test JARVIS integration
+        # Test Ironcliw integration
         await test_jarvis_integration()
         
         # Test Claude vision (if API key available)

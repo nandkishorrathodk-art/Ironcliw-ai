@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Force macOS to refresh Screen Recording permissions
 
 echo "======================================================================"
@@ -99,17 +99,17 @@ EOFCHECK
     # Add to shell RC file
     if [ -f ~/.zshrc ]; then
         echo "" >> ~/.zshrc
-        echo "# JARVIS permission check (auto-remove)" >> ~/.zshrc
+        echo "# Ironcliw permission check (auto-remove)" >> ~/.zshrc
         echo "if [ -f ~/.jarvis_check_on_startup ]; then" >> ~/.zshrc
         echo "    bash ~/.jarvis_check_on_startup" >> ~/.zshrc
-        echo "    sed -i '' '/# JARVIS permission check/,+3d' ~/.zshrc" >> ~/.zshrc
+        echo "    sed -i '' '/# Ironcliw permission check/,+3d' ~/.zshrc" >> ~/.zshrc
         echo "fi" >> ~/.zshrc
     elif [ -f ~/.bash_profile ]; then
         echo "" >> ~/.bash_profile
-        echo "# JARVIS permission check (auto-remove)" >> ~/.bash_profile
+        echo "# Ironcliw permission check (auto-remove)" >> ~/.bash_profile
         echo "if [ -f ~/.jarvis_check_on_startup ]; then" >> ~/.bash_profile
         echo "    bash ~/.jarvis_check_on_startup" >> ~/.bash_profile
-        echo "    sed -i '' '/# JARVIS permission check/,+3d' ~/.bash_profile" >> ~/.bash_profile
+        echo "    sed -i '' '/# Ironcliw permission check/,+3d' ~/.bash_profile" >> ~/.bash_profile
         echo "fi" >> ~/.bash_profile
     fi
 

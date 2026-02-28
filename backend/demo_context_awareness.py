@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Demo Context Awareness for JARVIS
+Demo Context Awareness for Ironcliw
 =================================
 
 Demonstrates the context-aware screen lock/unlock functionality
@@ -20,7 +20,7 @@ def run_voice_command(command: str):
 
 
 async def send_command(command: str):
-    """Send command to JARVIS backend"""
+    """Send command to Ironcliw backend"""
     api_url = "http://localhost:8000/api/command"
     
     async with aiohttp.ClientSession() as session:
@@ -57,9 +57,9 @@ else:
 async def demo_context_awareness():
     """Demonstrate context-aware screen handling"""
     
-    print("🎯 JARVIS Context Awareness Demo")
+    print("🎯 Ironcliw Context Awareness Demo")
     print("=" * 60)
-    print("\nThis demo shows how JARVIS handles commands when your screen is locked.")
+    print("\nThis demo shows how Ironcliw handles commands when your screen is locked.")
     print("The context awareness feature will:")
     print("1. Detect when the screen is locked")
     print("2. Inform you it needs to unlock")
@@ -73,7 +73,7 @@ async def demo_context_awareness():
     run_voice_command("What time is it?")
     
     result = await send_command("What time is it?")
-    print(f"JARVIS response: {result.get('response', result)}")
+    print(f"Ironcliw response: {result.get('response', result)}")
     
     await asyncio.sleep(2)
     
@@ -82,7 +82,7 @@ async def demo_context_awareness():
     run_voice_command("Lock my screen")
     
     result = await send_command("lock my screen")
-    print(f"JARVIS response: {result.get('response', result)}")
+    print(f"Ironcliw response: {result.get('response', result)}")
     
     await asyncio.sleep(3)
     is_locked = check_screen_locked()
@@ -99,17 +99,17 @@ async def demo_context_awareness():
     # Step 3: Try a command that requires screen access
     print("\n✅ Step 3: Command that requires screen access (while locked)")
     print("\n🔐 Your screen is currently locked.")
-    print("Now let's see how JARVIS handles this...")
+    print("Now let's see how Ironcliw handles this...")
     
     await asyncio.sleep(2)
     
     command = "Open Safari and search for artificial intelligence"
     run_voice_command(command)
-    print("\n⏳ Sending command to JARVIS...")
+    print("\n⏳ Sending command to Ironcliw...")
     
     result = await send_command(command)
     
-    print("\n📝 JARVIS Response:")
+    print("\n📝 Ironcliw Response:")
     print("-" * 40)
     print(f"Response: {result.get('response', 'No response')}")
     print(f"Success: {result.get('success', False)}")
@@ -127,21 +127,21 @@ async def demo_context_awareness():
     print("\n" + "=" * 60)
     print("🎉 Demo Complete!")
     print("\nWhat you should have seen:")
-    print("1. ✅ JARVIS locked your screen")
-    print("2. ✅ JARVIS detected the locked screen")
-    print("3. ✅ JARVIS said it would unlock by typing the password")
-    print("4. ✅ JARVIS unlocked your screen")
-    print("5. ✅ JARVIS opened Safari and searched")
-    print("6. ✅ JARVIS confirmed all actions taken")
+    print("1. ✅ Ironcliw locked your screen")
+    print("2. ✅ Ironcliw detected the locked screen")
+    print("3. ✅ Ironcliw said it would unlock by typing the password")
+    print("4. ✅ Ironcliw unlocked your screen")
+    print("5. ✅ Ironcliw opened Safari and searched")
+    print("6. ✅ Ironcliw confirmed all actions taken")
     
-    print("\n💡 This demonstrates how JARVIS is context-aware and handles")
+    print("\n💡 This demonstrates how Ironcliw is context-aware and handles")
     print("   situations intelligently without breaking the user experience!")
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting JARVIS Context Awareness Demo\n")
+    print("\n🚀 Starting Ironcliw Context Awareness Demo\n")
     print("Make sure:")
-    print("1. JARVIS backend is running on port 8000")
+    print("1. Ironcliw backend is running on port 8000")
     print("2. Voice Unlock is set up and working")
     print("3. You have Safari installed")
     print("\nPress Enter to continue...")

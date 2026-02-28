@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive test for the complete Multi-Space Desktop Vision System
 Tests all phases: Capture Engine, Enhanced Intelligence, Monitoring, and Optimization
@@ -216,7 +216,7 @@ async def test_integration():
         print(f"\n💬 User: {query}")
         try:
             response = await vision.understand_and_respond(mock_screenshot, query)
-            print(f"🤖 JARVIS: {response[:150]}...")
+            print(f"🤖 Ironcliw: {response[:150]}...")
             await asyncio.sleep(1)
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -248,7 +248,7 @@ async def main():
     
     # Set environment for testing
     import os
-    os.environ['JARVIS_AUTO_APPROVE_SPACE_SWITCH'] = 'true'
+    os.environ['Ironcliw_AUTO_APPROVE_SPACE_SWITCH'] = 'true'
     
     try:
         # Test each phase

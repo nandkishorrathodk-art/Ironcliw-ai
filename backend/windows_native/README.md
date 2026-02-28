@@ -1,6 +1,6 @@
-# JARVIS Windows Native Layer (C# DLLs)
+﻿# Ironcliw Windows Native Layer (C# DLLs)
 
-This directory contains C# native code that provides Windows API access for JARVIS, replacing the Swift bridge functionality used on macOS.
+This directory contains C# native code that provides Windows API access for Ironcliw, replacing the Swift bridge functionality used on macOS.
 
 ## Architecture
 
@@ -105,7 +105,7 @@ dotnet --version
 ```
 
 ### 2. Python 3.11+
-Already required by JARVIS.
+Already required by Ironcliw.
 
 ### 3. pythonnet (Python.NET)
 Python package for calling .NET assemblies from Python.
@@ -358,4 +358,4 @@ See `.zenflow/tasks/iron-cliw-0081/plan.md` for full roadmap.
 
 ## License
 
-Same as JARVIS main project.
+Same as Ironcliw main project.

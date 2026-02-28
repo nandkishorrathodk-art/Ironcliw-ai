@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Intervention Decision Engine for Proactive Intelligence System (Component 3.2)
 
-This engine determines when and how JARVIS should proactively assist users by:
+This engine determines when and how Ironcliw should proactively assist users by:
 1. Evaluating user state (frustration, productivity, focus, stress)
 2. Assessing situations (severity, time criticality, solution availability)
 3. Choosing intervention options (silent monitoring to autonomous action)
@@ -1351,7 +1351,7 @@ class InterventionDecisionEngine:
         which trains the model to stop intervening entirely.
         """
         message = decision.intervention_content.get(
-            'message', decision.reasoning or 'JARVIS has a suggestion.',
+            'message', decision.reasoning or 'Ironcliw has a suggestion.',
         )
         situation_type = (
             decision.situation.situation_type.value if decision.situation else ''
@@ -1364,7 +1364,7 @@ class InterventionDecisionEngine:
             delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.LOW,
-                title="JARVIS Suggestion",
+                title="Ironcliw Suggestion",
                 context={"situation_type": situation_type, "source": "intervention_engine"},
             )
         except Exception as e:
@@ -1382,7 +1382,7 @@ class InterventionDecisionEngine:
         v252.1 Fix: Preserve caller-expected return keys (see gentle_suggestion).
         """
         message = decision.intervention_content.get(
-            'message', decision.reasoning or 'JARVIS has a recommendation.',
+            'message', decision.reasoning or 'Ironcliw has a recommendation.',
         )
         situation_type = (
             decision.situation.situation_type.value if decision.situation else ''
@@ -1395,7 +1395,7 @@ class InterventionDecisionEngine:
             delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.NORMAL,
-                title="JARVIS Recommendation",
+                title="Ironcliw Recommendation",
                 context={"situation_type": situation_type, "source": "intervention_engine"},
             )
         except Exception as e:
@@ -1413,7 +1413,7 @@ class InterventionDecisionEngine:
         v252.1 Fix: Preserve caller-expected return keys (see gentle_suggestion).
         """
         message = decision.intervention_content.get(
-            'message', decision.reasoning or 'JARVIS is taking proactive action.',
+            'message', decision.reasoning or 'Ironcliw is taking proactive action.',
         )
         options = decision.intervention_content.get('assistance_options', [])
         situation_type = (
@@ -1429,7 +1429,7 @@ class InterventionDecisionEngine:
             delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.HIGH,
-                title="JARVIS Proactive",
+                title="Ironcliw Proactive",
                 context={"situation_type": situation_type, "source": "intervention_engine"},
             )
         except Exception as e:
@@ -1449,7 +1449,7 @@ class InterventionDecisionEngine:
         action_details = decision.intervention_content.get('action_details', {})
         confirm_first = decision.intervention_content.get('confirm_before_action', True)
         message = decision.intervention_content.get(
-            'message', decision.reasoning or f'JARVIS autonomous action: {action_details}',
+            'message', decision.reasoning or f'Ironcliw autonomous action: {action_details}',
         )
         situation_type = (
             decision.situation.situation_type.value if decision.situation else ''
@@ -1465,7 +1465,7 @@ class InterventionDecisionEngine:
             delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.URGENT,
-                title="JARVIS Autonomous Action",
+                title="Ironcliw Autonomous Action",
                 context={"situation_type": situation_type, "source": "intervention_engine"},
             )
         except Exception as e:

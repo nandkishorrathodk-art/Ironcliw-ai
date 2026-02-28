@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple demonstration of the Intervention Decision Engine
-Shows how JARVIS can detect user states and offer timely help
+Shows how Ironcliw can detect user states and offer timely help
 """
 
 import asyncio
@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def main():
-    print("🤖 JARVIS Intervention Decision Demo")
+    print("🤖 Ironcliw Intervention Decision Demo")
     print("=" * 50)
     
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
@@ -35,7 +35,7 @@ async def main():
     })
     
     if result['intervention_recommended']:
-        print(f"✅ JARVIS recommends: {result['type']}")
+        print(f"✅ Ironcliw recommends: {result['type']}")
         print(f"   When: {result['timing']}")
         print(f"   Why: {result['rationale']}")
     

@@ -1,8 +1,8 @@
-# Contextual Query Resolution Integration Guide
+﻿# Contextual Query Resolution Integration Guide
 
 ## Overview
 
-The **Contextual Query Resolver** enables JARVIS to understand ambiguous and contextual queries without requiring explicit space numbers. It tracks conversation history, resolves pronouns, and intelligently determines which spaces or monitors the user is referring to.
+The **Contextual Query Resolver** enables Ironcliw to understand ambiguous and contextual queries without requiring explicit space numbers. It tracks conversation history, resolves pronouns, and intelligently determines which spaces or monitors the user is referring to.
 
 ## Implementation Status
 
@@ -514,42 +514,42 @@ Testing Contextual Query Resolver
 
 ```python
 User: "What's in space 3?"
-JARVIS: [Shows space 3 contents]
+Ironcliw: [Shows space 3 contents]
 
 User: "What's the error?"  # Implicit - uses last queried (space 3)
-JARVIS: [Shows error in space 3]
+Ironcliw: [Shows error in space 3]
 
 User: "What about space 5?"
-JARVIS: [Shows space 5]
+Ironcliw: [Shows space 5]
 
 User: "Compare them"  # Compares spaces 3 and 5
-JARVIS: [Side-by-side comparison]
+Ironcliw: [Side-by-side comparison]
 ```
 
 ### Scenario 2: Multi-Monitor Workflow
 
 ```python
 User: "What's on my second monitor?"
-JARVIS: [Shows content on monitor 2]
+Ironcliw: [Shows content on monitor 2]
 
 User: "What about the primary?"
-JARVIS: [Shows content on primary monitor]
+Ironcliw: [Shows content on primary monitor]
 
 User: "Compare them"
-JARVIS: [Compares both monitors]
+Ironcliw: [Compares both monitors]
 ```
 
 ### Scenario 3: Ambiguous Query with Clarification
 
 ```python
 User: "What's happening?"  # No history
-JARVIS: "Which space? (Currently on Space 2)"
+Ironcliw: "Which space? (Currently on Space 2)"
 
 User: "Space 2"
-JARVIS: [Shows space 2 contents]
+Ironcliw: [Shows space 2 contents]
 
 User: "What about that?"  # Now has context
-JARVIS: [Shows space 2 again]
+Ironcliw: [Shows space 2 again]
 ```
 
 ## Best Practices

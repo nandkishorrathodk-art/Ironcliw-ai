@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Verify Weather Fix - Test that weather queries no longer hang
 """
@@ -109,23 +109,23 @@ async def test_websocket_endpoint():
 
 
 async def test_direct_jarvis():
-    """Test JARVIS directly to isolate the issue"""
-    print("\n\n🔍 Testing JARVIS Directly (No API)")
+    """Test Ironcliw directly to isolate the issue"""
+    print("\n\n🔍 Testing Ironcliw Directly (No API)")
     print("=" * 60)
     
     try:
-        # Import and initialize JARVIS
+        # Import and initialize Ironcliw
         from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzerMain
-        from voice.jarvis_agent_voice import JARVISAgentVoice
+        from voice.jarvis_agent_voice import IroncliwAgentVoice
         
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             print("❌ No API key found")
             return
             
-        print("1. Initializing JARVIS...")
+        print("1. Initializing Ironcliw...")
         vision_analyzer = ClaudeVisionAnalyzerMain(api_key)
-        jarvis = JARVISAgentVoice(vision_analyzer=vision_analyzer)
+        jarvis = IroncliwAgentVoice(vision_analyzer=vision_analyzer)
         
         print("2. Testing weather command...")
         start_time = time.time()
@@ -141,8 +141,8 @@ async def test_direct_jarvis():
             
         except asyncio.TimeoutError:
             elapsed = time.time() - start_time
-            print(f"❌ Direct JARVIS call timed out after {elapsed:.2f}s")
-            print("   This confirms the hang is in JARVIS weather processing")
+            print(f"❌ Direct Ironcliw call timed out after {elapsed:.2f}s")
+            print("   This confirms the hang is in Ironcliw weather processing")
             
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -161,7 +161,7 @@ async def main():
     # Test WebSocket
     await test_websocket_endpoint()
     
-    # Test direct JARVIS
+    # Test direct Ironcliw
     await test_direct_jarvis()
     
     print("\n\n✅ Verification Complete!")

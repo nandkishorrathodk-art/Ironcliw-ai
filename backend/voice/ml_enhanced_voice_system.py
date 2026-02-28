@@ -1,4 +1,4 @@
-"""
+﻿"""
 ML-Enhanced Voice System with Personalized Wake Word Detection
 Achieves 80%+ false positive reduction through continuous learning
 """
@@ -454,7 +454,7 @@ class MLEnhancedVoiceSystem:
             signal_peak = np.percentile(np.abs(audio_data), 90)
             features['snr'] = 20 * np.log10(signal_peak / noise_floor) if noise_floor > 0 else 0
             
-            # Formant-like features (important for "JARVIS")
+            # Formant-like features (important for "Ironcliw")
             lpc_coeffs = librosa.lpc(audio_data, order=16)
             features['lpc_coeffs'] = lpc_coeffs[1:]  # Exclude first coefficient
             
@@ -621,11 +621,11 @@ class MLEnhancedVoiceSystem:
     
     
     def _pattern_matching_score(self, features: Dict[str, Any]) -> float:
-        """Score based on acoustic patterns matching 'JARVIS'"""
+        """Score based on acoustic patterns matching 'Ironcliw'"""
         score = 0.0
         
-        # Expected characteristics of "JARVIS" (2 syllables, specific formants)
-        # Duration check (JARVIS typically 0.5-1.5 seconds)
+        # Expected characteristics of "Ironcliw" (2 syllables, specific formants)
+        # Duration check (Ironcliw typically 0.5-1.5 seconds)
         if 0.5 <= features.get('duration', 0) <= 1.5:
             score += 0.2
         
@@ -876,7 +876,7 @@ class MLEnhancedVoiceSystem:
         # Build context prompt
         context_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in context[-5:]])
         
-        prompt = f"""You are enhancing JARVIS's conversation understanding. 
+        prompt = f"""You are enhancing Ironcliw's conversation understanding. 
 
 Previous context:
 {context_str}
@@ -890,7 +890,7 @@ Based on the context and confidence level:
 2. If confidence is medium (0.5-0.8), acknowledge potential uncertainty
 3. If confidence is low (<0.5), ask for clarification
 
-Provide an appropriate JARVIS-style response that:
+Provide an appropriate Ironcliw-style response that:
 - Maintains conversation continuity
 - Adapts to the recognition confidence
 - Stays concise and natural
@@ -1093,7 +1093,7 @@ async def demo_ml_enhanced_system():
         ]
         
         context = [
-            {"role": "user", "content": "Hey JARVIS"},
+            {"role": "user", "content": "Hey Ironcliw"},
             {"role": "assistant", "content": "Yes, sir?"}
         ]
         

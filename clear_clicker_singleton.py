@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Clear the clicker singleton to force a fresh instance with the drag fix
 """
@@ -43,4 +43,4 @@ try:
 except Exception as e:
     print(f"⚠️  Could not clear display monitor: {e}")
 
-print("\nAll singletons cleared. JARVIS will create fresh instances with the drag fix.")
+print("\nAll singletons cleared. Ironcliw will create fresh instances with the drag fix.")

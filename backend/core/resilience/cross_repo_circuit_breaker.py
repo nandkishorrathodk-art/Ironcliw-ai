@@ -1,4 +1,4 @@
-"""
+﻿"""
 Cross-Repo Circuit Breaker with Failure Classification
 ======================================================
 
@@ -8,7 +8,7 @@ Enhanced circuit breaker for cross-repo communication with:
 - Adaptive thresholds based on failure patterns
 - Comprehensive health status for monitoring
 
-Author: JARVIS Cross-Repo Resilience
+Author: Ironcliw Cross-Repo Resilience
 """
 
 from __future__ import annotations

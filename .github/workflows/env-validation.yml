@@ -1,4 +1,4 @@
-name: Environment Variable Validation
+﻿name: Environment Variable Validation
 
 on:
   push:
@@ -261,11 +261,11 @@ jobs:
 
           # Critical env vars that MUST be documented
           CRITICAL_VARS = [
-              "JARVIS_DB_TYPE",
-              "JARVIS_DB_CONNECTION_NAME",
-              "JARVIS_DB_HOST",
-              "JARVIS_DB_PORT",
-              "JARVIS_DB_PASSWORD",
+              "Ironcliw_DB_TYPE",
+              "Ironcliw_DB_CONNECTION_NAME",
+              "Ironcliw_DB_HOST",
+              "Ironcliw_DB_PORT",
+              "Ironcliw_DB_PASSWORD",
               "GOOGLE_APPLICATION_CREDENTIALS",
               "GCP_PROJECT_ID",
               "ANTHROPIC_API_KEY",

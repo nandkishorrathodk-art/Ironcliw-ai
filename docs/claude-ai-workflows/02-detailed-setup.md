@@ -1,4 +1,4 @@
-# 📖 Detailed Setup Guide - Claude AI Workflows
+﻿# 📖 Detailed Setup Guide - Claude AI Workflows
 
 **Complete installation and configuration walkthrough**
 
@@ -48,8 +48,8 @@
 
 ```bash
 # Clone repository (if not already)
-git clone https://github.com/YOUR-USERNAME/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/YOUR-USERNAME/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Verify you have push access
 git push --dry-run
@@ -103,19 +103,19 @@ mkdir -p .github/workflows
 
 # Download workflow files
 curl -o .github/workflows/claude-pr-analyzer.yml \
-  https://raw.githubusercontent.com/drussell23/JARVIS-AI-Agent/main/.github/workflows/claude-pr-analyzer.yml
+  https://raw.githubusercontent.com/drussell23/Ironcliw-AI-Agent/main/.github/workflows/claude-pr-analyzer.yml
 
 curl -o .github/workflows/claude-auto-fix.yml \
-  https://raw.githubusercontent.com/drussell23/JARVIS-AI-Agent/main/.github/workflows/claude-auto-fix.yml
+  https://raw.githubusercontent.com/drussell23/Ironcliw-AI-Agent/main/.github/workflows/claude-auto-fix.yml
 
 curl -o .github/workflows/claude-test-generator.yml \
-  https://raw.githubusercontent.com/drussell23/JARVIS-AI-Agent/main/.github/workflows/claude-test-generator.yml
+  https://raw.githubusercontent.com/drussell23/Ironcliw-AI-Agent/main/.github/workflows/claude-test-generator.yml
 
 curl -o .github/workflows/claude-security-analyzer.yml \
-  https://raw.githubusercontent.com/drussell23/JARVIS-AI-Agent/main/.github/workflows/claude-security-analyzer.yml
+  https://raw.githubusercontent.com/drussell23/Ironcliw-AI-Agent/main/.github/workflows/claude-security-analyzer.yml
 
 curl -o .github/workflows/claude-docs-generator.yml \
-  https://raw.githubusercontent.com/drussell23/JARVIS-AI-Agent/main/.github/workflows/claude-docs-generator.yml
+  https://raw.githubusercontent.com/drussell23/Ironcliw-AI-Agent/main/.github/workflows/claude-docs-generator.yml
 ```
 
 #### 2.2 Commit Workflows
@@ -130,10 +130,10 @@ git push origin main
 
 ```bash
 # Fork the repository
-gh repo fork drussell23/JARVIS-AI-Agent
+gh repo fork drussell23/Ironcliw-AI-Agent
 
 # Clone your fork
-git clone https://github.com/YOUR-USERNAME/JARVIS-AI-Agent.git
+git clone https://github.com/YOUR-USERNAME/Ironcliw-AI-Agent.git
 
 # Create your own branch
 git checkout -b feature/add-claude-ai
@@ -202,7 +202,7 @@ sk-ant-api03-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 **Via Web Interface:**
 ```
-1. Go to: https://github.com/YOUR-USER/JARVIS-AI-Agent/settings/secrets/actions
+1. Go to: https://github.com/YOUR-USER/Ironcliw-AI-Agent/settings/secrets/actions
 2. Click: "New repository secret"
 3. Name: ANTHROPIC_API_KEY
 4. Value: [Paste your API key]

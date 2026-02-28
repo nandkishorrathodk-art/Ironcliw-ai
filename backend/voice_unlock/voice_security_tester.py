@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Voice Security Tester - Advanced Async Biometric Authentication Testing
+Ironcliw Voice Security Tester - Advanced Async Biometric Authentication Testing
 ===============================================================================
 
 Tests voice biometric security by generating synthetic "attacker" voices and
@@ -11,13 +11,13 @@ Features:
 - Dynamic threshold testing (no hardcoding)
 - Real-time similarity scoring and rejection verification
 - Comprehensive security report generation
-- Integration with existing JARVIS voice unlock system
+- Integration with existing Ironcliw voice unlock system
 
 Usage:
     # Standalone
     python3 backend/voice_unlock/voice_security_tester.py
 
-    # As JARVIS command
+    # As Ironcliw command
     Say: "test my voice security" or "verify voice authentication"
 """
 
@@ -508,7 +508,7 @@ class VoiceSecurityReport:
 
 class VoiceSecurityTester:
     """
-    Advanced voice security testing system for JARVIS biometric authentication.
+    Advanced voice security testing system for Ironcliw biometric authentication.
 
     Tests the voice unlock system by:
     1. Generating synthetic "attacker" voices with various characteristics
@@ -686,13 +686,13 @@ class VoiceSecurityTester:
 
     async def load_system_config(self) -> Dict[str, Any]:
         """
-        Load configuration from JARVIS system dynamically.
+        Load configuration from Ironcliw system dynamically.
 
         Returns:
             System configuration including thresholds and settings
         """
         try:
-            # Import JARVIS components
+            # Import Ironcliw components
             from backend.voice.speaker_verification_service import SpeakerVerificationService
             from backend.intelligence.cloud_database_adapter import CloudDatabaseAdapter
 
@@ -1035,7 +1035,7 @@ class VoiceSecurityTester:
             Comprehensive security report
         """
         logger.info("=" * 80)
-        logger.info("JARVIS VOICE SECURITY TEST - STARTING")
+        logger.info("Ironcliw VOICE SECURITY TEST - STARTING")
         logger.info("=" * 80)
 
         start_time = time.time()
@@ -1211,7 +1211,7 @@ async def main():
 
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
-        description='JARVIS Voice Security Tester - Test voice biometric authentication security',
+        description='Ironcliw Voice Security Tester - Test voice biometric authentication security',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -1287,7 +1287,7 @@ Test Modes:
 
     # Display banner
     print("\n" + "="*80)
-    print("JARVIS VOICE SECURITY TESTER")
+    print("Ironcliw VOICE SECURITY TESTER")
     print("="*80 + "\n")
 
     # Create playback configuration

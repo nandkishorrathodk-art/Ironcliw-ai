@@ -1,4 +1,4 @@
-"""
+﻿"""
 Fireworks AI Client v1.0
 =========================
 
@@ -11,13 +11,13 @@ Fireworks AI provides:
     - Function calling support
     - Streaming responses
 
-Integration into JARVIS:
+Integration into Ironcliw:
     - Acts as fallback between J-Prime and Claude
     - Routing: PRIME_API → FIREWORKS → CLAUDE
     - Preferred for code generation and reasoning tasks
     - Cost-effective alternative for high-volume use
 
-Author: JARVIS System (Windows Port)
+Author: Ironcliw System (Windows Port)
 Version: 1.0.0
 """
 from __future__ import annotations

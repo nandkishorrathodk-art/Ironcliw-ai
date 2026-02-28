@@ -1,10 +1,10 @@
-"""
+﻿"""
 Cross-Repository Model Bridge v1.0
 ===================================
 
-Provides seamless model synchronization across the JARVIS Trinity:
-- JARVIS (Body) - Model inference and deployment
-- JARVIS Prime (Mind) - Model orchestration and routing
+Provides seamless model synchronization across the Ironcliw Trinity:
+- Ironcliw (Body) - Model inference and deployment
+- Ironcliw Prime (Mind) - Model orchestration and routing
 - Reactor Core (Learning) - Model training and publishing
 
 Features:
@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 class ModelSyncDirection(Enum):
     """Direction of model synchronization."""
     REACTOR_TO_PRIME = "reactor_to_prime"      # New model from training
-    PRIME_TO_JARVIS = "prime_to_jarvis"        # Deploy to body
-    JARVIS_TO_PRIME = "jarvis_to_prime"        # Performance feedback
+    PRIME_TO_Ironcliw = "prime_to_jarvis"        # Deploy to body
+    Ironcliw_TO_PRIME = "jarvis_to_prime"        # Performance feedback
     PRIME_TO_REACTOR = "prime_to_reactor"      # Trigger retraining
     BROADCAST = "broadcast"                     # All repos
 
@@ -89,8 +89,8 @@ class CrossRepoModelConfig:
     max_sync_retries: int = int(os.getenv("MODEL_SYNC_MAX_RETRIES", "3"))
 
     # Model paths
-    jarvis_models_path: str = os.getenv("JARVIS_MODELS_PATH", "backend/models")
-    prime_models_path: str = os.getenv("PRIME_MODELS_PATH", "../JARVIS-Prime/models")
+    jarvis_models_path: str = os.getenv("Ironcliw_MODELS_PATH", "backend/models")
+    prime_models_path: str = os.getenv("PRIME_MODELS_PATH", "../Ironcliw-Prime/models")
     reactor_output_path: str = os.getenv("REACTOR_OUTPUT_PATH", "../reactor-core/output")
 
     # Event settings
@@ -355,9 +355,9 @@ class CrossRepoModelBridge:
         model_version: str,
         deployment_strategy: str = "canary",
     ) -> SyncOperation:
-        """Deploy a model to JARVIS Body."""
+        """Deploy a model to Ironcliw Body."""
         sync_op = SyncOperation(
-            direction=ModelSyncDirection.PRIME_TO_JARVIS,
+            direction=ModelSyncDirection.PRIME_TO_Ironcliw,
             model_name=model_name,
             model_version=model_version,
         )
@@ -423,7 +423,7 @@ class CrossRepoModelBridge:
         metrics: Dict[str, float],
         alert_level: Optional[str] = None,
     ):
-        """Report model performance from JARVIS Body."""
+        """Report model performance from Ironcliw Body."""
         event_type = ModelEventType.PERFORMANCE_ALERT if alert_level else ModelEventType.MODEL_DEPLOYED
 
         await self.event_bus.publish(ModelEvent(
@@ -484,7 +484,7 @@ class CrossRepoModelBridge:
         """Handle model validated event."""
         self.logger.info(f"Model validated: {event.model_name}@{event.model_version}")
 
-        # Initiate deployment to JARVIS
+        # Initiate deployment to Ironcliw
         if event.payload.get("passed", False):
             await self.deploy_to_jarvis(
                 event.model_name,

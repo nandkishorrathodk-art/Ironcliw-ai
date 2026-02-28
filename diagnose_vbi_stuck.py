@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 VBI Processing Stuck Diagnostic Tool
 =====================================
@@ -6,7 +6,7 @@ VBI Processing Stuck Diagnostic Tool
 Diagnoses why voice biometric processing might be getting stuck.
 Checks all components in the VBI pipeline.
 
-Run this while JARVIS is running:
+Run this while Ironcliw is running:
     python3 diagnose_vbi_stuck.py
 """
 
@@ -316,7 +316,7 @@ async def provide_diagnosis(results):
     # Check each result
     if not results.get('backend_healthy'):
         issues.append("Backend is not responding")
-        fixes.append("Start JARVIS: ./start_jarvis.sh")
+        fixes.append("Start Ironcliw: ./start_jarvis.sh")
     
     cb_status = results.get('circuit_breakers', {})
     for name, status in (cb_status or {}).items():
@@ -327,15 +327,15 @@ async def provide_diagnosis(results):
     
     if not results.get('vbi_initialized'):
         issues.append("VBI not initialized")
-        fixes.append("Restart JARVIS: python3 start_system.py --restart")
+        fixes.append("Restart Ironcliw: python3 start_system.py --restart")
     
     if not results.get('voice_profiles'):
         issues.append("No voice profiles enrolled")
-        fixes.append("Enroll your voice profile in the JARVIS settings")
+        fixes.append("Enroll your voice profile in the Ironcliw settings")
     
     if not results.get('websocket_connected'):
         issues.append("WebSocket not connected")
-        fixes.append("Refresh the frontend or restart JARVIS")
+        fixes.append("Refresh the frontend or restart Ironcliw")
     
     resources = results.get('resources', {})
     if resources and resources.get('memory_gb', 10) < 2.0:
@@ -353,8 +353,8 @@ async def provide_diagnosis(results):
     else:
         print(f"{COLORS['GREEN']}✅ All systems appear healthy!{COLORS['END']}")
         print("\nIf still experiencing issues:")
-        print("  1. Check the terminal running JARVIS for error messages")
-        print("  2. Try saying 'Hey JARVIS' to trigger wake word detection")
+        print("  1. Check the terminal running Ironcliw for error messages")
+        print("  2. Try saying 'Hey Ironcliw' to trigger wake word detection")
         print("  3. Look at the browser console (F12) for frontend errors")
 
 

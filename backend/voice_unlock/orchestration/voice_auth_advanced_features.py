@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Authentication Advanced Features v3.0
 ===========================================
@@ -12,7 +12,7 @@ SUPER BEEFED-UP advanced features for voice authentication:
 - 📊 Real-Time Voice Quality Analysis
 - 🧬 Voice Biometric DNA Analysis
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0 - Clinical-Grade Intelligence Edition
 """
 

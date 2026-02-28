@@ -1,5 +1,5 @@
-"""
-Rust Component Self-Healer for JARVIS.
+﻿"""
+Rust Component Self-Healer for Ironcliw.
 Automatically diagnoses and fixes issues preventing Rust components from loading.
 """
 
@@ -286,7 +286,7 @@ class RustSelfHealer:
             "[project]\n"
             f"name = \"{package_name}\"\n"
             f"version = \"{package_version}\"\n"
-            "description = \"JARVIS Rust core Python bindings\"\n"
+            "description = \"Ironcliw Rust core Python bindings\"\n"
             "requires-python = \">=3.8\"\n\n"
             "[tool.maturin]\n"
             f"module-name = \"{module_name}\"\n"
@@ -436,9 +436,9 @@ class RustSelfHealer:
         Returns True if fixed successfully.
         """
         # Optional escape hatch for explicitly running in stub-only mode.
-        if os.getenv("JARVIS_ALLOW_RUST_STUB_ONLY", "").lower() == "true":
+        if os.getenv("Ironcliw_ALLOW_RUST_STUB_ONLY", "").lower() == "true":
             if self._stub_module_file().exists():
-                logger.info("Stub-only mode enabled via JARVIS_ALLOW_RUST_STUB_ONLY=true")
+                logger.info("Stub-only mode enabled via Ironcliw_ALLOW_RUST_STUB_ONLY=true")
                 return True
 
         logger.info("Diagnosing Rust component issues...")
@@ -688,8 +688,8 @@ class RustSelfHealer:
         logger.info("Building Rust components with concurrent strategies...")
         
         # Skip if environment says to
-        if os.environ.get('JARVIS_SKIP_RUST_BUILD', '').lower() == 'true':
-            logger.info("Skipping Rust build (JARVIS_SKIP_RUST_BUILD=true)")
+        if os.environ.get('Ironcliw_SKIP_RUST_BUILD', '').lower() == 'true':
+            logger.info("Skipping Rust build (Ironcliw_SKIP_RUST_BUILD=true)")
             return False
 
         # Ensure maturin metadata is present so `maturin develop` can succeed.

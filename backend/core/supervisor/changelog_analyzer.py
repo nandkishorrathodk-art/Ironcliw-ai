@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Changelog Analyzer
+Ironcliw Changelog Analyzer
 ==========================
 
 AI-powered commit summarization and categorization for the Self-Updating Lifecycle Manager.
 Parses git logs and generates user-friendly descriptions of changes.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

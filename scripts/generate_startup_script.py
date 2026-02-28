@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Auto-generate scripts/gcp_startup.sh from start_system.py
 
@@ -27,7 +27,7 @@ def generate_startup_script():
     # Generate script with default config
     script = router._generate_startup_script(
         {
-            "repo_url": "https://github.com/drussell23/JARVIS-AI-Agent.git",
+            "repo_url": "https://github.com/drussell23/Ironcliw-AI-Agent.git",
             "branch": "multi-monitor-support",
         }
     )

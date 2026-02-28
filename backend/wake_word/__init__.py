@@ -1,8 +1,8 @@
-"""
-JARVIS Wake Word Detection System
+﻿"""
+Ironcliw Wake Word Detection System
 ================================
 
-Advanced wake word detection for hands-free JARVIS activation.
+Advanced wake word detection for hands-free Ironcliw activation.
 """
 
 from .config import get_config, WakeWordConfig

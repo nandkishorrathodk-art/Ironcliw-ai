@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Platform Abstraction Layer
 ================================
 
@@ -30,7 +30,7 @@ from backend.core.path_manager import get_path_manager
 async def test_platform_detection():
     """Test that platform is correctly detected."""
     print("=" * 70)
-    print("JARVIS Platform Abstraction Layer Test")
+    print("Ironcliw Platform Abstraction Layer Test")
     print("=" * 70)
     print()
     
@@ -76,7 +76,7 @@ async def test_platform_detection():
     try:
         paths = get_path_manager()
         print(f"[OK] Path manager initialized:")
-        print(f"   JARVIS Home: {paths.get_jarvis_home()}")
+        print(f"   Ironcliw Home: {paths.get_jarvis_home()}")
         print(f"   Cache: {paths.get_cache_dir()}")
         print(f"   Models: {paths.get_models_dir()}")
         print(f"   Logs: {paths.get_logs_dir()}")

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS Toronto Weather"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw Toronto Weather"""
 
 import asyncio
 import os
@@ -7,11 +7,11 @@ import sys
 from dotenv import load_dotenv
 
 # Add backend to path
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 async def test_jarvis_toronto():
-    """Test JARVIS weather response for Toronto"""
-    print("🌆 Testing JARVIS Toronto Weather")
+    """Test Ironcliw weather response for Toronto"""
+    print("🌆 Testing Ironcliw Toronto Weather")
     print("="*60)
     
     # Load environment variables
@@ -35,16 +35,16 @@ async def test_jarvis_toronto():
     else:
         print(f"❓ Location not clear in response")
     
-    # Test with JARVIS handler
-    print("\n🤖 Testing JARVIS Handler:")
-    from voice.jarvis_agent_voice import JARVISAgentVoice
-    jarvis = JARVISAgentVoice()
+    # Test with Ironcliw handler
+    print("\n🤖 Testing Ironcliw Handler:")
+    from voice.jarvis_agent_voice import IroncliwAgentVoice
+    jarvis = IroncliwAgentVoice()
     
     response = await jarvis._handle_weather_command("what's the weather today?")
-    print(f"JARVIS says: {response}")
+    print(f"Ironcliw says: {response}")
     
     if "Toronto" in response:
-        print("✅ SUCCESS: JARVIS now says Toronto!")
+        print("✅ SUCCESS: Ironcliw now says Toronto!")
     else:
         print(f"❓ Check location in response")
     

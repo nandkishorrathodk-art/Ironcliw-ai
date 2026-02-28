@@ -1,8 +1,8 @@
-# Reactor Core Pipeline Activation — Design Document
+﻿# Reactor Core Pipeline Activation — Design Document
 
 **Date:** 2026-02-15
 **Status:** Approved
-**Scope:** Cross-repo (JARVIS-AI-Agent, reactor-core, jarvis-prime)
+**Scope:** Cross-repo (Ironcliw-AI-Agent, reactor-core, jarvis-prime)
 
 ## Problem Statement
 
@@ -215,9 +215,9 @@ Reactor-Core owns execution. Supervisor monitors status.
 
 | Repo | File | Changes | Est. Lines |
 |---|---|---|---|
-| JARVIS | `backend/clients/reactor_core_client.py` | Fix paths, enrich health, weighted scoring, job polling, circuit breaker, resource gating | ~250 |
-| JARVIS | `unified_supervisor.py` | Replace DataFlywheelManager raw HTTP with client call, subscribe to events | ~40 |
-| JARVIS | `backend/core/telemetry_emitter.py` | Add correlation_id, emit TrinityEvent on flush | ~30 |
+| Ironcliw | `backend/clients/reactor_core_client.py` | Fix paths, enrich health, weighted scoring, job polling, circuit breaker, resource gating | ~250 |
+| Ironcliw | `unified_supervisor.py` | Replace DataFlywheelManager raw HTTP with client call, subscribe to events | ~40 |
+| Ironcliw | `backend/core/telemetry_emitter.py` | Add correlation_id, emit TrinityEvent on flush | ~30 |
 | Reactor-Core | `reactor_core/api/server.py` | Persist jobs, load on startup, atomic snapshots, resource check | ~100 |
 | Reactor-Core | `reactor_core/training/unified_pipeline.py` | Call DeploymentGate, emit events, memory monitoring, checkpoint | ~80 |
 | Reactor-Core | `reactor_core/eval/gatekeeper.py` | Add GGUF-specific checks, wire multi-criteria eval | ~60 |

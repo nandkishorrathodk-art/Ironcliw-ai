@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script to verify lock/unlock commands work properly in JARVIS
+Test script to verify lock/unlock commands work properly in Ironcliw
 """
 
 import asyncio
@@ -14,7 +14,7 @@ async def test_lock_unlock():
     """Test lock and unlock commands"""
 
     print("=" * 60)
-    print("JARVIS LOCK/UNLOCK TEST")
+    print("Ironcliw LOCK/UNLOCK TEST")
     print("=" * 60)
 
     # Test 1: Direct lock command
@@ -64,8 +64,8 @@ async def test_lock_unlock():
     except Exception as e:
         print(f"   ❌ Error: {e}")
 
-    # Test 4: Check JARVIS voice handler
-    print("\n4. Checking JARVIS voice handler routing...")
+    # Test 4: Check Ironcliw voice handler
+    print("\n4. Checking Ironcliw voice handler routing...")
     try:
         # Check the code to see if our fix is in place
         with open('backend/voice/jarvis_agent_voice.py', 'r') as f:
@@ -91,8 +91,8 @@ async def test_lock_unlock():
     print("1. Lock command works ✅")
     print("2. Commands are classified correctly")
     print("3. Handler processes commands successfully")
-    print("4. JARVIS voice handler has the bypass code")
-    print("\nWhen you say 'lock my screen' to JARVIS, it should now:")
+    print("4. Ironcliw voice handler has the bypass code")
+    print("\nWhen you say 'lock my screen' to Ironcliw, it should now:")
     print("- Skip vision analysis")
     print("- Execute the lock command immediately")
     print("- Respond with 'Locking your screen now, Sir' or similar")

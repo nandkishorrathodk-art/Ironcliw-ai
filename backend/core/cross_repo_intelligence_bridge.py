@@ -1,19 +1,19 @@
-"""
-Cross-Repository Intelligence Bridge for JARVIS
+﻿"""
+Cross-Repository Intelligence Bridge for Ironcliw
 ================================================
 
 Integrates Repository Intelligence with the cross-repo event system,
 enabling seamless communication of codebase context between:
-- JARVIS-AI-Agent (main orchestrator)
-- JARVIS Prime (hybrid inference)
+- Ironcliw-AI-Agent (main orchestrator)
+- Ironcliw Prime (hybrid inference)
 - Reactor Core (training pipeline)
 
 This bridge:
 - Emits repository intelligence events to the event bus
-- Provides repository context to JARVIS Prime for better inference
+- Provides repository context to Ironcliw Prime for better inference
 - Notifies Reactor Core of codebase changes for adaptive training
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -53,22 +53,22 @@ def _get_env_bool(key: str, default: bool = False) -> bool:
 class CrossRepoBridgeConfig:
     """Configuration for the cross-repo intelligence bridge."""
     enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_CROSS_REPO_BRIDGE_ENABLED", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_CROSS_REPO_BRIDGE_ENABLED", True)
     )
     state_dir: Path = field(
-        default_factory=lambda: _get_env_path("JARVIS_CROSS_REPO_DIR", "~/.jarvis/cross_repo")
+        default_factory=lambda: _get_env_path("Ironcliw_CROSS_REPO_DIR", "~/.jarvis/cross_repo")
     )
     events_file: str = field(
-        default_factory=lambda: _get_env("JARVIS_REPO_EVENTS_FILE", "repo_intelligence_events.json")
+        default_factory=lambda: _get_env("Ironcliw_REPO_EVENTS_FILE", "repo_intelligence_events.json")
     )
     max_events_stored: int = field(
-        default_factory=lambda: int(_get_env("JARVIS_MAX_REPO_EVENTS", "100"))
+        default_factory=lambda: int(_get_env("Ironcliw_MAX_REPO_EVENTS", "100"))
     )
     emit_to_prime: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_EMIT_TO_PRIME", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_EMIT_TO_PRIME", True)
     )
     emit_to_reactor: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_EMIT_TO_REACTOR", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_EMIT_TO_REACTOR", True)
     )
 
 
@@ -118,7 +118,7 @@ class CrossRepoIntelligenceBridge:
 
     This class:
     1. Listens for repository intelligence events
-    2. Writes them to shared state files for JARVIS Prime and Reactor Core
+    2. Writes them to shared state files for Ironcliw Prime and Reactor Core
     3. Optionally sends via WebSocket if available
     """
 
@@ -219,8 +219,8 @@ class CrossRepoIntelligenceBridge:
             logger.warning(f"Failed to persist events: {e}")
 
     async def _notify_consumers(self, event: RepoIntelligenceEvent) -> None:
-        """Notify JARVIS Prime and Reactor Core of the event."""
-        # Write to JARVIS Prime state if enabled
+        """Notify Ironcliw Prime and Reactor Core of the event."""
+        # Write to Ironcliw Prime state if enabled
         if self.config.emit_to_prime:
             await self._write_prime_state(event)
 
@@ -229,7 +229,7 @@ class CrossRepoIntelligenceBridge:
             await self._write_reactor_state(event)
 
     async def _write_prime_state(self, event: RepoIntelligenceEvent) -> None:
-        """Write event to JARVIS Prime shared state."""
+        """Write event to Ironcliw Prime shared state."""
         try:
             prime_state_file = self.config.state_dir / "repo_intel_for_prime.json"
 
@@ -305,7 +305,7 @@ class CrossRepoIntelligenceBridge:
 
     async def get_repo_context_for_prime(self) -> Dict[str, Any]:
         """
-        Get repository context formatted for JARVIS Prime.
+        Get repository context formatted for Ironcliw Prime.
 
         This provides the context that Prime can use for better routing
         and inference decisions.
@@ -368,7 +368,7 @@ async def hook_repository_intelligence() -> None:
     """
     Hook into the Repository Intelligence system to emit events automatically.
 
-    Call this during JARVIS startup to enable automatic event emission.
+    Call this during Ironcliw startup to enable automatic event emission.
     """
     try:
         from backend.intelligence.repository_intelligence import (

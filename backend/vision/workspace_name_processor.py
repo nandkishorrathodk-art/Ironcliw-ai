@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Workspace Name Processor
 Dynamically replaces generic "Desktop N" references with actual workspace names
@@ -70,7 +70,7 @@ class WorkspaceNameProcessor:
         # Check applications list
         apps = space_info.get('applications', [])
         if apps:
-            # Check for JARVIS first
+            # Check for Ironcliw first
             for app in apps:
                 if 'jarvis' in app.lower():
                     return 'J.A.R.V.I.S. interface'
@@ -158,7 +158,7 @@ _processor = WorkspaceNameProcessor()
 
 def process_jarvis_response(response: str, spaces_data: Dict = None) -> str:
     """
-    Global function to process JARVIS responses
+    Global function to process Ironcliw responses
     """
     return _processor.process_response(response, spaces_data)
 

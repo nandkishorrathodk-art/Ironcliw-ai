@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Dynamic App Controller for JARVIS
+Dynamic App Controller for Ironcliw
 Dynamically discovers and controls all macOS applications without hardcoding
 """
 

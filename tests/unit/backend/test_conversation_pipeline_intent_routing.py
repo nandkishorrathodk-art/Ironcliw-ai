@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 
 import pytest
 
@@ -178,7 +178,7 @@ async def test_handle_authenticate_turn_timeout_recovers_mode(monkeypatch):
     )
     pipeline._session = ConversationSession()
     pipeline._session.add_turn("user", "unlock my screen")
-    monkeypatch.setenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "0.01")
+    monkeypatch.setenv("Ironcliw_BIOMETRIC_AUTH_TIMEOUT", "0.01")
 
     handled = await pipeline._handle_authenticate_turn("unlock my screen")
 

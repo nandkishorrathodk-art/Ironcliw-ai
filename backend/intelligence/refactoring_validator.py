@@ -1,4 +1,4 @@
-"""
+﻿"""
 Refactoring Validator v1.0
 ==========================
 
@@ -13,7 +13,7 @@ Features:
 - Import validation
 - Reference count verification
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

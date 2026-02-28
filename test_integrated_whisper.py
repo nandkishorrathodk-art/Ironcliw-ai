@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the integrated Whisper STT fix
 """
@@ -14,10 +14,10 @@ print("3. Automatic Whisper model loading on failure")
 
 print("\n📢 TEST INSTRUCTIONS:")
 print("-"*40)
-print("Say: 'Hey JARVIS, unlock my screen'")
+print("Say: 'Hey Ironcliw, unlock my screen'")
 print()
 print("Expected Results:")
-print("✅ Wake word: 'Hey JARVIS' detected")
+print("✅ Wake word: 'Hey Ironcliw' detected")
 print("✅ Command: 'unlock my screen' (NOT '[transcription failed]')")
 print("✅ Speaker: 'Derek J. Russell' identified")
 print("✅ Response: 'Of course, Derek'")
@@ -31,6 +31,6 @@ print("• No more '[transcription failed]' errors")
 print("• Your voice biometric works with accurate transcription")
 
 print("\n" + "="*60)
-print("🎯 JARVIS is running with integrated Whisper STT")
-print("Test it now by saying: 'Hey JARVIS, unlock my screen'")
+print("🎯 Ironcliw is running with integrated Whisper STT")
+print("Test it now by saying: 'Hey Ironcliw, unlock my screen'")
 print("="*60)

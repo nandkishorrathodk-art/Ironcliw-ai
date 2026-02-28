@@ -1,8 +1,8 @@
-# JARVIS Windows Installation Guide
+﻿# Ironcliw Windows Installation Guide
 
 ## Overview
 
-This guide will walk you through installing JARVIS AI Assistant on Windows 10/11. The Windows port maintains feature parity with the macOS version while using Windows-native APIs and technologies.
+This guide will walk you through installing Ironcliw AI Assistant on Windows 10/11. The Windows port maintains feature parity with the macOS version while using Windows-native APIs and technologies.
 
 **Platform Support:**
 - ✅ Windows 10 (version 1809+)
@@ -36,7 +36,7 @@ This guide will walk you through installing JARVIS AI Assistant on Windows 10/11
 
 ### 1. Install Python 3.11+
 
-JARVIS requires Python 3.11 or later (3.12 recommended).
+Ironcliw requires Python 3.11 or later (3.12 recommended).
 
 **Option A: Winget (Recommended)**
 ```powershell
@@ -110,14 +110,14 @@ git --version
 
 ## Automated Installation
 
-The fastest way to get JARVIS running on Windows.
+The fastest way to get Ironcliw running on Windows.
 
 ### Step 1: Clone Repository
 
 ```powershell
-# Clone JARVIS repository
-git clone https://github.com/drussell23/JARVIS.git
-cd JARVIS
+# Clone Ironcliw repository
+git clone https://github.com/drussell23/Ironcliw.git
+cd Ironcliw
 ```
 
 ### Step 2: Run Installation Script
@@ -165,8 +165,8 @@ If you prefer step-by-step manual installation or the automated script failed.
 ### Step 1: Clone Repository
 
 ```powershell
-git clone https://github.com/drussell23/JARVIS.git
-cd JARVIS
+git clone https://github.com/drussell23/Ironcliw.git
+cd Ironcliw
 ```
 
 ### Step 2: Create Virtual Environment
@@ -231,14 +231,14 @@ ANTHROPIC_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here  # Optional
 
 # Platform detection (auto-detected, but can override)
-JARVIS_PLATFORM=windows
+Ironcliw_PLATFORM=windows
 
 # Windows-specific settings
 WINDOWS_AUDIO_DEVICE=default  # Or specific device name
 WINDOWS_STARTUP_MODE=normal   # Options: normal, minimal, full
 
 # Authentication (bypassed for MVP)
-JARVIS_AUTH_BYPASS=true
+Ironcliw_AUTH_BYPASS=true
 ```
 
 ### Step 6: Create Required Directories
@@ -277,36 +277,36 @@ cd ..\..\..
 
 ### 1. Configure Windows Firewall
 
-JARVIS needs to accept connections on:
+Ironcliw needs to accept connections on:
 - Port 8010 (Backend API)
 - Port 3000 (Frontend UI)
-- Port 8000 (JARVIS-Prime - if using Trinity)
+- Port 8000 (Ironcliw-Prime - if using Trinity)
 - Port 8090 (Reactor-Core - if using Trinity)
 
 **Option A: Allow via Windows Defender (Recommended)**
 
 Run as Administrator:
 ```powershell
-New-NetFirewallRule -DisplayName "JARVIS Backend" -Direction Inbound -LocalPort 8010 -Protocol TCP -Action Allow
-New-NetFirewallRule -DisplayName "JARVIS Frontend" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Ironcliw Backend" -Direction Inbound -LocalPort 8010 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Ironcliw Frontend" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
 ```
 
 **Option B: Manual Configuration**
 1. Open Windows Defender Firewall
 2. Advanced Settings → Inbound Rules → New Rule
 3. Port → TCP → Specific local ports: 8010,3000,8000,8090
-4. Allow the connection → Apply to all profiles → Name: "JARVIS"
+4. Allow the connection → Apply to all profiles → Name: "Ironcliw"
 
 ### 2. Set Up Task Scheduler (Auto-Start)
 
-To make JARVIS start on boot:
+To make Ironcliw start on boot:
 
 ```powershell
 # Run as Administrator
 python unified_supervisor.py --install-watchdog
 ```
 
-This creates a Windows Task Scheduler task named `JARVIS\Supervisor` that:
+This creates a Windows Task Scheduler task named `Ironcliw\Supervisor` that:
 - Runs on system startup
 - Runs on user logon
 - Restarts on failure
@@ -314,14 +314,14 @@ This creates a Windows Task Scheduler task named `JARVIS\Supervisor` that:
 
 **Verify:**
 ```powershell
-schtasks /Query /TN "JARVIS\Supervisor"
+schtasks /Query /TN "Ironcliw\Supervisor"
 ```
 
 ### 3. Configure UAC (Optional)
 
-JARVIS may request UAC elevation for certain operations (system-level control). You can:
+Ironcliw may request UAC elevation for certain operations (system-level control). You can:
 
-**Option A:** Run JARVIS elevated (Run as Administrator)
+**Option A:** Run Ironcliw elevated (Run as Administrator)
 ```powershell
 # Right-click PowerShell → Run as Administrator
 python unified_supervisor.py
@@ -382,7 +382,7 @@ If using Google Cloud Platform for ML inference:
 
 # Check version
 python unified_supervisor.py --version
-# Output: JARVIS Unified Supervisor v19.6.0+ (Windows x64)
+# Output: Ironcliw Unified Supervisor v19.6.0+ (Windows x64)
 
 # Run platform test
 python unified_supervisor.py --test
@@ -396,13 +396,13 @@ python unified_supervisor.py --status
 ### Full Startup Test
 
 ```powershell
-# Start JARVIS supervisor
+# Start Ironcliw supervisor
 python unified_supervisor.py
 ```
 
 **Expected Output:**
 ```
-🧠 JARVIS Unified Supervisor v19.6.0+
+🧠 Ironcliw Unified Supervisor v19.6.0+
 📍 Platform: Windows 11 (x64)
 🐍 Python: 3.12.1
 📁 Data Directory: C:\Users\<you>\.jarvis
@@ -427,7 +427,7 @@ python unified_supervisor.py
 ✓ Backend listening on http://localhost:8010
 
 [System Ready]
-✅ JARVIS is online!
+✅ Ironcliw is online!
 ```
 
 ### Test Backend API
@@ -456,7 +456,7 @@ curl -X POST http://localhost:8010/api/command `
 
 2. Open browser: http://localhost:3000
 
-3. You should see JARVIS loading screen → System Ready → UI
+3. You should see Ironcliw loading screen → System Ready → UI
 
 ### Test C# Native Layer
 
@@ -544,8 +544,8 @@ netstat -ano | findstr :8010
 # Kill the process (replace <PID> with actual PID from above)
 taskkill /PID <PID> /F
 
-# Or change JARVIS port in .env
-# JARVIS_BACKEND_PORT=8011
+# Or change Ironcliw port in .env
+# Ironcliw_BACKEND_PORT=8011
 ```
 
 #### 6. Emoji/Unicode characters show as � or ???
@@ -559,7 +559,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 # Or set environment variable
 $env:PYTHONIOENCODING="utf-8"
 
-# Or run JARVIS with UTF-8
+# Or run Ironcliw with UTF-8
 $env:PYTHONIOENCODING="utf-8"; python unified_supervisor.py
 ```
 
@@ -567,7 +567,7 @@ $env:PYTHONIOENCODING="utf-8"; python unified_supervisor.py
 
 **Solution:** Rust extensions are optional. Skip them if you encounter build errors:
 ```powershell
-# JARVIS works without Rust extensions
+# Ironcliw works without Rust extensions
 # Just skip the Rust build step
 
 # If you really need them, see:
@@ -583,7 +583,7 @@ For more troubleshooting, see: [Troubleshooting Guide](./troubleshooting.md)
 ### Basic Usage
 
 ```powershell
-# Start JARVIS
+# Start Ironcliw
 python unified_supervisor.py
 
 # With frontend
@@ -627,8 +627,8 @@ mkdocs serve
 
 ### Community
 
-- **GitHub Issues:** https://github.com/drussell23/JARVIS/issues
-- **Discussions:** https://github.com/drussell23/JARVIS/discussions
+- **GitHub Issues:** https://github.com/drussell23/Ironcliw/issues
+- **Discussions:** https://github.com/drussell23/Ironcliw/discussions
 - **Discord:** [Coming Soon]
 
 ---
@@ -665,16 +665,16 @@ python unified_supervisor.py
 
 ### Firewall
 
-Keep Windows Firewall enabled. Only allow JARVIS ports (8010, 3000) and only from trusted sources (localhost or your LAN).
+Keep Windows Firewall enabled. Only allow Ironcliw ports (8010, 3000) and only from trusted sources (localhost or your LAN).
 
 ---
 
-## Updating JARVIS
+## Updating Ironcliw
 
 ### Automated Update
 
 ```powershell
-# JARVIS has built-in auto-update (Zero-Touch Update System)
+# Ironcliw has built-in auto-update (Zero-Touch Update System)
 # Just leave it running, it will detect and apply updates automatically
 ```
 
@@ -696,22 +696,22 @@ cd backend\windows_native
 .\build.ps1
 cd ..\..
 
-# Restart JARVIS
+# Restart Ironcliw
 python unified_supervisor.py --restart
 ```
 
 ---
 
-## Uninstalling JARVIS
+## Uninstalling Ironcliw
 
 ### Remove Software
 
 ```powershell
-# Stop JARVIS
+# Stop Ironcliw
 python unified_supervisor.py --shutdown
 
 # Remove scheduled task
-schtasks /Delete /TN "JARVIS\Supervisor" /F
+schtasks /Delete /TN "Ironcliw\Supervisor" /F
 
 # Remove virtual environment
 Remove-Item -Recurse -Force .venv
@@ -720,12 +720,12 @@ Remove-Item -Recurse -Force .venv
 Remove-Item -Recurse -Force $env:USERPROFILE\.jarvis
 
 # Remove firewall rules (optional)
-Remove-NetFirewallRule -DisplayName "JARVIS Backend"
-Remove-NetFirewallRule -DisplayName "JARVIS Frontend"
+Remove-NetFirewallRule -DisplayName "Ironcliw Backend"
+Remove-NetFirewallRule -DisplayName "Ironcliw Frontend"
 
 # Uninstall repository (optional)
 cd ..
-Remove-Item -Recurse -Force JARVIS
+Remove-Item -Recurse -Force Ironcliw
 ```
 
 ### Keep Configuration
@@ -743,7 +743,7 @@ If you encounter issues not covered in this guide:
 
 1. Check [Troubleshooting Guide](./troubleshooting.md)
 2. Check [Known Limitations](./known_limitations.md)
-3. Search [GitHub Issues](https://github.com/drussell23/JARVIS/issues)
+3. Search [GitHub Issues](https://github.com/drussell23/Ironcliw/issues)
 4. Open a new issue with:
    - Windows version (`winver`)
    - Python version (`python --version`)
@@ -754,7 +754,7 @@ If you encounter issues not covered in this guide:
 
 ## Congratulations!
 
-You now have JARVIS running on Windows! 🎉
+You now have Ironcliw running on Windows! 🎉
 
 Next steps:
 1. Explore the frontend UI (http://localhost:3000)
@@ -762,4 +762,4 @@ Next steps:
 3. Read the [User Guide](../guides/user_guide.md)
 4. Configure advanced features
 
-**Welcome to the JARVIS ecosystem!** 🤖
+**Welcome to the Ironcliw ecosystem!** 🤖

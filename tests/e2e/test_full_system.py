@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test full system startup
 """
@@ -12,7 +12,7 @@ import sys
 
 def test_full_system():
     """Test full system startup"""
-    print("=== JARVIS System Test ===\n")
+    print("=== Ironcliw System Test ===\n")
     
     # Kill any existing processes
     print("1. Cleaning up existing processes...")

@@ -1,7 +1,7 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 ###############################################################################
-# JARVIS Status Checker & Auto-Starter
+# Ironcliw Status Checker & Auto-Starter
 ###############################################################################
 
 set -e
@@ -28,7 +28,7 @@ print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 # Check Status
 ###############################################################################
 
-print_header "JARVIS System Status Check"
+print_header "Ironcliw System Status Check"
 
 # Check if backend is running
 if pgrep -f "python.*main.py\|python.*start_system" > /dev/null 2>&1; then
@@ -107,17 +107,17 @@ echo ""
 print_header "Diagnosis"
 
 if [ "$BACKEND_RUNNING" = true ] && [ "$API_RESPONDING" = true ]; then
-    print_success "JARVIS is fully operational!"
+    print_success "Ironcliw is fully operational!"
     echo ""
     print_info "Voice unlock should work. Try:"
-    echo "  1. Say: 'Hey JARVIS'"
+    echo "  1. Say: 'Hey Ironcliw'"
     echo "  2. Wait for activation"
     echo "  3. Say: 'unlock my screen'"
     exit 0
 fi
 
 if [ "$BACKEND_RUNNING" = false ]; then
-    print_error "JARVIS backend is not running - this is why voice commands fail!"
+    print_error "Ironcliw backend is not running - this is why voice commands fail!"
     echo ""
     print_info "To fix:"
     echo "  Option 1 (Full system):"
@@ -127,10 +127,10 @@ if [ "$BACKEND_RUNNING" = false ]; then
     echo "    cd backend && python main.py"
     echo ""
 
-    read -p "Would you like to start JARVIS now? (y/n) " -n 1 -r
+    read -p "Would you like to start Ironcliw now? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Starting JARVIS backend..."
+        print_info "Starting Ironcliw backend..."
 
         # Start Cloud SQL Proxy if not running
         if [ "$PROXY_RUNNING" = false ]; then
@@ -145,19 +145,19 @@ if [ "$BACKEND_RUNNING" = false ]; then
         fi
 
         # Start backend
-        print_info "Starting JARVIS backend..."
+        print_info "Starting Ironcliw backend..."
         python3 start_system.py &
 
         # Wait for startup
-        print_info "Waiting for JARVIS to initialize (30s)..."
+        print_info "Waiting for Ironcliw to initialize (30s)..."
         sleep 30
 
         # Check if it started
         if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
-            print_success "JARVIS started successfully!"
+            print_success "Ironcliw started successfully!"
             print_info "You can now use voice commands"
         else
-            print_error "JARVIS failed to start. Check logs:"
+            print_error "Ironcliw failed to start. Check logs:"
             echo "  tail -f jarvis_startup.log"
         fi
     fi

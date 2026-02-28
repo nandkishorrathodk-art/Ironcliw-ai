@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS System Control Integration
-Integrates enhanced macOS system control with JARVIS AI assistant
+Ironcliw System Control Integration
+Integrates enhanced macOS system control with Ironcliw AI assistant
 """
 
 import asyncio
@@ -21,15 +21,15 @@ from system_control_bridge import (
     SystemControlResult
 )
 
-# Import JARVIS components
-from jarvis_swift_integrated_assistant import JARVISSwiftIntegratedAssistant
+# Import Ironcliw components
+from jarvis_swift_integrated_assistant import IroncliwSwiftIntegratedAssistant
 from vision.proactive_vision_assistant import IntegratedResponse
 
 logger = logging.getLogger(__name__)
 
-class JARVISSystemControlAssistant(JARVISSwiftIntegratedAssistant):
+class IroncliwSystemControlAssistant(IroncliwSwiftIntegratedAssistant):
     """
-    Enhanced JARVIS assistant with comprehensive system control capabilities
+    Enhanced Ironcliw assistant with comprehensive system control capabilities
     """
     
     def __init__(self, user_name: str = "Sir"):
@@ -340,11 +340,11 @@ class JARVISSystemControlAssistant(JARVISSwiftIntegratedAssistant):
 
 # Example usage
 async def test_system_control_integration():
-    """Test JARVIS with system control integration"""
-    print("🚀 Testing JARVIS System Control Integration")
+    """Test Ironcliw with system control integration"""
+    print("🚀 Testing Ironcliw System Control Integration")
     print("=" * 50)
     
-    jarvis = JARVISSystemControlAssistant("Sir")
+    jarvis = IroncliwSystemControlAssistant("Sir")
     
     # Get capabilities
     capabilities = jarvis.get_system_capabilities()

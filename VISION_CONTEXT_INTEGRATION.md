@@ -1,4 +1,4 @@
-# Vision + Context Intelligence Integration
+﻿# Vision + Context Intelligence Integration
 
 ## Overview
 
@@ -14,7 +14,7 @@ The **Vision Intelligence** and **Context Intelligence** systems now work **toge
 
 **User:** "can you see my terminal in the other window?"
 
-**JARVIS (Vision Only):**
+**Ironcliw (Vision Only):**
 ```
 Based on the workspace information and visual access across all desktops,
 I can see that Desktop 2 has a Terminal window available...
@@ -26,7 +26,7 @@ I can see that Desktop 2 has a Terminal window available...
 
 **User:** "can you see my terminal in the other window?"
 
-**JARVIS (Vision + Context):**
+**Ironcliw (Vision + Context):**
 ```
 Yes, I can see Terminal in Space 2, Sir. I notice there's an error:
 ModuleNotFoundError: No module named 'requests'
@@ -165,7 +165,7 @@ Would you like me to explain what's happening in detail?
 ```
 User: "explain in detail"
 
-JARVIS: **Terminal (Space 2)**
+Ironcliw: **Terminal (Space 2)**
 Working directory: `/Users/project`
 
 Last command: `python app.py`
@@ -272,11 +272,11 @@ No configuration needed! The integration is automatic when:
 
 ### Manual Test
 
-1. Start JARVIS: `python start_system.py`
+1. Start Ironcliw: `python start_system.py`
 2. Open Terminal in another desktop space
 3. Run a command that causes an error: `python -c "import nonexistent"`
-4. Ask JARVIS: "can you see my terminal in the other window?"
-5. Expected: JARVIS mentions the specific error
+4. Ask Ironcliw: "can you see my terminal in the other window?"
+5. Expected: Ironcliw mentions the specific error
 
 ### Logs to Check
 
@@ -304,7 +304,7 @@ Potential improvements:
 The integration creates a **unified intelligence system**:
 
 - **Vision Intelligence** = Claude's eyes (what's on screen)
-- **Context Intelligence** = JARVIS's memory (structured state)
+- **Context Intelligence** = Ironcliw's memory (structured state)
 - **AsyncPipeline** = Orchestrator (combines both)
 
 Result: **Accurate, proactive, context-aware responses** that truly understand your workspace! 🎉

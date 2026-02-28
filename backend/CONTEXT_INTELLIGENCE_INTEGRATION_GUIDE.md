@@ -1,8 +1,8 @@
-# Context Intelligence Integration Guide
+﻿# Context Intelligence Integration Guide
 
 ## Overview
 
-The Context Intelligence System is now fully integrated with JARVIS to handle the scenario where commands are issued while the screen is locked. This guide explains how the integration works and how to use it.
+The Context Intelligence System is now fully integrated with Ironcliw to handle the scenario where commands are issued while the screen is locked. This guide explains how the integration works and how to use it.
 
 ## Integration Architecture
 
@@ -47,7 +47,7 @@ Commands are executed through the existing `unified_command_processor.py` via th
 
 ### 1. **Detection Phase**
 ```python
-# User says: "JARVIS, open Safari and search for dogs"
+# User says: "Ironcliw, open Safari and search for dogs"
 
 # System detects screen is locked
 screen_state = await screen_detector.get_screen_state()
@@ -227,4 +227,4 @@ audit = engine.get_audit_trail(hours=24)
 
 ---
 
-The Context Intelligence System transforms JARVIS into a truly intelligent assistant that understands and adapts to system state, providing a seamless experience even when the screen is locked.
+The Context Intelligence System transforms Ironcliw into a truly intelligent assistant that understands and adapts to system state, providing a seamless experience even when the screen is locked.

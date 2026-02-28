@@ -1,8 +1,8 @@
-"""
+﻿"""
 Voice Authentication LangChain Tools
 
 Enterprise-grade LangChain tools for voice authentication operations.
-All tools are registered with the JARVIS tool registry and can be
+All tools are registered with the Ironcliw tool registry and can be
 invoked by the orchestration system.
 
 Features:

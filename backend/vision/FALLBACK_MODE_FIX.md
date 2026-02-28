@@ -1,8 +1,8 @@
-# ✅ Fixed: "Video streaming using fallback mode" Warning
+﻿# ✅ Fixed: "Video streaming using fallback mode" Warning
 
 ## Problem
 
-After installing PyObjC frameworks for AVFoundation support, JARVIS was still showing:
+After installing PyObjC frameworks for AVFoundation support, Ironcliw was still showing:
 ```
 ⚠ Video streaming using fallback mode
 ```
@@ -290,17 +290,17 @@ No configuration needed - works out of the box!
 **Optional environment variables:**
 ```bash
 # Capture settings
-export JARVIS_CAPTURE_DISPLAY_ID=0
-export JARVIS_CAPTURE_RESOLUTION=1920x1080
-export JARVIS_CAPTURE_FPS=30
+export Ironcliw_CAPTURE_DISPLAY_ID=0
+export Ironcliw_CAPTURE_RESOLUTION=1920x1080
+export Ironcliw_CAPTURE_FPS=30
 
 # Performance
-export JARVIS_CAPTURE_ADAPTIVE=true
-export JARVIS_CAPTURE_MAX_MEMORY_MB=500
+export Ironcliw_CAPTURE_ADAPTIVE=true
+export Ironcliw_CAPTURE_MAX_MEMORY_MB=500
 
 # Diagnostics
-export JARVIS_CAPTURE_DIAGNOSTICS=true
-export JARVIS_CAPTURE_LOG_METRICS=false
+export Ironcliw_CAPTURE_DIAGNOSTICS=true
+export Ironcliw_CAPTURE_LOG_METRICS=false
 ```
 
 ---
@@ -399,7 +399,7 @@ print(check_capture_availability())
 
 ## Next Steps
 
-The fallback warning is now fixed. When you run JARVIS, you should see:
+The fallback warning is now fixed. When you run Ironcliw, you should see:
 
 ```
 ✓ Advanced macOS video capture available (v10.6)

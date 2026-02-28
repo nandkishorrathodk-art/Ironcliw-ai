@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Cost Client v1.0 - Cross-Repo Cost Management
 ======================================================
 
 This client allows jarvis-prime and reactor-core to report and track costs
-through JARVIS's centralized Cost Sync system.
+through Ironcliw's centralized Cost Sync system.
 
 Features:
 - Report API/inference costs to central budget tracker
@@ -21,7 +21,7 @@ Usage in jarvis-prime/reactor-core:
         result = await call_expensive_api()
         await client.report_api_cost(0.05)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 # File-based communication for cross-repo cost reporting
 COST_REPORT_DIR = Path.home() / ".jarvis" / "cross_repo" / "costs"
 
-# HTTP endpoint for live cost sync (when JARVIS API is available)  
-COST_SYNC_API_URL = os.getenv("JARVIS_COST_SYNC_URL", "http://127.0.0.1:8010/api/cost-sync")
+# HTTP endpoint for live cost sync (when Ironcliw API is available)  
+COST_SYNC_API_URL = os.getenv("Ironcliw_COST_SYNC_URL", "http://127.0.0.1:8010/api/cost-sync")
 
 # Default repo name detection
 def _detect_repo_name() -> str:
@@ -70,13 +70,13 @@ class TrinityCostClient:
     Cross-repo cost management client.
     
     Enables jarvis-prime and reactor-core to:
-    1. Report costs to JARVIS's central budget tracker
+    1. Report costs to Ironcliw's central budget tracker
     2. Check remaining budget before expensive operations
     3. Receive budget alerts
     
     Communication methods (in priority order):
-    1. Direct import (if running in JARVIS process)
-    2. HTTP API (when JARVIS API server is available)
+    1. Direct import (if running in Ironcliw process)
+    2. HTTP API (when Ironcliw API server is available)
     3. File-based (always available fallback)
     """
     
@@ -105,7 +105,7 @@ class TrinityCostClient:
         logger.info(f"[TrinityCostClient] Initialized for {self.repo_name}")
     
     async def _get_direct_sync(self):
-        """Try to get direct access to JARVIS cost sync."""
+        """Try to get direct access to Ironcliw cost sync."""
         if self._tried_direct:
             return self._direct_sync
         
@@ -114,9 +114,9 @@ class TrinityCostClient:
         try:
             from backend.core.cross_repo_cost_sync import get_cross_repo_cost_sync
             self._direct_sync = await get_cross_repo_cost_sync(self.repo_name)
-            logger.info("[TrinityCostClient] Using direct JARVIS Cost Sync")
+            logger.info("[TrinityCostClient] Using direct Ironcliw Cost Sync")
         except ImportError:
-            logger.debug("[TrinityCostClient] JARVIS Cost Sync not available directly")
+            logger.debug("[TrinityCostClient] Ironcliw Cost Sync not available directly")
         
         return self._direct_sync
     

@@ -1,8 +1,8 @@
-# JARVIS M1-Optimized Memory Management System
+﻿# Ironcliw M1-Optimized Memory Management System
 
 ## Overview
 
-The JARVIS Memory Management System is a proactive, AI-driven solution designed specifically for M1 MacBooks with 16GB RAM. It prevents crashes and ensures smooth operation by intelligently managing component lifecycles based on real-time memory conditions.
+The Ironcliw Memory Management System is a proactive, AI-driven solution designed specifically for M1 MacBooks with 16GB RAM. It prevents crashes and ensures smooth operation by intelligently managing component lifecycles based on real-time memory conditions.
 
 ## 🚀 Key Features
 

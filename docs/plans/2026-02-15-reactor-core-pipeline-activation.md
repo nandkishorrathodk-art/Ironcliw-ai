@@ -1,15 +1,15 @@
-# Reactor Core Pipeline Activation — Implementation Plan
+﻿# Reactor Core Pipeline Activation — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Activate the end-to-end training pipeline: telemetry -> ingestion -> training -> deployment gate -> deploy -> probation -> feedback, across JARVIS-AI-Agent, reactor-core, and jarvis-prime.
+**Goal:** Activate the end-to-end training pipeline: telemetry -> ingestion -> training -> deployment gate -> deploy -> probation -> feedback, across Ironcliw-AI-Agent, reactor-core, and jarvis-prime.
 
 **Architecture:** Supervisor-driven activation. The unified_supervisor coordinates the loop via ReactorCoreClient. Reactor-Core owns job execution (survives supervisor restarts). Six specific wiring disconnects are fixed, then the pipeline is hardened with circuit breakers, quality-weighted triggers, deployment gates, post-deployment probation, resource awareness, and full observability via TrinityEventBus correlation IDs.
 
 **Tech Stack:** Python 3.9+, pytest + pytest-asyncio, aiohttp, FastAPI (reactor-core), llama-cpp-python (deployment gate), existing CircuitBreaker/TrinityEventBus/MemoryQuantizer/Gatekeeper/DeadManSwitch patterns.
 
 **Repos:**
-- JARVIS: `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent`
+- Ironcliw: `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent`
 - Reactor: `/Users/djrussell23/Documents/repos/reactor-core`
 - Prime: `/Users/djrussell23/Documents/repos/jarvis-prime`
 
@@ -41,7 +41,7 @@ Run:
 ```bash
 curl -s -X POST http://localhost:8090/api/v1/experiences/stream \
   -H "Content-Type: application/json" \
-  -d '{"experience": {"event_type": "INTERACTION", "user_input": "test query", "assistant_output": "test response", "source": "JARVIS_BODY", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}, "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "source": "jarvis_agent"}' | python3 -m json.tool
+  -d '{"experience": {"event_type": "INTERACTION", "user_input": "test query", "assistant_output": "test response", "source": "Ironcliw_BODY", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}, "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "source": "jarvis_agent"}' | python3 -m json.tool
 ```
 Expected: `{"accepted": true, "count": 1}`
 
@@ -166,7 +166,7 @@ class TestEndpointPaths:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py -v -x 2>&1 | head -60
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py -v -x 2>&1 | head -60
 ```
 Expected: FAIL — paths don't match (`/api/experiences/stream` != `/api/v1/experiences/stream`).
 
@@ -218,14 +218,14 @@ Paths to verify:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py -v -x 2>&1 | head -60
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py -v -x 2>&1 | head -60
 ```
 Expected: All 3 tests PASS.
 
 **Step 6: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && git add backend/clients/reactor_core_client.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "fix: correct endpoint path mismatches in ReactorCoreClient
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && git add backend/clients/reactor_core_client.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "fix: correct endpoint path mismatches in ReactorCoreClient
 
 ReactorCoreClient was sending to /api/experiences/stream (404) instead of
 /api/v1/experiences/stream, and /api/training/trigger instead of /api/v1/train.
@@ -323,7 +323,7 @@ class TestHealthCheckEnrichment:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthCheckEnrichment -v -x 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthCheckEnrichment -v -x 2>&1 | head -40
 ```
 Expected: FAIL — `_training_ready` attribute doesn't exist, `is_training_ready` property doesn't exist.
 
@@ -377,14 +377,14 @@ In the `health_check()` method, after `if response.status == 200:` (around line 
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthCheckEnrichment -v -x 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthCheckEnrichment -v -x 2>&1 | head -40
 ```
 Expected: All 3 tests PASS.
 
 **Step 6: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && git add backend/clients/reactor_core_client.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "feat: enrich ReactorCoreClient health check with training readiness
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && git add backend/clients/reactor_core_client.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "feat: enrich ReactorCoreClient health check with training readiness
 
 Parse training_ready, phase, and trinity_connected from Reactor-Core's
 /health response JSON. Expose is_training_ready property. Log phase
@@ -459,7 +459,7 @@ class TestHealthMonitorAutoTrigger:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthMonitorAutoTrigger -v -x 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthMonitorAutoTrigger -v -x 2>&1 | head -40
 ```
 Expected: FAIL — `_check_and_auto_trigger` doesn't exist.
 
@@ -521,7 +521,7 @@ In `_health_monitor_loop`, after `healthy = await self.health_check()`, add:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthMonitorAutoTrigger -v -x 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestHealthMonitorAutoTrigger -v -x 2>&1 | head -40
 ```
 Expected: All 4 tests PASS.
 
@@ -543,7 +543,7 @@ Search `unified_supervisor.py` for the DataFlywheelManager training trigger code
 **Step 7: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && git add backend/clients/reactor_core_client.py unified_supervisor.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "feat: add auto-trigger to health monitor, wire DataFlywheelManager through client
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && git add backend/clients/reactor_core_client.py unified_supervisor.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "feat: add auto-trigger to health monitor, wire DataFlywheelManager through client
 
 Health monitor now checks experience count after each successful health
 check and auto-triggers training when threshold is met. DataFlywheelManager
@@ -610,7 +610,7 @@ class TestJobPolling:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestJobPolling -v -x 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestJobPolling -v -x 2>&1 | head -40
 ```
 Expected: FAIL — `_poll_active_job` doesn't exist.
 
@@ -678,7 +678,7 @@ In `_health_monitor_loop`, after the auto-trigger call, add:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestJobPolling -v -x 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py::TestJobPolling -v -x 2>&1 | head -40
 ```
 Expected: All 4 tests PASS.
 
@@ -689,7 +689,7 @@ Verify the endpoint path used by `get_training_job()` matches Reactor-Core's rou
 **Step 7: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && git add backend/clients/reactor_core_client.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "feat: add training job polling to health monitor loop
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && git add backend/clients/reactor_core_client.py tests/unit/backend/clients/test_reactor_core_client.py && git commit -m "feat: add training job polling to health monitor loop
 
 Health monitor now polls active training jobs for completion/failure.
 Emits events and writes bridge data on state changes. Clears active
@@ -826,7 +826,7 @@ def write_deployment_feedback(
 
 **Step 5: Call `write_deployment_feedback` from the deployment handler**
 
-Find the existing deploy success/failure paths in `ReactorCoreWatcher` and call the function at each exit point. The `cross_repo_dir` should be `Path.home() / ".jarvis" / "cross_repo"` (or from environment `JARVIS_CROSS_REPO_DIR`).
+Find the existing deploy success/failure paths in `ReactorCoreWatcher` and call the function at each exit point. The `cross_repo_dir` should be `Path.home() / ".jarvis" / "cross_repo"` (or from environment `Ironcliw_CROSS_REPO_DIR`).
 
 **Step 6: Run tests to verify they pass**
 
@@ -1122,7 +1122,7 @@ Create: `reactor-core/reactor_core/deployment/gate.py`
 
 ```python
 """
-Deployment Gate — validates GGUF models before deployment to JARVIS Prime.
+Deployment Gate — validates GGUF models before deployment to Ironcliw Prime.
 
 Uses the existing Gatekeeper/ApprovalCriterion framework from reactor_core.eval.gatekeeper
 for extensible multi-criteria evaluation. v1 includes smoke tests (header, size, inference).
@@ -1171,7 +1171,7 @@ class GateResult:
 
 class DeploymentGate:
     """
-    Validates a GGUF model before deployment to JARVIS Prime.
+    Validates a GGUF model before deployment to Ironcliw Prime.
 
     v1 checks (smoke tests):
     - GGUF header magic + version
@@ -1440,7 +1440,7 @@ Check the serialization methods (`to_dict()` or equivalent). The `correlation_id
 **Step 3: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && git add backend/core/telemetry_emitter.py && git commit -m "feat: add correlation_id to TelemetryEvent for pipeline observability
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && git add backend/core/telemetry_emitter.py && git commit -m "feat: add correlation_id to TelemetryEvent for pipeline observability
 
 Every emitted experience now carries a UUID correlation_id that follows
 it through ingestion, training, deployment, and probation. Enables
@@ -1484,7 +1484,7 @@ class TestReactorPipelineE2E:
                     "event_type": "INTERACTION",
                     "user_input": "What is 2+2?",
                     "assistant_output": "4",
-                    "source": "JARVIS_BODY",
+                    "source": "Ironcliw_BODY",
                     "timestamp": datetime.now().isoformat(),
                     "confidence": 0.95,
                     "task_type": "math_simple",
@@ -1532,13 +1532,13 @@ class TestReactorPipelineE2E:
 
 Run:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/integration/test_reactor_pipeline_e2e.py -v -x -m "integration and e2e" 2>&1 | head -40
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/integration/test_reactor_pipeline_e2e.py -v -x -m "integration and e2e" 2>&1 | head -40
 ```
 
 **Step 3: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && git add tests/integration/test_reactor_pipeline_e2e.py && git commit -m "test: add end-to-end integration test for Reactor Core pipeline
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && git add tests/integration/test_reactor_pipeline_e2e.py && git commit -m "test: add end-to-end integration test for Reactor Core pipeline
 
 Verifies experiences flow to Reactor-Core, health endpoint returns
 training readiness, and ReactorCoreClient paths match server routes.
@@ -1655,15 +1655,15 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 After all tasks are complete:
 
 ```bash
-# JARVIS tests
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py -v 2>&1 | tail -20
+# Ironcliw tests
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/unit/backend/clients/test_reactor_core_client.py -v 2>&1 | tail -20
 
 # Reactor-Core tests
 cd /Users/djrussell23/Documents/repos/reactor-core && python3 -m pytest tests/ -v 2>&1 | tail -20
 
-# JARVIS Prime tests
+# Ironcliw Prime tests
 cd /Users/djrussell23/Documents/repos/jarvis-prime && python3 -m pytest tests/test_deployment_feedback.py -v 2>&1 | tail -20
 
 # Integration (requires Reactor-Core running)
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -m pytest tests/integration/test_reactor_pipeline_e2e.py -v -m "integration" 2>&1 | tail -20
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -m pytest tests/integration/test_reactor_pipeline_e2e.py -v -m "integration" 2>&1 | tail -20
 ```

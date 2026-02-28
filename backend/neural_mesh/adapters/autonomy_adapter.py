@@ -1,7 +1,7 @@
-"""
-JARVIS Neural Mesh - Autonomy Engine Adapter
+﻿"""
+Ironcliw Neural Mesh - Autonomy Engine Adapter
 
-Adapts the JARVIS Autonomy components (AutonomousAgent, LangGraphReasoningEngine,
+Adapts the Ironcliw Autonomy components (AutonomousAgent, LangGraphReasoningEngine,
 ToolOrchestrator, MemoryManager) for seamless integration with Neural Mesh.
 
 This adapter enables:
@@ -57,12 +57,12 @@ logger = logging.getLogger(__name__)
 
 
 class AutonomyComponentType(str, Enum):
-    """Types of autonomy components in JARVIS."""
+    """Types of autonomy components in Ironcliw."""
     AGENT = "agent"  # AutonomousAgent - main orchestrator
     REASONING = "reasoning"  # LangGraphReasoningEngine
     TOOLS = "tools"  # ToolOrchestrator
     MEMORY = "memory"  # MemoryManager
-    INTEGRATION = "integration"  # JARVISIntegrationManager
+    INTEGRATION = "integration"  # IroncliwIntegrationManager
 
 
 @dataclass
@@ -138,7 +138,7 @@ COMPONENT_CAPABILITIES: Dict[AutonomyComponentType, AutonomyCapabilities] = {
 
 class AutonomyEngineAdapter(BaseNeuralMeshAgent):
     """
-    Adapter for JARVIS Autonomy components to work with Neural Mesh.
+    Adapter for Ironcliw Autonomy components to work with Neural Mesh.
 
     This adapter wraps AutonomousAgent, LangGraphReasoningEngine, ToolOrchestrator,
     and MemoryManager, exposing their capabilities through Neural Mesh.

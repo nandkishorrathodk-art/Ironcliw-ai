@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Final CPU fix - Disable problematic components and verify 25% CPU target
 """
@@ -20,7 +20,7 @@ def apply_aggressive_limits():
     print("⚙️ Applying aggressive CPU limits...")
     
     # Create new .env with all limits
-    env_content = """# JARVIS Aggressive CPU Limits
+    env_content = """# Ironcliw Aggressive CPU Limits
 DISABLE_CONTINUOUS_LEARNING=true
 DISABLE_VISION_MONITORING=true
 DISABLE_ML_FEATURES=false
@@ -167,7 +167,7 @@ def verify_cpu_target():
         return False
 
 def main():
-    print("🚨 JARVIS Final CPU Fix")
+    print("🚨 Ironcliw Final CPU Fix")
     print("=" * 50)
     
     # 1. Kill everything

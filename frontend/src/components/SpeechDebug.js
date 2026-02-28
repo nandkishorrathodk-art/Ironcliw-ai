@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Speech Debug Panel v2.0
  * =======================
  * Advanced debugging component with:
@@ -60,7 +60,7 @@ const SpeechDebug = () => {
       if (availableVoices.length > 0) {
         setStatus(`${availableVoices.length} voices available`);
 
-        // Find best English voice (prefer Daniel for JARVIS)
+        // Find best English voice (prefer Daniel for Ironcliw)
         const danielVoice = availableVoices.find(v =>
           v.name.toLowerCase().includes('daniel')
         );
@@ -147,7 +147,7 @@ const SpeechDebug = () => {
     }, ...prev.slice(0, 9)]);
   };
 
-  const testSpeech = (text = "JARVIS speech test. Full autonomy activated. All systems online.") => {
+  const testSpeech = (text = "Ironcliw speech test. Full autonomy activated. All systems online.") => {
     console.log('[SpeechDebug] Testing speech:', text);
     console.log('[SpeechDebug] Selected voice:', selectedVoice?.name);
 
@@ -203,7 +203,7 @@ const SpeechDebug = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: "Backend speech test. JARVIS systems online."
+          text: "Backend speech test. Ironcliw systems online."
         }),
         signal: AbortSignal.timeout(10000)
       });

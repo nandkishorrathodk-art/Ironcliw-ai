@@ -1,9 +1,9 @@
-"""
-Dynamic LangChain Tool Registry for JARVIS
+﻿"""
+Dynamic LangChain Tool Registry for Ironcliw
 
 This module provides a sophisticated tool management system that:
 - Auto-discovers tools from the codebase
-- Dynamically wraps existing JARVIS capabilities as LangChain tools
+- Dynamically wraps existing Ironcliw capabilities as LangChain tools
 - Supports async tool execution
 - Provides tool composition and chaining
 - Integrates with the permission system
@@ -119,7 +119,7 @@ class ToolMetadata:
     category: ToolCategory
     risk_level: ToolRiskLevel
     version: str = "1.0.0"
-    author: str = "JARVIS"
+    author: str = "Ironcliw"
     tags: List[str] = field(default_factory=list)
     requires_permission: bool = True
     execution_mode: ToolExecutionMode = ToolExecutionMode.ASYNC
@@ -268,9 +268,9 @@ class ToolSchemaGenerator:
 # Base Tool Classes
 # ============================================================================
 
-class JARVISTool(ABC):
+class IroncliwTool(ABC):
     """
-    Base class for JARVIS tools.
+    Base class for Ironcliw tools.
 
     Provides common functionality for all tools including:
     - Async execution support
@@ -437,11 +437,11 @@ class JARVISTool(ABC):
         if not LANGCHAIN_AVAILABLE:
             return None
 
-        return JARVISLangChainTool(jarvis_tool=self)
+        return IroncliwLangChainTool(jarvis_tool=self)
 
 
-class JARVISLangChainTool(BaseTool):
-    """LangChain wrapper for JARVIS tools."""
+class IroncliwLangChainTool(BaseTool):
+    """LangChain wrapper for Ironcliw tools."""
 
     name: str = ""
     description: str = ""
@@ -450,7 +450,7 @@ class JARVISLangChainTool(BaseTool):
     class Config:
         arbitrary_types_allowed = True
 
-    def __init__(self, jarvis_tool: JARVISTool, **kwargs):
+    def __init__(self, jarvis_tool: IroncliwTool, **kwargs):
         super().__init__(**kwargs)
         self.jarvis_tool = jarvis_tool
         self.name = jarvis_tool.name
@@ -497,7 +497,7 @@ class JARVISLangChainTool(BaseTool):
 # Function-Based Tool Wrapper
 # ============================================================================
 
-class FunctionTool(JARVISTool):
+class FunctionTool(IroncliwTool):
     """Tool created from a function."""
 
     def __init__(
@@ -525,11 +525,11 @@ class FunctionTool(JARVISTool):
 # Neural Mesh Agent Tool (v239.0)
 # ============================================================================
 
-class NeuralMeshAgentTool(JARVISTool):
+class NeuralMeshAgentTool(IroncliwTool):
     """Tool that delegates to a Neural Mesh agent's execute_task().
 
     Each mesh agent capability (e.g., "fetch_unread_emails") gets wrapped
-    as a JARVISTool so the agent runtime's THINK step can discover it
+    as a IroncliwTool so the agent runtime's THINK step can discover it
     and the ACT step can execute it via the standard tool.run() pipeline.
     """
 
@@ -590,7 +590,7 @@ class ToolRegistry:
     _instance: Optional["ToolRegistry"] = None
 
     def __init__(self):
-        self._tools: Dict[str, JARVISTool] = {}
+        self._tools: Dict[str, IroncliwTool] = {}
         self._categories: Dict[ToolCategory, Set[str]] = {cat: set() for cat in ToolCategory}
         self._capabilities: Dict[str, Set[str]] = {}  # capability -> tool names
         self._loaded_modules: Set[str] = set()
@@ -605,7 +605,7 @@ class ToolRegistry:
 
     def register(
         self,
-        tool: JARVISTool,
+        tool: IroncliwTool,
         replace: bool = False
     ) -> None:
         """
@@ -637,7 +637,7 @@ class ToolRegistry:
         category: ToolCategory = ToolCategory.UTILITY,
         risk_level: ToolRiskLevel = ToolRiskLevel.LOW,
         **metadata_kwargs
-    ) -> JARVISTool:
+    ) -> IroncliwTool:
         """
         Register a function as a tool.
 
@@ -684,20 +684,20 @@ class ToolRegistry:
         self.logger.info(f"Unregistered tool: {name}")
         return True
 
-    def get(self, name: str) -> Optional[JARVISTool]:
+    def get(self, name: str) -> Optional[IroncliwTool]:
         """Get a tool by name."""
         return self._tools.get(name)
 
-    def get_all(self) -> List[JARVISTool]:
+    def get_all(self) -> List[IroncliwTool]:
         """Get all registered tools."""
         return list(self._tools.values())
 
-    def get_by_category(self, category: ToolCategory) -> List[JARVISTool]:
+    def get_by_category(self, category: ToolCategory) -> List[IroncliwTool]:
         """Get tools by category."""
         names = self._categories.get(category, set())
         return [self._tools[n] for n in names if n in self._tools]
 
-    def get_by_capability(self, capability: str) -> List[JARVISTool]:
+    def get_by_capability(self, capability: str) -> List[IroncliwTool]:
         """Get tools by capability."""
         names = self._capabilities.get(capability, set())
         return [self._tools[n] for n in names if n in self._tools]
@@ -707,7 +707,7 @@ class ToolRegistry:
         query: str,
         category: Optional[ToolCategory] = None,
         risk_level_max: Optional[ToolRiskLevel] = None
-    ) -> List[JARVISTool]:
+    ) -> List[IroncliwTool]:
         """
         Search for tools matching criteria.
 
@@ -775,10 +775,10 @@ class ToolRegistry:
                 self.register(tool, replace=True)
                 count += 1
 
-            # Look for JARVISTool subclasses
+            # Look for IroncliwTool subclasses
             elif (inspect.isclass(obj)
-                  and issubclass(obj, JARVISTool)
-                  and obj is not JARVISTool):
+                  and issubclass(obj, IroncliwTool)
+                  and obj is not IroncliwTool):
                 try:
                     tool_instance = obj()
                     self.register(tool_instance, replace=True)
@@ -879,7 +879,7 @@ def jarvis_tool(
     **kwargs
 ):
     """
-    Decorator to mark a function as a JARVIS tool.
+    Decorator to mark a function as a Ironcliw tool.
 
     Usage:
         @jarvis_tool(
@@ -924,7 +924,7 @@ def jarvis_tool(
 # Built-in Tools
 # ============================================================================
 
-class WebResearchTool(JARVISTool):
+class WebResearchTool(IroncliwTool):
     """Tool for structured live web search and synthesis."""
 
     SUPPORTED_OPERATIONS: Tuple[str, ...] = (
@@ -1109,27 +1109,27 @@ class ShellExecutionPolicy:
         }
 
 
-class ShellCommandTool(JARVISTool):
+class ShellCommandTool(IroncliwTool):
     """Secure shell execution with command-tier safety and explicit policy controls."""
 
-    CWD_ALLOWLIST_ENV = "JARVIS_SHELL_CWD_ALLOWLIST"
-    CWD_DENYLIST_ENV = "JARVIS_SHELL_CWD_DENYLIST"
-    AUTO_APPROVE_TIERS_ENV = "JARVIS_SHELL_AUTO_APPROVE_TIERS"
-    MAX_TIMEOUT_ENV = "JARVIS_SHELL_MAX_TIMEOUT_SECONDS"
-    MAX_OUTPUT_ENV = "JARVIS_SHELL_MAX_OUTPUT_BYTES"
-    ALLOW_SHELL_FEATURES_ENV = "JARVIS_SHELL_ALLOW_SHELL_FEATURES"
-    REPO_ROOTS_ENV = "JARVIS_REPO_ROOTS"
-    ALLOW_ROOT_PATHS_ENV = "JARVIS_SHELL_ALLOW_ROOT_PATHS"
-    EMIT_EVENTS_ENV = "JARVIS_SHELL_EMIT_SAFETY_EVENTS"
+    CWD_ALLOWLIST_ENV = "Ironcliw_SHELL_CWD_ALLOWLIST"
+    CWD_DENYLIST_ENV = "Ironcliw_SHELL_CWD_DENYLIST"
+    AUTO_APPROVE_TIERS_ENV = "Ironcliw_SHELL_AUTO_APPROVE_TIERS"
+    MAX_TIMEOUT_ENV = "Ironcliw_SHELL_MAX_TIMEOUT_SECONDS"
+    MAX_OUTPUT_ENV = "Ironcliw_SHELL_MAX_OUTPUT_BYTES"
+    ALLOW_SHELL_FEATURES_ENV = "Ironcliw_SHELL_ALLOW_SHELL_FEATURES"
+    REPO_ROOTS_ENV = "Ironcliw_REPO_ROOTS"
+    ALLOW_ROOT_PATHS_ENV = "Ironcliw_SHELL_ALLOW_ROOT_PATHS"
+    EMIT_EVENTS_ENV = "Ironcliw_SHELL_EMIT_SAFETY_EVENTS"
 
     REPO_ENV_KEYS: Tuple[str, ...] = (
-        "JARVIS_PATH",
-        "JARVIS_REPO_PATH",
-        "JARVIS_CORE_PATH",
-        "JARVIS_PRIME_PATH",
-        "JARVIS_PRIME_REPO_PATH",
+        "Ironcliw_PATH",
+        "Ironcliw_REPO_PATH",
+        "Ironcliw_CORE_PATH",
+        "Ironcliw_PRIME_PATH",
+        "Ironcliw_PRIME_REPO_PATH",
         "REACTOR_CORE_PATH",
-        "JARVIS_REACTOR_PATH",
+        "Ironcliw_REACTOR_PATH",
     )
 
     SUPPORTED_OPERATIONS: Tuple[str, ...] = (
@@ -1733,14 +1733,14 @@ class MediaControlPolicy:
         }
 
 
-class MediaControlTool(JARVISTool):
+class MediaControlTool(IroncliwTool):
     """Native media playback control for Spotify and Apple Music via AppleScript."""
 
-    ALLOWED_PLAYERS_ENV = "JARVIS_MEDIA_ALLOWED_PLAYERS"
-    DEFAULT_PLAYER_ENV = "JARVIS_MEDIA_DEFAULT_PLAYER"
-    ALLOW_AUTOSTART_ENV = "JARVIS_MEDIA_ALLOW_AUTOSTART"
-    MAX_VOLUME_ENV = "JARVIS_MEDIA_MAX_VOLUME"
-    COMMAND_TIMEOUT_ENV = "JARVIS_MEDIA_COMMAND_TIMEOUT_SECONDS"
+    ALLOWED_PLAYERS_ENV = "Ironcliw_MEDIA_ALLOWED_PLAYERS"
+    DEFAULT_PLAYER_ENV = "Ironcliw_MEDIA_DEFAULT_PLAYER"
+    ALLOW_AUTOSTART_ENV = "Ironcliw_MEDIA_ALLOW_AUTOSTART"
+    MAX_VOLUME_ENV = "Ironcliw_MEDIA_MAX_VOLUME"
+    COMMAND_TIMEOUT_ENV = "Ironcliw_MEDIA_COMMAND_TIMEOUT_SECONDS"
 
     SUPPORTED_PLAYERS: Tuple[str, ...] = ("spotify", "music")
     PLAYER_ALIASES: Dict[str, str] = {
@@ -2340,17 +2340,17 @@ class ImageGenerationPolicy:
         }
 
 
-class ImageGenerationTool(JARVISTool):
+class ImageGenerationTool(IroncliwTool):
     """Text-to-image generation with provider abstraction and output policy controls."""
 
-    OUTPUT_DIR_ENV = "JARVIS_IMAGE_OUTPUT_DIR"
-    PROVIDER_ENV = "JARVIS_IMAGE_PROVIDER"
-    OPENAI_MODEL_ENV = "JARVIS_IMAGE_OPENAI_MODEL"
-    SD_WEBUI_URL_ENV = "JARVIS_IMAGE_SD_WEBUI_URL"
-    MAX_DIMENSION_ENV = "JARVIS_IMAGE_MAX_DIMENSION"
-    MAX_PROMPT_CHARS_ENV = "JARVIS_IMAGE_MAX_PROMPT_CHARS"
-    TIMEOUT_ENV = "JARVIS_IMAGE_TIMEOUT_SECONDS"
-    FORMATS_ENV = "JARVIS_IMAGE_ALLOWED_FORMATS"
+    OUTPUT_DIR_ENV = "Ironcliw_IMAGE_OUTPUT_DIR"
+    PROVIDER_ENV = "Ironcliw_IMAGE_PROVIDER"
+    OPENAI_MODEL_ENV = "Ironcliw_IMAGE_OPENAI_MODEL"
+    SD_WEBUI_URL_ENV = "Ironcliw_IMAGE_SD_WEBUI_URL"
+    MAX_DIMENSION_ENV = "Ironcliw_IMAGE_MAX_DIMENSION"
+    MAX_PROMPT_CHARS_ENV = "Ironcliw_IMAGE_MAX_PROMPT_CHARS"
+    TIMEOUT_ENV = "Ironcliw_IMAGE_TIMEOUT_SECONDS"
+    FORMATS_ENV = "Ironcliw_IMAGE_ALLOWED_FORMATS"
 
     SUPPORTED_PROVIDERS: Tuple[str, ...] = ("openai", "sd_webui")
     SUPPORTED_OPERATIONS: Tuple[str, ...] = ("generate", "get_policy", "get_metrics")
@@ -2437,7 +2437,7 @@ class ImageGenerationTool(JARVISTool):
             return {
                 "operation": op,
                 "success": False,
-                "error": "No image provider available. Configure OPENAI_API_KEY or JARVIS_IMAGE_SD_WEBUI_URL.",
+                "error": "No image provider available. Configure OPENAI_API_KEY or Ironcliw_IMAGE_SD_WEBUI_URL.",
             }
 
         width_value = self._normalize_dimension(width)
@@ -2565,7 +2565,7 @@ class ImageGenerationTool(JARVISTool):
         cfg_scale: float,
     ) -> Dict[str, Any]:
         if not self._policy.sd_webui_url:
-            raise RuntimeError("JARVIS_IMAGE_SD_WEBUI_URL is not configured")
+            raise RuntimeError("Ironcliw_IMAGE_SD_WEBUI_URL is not configured")
 
         try:
             import aiohttp
@@ -2823,25 +2823,25 @@ class FileSystemAccessPolicy:
         }
 
 
-class FileSystemAgentTool(JARVISTool):
+class FileSystemAgentTool(IroncliwTool):
     """Secure, policy-driven file system operations with allowlist enforcement."""
 
-    READ_ALLOWLIST_ENV = "JARVIS_FS_READ_ALLOWLIST"
-    WRITE_ALLOWLIST_ENV = "JARVIS_FS_WRITE_ALLOWLIST"
-    DENYLIST_ENV = "JARVIS_FS_DENYLIST"
-    REPO_ROOTS_ENV = "JARVIS_REPO_ROOTS"
-    MAX_READ_BYTES_ENV = "JARVIS_FS_MAX_READ_BYTES"
-    MAX_LIST_RESULTS_ENV = "JARVIS_FS_MAX_LIST_RESULTS"
-    ALLOW_ROOT_PATHS_ENV = "JARVIS_FS_ALLOW_ROOT_PATHS"
+    READ_ALLOWLIST_ENV = "Ironcliw_FS_READ_ALLOWLIST"
+    WRITE_ALLOWLIST_ENV = "Ironcliw_FS_WRITE_ALLOWLIST"
+    DENYLIST_ENV = "Ironcliw_FS_DENYLIST"
+    REPO_ROOTS_ENV = "Ironcliw_REPO_ROOTS"
+    MAX_READ_BYTES_ENV = "Ironcliw_FS_MAX_READ_BYTES"
+    MAX_LIST_RESULTS_ENV = "Ironcliw_FS_MAX_LIST_RESULTS"
+    ALLOW_ROOT_PATHS_ENV = "Ironcliw_FS_ALLOW_ROOT_PATHS"
 
     REPO_ENV_KEYS: Tuple[str, ...] = (
-        "JARVIS_PATH",
-        "JARVIS_REPO_PATH",
-        "JARVIS_CORE_PATH",
-        "JARVIS_PRIME_PATH",
-        "JARVIS_PRIME_REPO_PATH",
+        "Ironcliw_PATH",
+        "Ironcliw_REPO_PATH",
+        "Ironcliw_CORE_PATH",
+        "Ironcliw_PRIME_PATH",
+        "Ironcliw_PRIME_REPO_PATH",
         "REACTOR_CORE_PATH",
-        "JARVIS_REACTOR_PATH",
+        "Ironcliw_REACTOR_PATH",
     )
 
     SUPPORTED_OPERATIONS: Tuple[str, ...] = (
@@ -3367,7 +3367,7 @@ class FileSystemAgentTool(JARVISTool):
             return default
 
 
-class SystemInfoTool(JARVISTool):
+class SystemInfoTool(IroncliwTool):
     """Tool for getting system information."""
 
     def __init__(self, permission_manager: Optional[Any] = None):
@@ -3398,7 +3398,7 @@ class SystemInfoTool(JARVISTool):
         }
 
 
-class CalculatorTool(JARVISTool):
+class CalculatorTool(IroncliwTool):
     """Tool for mathematical calculations."""
 
     def __init__(self, permission_manager: Optional[Any] = None):
@@ -3468,7 +3468,7 @@ class CalculatorTool(JARVISTool):
             }
 
 
-class DateTimeTool(JARVISTool):
+class DateTimeTool(IroncliwTool):
     """Tool for date and time operations."""
 
     def __init__(self, permission_manager: Optional[Any] = None):
@@ -3538,9 +3538,9 @@ class ToolFactory:
         handler: Callable,
         action_type: str,
         permission_manager: Optional[Any] = None
-    ) -> JARVISTool:
+    ) -> IroncliwTool:
         """
-        Create a tool from an existing JARVIS action handler.
+        Create a tool from an existing Ironcliw action handler.
 
         Args:
             handler: Action handler function
@@ -3594,7 +3594,7 @@ class ToolFactory:
     def create_from_config(
         config: Dict[str, Any],
         permission_manager: Optional[Any] = None
-    ) -> Optional[JARVISTool]:
+    ) -> Optional[IroncliwTool]:
         """
         Create a tool from configuration dictionary.
 
@@ -3685,7 +3685,7 @@ def auto_discover_tools(
     Auto-discover and register tools from the codebase.
 
     Args:
-        base_paths: Paths to search (defaults to JARVIS tool paths)
+        base_paths: Paths to search (defaults to Ironcliw tool paths)
         registry: Tool registry (uses singleton if not provided)
 
     Returns:
@@ -3695,7 +3695,7 @@ def auto_discover_tools(
         registry = ToolRegistry.get_instance()
 
     if base_paths is None:
-        # Default JARVIS tool paths
+        # Default Ironcliw tool paths
         base_dir = Path(__file__).parent.parent
         base_paths = [
             str(base_dir / "tools"),
@@ -3728,7 +3728,7 @@ def auto_discover_tools(
 # Convenience Functions
 # ============================================================================
 
-def get_tool(name: str) -> Optional[JARVISTool]:
+def get_tool(name: str) -> Optional[IroncliwTool]:
     """Get a tool by name from the global registry."""
     return ToolRegistry.get_instance().get(name)
 
@@ -3738,7 +3738,7 @@ def list_tools() -> List[str]:
     return [t.name for t in ToolRegistry.get_instance().get_all()]
 
 
-def search_tools(query: str, **kwargs) -> List[JARVISTool]:
+def search_tools(query: str, **kwargs) -> List[IroncliwTool]:
     """Search for tools matching a query."""
     return ToolRegistry.get_instance().search(query, **kwargs)
 

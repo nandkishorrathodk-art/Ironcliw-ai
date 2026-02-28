@@ -1,4 +1,4 @@
-{
+﻿{
   "intents": [
     {
       "label": "follow_up",
@@ -223,7 +223,7 @@
       ],
       "examples": [
         "Update yourself",
-        "JARVIS, check for updates",
+        "Ironcliw, check for updates",
         "Is there a new version available?",
         "Install the latest update"
       ],

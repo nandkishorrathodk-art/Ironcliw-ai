@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Speaker Profile Store - Lightweight, Dependency-Free Voice Profile Access
 =========================================================================
@@ -23,7 +23,7 @@ USE CASES:
 For full voice recognition with ML models, use:
     from intelligence.learning_database import get_learning_database
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -55,13 +55,13 @@ logger = logging.getLogger(__name__)
 def _get_default_db_path() -> str:
     """Get the default database path from environment or standard location."""
     # Check environment variable first
-    env_path = os.environ.get("JARVIS_LEARNING_DB_PATH")
+    env_path = os.environ.get("Ironcliw_LEARNING_DB_PATH")
     if env_path:
         return os.path.expanduser(env_path)
     
     # Standard location
     jarvis_dir = os.path.expanduser(
-        get_env_str("JARVIS_DATA_DIR", "~/.jarvis")
+        get_env_str("Ironcliw_DATA_DIR", "~/.jarvis")
     )
     return os.path.join(jarvis_dir, "learning", "jarvis_learning.db")
 

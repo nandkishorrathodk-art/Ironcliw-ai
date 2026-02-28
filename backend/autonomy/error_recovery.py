@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Error Handling and Recovery System for JARVIS
+Error Handling and Recovery System for Ironcliw
 Manages errors, retries, and recovery strategies
 """
 

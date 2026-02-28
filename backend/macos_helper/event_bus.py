@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Unified Event Bus
+﻿"""
+Ironcliw macOS Helper - Unified Event Bus
 
 Central event bus for macOS helper layer.
 Provides async event routing with filtering, priority handling, and integration

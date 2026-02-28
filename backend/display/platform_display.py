@@ -1,8 +1,8 @@
-"""
+﻿"""
 Platform Abstraction Layer - Display Module
 
 This module provides cross-platform display and screen abstraction,
-enabling JARVIS to detect monitors, enumerate virtual desktops,
+enabling Ironcliw to detect monitors, enumerate virtual desktops,
 and prepare for screen capture across different operating systems.
 
 Created: 2026-02-22

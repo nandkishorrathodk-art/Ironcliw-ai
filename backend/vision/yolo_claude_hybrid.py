@@ -1,4 +1,4 @@
-"""
+﻿"""
 YOLO + Claude Hybrid Vision System
 ===================================
 
@@ -23,7 +23,7 @@ Integration with Intelligent Model Selection:
 - Priority: Higher than Claude Vision for UI-specific tasks
 - RAM-aware: Only loads when sufficient RAM available
 
-Author: JARVIS AI Team
+Author: Ironcliw AI Team
 Date: 2025-10-27
 """
 

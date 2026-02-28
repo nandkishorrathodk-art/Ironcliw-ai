@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS with Goal Inference + Autonomous Decision Integration
+Test Ironcliw with Goal Inference + Autonomous Decision Integration
 """
 
 import asyncio
@@ -12,10 +12,10 @@ from backend.api.unified_command_processor import UnifiedCommandProcessor
 
 
 async def test_jarvis_integration():
-    """Test the integrated JARVIS system"""
+    """Test the integrated Ironcliw system"""
 
     print("=" * 70)
-    print("🚀 TESTING JARVIS WITH GOAL INFERENCE + AUTONOMOUS INTEGRATION")
+    print("🚀 TESTING Ironcliw WITH GOAL INFERENCE + AUTONOMOUS INTEGRATION")
     print("=" * 70)
 
     # Initialize the unified command processor
@@ -161,7 +161,7 @@ async def test_proactive_scenario():
 
 
 if __name__ == "__main__":
-    print("\n🤖 JARVIS GOAL INFERENCE INTEGRATION TEST\n")
+    print("\n🤖 Ironcliw GOAL INFERENCE INTEGRATION TEST\n")
 
     # Run basic integration test
     asyncio.run(test_jarvis_integration())

@@ -1,5 +1,5 @@
-"""
-Container Awareness for JARVIS Loading Server v212.0
+﻿"""
+Container Awareness for Ironcliw Loading Server v212.0
 =====================================================
 
 Detects container/cgroup limits for resource-aware timeout scaling.
@@ -20,7 +20,7 @@ Usage:
         multiplier = container.get_timeout_multiplier()
         adjusted_timeout = base_timeout * multiplier
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

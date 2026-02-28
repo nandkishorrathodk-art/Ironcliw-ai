@@ -1,4 +1,4 @@
-"""
+﻿"""
 ComponentRegistry - Single source of truth for component lifecycle.
 
 This module provides:
@@ -110,7 +110,7 @@ class ComponentDefinition:
     def is_disabled_by_env(self) -> bool:
         """Check if component is disabled via environment variable.
 
-        The disable_env_var field specifies an ENABLE variable (e.g., "JARVIS_PRIME_ENABLED").
+        The disable_env_var field specifies an ENABLE variable (e.g., "Ironcliw_PRIME_ENABLED").
         If the variable is set to "false", "0", "no", or "disabled", the component is disabled.
         If the variable is not set or set to any other value, the component is enabled.
 
@@ -160,7 +160,7 @@ class ComponentState:
 
 class ComponentRegistry:
     """
-    Central registry for all JARVIS components.
+    Central registry for all Ironcliw components.
 
     Provides:
     - Component registration and lookup

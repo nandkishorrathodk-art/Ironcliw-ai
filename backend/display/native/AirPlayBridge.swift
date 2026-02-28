@@ -1,5 +1,5 @@
-/**
- * AirPlay Route Picker Helper for JARVIS
+﻿/**
+ * AirPlay Route Picker Helper for Ironcliw
  * =======================================
  *
  * Production-grade Swift helper using PUBLIC APIs only.
@@ -728,7 +728,7 @@ class AirPlayHelperAppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[APP] AirPlay Route Picker Helper starting...")
 
         // Load config
-        let configPath = "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/config/airplay_helper_config.json"
+        let configPath = "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/config/airplay_helper_config.json"
 
         if FileManager.default.fileExists(atPath: configPath) {
             do {

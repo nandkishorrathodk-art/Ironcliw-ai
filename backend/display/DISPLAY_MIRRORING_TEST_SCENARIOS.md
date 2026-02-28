@@ -1,6 +1,6 @@
-# Intelligent Display Mirroring - Comprehensive Test Scenarios & Documentation
+﻿# Intelligent Display Mirroring - Comprehensive Test Scenarios & Documentation
 
-**System:** JARVIS Intelligent Display Mirroring
+**System:** Ironcliw Intelligent Display Mirroring
 **Date:** 2025-10-17
 **Version:** 2.0 (Enhanced with Multi-Monitor Support)
 
@@ -629,7 +629,7 @@ User: "Connect to TV"
 3. Confidence too low for automatic selection (< 0.8)
 4. Request clarification:
    ```
-   JARVIS: "I found 2 TVs available:
+   Ironcliw: "I found 2 TVs available:
             1. Living Room TV
             2. Bedroom TV
             Which one would you like to connect to?"
@@ -844,7 +844,7 @@ t=8.0s: Connection established (slower than normal)
    - Actual: > 5 seconds
 4. Provide interim feedback:
    ```
-   JARVIS: "Connection in progress... Network seems slow."
+   Ironcliw: "Connection in progress... Network seems slow."
    ```
 5. Wait with timeout (15 seconds max)
 6. Connection succeeds at t=8s
@@ -1338,7 +1338,7 @@ async def connect_with_time_awareness(self, display_name: str):
 **Symptoms:**
 ```
 User: "Living Room TV"
-JARVIS: "Living Room TV is not available. Please ensure it's powered on..."
+Ironcliw: "Living Room TV is not available. Please ensure it's powered on..."
 ```
 
 **Possible Causes:**
@@ -1358,7 +1358,7 @@ ping living-room-tv.local
 # 3. Check display in System Preferences
 open "x-apple.systempreferences:com.apple.preference.displays"
 
-# 4. Check JARVIS display cache
+# 4. Check Ironcliw display cache
 cat ~/.jarvis/display_cache.json
 ```
 
@@ -1366,7 +1366,7 @@ cat ~/.jarvis/display_cache.json
 - Power on display
 - Ensure WiFi connection
 - Enable AirPlay on display
-- Update display name in JARVIS config
+- Update display name in Ironcliw config
 
 ---
 
@@ -1386,7 +1386,7 @@ cat ~/.jarvis/display_cache.json
 **Debugging Steps:**
 ```python
 # Enable coordinate debugging
-export JARVIS_DEBUG_COORDS=1
+export Ironcliw_DEBUG_COORDS=1
 
 # Run test click
 python -c "

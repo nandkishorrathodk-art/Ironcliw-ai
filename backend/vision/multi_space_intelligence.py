@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Multi-Space Intelligence Extensions for JARVIS Pure Vision System
+Multi-Space Intelligence Extensions for Ironcliw Pure Vision System
 Adds space-aware query detection and response generation
 """
 

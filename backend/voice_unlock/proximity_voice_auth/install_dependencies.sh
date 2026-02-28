@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
 # Install Dependencies for Proximity + Voice Auth
 #
@@ -7,7 +7,7 @@ set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-echo "🔧 Installing JARVIS Proximity + Voice Auth Dependencies..."
+echo "🔧 Installing Ironcliw Proximity + Voice Auth Dependencies..."
 
 # Check Python version
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)

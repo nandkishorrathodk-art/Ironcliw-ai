@@ -1,4 +1,4 @@
-"""
+﻿"""
 Dedicated Python voice worker process for sidecar supervision.
 
 This module intentionally delegates all model/inference logic to existing
@@ -19,7 +19,7 @@ import uvicorn
 
 logger = logging.getLogger("voice_worker_service")
 logging.basicConfig(
-    level=os.getenv("JARVIS_VOICE_WORKER_LOG_LEVEL", "INFO").upper(),
+    level=os.getenv("Ironcliw_VOICE_WORKER_LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s | %(message)s",
 )
 
@@ -34,7 +34,7 @@ class WorkerState:
     ready: bool = False
 
 
-app = FastAPI(title="JARVIS Voice Worker", version="1.0")
+app = FastAPI(title="Ironcliw Voice Worker", version="1.0")
 _state = WorkerState(started_at=time.time())
 _warmup_lock = asyncio.Lock()
 _service_ref: Any = None
@@ -81,7 +81,7 @@ async def warmup_voice_service(force: bool = False) -> Dict[str, Any]:
         _state.warmup_started_at = time.time()
         _state.warmup_error = None
 
-        timeout_s = float(os.getenv("JARVIS_VOICE_WORKER_WARMUP_TIMEOUT", "45"))
+        timeout_s = float(os.getenv("Ironcliw_VOICE_WORKER_WARMUP_TIMEOUT", "45"))
 
         try:
             factory = await _import_speaker_service_factory()
@@ -109,7 +109,7 @@ async def warmup_voice_service(force: bool = False) -> Dict[str, Any]:
 
 @app.on_event("startup")
 async def _on_startup() -> None:
-    auto_warmup = os.getenv("JARVIS_VOICE_WORKER_AUTO_WARMUP", "true").lower() in {
+    auto_warmup = os.getenv("Ironcliw_VOICE_WORKER_AUTO_WARMUP", "true").lower() in {
         "1",
         "true",
         "yes",
@@ -163,9 +163,9 @@ async def warmup_endpoint(force: bool = False) -> Dict[str, Any]:
 
 
 def main() -> None:
-    host = os.getenv("JARVIS_VOICE_WORKER_HOST", "127.0.0.1")
-    port = int(os.getenv("JARVIS_VOICE_WORKER_PORT", "8790"))
-    log_level = os.getenv("JARVIS_VOICE_WORKER_UVICORN_LOG_LEVEL", "warning")
+    host = os.getenv("Ironcliw_VOICE_WORKER_HOST", "127.0.0.1")
+    port = int(os.getenv("Ironcliw_VOICE_WORKER_PORT", "8790"))
+    log_level = os.getenv("Ironcliw_VOICE_WORKER_UVICORN_LOG_LEVEL", "warning")
 
     uvicorn.run(
         app,

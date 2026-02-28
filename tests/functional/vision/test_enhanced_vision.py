@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Enhanced Vision Capabilities - Specific UI Element Detection
-Tests JARVIS's ability to provide specific answers about battery, time, etc.
+Tests Ironcliw's ability to provide specific answers about battery, time, etc.
 """
 
 import asyncio
@@ -58,7 +58,7 @@ async def test_vision_queries():
             if is_vision:
                 print("\n🔍 Analyzing screen...")
                 response = await chatbot.analyze_screen_with_vision(query)
-                print(f"\n🤖 JARVIS: {response}")
+                print(f"\n🤖 Ironcliw: {response}")
             else:
                 print("❌ Not detected as vision command")
                 
@@ -90,7 +90,7 @@ async def test_monitoring_mode():
     # Start monitoring
     print("Starting continuous monitoring...")
     response = await chatbot.generate_response("Start monitoring my screen")
-    print(f"JARVIS: {response}")
+    print(f"Ironcliw: {response}")
     
     await asyncio.sleep(3)
     
@@ -104,19 +104,19 @@ async def test_monitoring_mode():
     for query in monitoring_queries:
         print(f"\n📍 Query: {query}")
         response = await chatbot.generate_response(query)
-        print(f"🤖 JARVIS: {response}")
+        print(f"🤖 Ironcliw: {response}")
         await asyncio.sleep(2)
     
     # Stop monitoring
     print("\nStopping monitoring...")
     response = await chatbot.generate_response("Stop monitoring")
-    print(f"JARVIS: {response}")
+    print(f"Ironcliw: {response}")
 
 
 async def main():
     """Run all vision tests"""
     
-    print("🎯 JARVIS Enhanced Vision Test Suite")
+    print("🎯 Ironcliw Enhanced Vision Test Suite")
     print("Testing specific UI element detection capabilities")
     print("=" * 60)
     

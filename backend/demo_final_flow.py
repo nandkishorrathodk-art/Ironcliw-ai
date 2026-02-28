@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 FINAL DEMO: Context Intelligence Automated Flow
 ===============================================
@@ -6,7 +6,7 @@ FINAL DEMO: Context Intelligence Automated Flow
 Demonstrates the complete automated flow as described in the PRD:
 1. Lock screen
 2. Issue command requiring screen access
-3. JARVIS detects lock, queues command, unlocks screen, executes command
+3. Ironcliw detects lock, queues command, unlocks screen, executes command
 4. All fully automated with proper feedback
 """
 
@@ -17,14 +17,14 @@ import time
 import sys
 
 async def wait_for_jarvis():
-    """Wait for JARVIS to be ready"""
-    print("⏳ Waiting for JARVIS to start...")
+    """Wait for Ironcliw to be ready"""
+    print("⏳ Waiting for Ironcliw to start...")
     for i in range(30):  # Wait up to 30 seconds
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get("http://localhost:8000/") as response:
                     if response.status == 200:
-                        print("✅ JARVIS is ready!")
+                        print("✅ Ironcliw is ready!")
                         return True
         except:
             pass
@@ -38,8 +38,8 @@ async def demo_automated_flow():
     print("="*70)
     print("\nThis demonstration shows the complete flow from the PRD:")
     print("1. Lock the Mac screen")
-    print("2. Say 'JARVIS, open Safari and search for dogs'")
-    print("3. JARVIS will:")
+    print("2. Say 'Ironcliw, open Safari and search for dogs'")
+    print("3. Ironcliw will:")
     print("   - Detect screen is locked ✓")
     print("   - Queue the request ✓")
     print("   - Provide feedback: 'Your screen is locked, unlocking now' ✓")
@@ -61,15 +61,15 @@ async def demo_automated_flow():
             
             async with session.post(url, json=data) as response:
                 result = await response.json()
-                print(f"[{time.strftime('%H:%M:%S')}] JARVIS: {result.get('response', 'No response')}")
+                print(f"[{time.strftime('%H:%M:%S')}] Ironcliw: {result.get('response', 'No response')}")
                 
             # Wait for lock to take effect
             print(f"\n[{time.strftime('%H:%M:%S')}] ⏳ Waiting 5 seconds for screen to lock...")
             await asyncio.sleep(5)
             
             # Step 2: Issue command that requires screen
-            print(f"\n[{time.strftime('%H:%M:%S')}] 🗣️  STEP 2: User says: 'JARVIS, open Safari and search for dogs'")
-            print(f"[{time.strftime('%H:%M:%S')}] 📡 Sending command to JARVIS...")
+            print(f"\n[{time.strftime('%H:%M:%S')}] 🗣️  STEP 2: User says: 'Ironcliw, open Safari and search for dogs'")
+            print(f"[{time.strftime('%H:%M:%S')}] 📡 Sending command to Ironcliw...")
             
             start_time = time.time()
             data = {"command": "open safari and search for dogs"}
@@ -81,7 +81,7 @@ async def demo_automated_flow():
                     result = await response.json()
                     elapsed = time.time() - start_time
                     
-                    print(f"\n[{time.strftime('%H:%M:%S')}] ✅ JARVIS RESPONSE:")
+                    print(f"\n[{time.strftime('%H:%M:%S')}] ✅ Ironcliw RESPONSE:")
                     print(f"[{time.strftime('%H:%M:%S')}] '{result.get('response', 'No response')}'")
                     print(f"[{time.strftime('%H:%M:%S')}] Time taken: {elapsed:.1f} seconds")
                     
@@ -118,9 +118,9 @@ async def demo_automated_flow():
 
 async def main():
     """Run the demonstration"""
-    # Wait for JARVIS
+    # Wait for Ironcliw
     if not await wait_for_jarvis():
-        print("❌ JARVIS failed to start")
+        print("❌ Ironcliw failed to start")
         sys.exit(1)
     
     # Run demo

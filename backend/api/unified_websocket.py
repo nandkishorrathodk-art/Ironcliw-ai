@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified WebSocket Handler - Advanced Self-Healing WebSocket System
 
 Features:
@@ -204,7 +204,7 @@ class UnifiedWebSocketManager:
 
         # Message handlers (dynamically extensible)
         self.handlers = {
-            # Voice/JARVIS handlers
+            # Voice/Ironcliw handlers
             "command": self._handle_voice_command,
             "voice_command": self._handle_voice_command,
             "jarvis_command": self._handle_voice_command,
@@ -1140,8 +1140,8 @@ class UnifiedWebSocketManager:
             # Route to appropriate handler
             if msg_type == "command" or msg_type == "voice_command":
                 # Execute voice command
-                # v265.6: Use lazy getter for JARVISVoiceAPI
-                from .jarvis_voice_api import JARVISCommand, get_jarvis_api
+                # v265.6: Use lazy getter for IroncliwVoiceAPI
+                from .jarvis_voice_api import IroncliwCommand, get_jarvis_api
                 jarvis_api = get_jarvis_api()
 
                 command_text = message.get("command", message.get("text", ""))
@@ -1149,7 +1149,7 @@ class UnifiedWebSocketManager:
                 audio_data = message.get("audio_data")
 
                 # Create properly typed command object
-                command_obj = JARVISCommand(text=command_text, audio_data=audio_data)
+                command_obj = IroncliwCommand(text=command_text, audio_data=audio_data)
                 # v242.0: Set deadline for legacy handler (with headroom subtracted once)
                 import time as _time_ws_legacy
                 from core.prime_router import _DEADLINE_HEADROOM_S
@@ -1462,10 +1462,10 @@ class UnifiedWebSocketManager:
         msg_type = message.get("type", "")
 
         # =========================================================================
-        # 🔇 SELF-VOICE SUPPRESSION - Prevent JARVIS from hearing its own voice
+        # 🔇 SELF-VOICE SUPPRESSION - Prevent Ironcliw from hearing its own voice
         # =========================================================================
         # This is the ROOT LEVEL check - we reject audio messages that arrive:
-        # 1. While JARVIS is speaking (prevents hearing its own voice)
+        # 1. While Ironcliw is speaking (prevents hearing its own voice)
         # 2. While a VBI session is active (prevents processing during unlock)
         #
         # The check happens HERE (at WebSocket receive) because:
@@ -1491,7 +1491,7 @@ class UnifiedWebSocketManager:
             except Exception as e:
                 logger.debug(f"[VBI-SESSION] Check failed: {e}")
 
-            # Check 2: Is JARVIS speaking?
+            # Check 2: Is Ironcliw speaking?
             # v263.1: Prefer unified speech state manager (has watchdog for stuck state).
             # Fall back to direct voice_comm check if manager unavailable.
             try:
@@ -1518,12 +1518,12 @@ class UnifiedWebSocketManager:
                     if voice_comm and voice_comm.is_speaking:
                         logger.warning(
                             f"🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio message - "
-                            f"JARVIS is speaking (is_speaking={voice_comm.is_speaking})"
+                            f"Ironcliw is speaking (is_speaking={voice_comm.is_speaking})"
                         )
                         return {
                             "success": False,
                             "type": "self_voice_suppressed",
-                            "message": "Audio rejected - JARVIS is currently speaking",
+                            "message": "Audio rejected - Ironcliw is currently speaking",
                             "should_retry": False
                         }
                 except asyncio.TimeoutError:
@@ -1565,7 +1565,7 @@ class UnifiedWebSocketManager:
                 else:
                     logger.debug("[WS] No audio data in message from frontend (text command)")
 
-                # For command types, process directly through JARVIS API
+                # For command types, process directly through Ironcliw API
                 # This bypasses the pipeline stages which aren't properly integrated
                 if msg_type in ("command", "voice_command", "jarvis_command"):
                     # Enhanced VBI Debug Logging
@@ -1608,7 +1608,7 @@ class UnifiedWebSocketManager:
                     # Check if this is a voice UNLOCK command (requires VBI verification)
                     # CRITICAL: "lock my screen" is NOT an unlock command - it's a LOCK command!
                     # Only UNLOCK commands need voice biometric verification
-                    # LOCK commands should go through standard JARVIS API (no VBI needed)
+                    # LOCK commands should go through standard Ironcliw API (no VBI needed)
                     command_lower = command_text.lower()
                     
                     # First check if it's a LOCK command (has "lock" but NOT "unlock")
@@ -1766,15 +1766,15 @@ class UnifiedWebSocketManager:
                         if result is None and not ROBUST_UNLOCK_AVAILABLE and not VBI_TRACER_AVAILABLE:
                             result = None  # Will process through standard path
 
-                    # Standard JARVIS API processing (for non-unlock or no audio)
+                    # Standard Ironcliw API processing (for non-unlock or no audio)
                     if result is None:
                         try:
-                            # v265.6: Use lazy getter for JARVISVoiceAPI
-                            from .jarvis_voice_api import JARVISCommand, get_jarvis_api
+                            # v265.6: Use lazy getter for IroncliwVoiceAPI
+                            from .jarvis_voice_api import IroncliwCommand, get_jarvis_api
                             jarvis_api = get_jarvis_api()
                             import time as _time_ws
 
-                            command_obj = JARVISCommand(text=command_text, audio_data=audio_data_received)
+                            command_obj = IroncliwCommand(text=command_text, audio_data=audio_data_received)
 
                             logger.info(f"[WS] Processing command via jarvis_api: {command_text}")
 
@@ -1811,7 +1811,7 @@ class UnifiedWebSocketManager:
                                 logger.info(f"[WS] 👁️ Surveillance command detected - using {base_timeout}s timeout")
                             else:
                                 # v242.0: Dynamic timeout — GCP inference needs more budget
-                                _gcp_active = bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))
+                                _gcp_active = bool(os.environ.get("Ironcliw_INVINCIBLE_NODE_IP"))
                                 _default_timeout = "60.0" if _gcp_active else "45.0"
                                 base_timeout = float(os.getenv("WS_COMMAND_TIMEOUT", _default_timeout))
 
@@ -2040,7 +2040,7 @@ class UnifiedWebSocketManager:
                                 "metadata": jarvis_result,
                             }
 
-                            logger.info(f"[WS] JARVIS response: {result.get('response', '')[:100]}")
+                            logger.info(f"[WS] Ironcliw response: {result.get('response', '')[:100]}")
 
                         except ImportError as e:
                             logger.error(f"[WS] Failed to import jarvis_voice_api: {e}")
@@ -2450,7 +2450,7 @@ class UnifiedWebSocketManager:
     async def _handle_voice_command(
         self, client_id: str, message: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Handle voice/JARVIS commands"""
+        """Handle voice/Ironcliw commands"""
         try:
             command_text = message.get("command", message.get("text", ""))
 
@@ -2767,11 +2767,11 @@ ws_manager = None  # Will be set lazily
 
 
 def set_jarvis_instance(jarvis_api):
-    """Set the JARVIS instance for the WebSocket pipeline"""
+    """Set the Ironcliw instance for the WebSocket pipeline"""
     manager = get_ws_manager()
     if manager and manager.pipeline:
         manager.pipeline.jarvis = jarvis_api
-        logger.info("✅ JARVIS instance set in unified WebSocket pipeline")
+        logger.info("✅ Ironcliw instance set in unified WebSocket pipeline")
 
 
 @router.websocket("/ws")
@@ -3010,7 +3010,7 @@ async def voice_conversation_ws(websocket: WebSocket):
                     stt_engine.on_audio_frame(audio_f32)
 
                     # Feed to BargeInController's VAD (detects user
-                    # speaking over JARVIS for barge-in interruption)
+                    # speaking over Ironcliw for barge-in interruption)
                     is_speech = stt_engine.is_speech_active
                     barge_in.on_vad_speech_detected(is_speech)
 

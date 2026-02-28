@@ -1,24 +1,24 @@
-# JARVIS Voice Biometric Authentication - Postman Collections
+﻿# Ironcliw Voice Biometric Authentication - Postman Collections
 
-[![Postman Tests](https://github.com/YOUR_USERNAME/JARVIS-AI-Agent/actions/workflows/postman-api-tests.yml/badge.svg)](https://github.com/YOUR_USERNAME/JARVIS-AI-Agent/actions/workflows/postman-api-tests.yml)
+[![Postman Tests](https://github.com/YOUR_USERNAME/Ironcliw-AI-Agent/actions/workflows/postman-api-tests.yml/badge.svg)](https://github.com/YOUR_USERNAME/Ironcliw-AI-Agent/actions/workflows/postman-api-tests.yml)
 
-Complete Postman collections for testing the JARVIS Voice Biometric Authentication system with advanced ML-based confidence scoring, anti-spoofing detection, and multi-factor fusion.
+Complete Postman collections for testing the Ironcliw Voice Biometric Authentication system with advanced ML-based confidence scoring, anti-spoofing detection, and multi-factor fusion.
 
 ## Collections Overview
 
 | Collection | Description | Endpoints |
 |------------|-------------|-----------|
-| **JARVIS Voice Auth Intelligence (Advanced ML)** | Advanced voice authentication with AAM-Softmax, Platt/Isotonic calibration, and adaptive thresholds | 25+ |
-| **JARVIS Voice Unlock Flow (Sequential)** | End-to-end voice unlock authentication pipeline with PRD v2.0 features | 12 |
-| **JARVIS AI Agent API** | Complete JARVIS system API including health, screen control, vision, and more | 50+ |
+| **Ironcliw Voice Auth Intelligence (Advanced ML)** | Advanced voice authentication with AAM-Softmax, Platt/Isotonic calibration, and adaptive thresholds | 25+ |
+| **Ironcliw Voice Unlock Flow (Sequential)** | End-to-end voice unlock authentication pipeline with PRD v2.0 features | 12 |
+| **Ironcliw AI Agent API** | Complete Ironcliw system API including health, screen control, vision, and more | 50+ |
 
 ## Quick Start
 
 ### Prerequisites
 
-1. **JARVIS Backend Running**
+1. **Ironcliw Backend Running**
    ```bash
-   cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+   cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
    ./venv/bin/python -m backend.main
    # or
    ./start_system.py
@@ -45,12 +45,12 @@ Complete Postman collections for testing the JARVIS Voice Biometric Authenticati
 npm run postman:test
 
 # Run specific collection
-newman run postman/collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json \
-  -e postman/environments/JARVIS_Environment.postman_environment.json
+newman run postman/collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json \
+  -e postman/environments/Ironcliw_Environment.postman_environment.json
 
 # Run with HTML report
-newman run postman/collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json \
-  -e postman/environments/JARVIS_Environment.postman_environment.json \
+newman run postman/collections/Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json \
+  -e postman/environments/Ironcliw_Environment.postman_environment.json \
   --reporters cli,htmlextra \
   --reporter-htmlextra-export ./reports/voice-unlock-report.html
 ```
@@ -60,11 +60,11 @@ newman run postman/collections/JARVIS_Voice_Unlock_Flow_Collection.postman_colle
 ```
 postman/
 ├── collections/
-│   ├── JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json
-│   ├── JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json
-│   └── JARVIS_API_Collection.postman_collection.json
+│   ├── Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json
+│   ├── Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json
+│   └── Ironcliw_API_Collection.postman_collection.json
 ├── environments/
-│   └── JARVIS_Environment.postman_environment.json
+│   └── Ironcliw_Environment.postman_environment.json
 ├── flows/
 │   └── README.md                    # Flow documentation
 ├── newman.config.json               # Newman CLI configuration
@@ -73,7 +73,7 @@ postman/
 
 ## Collections Detail
 
-### 1. JARVIS Voice Auth Intelligence (Advanced ML)
+### 1. Ironcliw Voice Auth Intelligence (Advanced ML)
 
 Advanced ML-powered voice authentication with comprehensive anti-spoofing.
 
@@ -98,7 +98,7 @@ Advanced ML-powered voice authentication with comprehensive anti-spoofing.
 | 7. Multi-Factor Fusion | Behavioral + voice + context fusion |
 | 8. Full Pipeline Tests | End-to-end calibrated authentication |
 
-### 2. JARVIS Voice Unlock Flow (Sequential)
+### 2. Ironcliw Voice Unlock Flow (Sequential)
 
 Complete voice unlock authentication pipeline designed for Collection Runner.
 
@@ -120,7 +120,7 @@ Complete voice unlock authentication pipeline designed for Collection Runner.
    ↓
 7. Unlock Screen
    ↓
-8. JARVIS Success Feedback
+8. Ironcliw Success Feedback
    ↓
 9. End Audit Session
 
@@ -131,9 +131,9 @@ Error Handlers:
 - Fusion Failed - Challenge Required
 ```
 
-### 3. JARVIS AI Agent API
+### 3. Ironcliw AI Agent API
 
-Complete API coverage for the JARVIS system.
+Complete API coverage for the Ironcliw system.
 
 **Categories:**
 - Health & Status
@@ -151,7 +151,7 @@ Complete API coverage for the JARVIS system.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `base_url` | JARVIS backend URL | `http://localhost:8010` |
+| `base_url` | Ironcliw backend URL | `http://localhost:8010` |
 | `user_id` | User identifier | `derek` |
 | `user_name` | User display name | `Derek Russell` |
 | `speaker_name` | Speaker for voice auth | `Derek` |
@@ -166,11 +166,11 @@ Complete API coverage for the JARVIS system.
 
 ```bash
 # Start backend first
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 ./venv/bin/python start_system.py
 
 # In another terminal, run tests
-newman run postman/collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json \
+newman run postman/collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json \
   --env-var "base_url=http://localhost:8010"
 ```
 
@@ -181,14 +181,14 @@ Tests run automatically on:
 - Pull requests to `main`
 - Manual trigger via workflow dispatch
 
-View results: **Actions** tab → **JARVIS Postman API Tests**
+View results: **Actions** tab → **Ironcliw Postman API Tests**
 
 ### Running with Docker
 
 ```bash
 # Run tests in Docker container
 docker run -t postman/newman:alpine \
-  run "https://raw.githubusercontent.com/YOUR_USERNAME/JARVIS-AI-Agent/main/postman/collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json" \
+  run "https://raw.githubusercontent.com/YOUR_USERNAME/Ironcliw-AI-Agent/main/postman/collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json" \
   --env-var "base_url=http://host.docker.internal:8010"
 ```
 
@@ -271,7 +271,7 @@ docker run -t postman/newman:alpine \
 
 If using Postman cloud sync:
 
-1. Create a Postman team workspace: "JARVIS Voice Auth"
+1. Create a Postman team workspace: "Ironcliw Voice Auth"
 2. Import collections from this repo
 3. Enable GitHub integration in Postman
 4. Set up two-way sync (optional)
@@ -284,9 +284,9 @@ If using Postman cloud sync:
 Error: connect ECONNREFUSED 127.0.0.1:8010
 ```
 
-**Solution:** Start the JARVIS backend:
+**Solution:** Start the Ironcliw backend:
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 ./venv/bin/python start_system.py
 ```
 
@@ -317,4 +317,4 @@ newman run collection.json --timeout-request 30000
 
 ## License
 
-Part of the JARVIS AI Agent project.
+Part of the Ironcliw AI Agent project.

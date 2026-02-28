@@ -1,4 +1,4 @@
-# Design: Resource-Pressure-Driven GCP Lifecycle
+﻿# Design: Resource-Pressure-Driven GCP Lifecycle
 
 **Date:** 2026-02-22
 **Status:** Approved
@@ -71,7 +71,7 @@ When state machine transitions to ACTIVE:
 2. After 30s of confirmed GCP stability (3 health checks at 10s), escalate:
    - Call `UnifiedModelServing.stop()` to unload GGUF model from RAM
    - Reclaims the 4-8GB that caused the pressure
-   - Sets `JARVIS_GCP_OFFLOAD_ACTIVE=true`
+   - Sets `Ironcliw_GCP_OFFLOAD_ACTIVE=true`
 3. If GCP becomes unhealthy later, `load_model()` re-loads locally (existing hot-swap)
 
 This closes the feedback loop: pressure -> GCP -> unload -> pressure drops -> GCP can release.
@@ -223,10 +223,10 @@ Tradeoff: $10.50/mo for 30s restart vs $0 with 3-5 min cold creation. Worth it f
 ## .env.gcp Default Change
 
 ```
-JARVIS_INVINCIBLE_NODE_ENABLED=false
+Ironcliw_INVINCIBLE_NODE_ENABLED=false
 ```
 
-The Invincible Node is no longer eagerly created. The pressure-driven system in GCPHybridPrimeRouter handles VM lifecycle. The `JARVIS_INVINCIBLE_NODE_ENABLED` flag becomes irrelevant to startup but is checked by the router when deciding which VM type to provision under pressure.
+The Invincible Node is no longer eagerly created. The pressure-driven system in GCPHybridPrimeRouter handles VM lifecycle. The `Ironcliw_INVINCIBLE_NODE_ENABLED` flag becomes irrelevant to startup but is checked by the router when deciding which VM type to provision under pressure.
 
 ---
 
@@ -239,7 +239,7 @@ The Invincible Node is no longer eagerly created. The pressure-driven system in 
 | `unified_supervisor.py` | Delete early_invincible_node_prewarm, delete early_spot_vm_warm, update cleanup() to use terminate_vm(action=STOP) |
 | `backend/core/memory_quantizer.py` | Replace subprocess.run with asyncio.create_subprocess_exec |
 | `backend/core/cost_tracker.py` | Fail-closed in can_create_vm(), deduplicate active session costs |
-| `.env.gcp` | JARVIS_INVINCIBLE_NODE_ENABLED=false |
+| `.env.gcp` | Ironcliw_INVINCIBLE_NODE_ENABLED=false |
 
 **No new files.**
 

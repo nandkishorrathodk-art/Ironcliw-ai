@@ -1,8 +1,8 @@
-"""
+﻿"""
 v77.2: Unified Coding Council Orchestrator
 ==========================================
 
-The main orchestrator that coordinates all 5 coding frameworks for JARVIS
+The main orchestrator that coordinates all 5 coding frameworks for Ironcliw
 self-evolution. This is the "brain" of the Coding Council.
 
 Architecture:
@@ -38,7 +38,7 @@ v77.2 Additions:
 
 All 80 identified gaps are addressed in this implementation.
 
-Author: JARVIS v77.2
+Author: Ironcliw v77.2
 Version: 2.2.0
 """
 
@@ -1537,7 +1537,7 @@ class UnifiedCodingCouncil:
         # v253.7: Added per-step timeouts — git subprocesses in CrossRepoSync
         # can hang indefinitely, stalling the entire startup.
         if TRINITY_AVAILABLE:
-            _trinity_step_timeout = float(os.getenv("JARVIS_CC_TRINITY_STEP_TIMEOUT", "15"))
+            _trinity_step_timeout = float(os.getenv("Ironcliw_CC_TRINITY_STEP_TIMEOUT", "15"))
             try:
                 self._message_queue = PersistentMessageQueue()
                 await asyncio.wait_for(self._message_queue.start(), timeout=_trinity_step_timeout)
@@ -1551,7 +1551,7 @@ class UnifiedCodingCouncil:
                 self._cross_repo_sync = CrossRepoSync()
                 await asyncio.wait_for(
                     self._cross_repo_sync.start(),
-                    timeout=float(os.getenv("JARVIS_CC_CROSS_REPO_TIMEOUT", "35")),
+                    timeout=float(os.getenv("Ironcliw_CC_CROSS_REPO_TIMEOUT", "35")),
                 )
 
                 logger.info("[CodingCouncil] Trinity modules initialized")
@@ -1585,7 +1585,7 @@ class UnifiedCodingCouncil:
                 except ImportError:
                     repos = {
                         "jarvis": self.config.repo_root,
-                        "jarvis_prime": Path(os.getenv("JARVIS_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
+                        "jarvis_prime": Path(os.getenv("Ironcliw_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
                         "reactor_core": Path(os.getenv("REACTOR_CORE_REPO", str(Path.home() / "Documents/repos/reactor-core"))),
                     }
                 self._transaction_coordinator = DistributedTransactionCoordinator(repos=repos)
@@ -2519,7 +2519,7 @@ class UnifiedCodingCouncil:
         Handle Trinity cross-repo events.
 
         This method is called by the Trinity sync system when files change
-        in other repos (J-Prime, Reactor-Core) that may affect JARVIS.
+        in other repos (J-Prime, Reactor-Core) that may affect Ironcliw.
 
         Args:
             event: Dictionary containing:

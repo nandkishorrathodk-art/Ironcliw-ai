@@ -1,7 +1,7 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Setup script for Claude API integration
 
-echo "🚀 Setting up Claude API integration for JARVIS"
+echo "🚀 Setting up Claude API integration for Ironcliw"
 echo "============================================="
 
 # Colors for output
@@ -55,7 +55,7 @@ else:
 "
 
 echo -e "\n${GREEN}✅ Claude setup complete!${NC}"
-echo -e "\n${BLUE}To start JARVIS with Claude:${NC}"
+echo -e "\n${BLUE}To start Ironcliw with Claude:${NC}"
 echo "1. Regular web interface: python start_system.py"
 echo "2. Claude-only mode: python start_jarvis_claude.py"
 echo "3. Test integration: python test_claude_integration.py"

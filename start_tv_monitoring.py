@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Start JARVIS Display Monitoring
+Start Ironcliw Display Monitoring
 ================================
 
 Advanced display monitoring system with:
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 async def main():
     """Main function"""
     # Parse arguments
-    parser = argparse.ArgumentParser(description="JARVIS Display Monitoring")
+    parser = argparse.ArgumentParser(description="Ironcliw Display Monitoring")
     parser.add_argument("--config", help="Path to configuration file", default=None)
     parser.add_argument("--simple", action="store_true", help="Use simple legacy monitor")
     parser.add_argument("--test-voice", action="store_true", help="Test voice output")
@@ -58,7 +58,7 @@ async def main():
     args = parser.parse_args()
 
     print("=" * 80)
-    print("🖥️  JARVIS Advanced Display Monitor")
+    print("🖥️  Ironcliw Advanced Display Monitor")
     print("=" * 80)
     print()
 
@@ -184,7 +184,7 @@ async def run_simple_monitor():
     print("   Monitoring for: Living Room TV")
     print("   ⏰ Check interval: Every 10 seconds")
     print()
-    print("   When your TV becomes available, JARVIS will prompt you to connect.")
+    print("   When your TV becomes available, Ironcliw will prompt you to connect.")
     print("   Press Ctrl+C to stop monitoring.")
     print()
     print("=" * 80)

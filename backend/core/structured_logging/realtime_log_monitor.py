@@ -1,5 +1,5 @@
-"""
-JARVIS Real-Time Log Monitor v1.0
+﻿"""
+Ironcliw Real-Time Log Monitor v1.0
 ==================================
 
 Intelligent real-time log monitoring with voice narration integration.
@@ -97,17 +97,17 @@ class LogMonitorConfig:
         """Load configuration from environment variables."""
         config = LogMonitorConfig()
 
-        if log_dir := os.getenv("JARVIS_LOG_DIR"):
+        if log_dir := os.getenv("Ironcliw_LOG_DIR"):
             config.log_dir = Path(log_dir)
 
-        if poll_interval := os.getenv("JARVIS_LOG_MONITOR_POLL_INTERVAL"):
+        if poll_interval := os.getenv("Ironcliw_LOG_MONITOR_POLL_INTERVAL"):
             config.poll_interval = float(poll_interval)
 
-        if threshold := os.getenv("JARVIS_LOG_MONITOR_CRITICAL_THRESHOLD"):
+        if threshold := os.getenv("Ironcliw_LOG_MONITOR_CRITICAL_THRESHOLD"):
             config.critical_error_threshold = int(threshold)
 
         config.enable_health_monitoring = os.getenv(
-            "JARVIS_LOG_MONITOR_HEALTH", "true"
+            "Ironcliw_LOG_MONITOR_HEALTH", "true"
         ).lower() == "true"
 
         return config

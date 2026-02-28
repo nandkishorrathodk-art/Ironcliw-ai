@@ -1,4 +1,4 @@
-# start_system.py vs gcp_vm_startup.sh - Explanation
+﻿# start_system.py vs gcp_vm_startup.sh - Explanation
 
 ## Quick Answer
 
@@ -8,14 +8,14 @@ They serve completely different purposes:
 
 | File | Purpose | Platform | When It Runs |
 |------|---------|----------|--------------|
-| `start_system.py` | Start JARVIS on your **local macOS** machine | macOS | Manual: `python start_system.py` |
-| `gcp_vm_startup.sh` | Auto-setup JARVIS on **GCP Ubuntu VMs** | Ubuntu Linux | Automatic: When VM is created |
+| `start_system.py` | Start Ironcliw on your **local macOS** machine | macOS | Manual: `python start_system.py` |
+| `gcp_vm_startup.sh` | Auto-setup Ironcliw on **GCP Ubuntu VMs** | Ubuntu Linux | Automatic: When VM is created |
 
 ## Detailed Explanation
 
 ### `start_system.py` (Local Development)
 
-**Location:** `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/start_system.py`
+**Location:** `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/start_system.py`
 
 **Purpose:**
 - Starts both frontend and backend on your Mac
@@ -34,7 +34,7 @@ They serve completely different purposes:
 
 **When to use:**
 ```bash
-# Start full JARVIS system on macOS
+# Start full Ironcliw system on macOS
 python start_system.py
 
 # Backend only
@@ -48,17 +48,17 @@ python start_system.py --frontend-only
 
 ### `gcp_vm_startup.sh` (Cloud Production)
 
-**Location:** `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/core/gcp_vm_startup.sh`
+**Location:** `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/core/gcp_vm_startup.sh`
 
 **Purpose:**
 - Automatically runs when a new GCP VM is created
-- Sets up JARVIS backend ONLY (no frontend needed)
+- Sets up Ironcliw backend ONLY (no frontend needed)
 - Production environment on Ubuntu
 - Minimal setup for cloud operation
 
 **Features:**
 - Installs system dependencies (Python, git, build tools)
-- Clones JARVIS repo (or uses pre-baked image)
+- Clones Ironcliw repo (or uses pre-baked image)
 - Installs Python packages
 - Configures environment for cloud
 - Starts Cloud SQL Proxy
@@ -173,7 +173,7 @@ But this is **optional** - the standalone tool works perfectly!
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │  gcp_vm_startup.sh (runs automatically)                   │  │
 │  │  • apt-get install python3, git, etc.                    │  │
-│  │  • Clone JARVIS repo                                     │  │
+│  │  • Clone Ironcliw repo                                     │  │
 │  │  • pip install dependencies                              │  │
 │  │  • Start Cloud SQL Proxy                                 │  │
 │  │  • python3 main.py --port 8010                           │  │

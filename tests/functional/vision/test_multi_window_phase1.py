@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Phase 1 MVP Test Suite for Multi-Window Detection
 Tests all acceptance criteria for F1.1, F1.2, and F1.3
@@ -14,7 +14,7 @@ import cv2
 from backend.vision.window_detector import WindowDetector
 from backend.vision.multi_window_capture import MultiWindowCapture
 from backend.vision.workspace_analyzer import WorkspaceAnalyzer
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
 
 async def test_f1_1_window_detection():
@@ -139,7 +139,7 @@ async def test_f1_3_basic_workspace_query():
     print("\n\n🧪 Testing F1.3: Basic Workspace Query")
     print("=" * 60)
     
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     # Test Query 1: "What's on my screen?"
     print("\n✓ Acceptance Criteria 1: 'What's on my screen?' includes all windows")
@@ -183,7 +183,7 @@ async def test_f1_3_basic_workspace_query():
 
 async def run_phase1_acceptance_tests():
     """Run all Phase 1 acceptance tests"""
-    print("🚀 JARVIS Multi-Window Awareness - Phase 1 Acceptance Tests")
+    print("🚀 Ironcliw Multi-Window Awareness - Phase 1 Acceptance Tests")
     print("=" * 60)
     
     print("\nThis test suite verifies all acceptance criteria for:")

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Coding Council Type Definitions
 ======================================
 
@@ -10,7 +10,7 @@ Features:
 - Serialization/deserialization support
 - Type-safe configuration
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 Version: 1.0.0
 """
 
@@ -68,8 +68,8 @@ class FrameworkType(str, Enum):
     REPOMASTER = "repomaster"    # Codebase analysis
     CONTINUE = "continue"        # IDE integration
     CLAUDE_CODE = "claude_code"  # Direct Claude usage (fallback)
-    # v84.0: Local JARVIS Prime inference (CodeLlama, Qwen, Llama etc.)
-    JPRIME_LOCAL = "jprime_local"  # Local LLM via JARVIS Prime (cost-free, private)
+    # v84.0: Local Ironcliw Prime inference (CodeLlama, Qwen, Llama etc.)
+    JPRIME_LOCAL = "jprime_local"  # Local LLM via Ironcliw Prime (cost-free, private)
     JPRIME_CODING = "jprime_coding"  # CodeLlama/DeepSeek Coder via J-Prime
     JPRIME_REASONING = "jprime_reasoning"  # Qwen/Llama via J-Prime for reasoning
 
@@ -127,7 +127,7 @@ class CodingCouncilConfig:
     # Paths (environment-driven)
     repo_root: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_REPO_PATH",
+            "Ironcliw_REPO_PATH",
             str(Path(__file__).parent.parent.parent.parent)
         )
     )
@@ -161,12 +161,12 @@ class CodingCouncilConfig:
         default_factory=lambda: _get_env_bool("CODING_COUNCIL_CONTINUE_ENABLED", False)
     )
 
-    # v84.0: JARVIS Prime Local LLM Settings
+    # v84.0: Ironcliw Prime Local LLM Settings
     jprime_enabled: bool = field(
         default_factory=lambda: _get_env_bool("CODING_COUNCIL_JPRIME_ENABLED", True)
     )
     jprime_url: str = field(
-        default_factory=lambda: _get_env("JARVIS_PRIME_URL", "http://localhost:8000")
+        default_factory=lambda: _get_env("Ironcliw_PRIME_URL", "http://localhost:8000")
     )
     jprime_prefer_for_coding: bool = field(
         default_factory=lambda: _get_env_bool("CODING_COUNCIL_JPRIME_PREFER_CODING", True)

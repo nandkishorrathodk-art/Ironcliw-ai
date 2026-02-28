@@ -1,8 +1,8 @@
-"""
-JARVIS Training Package
+﻿"""
+Ironcliw Training Package
 ========================
 
-Automated training pipeline for JARVIS-Prime models.
+Automated training pipeline for Ironcliw-Prime models.
 
 Components:
 - ReactorCorePipeline: Complete training pipeline

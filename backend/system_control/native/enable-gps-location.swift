@@ -1,7 +1,7 @@
-import Cocoa
+﻿import Cocoa
 import CoreLocation
 
-// App to enable GPS location for JARVIS
+// App to enable GPS location for Ironcliw
 class GPSLocationEnabler: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
     var window: NSWindow!
     var locationManager: CLLocationManager!
@@ -12,13 +12,13 @@ class GPSLocationEnabler: NSObject, NSApplicationDelegate, CLLocationManagerDele
         window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 500, height: 300),
                           styleMask: [.titled, .closable],
                           backing: .buffered, defer: false)
-        window.title = "Enable GPS for JARVIS"
+        window.title = "Enable GPS for Ironcliw"
         window.center()
         
         // Create UI
         let contentView = NSView(frame: window.contentView!.bounds)
         
-        let titleLabel = NSTextField(labelWithString: "🌍 Enable GPS Location for JARVIS")
+        let titleLabel = NSTextField(labelWithString: "🌍 Enable GPS Location for Ironcliw")
         titleLabel.font = NSFont.boldSystemFont(ofSize: 18)
         titleLabel.alignment = .center
         titleLabel.frame = NSRect(x: 50, y: 240, width: 400, height: 30)

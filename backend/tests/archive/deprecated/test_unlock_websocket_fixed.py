@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Unlock Command with Correct WebSocket Format
 =================================================
@@ -19,16 +19,16 @@ async def test_unlock_command():
     print(f"Time: {datetime.now().strftime('%I:%M %p')}")
     
     try:
-        print("\n📡 Connecting to JARVIS WebSocket...")
+        print("\n📡 Connecting to Ironcliw WebSocket...")
         
-        # Connect to JARVIS
+        # Connect to Ironcliw
         async with websockets.connect('ws://localhost:8000/voice/jarvis/stream') as ws:
-            print("✅ Connected to JARVIS")
+            print("✅ Connected to Ironcliw")
             
             # Wait for welcome message
             welcome = await ws.recv()
             welcome_data = json.loads(welcome)
-            print(f"\n🤖 JARVIS: {welcome_data.get('message', 'Connected')}")
+            print(f"\n🤖 Ironcliw: {welcome_data.get('message', 'Connected')}")
             
             # Send the unlock command in the correct format
             command_data = {
@@ -41,7 +41,7 @@ async def test_unlock_command():
             
             # Collect responses
             responses = []
-            print("\n📨 Responses from JARVIS:")
+            print("\n📨 Responses from Ironcliw:")
             print("-"*40)
             
             # Wait for responses
@@ -57,7 +57,7 @@ async def test_unlock_command():
                         continue
                     
                     if data.get('text'):
-                        print(f"   JARVIS: {data['text']}")
+                        print(f"   Ironcliw: {data['text']}")
                         if data.get('speak'):
                             print(f"           (spoken aloud)")
                     
@@ -107,7 +107,7 @@ async def test_unlock_command():
                     print("\n   💡 Tips:")
                     print("      1. Run: ./enable_screen_unlock.sh")
                     print("      2. Check daemon: ps aux | grep 8765")
-                    print("      3. Restart JARVIS if needed")
+                    print("      3. Restart Ironcliw if needed")
                     success = True  # Command was processed correctly
                     break
             
@@ -118,8 +118,8 @@ async def test_unlock_command():
                         print(f"      {resp.get('text')}")
                 
     except (ConnectionRefusedError, OSError) as e:
-        print("\n❌ Error: Cannot connect to JARVIS")
-        print("   Make sure JARVIS is running on port 8000")
+        print("\n❌ Error: Cannot connect to Ironcliw")
+        print("   Make sure Ironcliw is running on port 8000")
         print("   Run: cd backend && python start_jarvis_correct_port.sh")
         return
     except Exception as e:
@@ -132,5 +132,5 @@ async def test_unlock_command():
 if __name__ == "__main__":
     print("🔧 Testing Manual Unlock Command with Correct Format")
     print("This verifies that 'unlock my screen' is properly handled")
-    print("\nNote: Make sure JARVIS is running on port 8000")
+    print("\nNote: Make sure Ironcliw is running on port 8000")
     asyncio.run(test_unlock_command())

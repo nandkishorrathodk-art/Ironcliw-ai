@@ -1,8 +1,8 @@
-"""
-Pure Vision Intelligence System for JARVIS
+﻿"""
+Pure Vision Intelligence System for Ironcliw
 Zero templates, zero hardcoding - pure Claude Vision intelligence
 
-This implements the PRD vision: Claude is JARVIS's eyes AND voice.
+This implements the PRD vision: Claude is Ironcliw's eyes AND voice.
 Every response is generated fresh from actual observation.
 """
 
@@ -177,7 +177,7 @@ logger = logging.getLogger(__name__)
 
 
 class EmotionalTone(Enum):
-    """JARVIS's emotional states for natural variation"""
+    """Ironcliw's emotional states for natural variation"""
 
     NEUTRAL = "neutral"
     ENCOURAGING = "encouraging"
@@ -422,7 +422,7 @@ class PureVisionIntelligence:
         ttl_seconds: int = 120,
     ) -> Optional[str]:
         """
-        Track a pending question after JARVIS asks the user something.
+        Track a pending question after Ironcliw asks the user something.
         Returns context ID if successful, None if store unavailable.
         """
         if not self.context_store:
@@ -526,14 +526,14 @@ class PureVisionIntelligence:
         understanding: Dict[str, Any],
     ):
         """
-        Intelligently detect when JARVIS mentions seeing a terminal/window
+        Intelligently detect when Ironcliw mentions seeing a terminal/window
         but hasn't provided deep analysis yet, and track it for follow-up.
 
         This enables conversations like:
         User: "can you see my terminal?"
-        JARVIS: "Yes, I can see Terminal on Desktop 2..."
+        Ironcliw: "Yes, I can see Terminal on Desktop 2..."
         User: "what does it say?" or "are there any errors?"
-        JARVIS: [Actually reads and analyzes the terminal content]
+        Ironcliw: [Actually reads and analyzes the terminal content]
         """
         if not self.context_store:
             return  # No context store, skip tracking
@@ -542,7 +542,7 @@ class PureVisionIntelligence:
             response_lower = jarvis_response.lower()
             query_lower = user_query.lower()
 
-            # Detect if JARVIS mentioned seeing something but didn't analyze it deeply
+            # Detect if Ironcliw mentioned seeing something but didn't analyze it deeply
             mentioned_terminal = any(
                 word in response_lower
                 for word in [
@@ -580,7 +580,7 @@ class PureVisionIntelligence:
             # Check if response is brief (indicates surface-level observation)
             is_brief_response = len(jarvis_response.split()) < 50
 
-            # If JARVIS mentioned a window/terminal/etc in a brief response to a discovery query,
+            # If Ironcliw mentioned a window/terminal/etc in a brief response to a discovery query,
             # track it as a follow-up opportunity
             should_track = (
                 is_discovery_query
@@ -628,7 +628,7 @@ class PureVisionIntelligence:
                     window_id=f"{window_type}_{space_id}",
                     space_id=str(space_id),
                     snapshot_id=snapshot_id,
-                    summary=f"User asked '{user_query}', JARVIS responded '{jarvis_response[:100]}'",
+                    summary=f"User asked '{user_query}', Ironcliw responded '{jarvis_response[:100]}'",
                     ocr_text=None,  # Will be extracted on follow-up
                     ttl_seconds=180,  # 3 minutes to ask follow-up
                 )
@@ -828,7 +828,7 @@ class PureVisionIntelligence:
         await self._update_context_bridge(understanding, user_query, natural_response)
 
         # ═══════════════════════════════════════════════════════════════
-        # Track pending follow-up questions when JARVIS mentions seeing
+        # Track pending follow-up questions when Ironcliw mentions seeing
         # a terminal/window but hasn't provided detailed analysis yet
         # ═══════════════════════════════════════════════════════════════
         await self._track_followup_opportunity(
@@ -857,7 +857,7 @@ class PureVisionIntelligence:
             query_lower = user_query.lower()
             response_lower = response.lower() if response else ""
 
-            # Trigger 1: JARVIS asks a question (existing behavior)
+            # Trigger 1: Ironcliw asks a question (existing behavior)
             if response and (
                 "would you like" in response_lower or "can i help" in response_lower
             ):
@@ -1131,7 +1131,7 @@ class PureVisionIntelligence:
             terminal_focus = "READ carefully and quote exact content"
 
         # Build the adaptive prompt
-        prompt = f"""You are JARVIS, Tony Stark's AI assistant. You're looking at the user's screen.
+        prompt = f"""You are Ironcliw, Tony Stark's AI assistant. You're looking at the user's screen.
 
 User's Current Question: "{user_query}"
 
@@ -1322,7 +1322,7 @@ Remember: Natural, {detail_level}, directly answering what was asked, and SPECIF
         relevant_memories = self._find_relevant_memories(user_query)
 
         # Build temporal comparison prompt
-        temporal_prompt = f"""You are JARVIS. The user asks: "{user_query}"
+        temporal_prompt = f"""You are Ironcliw. The user asks: "{user_query}"
 
 Look at the current screen and compare it with what you remember:
 
@@ -1445,7 +1445,7 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             # Provide helpful error message if no window data either
             return (
                 "I'm unable to capture screenshots of your desktop spaces at the moment. "
-                "Please ensure screen recording permissions are enabled for JARVIS in "
+                "Please ensure screen recording permissions are enabled for Ironcliw in "
                 "System Preferences > Security & Privacy > Privacy > Screen Recording. "
                 "Once enabled, I'll be able to provide visual analysis across all your desktop spaces."
             )
@@ -1666,7 +1666,7 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
                 if hasattr(self, "capture_engine") and self.capture_engine:
                     return (
                         "I'm trying to look across your desktop spaces to find Terminal, but I'm unable to capture screenshots at the moment. "
-                        "Please ensure screen recording permissions are enabled for JARVIS in "
+                        "Please ensure screen recording permissions are enabled for Ironcliw in "
                         "System Preferences > Security & Privacy > Privacy > Screen Recording. "
                         "Once enabled, I'll be able to help you locate applications across all your desktop spaces."
                     )
@@ -1822,7 +1822,7 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
         # Confidence indicators
         confidence_notes = self._build_confidence_notes(window_data, intent)
 
-        prompt = f"""You are JARVIS, Tony Stark's AI assistant. You have visibility across multiple desktop spaces.
+        prompt = f"""You are Ironcliw, Tony Stark's AI assistant. You have visibility across multiple desktop spaces.
 
 User's Current Question: "{user_query}"
 
@@ -2692,7 +2692,7 @@ class ProactiveIntelligence:
         Claude decides what's important and how to communicate it.
         """
         # Let Claude observe and decide what's worth mentioning
-        proactive_prompt = f"""You are JARVIS, observing the user's screen proactively.
+        proactive_prompt = f"""You are Ironcliw, observing the user's screen proactively.
 
 Look at this screen and determine if there's anything worth mentioning proactively.
 
@@ -2707,7 +2707,7 @@ Current workflow: {self.vision.context.workflow_state}
 Last interaction: {self._format_last_interaction()}
 
 If you notice something worth mentioning:
-1. Provide a natural, proactive message as JARVIS would
+1. Provide a natural, proactive message as Ironcliw would
 2. Be helpful but not intrusive
 3. Only mention truly useful observations
 4. Vary your communication style
@@ -2753,7 +2753,7 @@ class WorkflowIntelligence:
         Understand the user's workflow and provide contextually appropriate assistance.
         Claude figures out the workflow from screen content.
         """
-        workflow_prompt = f"""You are JARVIS. The user asks: "{query}"
+        workflow_prompt = f"""You are Ironcliw. The user asks: "{query}"
 
 Look at their screen and understand their current workflow:
 1. What applications are open and how they relate

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Health API v2.0 - Readiness-Aware Health Checks
 ========================================================
 
@@ -21,12 +21,12 @@ Why This Matters:
 - After: /health/ready returns 503 during initialization, 200 only when ready
 
 Provides real-time status of:
-- JARVIS-Prime (Mind) - Local AI inference
+- Ironcliw-Prime (Mind) - Local AI inference
 - Reactor-Core (Nerves) - Orchestration layer
 - Graceful Degradation status
 - Routing metrics
 
-Author: JARVIS Trinity v94.0 - Readiness-Aware Health System
+Author: Ironcliw Trinity v94.0 - Readiness-Aware Health System
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ class TrinityHealthResponse(BaseModel):
 
 
 class PrimeStatusResponse(BaseModel):
-    """JARVIS-Prime specific status."""
+    """Ironcliw-Prime specific status."""
     status: str
     available: bool
     circuit_breaker: Dict[str, Any]
@@ -114,7 +114,7 @@ async def get_trinity_health() -> TrinityHealthResponse:
     Get comprehensive health status of the Trinity ecosystem.
 
     Returns status of:
-    - JARVIS-Prime (local AI)
+    - Ironcliw-Prime (local AI)
     - Reactor-Core (orchestration)
     - Prime Router
     - Graceful Degradation
@@ -122,7 +122,7 @@ async def get_trinity_health() -> TrinityHealthResponse:
     components = {}
     overall_healthy = True
 
-    # Check JARVIS-Prime (Mind)
+    # Check Ironcliw-Prime (Mind)
     prime_status = await _check_prime_health()
     components["jarvis_prime"] = prime_status
     if prime_status.status not in ("healthy", "unknown"):
@@ -155,7 +155,7 @@ async def get_trinity_health() -> TrinityHealthResponse:
 
 @router.get("/prime", response_model=PrimeStatusResponse)
 async def get_prime_health() -> PrimeStatusResponse:
-    """Get detailed JARVIS-Prime status."""
+    """Get detailed Ironcliw-Prime status."""
     try:
         try:
             from core.prime_router import get_prime_router
@@ -413,7 +413,7 @@ async def _fallback_readiness_check() -> Response:
 # =============================================================================
 
 async def _check_prime_health() -> ComponentStatus:
-    """Check JARVIS-Prime health."""
+    """Check Ironcliw-Prime health."""
     try:
         try:
             from core.prime_client import get_prime_client
@@ -428,7 +428,7 @@ async def _check_prime_health() -> ComponentStatus:
         prime_status = status.get("status", "unknown")
 
         return ComponentStatus(
-            name="JARVIS-Prime (Mind)",
+            name="Ironcliw-Prime (Mind)",
             status=prime_status if prime_status in ("available", "degraded") else "unhealthy",
             latency_ms=latency,
             last_check=time.time(),
@@ -437,7 +437,7 @@ async def _check_prime_health() -> ComponentStatus:
 
     except Exception as e:
         return ComponentStatus(
-            name="JARVIS-Prime (Mind)",
+            name="Ironcliw-Prime (Mind)",
             status="unknown",
             details={"error": str(e)},
         )

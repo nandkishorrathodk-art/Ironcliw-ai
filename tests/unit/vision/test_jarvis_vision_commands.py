@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 import sys
 from pathlib import Path
@@ -8,28 +8,28 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
-Test JARVIS Vision Commands
+Test Ironcliw Vision Commands
 """
 
 import asyncio
 import os
-from backend.voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
 
 
 async def test_vision_commands():
-    """Test vision commands through JARVIS"""
-    print("🤖 Testing JARVIS Vision Commands\n")
+    """Test vision commands through Ironcliw"""
+    print("🤖 Testing Ironcliw Vision Commands\n")
     
     # Set API key for testing
     if not os.getenv("ANTHROPIC_API_KEY"):
         print("⚠️  Warning: No ANTHROPIC_API_KEY found. Some features may be limited.\n")
     
-    # Initialize JARVIS
-    jarvis = JARVISAgentVoice(user_name="Sir")
+    # Initialize Ironcliw
+    jarvis = IroncliwAgentVoice(user_name="Sir")
     
     # Test commands
     vision_commands = [
-        "Hey JARVIS, what's on my screen?",
+        "Hey Ironcliw, what's on my screen?",
         "Check for software updates",
         "What applications can you see?",
         "Start monitoring for updates",
@@ -43,7 +43,7 @@ async def test_vision_commands():
         # Process command
         try:
             response = await jarvis._handle_vision_command(command)
-            print(f"🤖 JARVIS: {response}\n")
+            print(f"🤖 Ironcliw: {response}\n")
         except Exception as e:
             print(f"❌ Error: {e}\n")
         
@@ -55,7 +55,7 @@ async def test_system_integration():
     """Test vision integration with system commands"""
     print("\n🔄 Testing System Integration\n")
     
-    jarvis = JARVISAgentVoice(user_name="Sir")
+    jarvis = IroncliwAgentVoice(user_name="Sir")
     
     # Test mixed commands
     mixed_commands = [
@@ -73,7 +73,7 @@ async def test_system_integration():
                 response = await jarvis._handle_system_command(command)
             else:
                 response = "System control is not enabled. Please set ANTHROPIC_API_KEY."
-            print(f"🤖 JARVIS: {response}\n")
+            print(f"🤖 Ironcliw: {response}\n")
         except Exception as e:
             print(f"❌ Error: {e}\n")
         
@@ -83,7 +83,7 @@ async def test_system_integration():
 async def main():
     """Run all tests"""
     print("=" * 60)
-    print("🖥️  JARVIS Vision Command Test Suite")
+    print("🖥️  Ironcliw Vision Command Test Suite")
     print("=" * 60)
     print()
     

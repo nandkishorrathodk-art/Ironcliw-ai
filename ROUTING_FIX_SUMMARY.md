@@ -1,4 +1,4 @@
-# 🔧 Vision Query Routing Fix
+﻿# 🔧 Vision Query Routing Fix
 
 ## Problem Identified
 
@@ -118,10 +118,10 @@ Sir, I can see Space 5 is running VS Code:
 
 ## Action Required
 
-**Restart your JARVIS backend:**
+**Restart your Ironcliw backend:**
 ```bash
 # In backend terminal (Ctrl+C)
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 

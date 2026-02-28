@@ -1,0 +1,33 @@
+﻿{
+    "name": "ironcliw",
+    "version": "1.0.0",
+    "description": "Ironcliw AI Desktop App — Advanced Electron Interface",
+    "main": "main.js",
+    "author": "Ironcliw",
+    "license": "MIT",
+    "scripts": {
+        "start": "electron .",
+        "build": "electron-builder --win",
+        "pack": "electron-builder --dir"
+    },
+    "dependencies": {
+        "electron-is-dev": "^2.0.0"
+    },
+    "devDependencies": {
+        "electron": "^29.0.0",
+        "electron-builder": "^24.9.1"
+    },
+    "build": {
+        "appId": "com.ironcliw.desktop",
+        "productName": "Ironcliw",
+        "win": {
+            "target": "nsis",
+            "icon": "renderer/assets/icon.ico"
+        },
+        "files": [
+            "main.js",
+            "preload.js",
+            "renderer/**/*"
+        ]
+    }
+}

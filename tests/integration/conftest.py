@@ -1,5 +1,5 @@
-"""
-Phase 7: Shared integration-test fixtures for JARVIS test suite.
+﻿"""
+Phase 7: Shared integration-test fixtures for Ironcliw test suite.
 
 Provides mock servers, pre-populated heartbeat files, and client stubs
 so integration tests can exercise multi-component interactions without
@@ -120,7 +120,7 @@ async def mock_health_server():
 
 @pytest.fixture
 def mock_prime_client():
-    """AsyncMock of JARVISPrimeClient with configurable responses.
+    """AsyncMock of IroncliwPrimeClient with configurable responses.
 
     Usage::
 
@@ -143,8 +143,8 @@ async def started_event_bus(monkeypatch):
 
     Patches create_safe_task and resets singleton on teardown.
     """
-    monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "50")
-    monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+    monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "50")
+    monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
     try:
         import unified_supervisor

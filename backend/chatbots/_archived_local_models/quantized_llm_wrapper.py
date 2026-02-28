@@ -1,6 +1,6 @@
-"""
-Quantized LLM Wrapper for JARVIS - M1 Optimized
-Provides a unified interface for using quantized models with existing JARVIS infrastructure
+﻿"""
+Quantized LLM Wrapper for Ironcliw - M1 Optimized
+Provides a unified interface for using quantized models with existing Ironcliw infrastructure
 """
 
 import os

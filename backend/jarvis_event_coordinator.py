@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Event Coordinator - Central Hub for Event-Driven Architecture
+Ironcliw Event Coordinator - Central Hub for Event-Driven Architecture
 Orchestrates all components through the event bus for seamless integration
 """
 
@@ -29,11 +29,11 @@ from core.memory_controller_v2 import get_memory_controller
 
 # Import component interfaces (v2 versions with events)
 from voice.ml_enhanced_voice_system_v2 import MLEnhancedVoiceSystem
-from vision.intelligent_vision_integration_v2 import IntelligentJARVISVision
+from vision.intelligent_vision_integration_v2 import IntelligentIroncliwVision
 from system_control.macos_controller_v2 import MacOSController
 
 # Additional components
-from voice.jarvis_personality_adapter import PersonalityAdapter as JARVISPersonalityAdapter
+from voice.jarvis_personality_adapter import PersonalityAdapter as IroncliwPersonalityAdapter
 from autonomy.autonomous_behaviors import AutonomousBehaviorManager as AutonomousBehaviorEngine
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,9 @@ class WorkflowContext:
     pending_steps: List[str] = field(default_factory=list)
     context_data: Dict[str, Any] = field(default_factory=dict)
     
-class JARVISEventCoordinator:
+class IroncliwEventCoordinator:
     """
-    Central coordinator for JARVIS using event-driven architecture
+    Central coordinator for Ironcliw using event-driven architecture
     Manages all components through loose coupling via events
     """
     
@@ -99,7 +99,7 @@ class JARVISEventCoordinator:
         # Setup core event subscriptions
         self._setup_core_subscriptions()
         
-        logger.info(f"JARVIS Event Coordinator initialized for {user_name}")
+        logger.info(f"Ironcliw Event Coordinator initialized for {user_name}")
         
     def _setup_core_subscriptions(self):
         """Setup core event subscriptions for coordination"""
@@ -174,12 +174,12 @@ class JARVISEventCoordinator:
                 await self._on_all_components_ready()
                 
     async def start(self):
-        """Start the JARVIS coordinator and all components"""
+        """Start the Ironcliw coordinator and all components"""
         if self.state.is_running:
             logger.warning("Coordinator already running")
             return
             
-        logger.info("Starting JARVIS Event Coordinator...")
+        logger.info("Starting Ironcliw Event Coordinator...")
         
         # Publish startup event
         SystemEvents.startup(
@@ -204,17 +204,17 @@ class JARVISEventCoordinator:
         await self.memory_controller.start_monitoring()
         
         # Enable event tracing in debug mode
-        if os.getenv("JARVIS_DEBUG", "").lower() == "true":
+        if os.getenv("Ironcliw_DEBUG", "").lower() == "true":
             self.debugger.enable_trace()
             
         self.state.is_running = True
-        logger.info("JARVIS Event Coordinator started successfully")
+        logger.info("Ironcliw Event Coordinator started successfully")
         
         # Announce readiness
         await self._announce_ready()
         
     async def _initialize_components(self):
-        """Initialize all JARVIS components"""
+        """Initialize all Ironcliw components"""
         logger.info("Initializing components...")
         
         # Check memory before loading
@@ -243,7 +243,7 @@ class JARVISEventCoordinator:
             
         # Initialize vision system
         try:
-            self.vision_system = IntelligentJARVISVision()
+            self.vision_system = IntelligentIroncliwVision()
             self.state.component_status["vision"] = "ready"
         except Exception as e:
             logger.error(f"Failed to initialize vision: {e}")
@@ -259,7 +259,7 @@ class JARVISEventCoordinator:
             
         # Initialize personality
         try:
-            self.personality = JARVISPersonalityAdapter(self.user_name)
+            self.personality = IroncliwPersonalityAdapter(self.user_name)
             self.state.component_status["personality"] = "ready"
         except Exception as e:
             logger.error(f"Failed to initialize personality: {e}")
@@ -283,7 +283,7 @@ class JARVISEventCoordinator:
         
     async def _on_all_components_ready(self):
         """Called when all components are ready"""
-        logger.info("All components ready - JARVIS fully operational")
+        logger.info("All components ready - Ironcliw fully operational")
         
         # Publish system ready event
         self.event_builder.publish(
@@ -296,7 +296,7 @@ class JARVISEventCoordinator:
         )
         
     async def _announce_ready(self):
-        """Announce JARVIS is ready"""
+        """Announce Ironcliw is ready"""
         if self.voice_system:
             # Generate ready message
             response = f"All systems operational, {self.user_name}. How may I assist you?"
@@ -551,7 +551,7 @@ class JARVISEventCoordinator:
         
         try:
             # Reinitialize vision
-            self.vision_system = IntelligentJARVISVision()
+            self.vision_system = IntelligentIroncliwVision()
             logger.info("Vision system recovered")
         except Exception as e:
             logger.error(f"Failed to recover vision system: {e}")
@@ -569,7 +569,7 @@ class JARVISEventCoordinator:
             
     async def stop(self):
         """Stop the coordinator and all components"""
-        logger.info("Stopping JARVIS Event Coordinator...")
+        logger.info("Stopping Ironcliw Event Coordinator...")
         
         # Publish shutdown event
         SystemEvents.shutdown(
@@ -589,7 +589,7 @@ class JARVISEventCoordinator:
             await self.web_ui.stop()
             
         self.state.is_running = False
-        logger.info("JARVIS Event Coordinator stopped")
+        logger.info("Ironcliw Event Coordinator stopped")
         
     def get_status(self) -> Dict[str, Any]:
         """Get current coordinator status"""
@@ -619,7 +619,7 @@ class JARVISEventCoordinator:
 
 
 async def main():
-    """Main entry point for JARVIS with event-driven architecture"""
+    """Main entry point for Ironcliw with event-driven architecture"""
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
@@ -631,16 +631,16 @@ async def main():
         logger.warning("ANTHROPIC_API_KEY not set - some features will be limited")
         
     # Create and start coordinator
-    coordinator = JARVISEventCoordinator(
-        user_name=os.getenv("JARVIS_USER", "Sir"),
+    coordinator = IroncliwEventCoordinator(
+        user_name=os.getenv("Ironcliw_USER", "Sir"),
         enable_web_ui=True
     )
     
     try:
-        # Start JARVIS
+        # Start Ironcliw
         await coordinator.start()
         
-        logger.info("JARVIS is running. Press Ctrl+C to stop.")
+        logger.info("Ironcliw is running. Press Ctrl+C to stop.")
         logger.info("Event Web UI available at http://localhost:8888")
         
         # Keep running
@@ -659,7 +659,7 @@ async def main():
     finally:
         # Clean shutdown
         await coordinator.stop()
-        logger.info("JARVIS shutdown complete")
+        logger.info("Ironcliw shutdown complete")
 
 
 if __name__ == "__main__":

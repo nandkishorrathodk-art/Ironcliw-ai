@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive Test Suite for Context Awareness Integration
 ==========================================================
@@ -380,7 +380,7 @@ class ContextAwarenessTestSuite:
 
             logs = subprocess.run([
                 'tail', '-n', '200',
-                '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/logs/jarvis_optimized_*.log'
+                '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/logs/jarvis_optimized_*.log'
             ], capture_output=True, text=True, shell=True)
 
             log_lines = logs.stdout.split('\n') if logs.stdout else []
@@ -410,7 +410,7 @@ class ContextAwarenessTestSuite:
     async def run_all_tests(self):
         """Run complete test suite"""
         print("\n" + "█" * 70)
-        print(" JARVIS CONTEXT AWARENESS TEST SUITE ")
+        print(" Ironcliw CONTEXT AWARENESS TEST SUITE ")
         print("█" * 70)
         print(f"\nStarting tests at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -457,13 +457,13 @@ async def main():
         if response.status_code != 200:
             print("⚠️ Backend appears to be down. Starting it...")
             subprocess.Popen(["python3", "main.py"],
-                           cwd="/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend")
+                           cwd="/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend")
             await asyncio.sleep(5)
     except:
         print("⚠️ Backend not responding. Please ensure it's running.")
         print("Starting backend...")
         subprocess.Popen(["python3", "main.py"],
-                       cwd="/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend")
+                       cwd="/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend")
         await asyncio.sleep(5)
 
     # Run test suite

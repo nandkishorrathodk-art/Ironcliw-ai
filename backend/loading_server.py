@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Loading Server v212.0 - Enterprise-Grade Startup Orchestration Hub
+Ironcliw Loading Server v212.0 - Enterprise-Grade Startup Orchestration Hub
 ==========================================================================
 
 The ultimate loading server that serves as the central nervous system for
-JARVIS startup coordination across all Trinity components.
+Ironcliw startup coordination across all Trinity components.
 
 v212.0 ENHANCEMENTS (Unified Feature Integration):
 - W3C Distributed Tracing for cross-service debugging
@@ -43,8 +43,8 @@ Architecture:
     │  └─ Progress monotonicity enforcement                                   │
     ├─────────────────────────────────────────────────────────────────────────┤
     │  Layer 3: Trinity Health Aggregation                                    │
-    │  ├─ Real-time health from JARVIS Body (8010)                            │
-    │  ├─ Real-time health from JARVIS Prime (8000)                           │
+    │  ├─ Real-time health from Ironcliw Body (8010)                            │
+    │  ├─ Real-time health from Ironcliw Prime (8000)                           │
     │  ├─ Real-time health from Reactor Core (8090)                           │
     │  ├─ Heartbeat file monitoring                                           │
     │  └─ Bidirectional health propagation                                    │
@@ -88,7 +88,7 @@ API Endpoints:
     WS   /ws/progress                 - Real-time progress stream
     GET  /sse/progress                - SSE fallback stream
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 
@@ -159,11 +159,11 @@ def _configure_third_party_log_noise() -> None:
     This prevents noisy SpeechBrain debug output from bypassing main startup logs.
     """
     third_party_level = _parse_log_level(
-        os.getenv("JARVIS_THIRD_PARTY_LOG_LEVEL", "WARNING"),
+        os.getenv("Ironcliw_THIRD_PARTY_LOG_LEVEL", "WARNING"),
         logging.WARNING,
     )
     speechbrain_level = _parse_log_level(
-        os.getenv("JARVIS_SPEECHBRAIN_LOG_LEVEL", "ERROR"),
+        os.getenv("Ironcliw_SPEECHBRAIN_LOG_LEVEL", "ERROR"),
         logging.ERROR,
     )
 
@@ -183,7 +183,7 @@ def _configure_third_party_log_noise() -> None:
         else:
             noisy_logger.setLevel(third_party_level)
 
-    if _env_flag("JARVIS_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", True):
+    if _env_flag("Ironcliw_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", True):
         checkpoint_filter = _RegisteredCheckpointFilter()
         for target_logger in (
             logging.getLogger(),
@@ -280,16 +280,16 @@ class LoadingServerConfig:
     host: str = field(default_factory=lambda: os.getenv("LOADING_SERVER_HOST", "0.0.0.0"))
 
     # Trinity service discovery
-    backend_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_BACKEND_PORT", "8010")))
-    frontend_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_FRONTEND_PORT", "3000")))
+    backend_port: int = field(default_factory=lambda: int(os.getenv("Ironcliw_BACKEND_PORT", "8010")))
+    frontend_port: int = field(default_factory=lambda: int(os.getenv("Ironcliw_FRONTEND_PORT", "3000")))
     # v238.0: Default 8001 to match trinity_config.py v192.2 alignment
-    prime_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8001")))
+    prime_port: int = field(default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8001")))
     reactor_port: int = field(default_factory=lambda: int(os.getenv("REACTOR_CORE_PORT", "8090")))
 
     # Paths
-    jarvis_home: Path = field(default_factory=lambda: Path(os.getenv("JARVIS_HOME", str(Path.home() / ".jarvis"))))
-    jarvis_repo: Path = field(default_factory=lambda: Path(os.getenv("JARVIS_PATH", str(Path.home() / "Documents/repos/JARVIS-AI-Agent"))))
-    prime_repo: Path = field(default_factory=lambda: Path(os.getenv("JARVIS_PRIME_PATH", str(Path.home() / "Documents/repos/jarvis-prime"))))
+    jarvis_home: Path = field(default_factory=lambda: Path(os.getenv("Ironcliw_HOME", str(Path.home() / ".jarvis"))))
+    jarvis_repo: Path = field(default_factory=lambda: Path(os.getenv("Ironcliw_PATH", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent"))))
+    prime_repo: Path = field(default_factory=lambda: Path(os.getenv("Ironcliw_PRIME_PATH", str(Path.home() / "Documents/repos/jarvis-prime"))))
     reactor_repo: Path = field(default_factory=lambda: Path(os.getenv("REACTOR_CORE_PATH", str(Path.home() / "Documents/repos/reactor-core"))))
 
     # Timeouts (seconds)
@@ -888,8 +888,8 @@ class TrinityHealthAggregator:
     v125.0: Real-time health aggregation across all Trinity components.
 
     Monitors:
-    - JARVIS Body (backend)
-    - JARVIS Prime (local LLM)
+    - Ironcliw Body (backend)
+    - Ironcliw Prime (local LLM)
     - Reactor Core (training)
     """
 
@@ -1079,7 +1079,7 @@ class LoadingServer:
         self._startup_time = time.time()
         self._progress = 0
         self._phase = "initializing"
-        self._message = "Starting JARVIS..."
+        self._message = "Starting Ironcliw..."
         self._components: Dict[str, Dict[str, Any]] = {}
         self._shutdown_requested = False
         self._stopping = False
@@ -1097,10 +1097,10 @@ class LoadingServer:
         self._recovery_last_result: Dict[str, Any] = {}
         self._recovery_cooldown_seconds: float = max(
             0.0,
-            float(os.getenv("JARVIS_RECOVERY_COOLDOWN_SECONDS", "15.0")),
+            float(os.getenv("Ironcliw_RECOVERY_COOLDOWN_SECONDS", "15.0")),
         )
         self._recovery_python_executable: str = (
-            os.getenv("JARVIS_RECOVERY_PYTHON") or sys.executable or "python3"
+            os.getenv("Ironcliw_RECOVERY_PYTHON") or sys.executable or "python3"
         )
         self._recovery_project_root: Path = self._discover_recovery_project_root()
         self._recovery_supervisor_script: Path = (
@@ -1377,14 +1377,14 @@ class LoadingServer:
         Resolve project root for supervisor recovery without hardcoding.
 
         Preference order:
-        1. JARVIS_RECOVERY_PROJECT_ROOT (if valid)
+        1. Ironcliw_RECOVERY_PROJECT_ROOT (if valid)
         2. Configured jarvis_repo
         3. Repository root inferred from this file
         4. Current working directory
         """
         candidates: List[Path] = []
 
-        env_root = os.getenv("JARVIS_RECOVERY_PROJECT_ROOT")
+        env_root = os.getenv("Ironcliw_RECOVERY_PROJECT_ROOT")
         if env_root:
             candidates.append(Path(env_root).expanduser())
 
@@ -1463,10 +1463,10 @@ class LoadingServer:
         """Probe backend /health endpoint directly for recovery gating."""
         timeout = max(
             0.5,
-            float(os.getenv("JARVIS_RECOVERY_BACKEND_HEALTH_TIMEOUT", "2.0")),
+            float(os.getenv("Ironcliw_RECOVERY_BACKEND_HEALTH_TIMEOUT", "2.0")),
         )
-        host = os.getenv("JARVIS_RECOVERY_BACKEND_HOST", "127.0.0.1")
-        path = os.getenv("JARVIS_RECOVERY_BACKEND_HEALTH_PATH", "/health")
+        host = os.getenv("Ironcliw_RECOVERY_BACKEND_HOST", "127.0.0.1")
+        path = os.getenv("Ironcliw_RECOVERY_BACKEND_HEALTH_PATH", "/health")
         reader = None
         writer = None
         try:
@@ -1511,7 +1511,7 @@ class LoadingServer:
 
         timeout = max(
             0.5,
-            float(os.getenv("JARVIS_RECOVERY_KERNEL_HEALTH_TIMEOUT", "2.0")),
+            float(os.getenv("Ironcliw_RECOVERY_KERNEL_HEALTH_TIMEOUT", "2.0")),
         )
         reader = None
         writer = None
@@ -1623,9 +1623,9 @@ class LoadingServer:
             command = self._build_recovery_command(action)
             recovery_log_path = self._get_recovery_log_path()
             env = os.environ.copy()
-            env["JARVIS_RECOVERY_TRIGGER"] = "loading_server"
-            env["JARVIS_RECOVERY_ATTEMPT_ID"] = attempt_id
-            env["JARVIS_RECOVERY_REASON"] = self._sanitize_for_log(reason, 160)
+            env["Ironcliw_RECOVERY_TRIGGER"] = "loading_server"
+            env["Ironcliw_RECOVERY_ATTEMPT_ID"] = attempt_id
+            env["Ironcliw_RECOVERY_REASON"] = self._sanitize_for_log(reason, 160)
 
             try:
                 project_root = self._recovery_project_root
@@ -2593,17 +2593,17 @@ class LoadingServer:
         port_config_script = f'''<script>
 // v186.0: Server-injected port configuration (loading_server.py)
 // This ensures loading-manager.js uses the correct loading server port
-window.JARVIS_LOADING_SERVER_PORT = {self.config.port};
-window.JARVIS_FRONTEND_PORT = {self.config.frontend_port};
-window.JARVIS_BACKEND_PORT = {self.config.backend_port};
-window.JARVIS_PRIME_PORT = {self.config.prime_port};
-window.JARVIS_REACTOR_PORT = {self.config.reactor_port};
+window.Ironcliw_LOADING_SERVER_PORT = {self.config.port};
+window.Ironcliw_FRONTEND_PORT = {self.config.frontend_port};
+window.Ironcliw_BACKEND_PORT = {self.config.backend_port};
+window.Ironcliw_PRIME_PORT = {self.config.prime_port};
+window.Ironcliw_REACTOR_PORT = {self.config.reactor_port};
 console.log('[v186.0] Port config injected by loading_server.py:', {{
-    loading: window.JARVIS_LOADING_SERVER_PORT,
-    frontend: window.JARVIS_FRONTEND_PORT,
-    backend: window.JARVIS_BACKEND_PORT,
-    prime: window.JARVIS_PRIME_PORT,
-    reactor: window.JARVIS_REACTOR_PORT
+    loading: window.Ironcliw_LOADING_SERVER_PORT,
+    frontend: window.Ironcliw_FRONTEND_PORT,
+    backend: window.Ironcliw_BACKEND_PORT,
+    prime: window.Ironcliw_PRIME_PORT,
+    reactor: window.Ironcliw_REACTOR_PORT
 }});
 </script>
 '''
@@ -3078,7 +3078,7 @@ async def run_server():
 
 def main():
     """Main entry point."""
-    logger.info("[v212.0] JARVIS Loading Server starting...")
+    logger.info("[v212.0] Ironcliw Loading Server starting...")
 
     try:
         asyncio.run(run_server())

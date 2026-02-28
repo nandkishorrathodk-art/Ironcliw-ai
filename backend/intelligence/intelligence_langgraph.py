@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Intelligence System with LangGraph Chain-of-Thought Reasoning
 
 This module provides LangGraph-enhanced versions of SAI and CAI, plus a unified
@@ -17,7 +17,7 @@ Features:
 - Continuous learning from outcomes
 - Transparent decision audit trails
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

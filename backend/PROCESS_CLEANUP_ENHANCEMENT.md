@@ -1,12 +1,12 @@
-# Enhanced Process Cleanup Manager
+﻿# Enhanced Process Cleanup Manager
 
 ## Overview
-The Process Cleanup Manager has been significantly enhanced to ensure that JARVIS always runs with the latest code. It now detects code changes automatically and terminates old instances before starting new ones.
+The Process Cleanup Manager has been significantly enhanced to ensure that Ironcliw always runs with the latest code. It now detects code changes automatically and terminates old instances before starting new ones.
 
 ## Key Features
 
 ### 1. **Code Change Detection**
-- Calculates SHA-256 hash of critical JARVIS files
+- Calculates SHA-256 hash of critical Ironcliw files
 - Compares with saved state from previous runs
 - Detects any modifications to core files
 - Monitored files include:
@@ -19,13 +19,13 @@ The Process Cleanup Manager has been significantly enhanced to ensure that JARVI
   - `engines/voice_engine.py`
 
 ### 2. **Automatic Old Instance Cleanup**
-- When code changes are detected, all old JARVIS instances are terminated
+- When code changes are detected, all old Ironcliw instances are terminated
 - Graceful termination attempted first (5 second timeout)
 - Force kill if graceful termination fails
 - Cleans up related processes (voice_unlock, websocket_server, etc.)
 
 ### 3. **Single Instance Enforcement**
-- Ensures only one JARVIS instance runs per port
+- Ensures only one Ironcliw instance runs per port
 - Checks if another instance is using the target port
 - If code has changed, terminates the old instance
 - Prevents port conflicts and confusion
@@ -39,7 +39,7 @@ from process_cleanup_manager import ensure_fresh_jarvis_instance, cleanup_system
 
 # Check and clean up old instances
 if not ensure_fresh_jarvis_instance():
-    raise RuntimeError("Port conflict - another JARVIS instance is running")
+    raise RuntimeError("Port conflict - another Ironcliw instance is running")
 
 # Run full system cleanup
 cleanup_report = await cleanup_system_for_jarvis(dry_run=False)
@@ -56,10 +56,10 @@ cleanup_report = await cleanup_system_for_jarvis(dry_run=False)
 ## How It Works
 
 ### Startup Flow
-1. JARVIS starts up
+1. Ironcliw starts up
 2. Process cleanup manager checks for code changes
 3. If changes detected:
-   - Find all old JARVIS processes
+   - Find all old Ironcliw processes
    - Terminate them (gracefully, then forcefully)
    - Clean up orphaned ports
    - Save new code state
@@ -69,7 +69,7 @@ cleanup_report = await cleanup_system_for_jarvis(dry_run=False)
 ### Code Change Detection Algorithm
 ```python
 def _calculate_code_hash(self) -> str:
-    """Calculate hash of critical JARVIS files"""
+    """Calculate hash of critical Ironcliw files"""
     hasher = hashlib.sha256()
     
     for file_path in self.config['critical_files']:
@@ -87,13 +87,13 @@ def _calculate_code_hash(self) -> str:
 ## Benefits
 
 ### No More Old Instance Issues
-- **Problem**: Previously, old JARVIS instances would keep running after code updates
+- **Problem**: Previously, old Ironcliw instances would keep running after code updates
 - **Solution**: Automatic detection and cleanup ensures only fresh code runs
 - **Result**: Audio fixes, new features, and bug fixes take effect immediately
 
 ### Cleaner Development Workflow
 1. Make code changes
-2. Start JARVIS
+2. Start Ironcliw
 3. Old instances automatically cleaned up
 4. Fresh instance starts with new code
 5. No manual process killing required
@@ -112,7 +112,7 @@ python test_process_cleanup.py
 ```
 
 This will:
-- Show current JARVIS processes
+- Show current Ironcliw processes
 - Check for code changes
 - Test cleanup functionality
 - Verify single instance enforcement
@@ -152,12 +152,12 @@ Add patterns or ports as needed for your setup.
 
 ## Future Enhancements
 
-1. **Automatic Restart**: Restart JARVIS automatically when code changes detected
+1. **Automatic Restart**: Restart Ironcliw automatically when code changes detected
 2. **Hot Reload**: Reload specific modules without full restart
 3. **Version Tracking**: Track code versions and rollback capability
-4. **Multi-Instance Support**: Support multiple JARVIS instances on different ports
-5. **Remote Cleanup**: Clean up JARVIS instances on remote machines
+4. **Multi-Instance Support**: Support multiple Ironcliw instances on different ports
+5. **Remote Cleanup**: Clean up Ironcliw instances on remote machines
 
 ## Conclusion
 
-The enhanced Process Cleanup Manager ensures that JARVIS always runs with the latest code, eliminating the frustration of old instances running outdated code. This is especially critical for fixes like the audio system using Daniel's British voice - now these changes take effect immediately upon restart.
+The enhanced Process Cleanup Manager ensures that Ironcliw always runs with the latest code, eliminating the frustration of old instances running outdated code. This is especially critical for fixes like the audio system using Daniel's British voice - now these changes take effect immediately upon restart.

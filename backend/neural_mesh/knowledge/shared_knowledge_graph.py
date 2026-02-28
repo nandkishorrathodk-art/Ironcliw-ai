@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Shared Knowledge Graph
+﻿"""
+Ironcliw Neural Mesh - Shared Knowledge Graph
 
 Persistent, searchable collective memory for all agents with:
 - Vector search using ChromaDB for semantic similarity

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the TTS audio endpoint
 """
@@ -7,7 +7,7 @@ import requests
 import os
 
 # Test the audio endpoint
-url = "http://localhost:8000/audio/speak/Hello from JARVIS"
+url = "http://localhost:8000/audio/speak/Hello from Ironcliw"
 print(f"Testing audio endpoint: {url}")
 
 try:

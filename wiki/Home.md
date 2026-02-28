@@ -1,6 +1,6 @@
-# JARVIS AI Agent - Wiki Home
+﻿# Ironcliw AI Agent - Wiki Home
 
-Welcome to the official documentation for **JARVIS AI Agent** - an intelligent, voice-activated AI assistant featuring production-grade voice biometrics, hybrid cloud architecture, and advanced multi-agent intelligence systems.
+Welcome to the official documentation for **Ironcliw AI Agent** - an intelligent, voice-activated AI assistant featuring production-grade voice biometrics, hybrid cloud architecture, and advanced multi-agent intelligence systems.
 
 ---
 
@@ -8,7 +8,7 @@ Welcome to the official documentation for **JARVIS AI Agent** - an intelligent, 
 
 ### Getting Started
 - [Setup & Installation](Setup-&-Installation.md) - Complete setup guide from zero to running
-- [Quick Start Guide](Setup-&-Installation.md#quick-start) - Get JARVIS running in 10 minutes
+- [Quick Start Guide](Setup-&-Installation.md#quick-start) - Get Ironcliw running in 10 minutes
 - [Architecture Overview](Architecture-&-Design.md) - Understand the system design
 
 ### Core Documentation
@@ -25,9 +25,9 @@ Welcome to the official documentation for **JARVIS AI Agent** - an intelligent, 
 
 ---
 
-## What is JARVIS?
+## What is Ironcliw?
 
-**JARVIS** (Just A Rather Very Intelligent System) is a sophisticated AI assistant that combines:
+**Ironcliw** (Just A Rather Very Intelligent System) is a sophisticated AI assistant that combines:
 
 - **Production Voice System** - Real ECAPA-TDNN embeddings, SpeechBrain STT, unified TTS
 - **Voice Biometric Authentication** - Secure screen unlock with 95%+ confidence matching
@@ -74,7 +74,7 @@ Welcome to the official documentation for **JARVIS AI Agent** - an intelligent, 
 
 ```mermaid
 graph TB
-    subgraph "JARVIS HYBRID ARCHITECTURE"
+    subgraph "Ironcliw HYBRID ARCHITECTURE"
         subgraph Local["LOCAL MAC (16GB)"]
             LocalServices["• Voice wake word<br/>• Screen unlock<br/>• Display monitoring<br/>• SQLite database<br/>• Low-latency ops"]
         end
@@ -130,8 +130,8 @@ graph TB
 ### Documentation
 - [HYBRID_ARCHITECTURE.md](../HYBRID_ARCHITECTURE.md) - 2000+ line architecture guide
 - [README.md](../README.md) - Main project README
-- [JARVIS_MULTI_AGENT_SYSTEM_DOCUMENTATION.md](../JARVIS_MULTI_AGENT_SYSTEM_DOCUMENTATION.md) - MAS details
-- [JARVIS_NEURAL_MESH_ARCHITECTURE.md](../JARVIS_NEURAL_MESH_ARCHITECTURE.md) - Neural mesh integration
+- [Ironcliw_MULTI_AGENT_SYSTEM_DOCUMENTATION.md](../Ironcliw_MULTI_AGENT_SYSTEM_DOCUMENTATION.md) - MAS details
+- [Ironcliw_NEURAL_MESH_ARCHITECTURE.md](../Ironcliw_NEURAL_MESH_ARCHITECTURE.md) - Neural mesh integration
 
 ### Setup Guides
 - [GCP_VM_AUTO_CREATION_IMPLEMENTATION.md](../GCP_VM_AUTO_CREATION_IMPLEMENTATION.md) - Auto-scaling VMs
@@ -141,7 +141,7 @@ graph TB
 ### GitHub Resources
 - [GitHub Actions README](.github/workflows/README.md) - CI/CD workflows
 - [Contributing Guidelines](Contributing-Guidelines.md) - How to contribute
-- [Issues](https://github.com/derekjrussell/JARVIS-AI-Agent/issues) - Report bugs
+- [Issues](https://github.com/derekjrussell/Ironcliw-AI-Agent/issues) - Report bugs
 
 ---
 
@@ -187,7 +187,7 @@ graph TB
 
 ### Getting Help
 1. Check the [Troubleshooting Guide](Troubleshooting-Guide.md)
-2. Search existing [GitHub Issues](https://github.com/derekjrussell/JARVIS-AI-Agent/issues)
+2. Search existing [GitHub Issues](https://github.com/derekjrussell/Ironcliw-AI-Agent/issues)
 3. Review relevant documentation pages
 4. Create a new issue with detailed information
 

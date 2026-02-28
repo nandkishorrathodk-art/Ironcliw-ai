@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test that multi-space vision is working after fixes"""
 
 import asyncio
@@ -51,7 +51,7 @@ async def test_terminal_query():
             print(f"\n💬 User: {query}")
             try:
                 response = await vision.understand_and_respond(screenshot, query)
-                print(f"🤖 JARVIS: {response[:200]}...")
+                print(f"🤖 Ironcliw: {response[:200]}...")
                 
                 # Check multi-space context if available
                 if hasattr(vision, '_last_multi_space_context') and vision._last_multi_space_context:

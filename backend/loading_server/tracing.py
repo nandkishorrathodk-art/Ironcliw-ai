@@ -1,9 +1,9 @@
-"""
-W3C Distributed Tracing for JARVIS Loading Server v212.0
+﻿"""
+W3C Distributed Tracing for Ironcliw Loading Server v212.0
 =========================================================
 
 Implements W3C Trace Context specification for distributed tracing across
-JARVIS Body, JARVIS Prime, and Reactor-Core.
+Ironcliw Body, Ironcliw Prime, and Reactor-Core.
 
 Features:
 - W3C traceparent header generation and parsing
@@ -28,7 +28,7 @@ Usage:
 
 Specification: https://www.w3.org/TR/trace-context/
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 
@@ -45,7 +45,7 @@ class W3CTraceContext:
     W3C Distributed Tracing context for cross-repo correlation.
 
     Implements W3C Trace Context specification for distributed tracing across
-    JARVIS Body, JARVIS Prime, and Reactor-Core.
+    Ironcliw Body, Ironcliw Prime, and Reactor-Core.
 
     Attributes:
         trace_id: 32 hex chars (128 bits) - identifies the entire trace
@@ -181,7 +181,7 @@ class W3CTraceContext:
 
         ctx = cls.from_traceparent(traceparent)
 
-        # Parse tracestate for JARVIS-specific data
+        # Parse tracestate for Ironcliw-specific data
         if tracestate and "jarvis=" in tracestate:
             for part in tracestate.split(","):
                 if part.strip().startswith("jarvis="):

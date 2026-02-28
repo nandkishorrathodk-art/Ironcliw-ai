@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.2: Git Conflict Resolution Handler - Gap #62
 ==================================================
 
@@ -28,7 +28,7 @@ Features:
     - Conflict reporting and tracking
     - Recovery from failed merges
 
-Author: JARVIS v77.2
+Author: Ironcliw v77.2
 """
 
 from __future__ import annotations

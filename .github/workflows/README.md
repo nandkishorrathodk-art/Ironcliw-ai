@@ -1,6 +1,6 @@
-# JARVIS CI/CD Pipelines
+﻿# Ironcliw CI/CD Pipelines
 
-This directory contains GitHub Actions workflows for continuous integration and deployment of the JARVIS AI Assistant.
+This directory contains GitHub Actions workflows for continuous integration and deployment of the Ironcliw AI Assistant.
 
 ## 📋 Workflows Overview
 
@@ -27,7 +27,7 @@ This directory contains GitHub Actions workflows for continuous integration and 
 
 **Coverage:**
 - Uploaded to Codecov automatically
-- View at: `https://codecov.io/gh/[your-org]/JARVIS-AI-Agent`
+- View at: `https://codecov.io/gh/[your-org]/Ironcliw-AI-Agent`
 
 ---
 
@@ -37,7 +37,7 @@ This directory contains GitHub Actions workflows for continuous integration and 
 - Changes to `backend/**` files
 - Manual workflow dispatch
 
-**Purpose:** Deploy JARVIS backend to GCP VM with zero-downtime and automatic rollback
+**Purpose:** Deploy Ironcliw backend to GCP VM with zero-downtime and automatic rollback
 
 **Jobs:**
 
@@ -139,7 +139,7 @@ GCP_ZONE             # us-central1-a
 ```bash
 # Create service account
 gcloud iam service-accounts create jarvis-deployer \
-  --display-name="JARVIS GitHub Actions Deployer"
+  --display-name="Ironcliw GitHub Actions Deployer"
 
 # Grant permissions
 gcloud projects add-iam-policy-binding jarvis-473803 \
@@ -161,9 +161,9 @@ cat jarvis-sa-key.json
 Add these to your main README.md:
 
 ```markdown
-![Tests](https://github.com/[your-username]/JARVIS-AI-Agent/workflows/Test%20JARVIS/badge.svg)
-![Deployment](https://github.com/[your-username]/JARVIS-AI-Agent/workflows/Deploy%20JARVIS%20to%20GCP/badge.svg)
-![Database Sync](https://github.com/[your-username]/JARVIS-AI-Agent/workflows/Sync%20Learning%20Databases/badge.svg)
+![Tests](https://github.com/[your-username]/Ironcliw-AI-Agent/workflows/Test%20Ironcliw/badge.svg)
+![Deployment](https://github.com/[your-username]/Ironcliw-AI-Agent/workflows/Deploy%20Ironcliw%20to%20GCP/badge.svg)
+![Database Sync](https://github.com/[your-username]/Ironcliw-AI-Agent/workflows/Sync%20Learning%20Databases/badge.svg)
 ```
 
 ---
@@ -188,7 +188,7 @@ When you need to deploy without code changes:
 
 ```bash
 # Go to GitHub Actions
-# Select "Deploy JARVIS to GCP"
+# Select "Deploy Ironcliw to GCP"
 # Click "Run workflow"
 # Select branch
 # (Optional) Skip pre-deployment tests

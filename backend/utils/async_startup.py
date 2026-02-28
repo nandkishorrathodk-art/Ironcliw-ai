@@ -1,9 +1,9 @@
-"""
+﻿"""
 Async Startup Utilities for Non-Blocking Operations
 ====================================================
 
 This module provides async wrappers for blocking operations commonly used during
-JARVIS startup. By running blocking operations in a dedicated bounded ThreadPoolExecutor,
+Ironcliw startup. By running blocking operations in a dedicated bounded ThreadPoolExecutor,
 we ensure the event loop remains responsive for:
 - Progress broadcasts
 - Health checks

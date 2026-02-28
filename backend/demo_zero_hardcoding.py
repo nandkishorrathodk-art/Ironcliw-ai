@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Demo: JARVIS Zero Hardcoding - Pure ML Intelligence
-Shows how JARVIS now learns and adapts without any hardcoded patterns
+Demo: Ironcliw Zero Hardcoding - Pure ML Intelligence
+Shows how Ironcliw now learns and adapts without any hardcoded patterns
 """
 
 import asyncio
@@ -20,11 +20,11 @@ async def main():
     """Demonstrate zero hardcoding in action"""
     
     print("""
-    🧠 JARVIS Zero Hardcoding Demo
+    🧠 Ironcliw Zero Hardcoding Demo
     ======================================
     Welcome to the future of AI assistants!
     
-    This demo shows how JARVIS now uses pure machine learning
+    This demo shows how Ironcliw now uses pure machine learning
     with ZERO hardcoded patterns. Everything is learned and adaptive.
     
     Key Features:
@@ -61,7 +61,7 @@ async def main():
     # Part 2: Learning New Apps
     print("\n\n🚀 Part 2: Learning New Apps (Zero Config)")
     print("-" * 40)
-    print("Watch JARVIS learn a completely new app in real-time!\n")
+    print("Watch Ironcliw learn a completely new app in real-time!\n")
     
     # Simulate a new app that doesn't exist
     new_app = f"SuperApp{random.randint(1000, 9999)}"
@@ -89,7 +89,7 @@ async def main():
     # Part 3: Complex Intent Understanding
     print("\n\n🎯 Part 3: Complex Intent Understanding")
     print("-" * 40)
-    print("JARVIS understands context and intent, not just words:\n")
+    print("Ironcliw understands context and intent, not just words:\n")
     
     complex_commands = [
         ("Can you please open Safari for me?", "Polite request"),
@@ -125,7 +125,7 @@ async def main():
     # Part 5: Continuous Learning
     print("\n\n🔄 Part 5: Continuous Learning Demo")
     print("-" * 40)
-    print("Every interaction makes JARVIS smarter!\n")
+    print("Every interaction makes Ironcliw smarter!\n")
     
     # Show improvement over time
     print("Initial accuracy: ~70% (bootstrapped)")
@@ -158,7 +158,7 @@ async def main():
     print("\n\n✨ Summary")
     print("=" * 60)
     print("""
-    JARVIS now features:
+    Ironcliw now features:
     
     ✅ Zero hardcoding - Everything is learned
     ✅ Self-improving - Gets smarter with use

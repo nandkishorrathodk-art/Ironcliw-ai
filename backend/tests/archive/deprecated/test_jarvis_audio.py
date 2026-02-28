@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS audio endpoints and diagnose audio playback issues."""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw audio endpoints and diagnose audio playback issues."""
 
 import requests
 import subprocess
@@ -10,14 +10,14 @@ from datetime import datetime
 
 def test_backend_audio():
     """Test backend audio generation endpoints"""
-    print("🎵 Testing JARVIS Audio System")
+    print("🎵 Testing Ironcliw Audio System")
     print("=" * 50)
     
     base_url = "http://localhost:8000"
     
     # Test 1: Basic GET endpoint
     print("\n1. Testing GET endpoint...")
-    test_text = "Hello Sir, this is JARVIS testing the audio system."
+    test_text = "Hello Sir, this is Ironcliw testing the audio system."
     url = f"{base_url}/audio/speak/{requests.utils.quote(test_text)}"
     
     try:

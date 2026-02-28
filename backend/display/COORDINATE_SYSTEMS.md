@@ -1,4 +1,4 @@
-# macOS Coordinate Systems - Complete Guide
+﻿# macOS Coordinate Systems - Complete Guide
 
 ## The Problem
 
@@ -156,7 +156,7 @@ logical_coords = convert_to_logical(physical_coords[0], physical_coords[1])  # (
 pyautogui.moveTo(logical_coords[0], logical_coords[1])  # ✅ CORRECT
 ```
 
-## JARVIS Display Connection Flow
+## Ironcliw Display Connection Flow
 
 **Recommended Approach**: Hardcoded logical coordinates + optional vision verification
 
@@ -275,7 +275,7 @@ print("✅ All coordinate system tests passed")
 4. **Vision = Physical pixels** → Always convert to logical before clicking
 5. **When in doubt**: Log both physical and logical coordinates to debug
 
-**For JARVIS Display Connection**:
+**For Ironcliw Display Connection**:
 - ✅ **Primary**: Use hardcoded logical pixel coordinates (1235,10) → (1396,177) → (1223,115)
 - ✅ **Optional**: Vision for verification only
 - ❌ **Avoid**: Using vision as primary coordinate source (too complex, error-prone)

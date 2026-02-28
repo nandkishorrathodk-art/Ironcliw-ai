@@ -1,4 +1,4 @@
-# Enhanced Activity Descriptions - Dynamic & Intelligent
+﻿# Enhanced Activity Descriptions - Dynamic & Intelligent
 
 ## 🎯 **What Changed**
 
@@ -22,7 +22,7 @@ Your primary focus appears to be on debugging work.
 Sir, you're working across 5 desktop spaces:
 
 • Space 1: Finder - File management
-• Space 2: Cursor - Working on JARVIS-AI-Agent project
+• Space 2: Cursor - Working on Ironcliw-AI-Agent project
 • Space 3 (current): Google Chrome - Researching solutions on Stack Overflow
 • Space 4: Code - Active development session
 • Space 5: Terminal - Running Jupyter server
@@ -35,12 +35,12 @@ Your focus spans multiple areas: development, terminal, browser.
 ### **1. Dynamic Activity Inference** (`_infer_activity_from_context`)
 
 **Zero hardcoding** - uses semantic analysis of:
-- Window titles (e.g., "JARVIS-AI-Agent — vision_command_handler.py")
+- Window titles (e.g., "Ironcliw-AI-Agent — vision_command_handler.py")
 - App combinations (e.g., Cursor + Terminal = "Active development session")
 - Content signals (e.g., ".ipynb" → "Data analysis")
 
 **Intelligent Extraction:**
-- **Project names** from window titles: "github.com/user/JARVIS-AI-Agent" → "Working on JARVIS-AI-Agent project"
+- **Project names** from window titles: "github.com/user/Ironcliw-AI-Agent" → "Working on Ironcliw-AI-Agent project"
 - **Notebook names**: "Homework2.ipynb — Jupyter" → "Analyzing data in Homework2"
 - **Search context**: "Stack Overflow - Python error" → "Researching solutions on Stack Overflow"
 - **Repository names**: From GitHub/GitLab URLs in titles
@@ -102,8 +102,8 @@ window_titles = [t for t in window_titles if t and len(t.strip()) > 0]
 ## 🚀 **Examples of Intelligence**
 
 ### **Project Detection:**
-**Window Title:** `"JARVIS-AI-Agent — vision_command_handler.py — Cursor"`
-**Detected:** "Working on JARVIS-AI-Agent project"
+**Window Title:** `"Ironcliw-AI-Agent — vision_command_handler.py — Cursor"`
+**Detected:** "Working on Ironcliw-AI-Agent project"
 
 ### **Data Analysis:**
 **Window Title:** `"Homework2.ipynb — Jupyter Notebook"`  
@@ -148,7 +148,7 @@ if activity_signals['project']:
 
 ## ✅ **To Apply**
 
-**Restart JARVIS:**
+**Restart Ironcliw:**
 ```bash
 # Stop (Ctrl+C)
 python3 start_system.py
@@ -175,7 +175,7 @@ You now get **rich, contextual descriptions** that:
 Sir, you're working across 5 desktop spaces:
 
 • Space 1: Finder - File management
-• Space 2: Cursor - Working on JARVIS-AI-Agent project  
+• Space 2: Cursor - Working on Ironcliw-AI-Agent project  
 • Space 3 (current): Google Chrome - Researching solutions on Stack Overflow
 • Space 4: Code - Active development session
 • Space 5: Terminal - Running Jupyter server

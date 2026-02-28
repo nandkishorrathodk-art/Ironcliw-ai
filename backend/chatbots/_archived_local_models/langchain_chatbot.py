@@ -1,4 +1,4 @@
-"""
+﻿"""
 LangChain-powered Chatbot with M1 Optimization
 Integrates LangChain's powerful features with our memory management system
 """
@@ -330,7 +330,7 @@ class LangChainChatbot(IntelligentChatbot):
                 handle_parsing_errors=True,
                 max_iterations=3,  # Limit iterations for memory
                 agent_kwargs={
-                    "prefix": """You are JARVIS, an AI assistant. You have access to the following tools:
+                    "prefix": """You are Ironcliw, an AI assistant. You have access to the following tools:
 
 {tools}
 
@@ -560,7 +560,7 @@ if __name__ == "__main__":
         for query in test_queries:
             print(f"\nUser: {query}")
             response = await chatbot.generate_response(query)
-            print(f"JARVIS: {response}")
+            print(f"Ironcliw: {response}")
             
             # Show capabilities
             if query == test_queries[-1]:

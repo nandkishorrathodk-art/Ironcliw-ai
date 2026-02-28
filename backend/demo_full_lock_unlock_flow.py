@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Full Demo: JARVIS Lock/Unlock Flow with Safari Search
+Full Demo: Ironcliw Lock/Unlock Flow with Safari Search
 =====================================================
 
 Demonstrates the complete flow:
 1. Lock screen
-2. Say "JARVIS, open Safari and search for dogs" 
-3. JARVIS detects lock, announces intent, unlocks, executes command
+2. Say "Ironcliw, open Safari and search for dogs" 
+3. Ironcliw detects lock, announces intent, unlocks, executes command
 4. Safari opens with search results
 """
 
@@ -18,7 +18,7 @@ from datetime import datetime
 import sys
 
 # Add backend to path if needed
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 # Check for aiohttp (needed for voice)
 try:
@@ -43,25 +43,25 @@ class DemoWebSocket:
         
         # Display real-time feedback
         if data.get('type') == 'context_update':
-            print(f"\n💬 JARVIS: {data.get('message')}")
+            print(f"\n💬 Ironcliw: {data.get('message')}")
             if data.get('status'):
                 print(f"   Status: {data.get('status')}")
         elif data.get('type') == 'response':
             text = data.get('text', data.get('message'))
-            print(f"\n📢 JARVIS: {text}")
+            print(f"\n📢 Ironcliw: {text}")
             
             # Speak the message if enabled
             if self.speak_enabled and text and data.get('speak', False):
                 await self._speak(text)
     
     async def _speak(self, text):
-        """Make JARVIS speak using the TTS API"""
+        """Make Ironcliw speak using the TTS API"""
         if not VOICE_AVAILABLE:
             return
             
         try:
             async with aiohttp.ClientSession() as session:
-                # Call JARVIS speak endpoint
+                # Call Ironcliw speak endpoint
                 url = f"http://localhost:8888/api/jarvis/speak"
                 payload = {"text": text}
                 
@@ -84,12 +84,12 @@ def print_section(title):
 async def demo_complete_flow():
     """Demonstrate the complete lock/unlock/execute flow"""
     
-    print_section("JARVIS Lock/Unlock Demo - Full Flow")
+    print_section("Ironcliw Lock/Unlock Demo - Full Flow")
     
     print("\n📋 Scenario:")
     print("   1. Your Mac screen will be locked")
-    print("   2. You say: 'JARVIS, open Safari and search for dogs'")
-    print("   3. JARVIS will:")
+    print("   2. You say: 'Ironcliw, open Safari and search for dogs'")
+    print("   3. Ironcliw will:")
     print("      - Detect the lock")
     print("      - Announce what it's doing")
     print("      - Unlock your screen") 
@@ -139,21 +139,21 @@ async def demo_complete_flow():
     print("   ⏳ Waiting 3 seconds for lock to complete...")
     await asyncio.sleep(3)
     
-    # Step 2: Set up JARVIS
-    print_section("Step 2: Initializing JARVIS")
-    print("🤖 Setting up JARVIS with enhanced context awareness...")
+    # Step 2: Set up Ironcliw
+    print_section("Step 2: Initializing Ironcliw")
+    print("🤖 Setting up Ironcliw with enhanced context awareness...")
     
     processor = UnifiedCommandProcessor()
     context_handler = wrap_with_enhanced_context(processor)
     websocket = DemoWebSocket(speak_enabled=enable_voice)
     
-    print("   ✅ JARVIS ready")
+    print("   ✅ Ironcliw ready")
     
     # Step 3: Send the command
     print_section("Step 3: Sending Voice Command")
     
     command = "open Safari and search for dogs"
-    print(f"🎤 You say: 'JARVIS, {command}'")
+    print(f"🎤 You say: 'Ironcliw, {command}'")
     print("\n🎯 Watch what happens next...")
     
     try:
@@ -202,7 +202,7 @@ async def demo_complete_flow():
         # Final status
         if lock_detected and unlock_success and safari_opened:
             print("\n🎉 SUCCESS! Complete flow worked perfectly!")
-            print("   - JARVIS detected the lock")
+            print("   - Ironcliw detected the lock")
             print("   - Provided clear feedback before unlocking") 
             print("   - Unlocked the screen")
             print("   - Opened Safari and searched for dogs")
@@ -222,16 +222,16 @@ async def test_simple_command():
     context_handler = wrap_with_enhanced_context(processor)
     websocket = DemoWebSocket()
     
-    print("🎤 You say: 'JARVIS, what time is it?'")
+    print("🎤 You say: 'Ironcliw, what time is it?'")
     
     result = await context_handler.process_with_context("what time is it", websocket)
     
     print(f"\n📄 Result: {result.get('response')}")
 
 if __name__ == "__main__":
-    print("🚀 JARVIS Lock/Unlock Flow Demo")
+    print("🚀 Ironcliw Lock/Unlock Flow Demo")
     print("================================")
-    print("\nThis demo shows the complete flow of JARVIS handling")
+    print("\nThis demo shows the complete flow of Ironcliw handling")
     print("a command when your screen is locked.")
     
     # Run the main demo

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Brain Orchestrator - LLM Infrastructure Manager
 ================================================
 
@@ -19,7 +19,7 @@ Architecture:
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                          │
     │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐               │
-    │   │   JARVIS    │     │   OLLAMA    │     │  ANTHROPIC  │               │
+    │   │   Ironcliw    │     │   OLLAMA    │     │  ANTHROPIC  │               │
     │   │   PRIME     │     │   LOCAL     │     │    API      │               │
     │   │  (Primary)  │     │ (Fallback)  │     │  (Emergency)│               │
     │   │             │     │             │     │             │               │
@@ -78,8 +78,8 @@ class BrainConfig:
     """Configuration for brain orchestrator."""
 
     # Provider endpoints
-    PRIME_HOST = os.getenv("JARVIS_PRIME_HOST", "localhost")
-    PRIME_PORT = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+    PRIME_HOST = os.getenv("Ironcliw_PRIME_HOST", "localhost")
+    PRIME_PORT = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost")
     OLLAMA_PORT = int(os.getenv("OLLAMA_PORT", "11434"))
 
@@ -98,9 +98,9 @@ class BrainConfig:
 
     # Paths
     PRIME_SCRIPT_PATHS = [
-        Path(os.getenv("JARVIS_PRIME_SCRIPT", "")),
-        Path.home() / "Documents/repos/JARVIS-AI-Agent/backend/ai/prime_server.py",
-        Path.home() / "Documents/repos/JARVIS-Prime/server.py",
+        Path(os.getenv("Ironcliw_PRIME_SCRIPT", "")),
+        Path.home() / "Documents/repos/Ironcliw-AI-Agent/backend/ai/prime_server.py",
+        Path.home() / "Documents/repos/Ironcliw-Prime/server.py",
     ]
 
 
@@ -110,7 +110,7 @@ class BrainConfig:
 
 class ProviderType(Enum):
     """Type of LLM provider."""
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_PRIME = "jarvis_prime"
     OLLAMA = "ollama"
     ANTHROPIC = "anthropic"
 
@@ -165,7 +165,7 @@ class ProviderInfo:
 
     @property
     def is_local(self) -> bool:
-        return self.type in (ProviderType.JARVIS_PRIME, ProviderType.OLLAMA)
+        return self.type in (ProviderType.Ironcliw_PRIME, ProviderType.OLLAMA)
 
 
 @dataclass
@@ -325,7 +325,7 @@ class ProviderManager:
             result = await self._start_ollama()
             # v2.1: Tri-state result - None means "not installed"
             return result
-        elif self.info.type == ProviderType.JARVIS_PRIME:
+        elif self.info.type == ProviderType.Ironcliw_PRIME:
             return await self._start_prime()
 
         return False
@@ -388,7 +388,7 @@ class ProviderManager:
             return False
 
     async def _start_prime(self) -> bool:
-        """Start JARVIS Prime server."""
+        """Start Ironcliw Prime server."""
         try:
             # Find prime script
             script_path = None
@@ -398,7 +398,7 @@ class ProviderManager:
                     break
 
             if not script_path:
-                logger.warning("JARVIS Prime script not found")
+                logger.warning("Ironcliw Prime script not found")
                 return False
 
             # Start server
@@ -417,14 +417,14 @@ class ProviderManager:
                 await asyncio.sleep(1)
                 result = await self.check_health()
                 if result.healthy:
-                    logger.info(f"JARVIS Prime started (PID: {process.pid})")
+                    logger.info(f"Ironcliw Prime started (PID: {process.pid})")
                     return True
 
-            logger.warning("JARVIS Prime startup timeout")
+            logger.warning("Ironcliw Prime startup timeout")
             return False
 
         except Exception as e:
-            logger.error(f"Failed to start JARVIS Prime: {e}")
+            logger.error(f"Failed to start Ironcliw Prime: {e}")
             return False
 
     async def stop(self) -> bool:
@@ -498,13 +498,13 @@ class LoadBalancer:
         self.strategy = strategy
         self._providers: Dict[ProviderType, ProviderManager] = {}
         self._priority_order: List[ProviderType] = [
-            ProviderType.JARVIS_PRIME,
+            ProviderType.Ironcliw_PRIME,
             ProviderType.OLLAMA,
             ProviderType.ANTHROPIC,
         ]
         self._round_robin_index = 0
         self._weights: Dict[ProviderType, float] = {
-            ProviderType.JARVIS_PRIME: 1.0,
+            ProviderType.Ironcliw_PRIME: 1.0,
             ProviderType.OLLAMA: 0.8,
             ProviderType.ANTHROPIC: 0.5,
         }
@@ -633,14 +633,14 @@ class BrainOrchestrator:
 
     def _init_providers(self) -> None:
         """Initialize provider managers."""
-        # JARVIS Prime
+        # Ironcliw Prime
         prime_info = ProviderInfo(
-            type=ProviderType.JARVIS_PRIME,
+            type=ProviderType.Ironcliw_PRIME,
             name="jarvis-prime",
             host=BrainConfig.PRIME_HOST,
             port=BrainConfig.PRIME_PORT,
         )
-        self._managers[ProviderType.JARVIS_PRIME] = ProviderManager(prime_info)
+        self._managers[ProviderType.Ironcliw_PRIME] = ProviderManager(prime_info)
 
         # Ollama
         ollama_info = ProviderInfo(
@@ -775,17 +775,17 @@ class BrainOrchestrator:
                     # False - actually failed to start
                     self.logger.warning("  ⚠️ Ollama startup failed")
 
-        # Then try JARVIS Prime (primary intelligence)
-        prime = self._managers.get(ProviderType.JARVIS_PRIME)
+        # Then try Ironcliw Prime (primary intelligence)
+        prime = self._managers.get(ProviderType.Ironcliw_PRIME)
         if prime and not prime.info.is_healthy:
-            self.logger.info("  Starting JARVIS Prime...")
+            self.logger.info("  Starting Ironcliw Prime...")
             result = await prime.start()
             if result is True:
-                self.logger.info("  ✅ JARVIS Prime started")
+                self.logger.info("  ✅ Ironcliw Prime started")
             elif result is None:
-                self.logger.info("  ℹ️  JARVIS Prime not available")
+                self.logger.info("  ℹ️  Ironcliw Prime not available")
             else:
-                self.logger.warning("  ⚠️ JARVIS Prime startup failed")
+                self.logger.warning("  ⚠️ Ironcliw Prime startup failed")
 
     async def _verify_models(self) -> None:
         """Verify required models are available."""

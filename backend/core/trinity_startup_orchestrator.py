@@ -1,10 +1,10 @@
-"""
+﻿"""
 Trinity Unified Startup Orchestrator v79.0
 ==========================================
 
 Coordinates startup across all three Trinity repos:
-- JARVIS (Body) - Main AI agent
-- JARVIS-Prime (Mind) - Local LLM inference
+- Ironcliw (Body) - Main AI agent
+- Ironcliw-Prime (Mind) - Local LLM inference
 - Reactor-Core (Nerves) - Training pipeline
 
 Single command startup: `python3 run_supervisor.py`
@@ -27,7 +27,7 @@ ARCHITECTURE:
     │  └── Export environment variables                                │
     │                                                                  │
     │  Phase 2: Parallel Component Launch                              │
-    │  ├── Start JARVIS-Prime (Mind) → Port 8000                      │
+    │  ├── Start Ironcliw-Prime (Mind) → Port 8000                      │
     │  ├── Start Reactor-Core (Nerves) → Port 8090                    │
     │  └── Wait for health checks to pass                              │
     │                                                                  │
@@ -36,8 +36,8 @@ ARCHITECTURE:
     │  ├── Test cross-component communication                          │
     │  └── Start bidirectional health monitoring                       │
     │                                                                  │
-    │  Phase 4: JARVIS Main Startup                                    │
-    │  └── Continue with existing JARVIS startup                       │
+    │  Phase 4: Ironcliw Main Startup                                    │
+    │  └── Continue with existing Ironcliw startup                       │
     └─────────────────────────────────────────────────────────────────┘
 
 USAGE:
@@ -171,7 +171,7 @@ class TrinityStartupOrchestrator:
     """
     Coordinates startup of the entire Trinity ecosystem.
 
-    Ensures all three repos (JARVIS, JARVIS-Prime, Reactor-Core) are
+    Ensures all three repos (Ironcliw, Ironcliw-Prime, Reactor-Core) are
     started in the correct order with proper health verification.
     """
 
@@ -212,7 +212,7 @@ class TrinityStartupOrchestrator:
         if prime_result.path:
             self.logger.info(f"[Trinity] J-Prime discovered: {prime_result.path} (via {prime_result.strategy_used.name})")
         else:
-            self.logger.warning("[Trinity] J-Prime not found. Set JARVIS_PRIME_PATH or clone to sibling directory.")
+            self.logger.warning("[Trinity] J-Prime not found. Set Ironcliw_PRIME_PATH or clone to sibling directory.")
 
         if reactor_result.path:
             self.logger.info(f"[Trinity] Reactor-Core discovered: {reactor_result.path} (via {reactor_result.strategy_used.name})")
@@ -220,18 +220,18 @@ class TrinityStartupOrchestrator:
             self.logger.warning("[Trinity] Reactor-Core not found. Set REACTOR_CORE_PATH or clone to sibling directory.")
 
         # Get ports from config or defaults
-        prime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+        prime_port = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
         reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
         self.state.components = {
-            ComponentType.JARVIS_PRIME: ComponentInfo(
-                component_type=ComponentType.JARVIS_PRIME,
-                name="JARVIS-Prime (Mind)",
+            ComponentType.Ironcliw_PRIME: ComponentInfo(
+                component_type=ComponentType.Ironcliw_PRIME,
+                name="Ironcliw-Prime (Mind)",
                 repo_path=prime_path,
                 startup_script="run_server.py",
                 port=prime_port,
                 health_endpoint="/health",
-                required=False,  # JARVIS can run without Prime (uses cloud)
+                required=False,  # Ironcliw can run without Prime (uses cloud)
                 startup_timeout=120.0,  # Model loading can take time
             ),
             ComponentType.REACTOR_CORE: ComponentInfo(
@@ -354,7 +354,7 @@ class TrinityStartupOrchestrator:
 
             if self.config:
                 env_vars.update({
-                    "JARVIS_PRIME_PORT": str(self.config.jarvis_prime_endpoint.port),
+                    "Ironcliw_PRIME_PORT": str(self.config.jarvis_prime_endpoint.port),
                     "REACTOR_CORE_PORT": str(self.config.reactor_core_endpoint.port),
                     "TRINITY_HEARTBEAT_INTERVAL": str(self.config.health.heartbeat_interval),
                 })

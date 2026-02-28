@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Situational Awareness Intelligence (SAI) - Core Engine
 ======================================================
 
-Production-grade environmental awareness system that enables JARVIS to perceive
+Production-grade environmental awareness system that enables Ironcliw to perceive
 and adapt to dynamic UI changes in real-time.
 
 Zero hardcoding, fully async, adaptive, and self-correcting.

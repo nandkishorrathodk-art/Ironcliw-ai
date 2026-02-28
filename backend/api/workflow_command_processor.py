@@ -1,6 +1,6 @@
-"""
-JARVIS Workflow Command Processor - Integration Layer
-Processes multi-command workflows through JARVIS voice system
+﻿"""
+Ironcliw Workflow Command Processor - Integration Layer
+Processes multi-command workflows through Ironcliw voice system
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .jarvis_voice_api import JARVISCommand
+from .jarvis_voice_api import IroncliwCommand
 from .workflow_engine import WorkflowExecutionEngine
 from .workflow_parser import WorkflowParser
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowCommandProcessor:
-    """Processes workflow commands and integrates with JARVIS voice system"""
+    """Processes workflow commands and integrates with Ironcliw voice system"""
 
     # Patterns that indicate multi-command workflows
     WORKFLOW_INDICATORS = [
@@ -114,7 +114,7 @@ class WorkflowCommandProcessor:
         return verb_count >= 2
 
     async def process_workflow_command(
-        self, command: JARVISCommand, user_id: str = "default", websocket: Optional[Any] = None
+        self, command: IroncliwCommand, user_id: str = "default", websocket: Optional[Any] = None
     ) -> Dict[str, Any]:
         """Process a multi-command workflow"""
         try:
@@ -206,7 +206,7 @@ class WorkflowCommandProcessor:
     async def _generate_response_with_claude(
         self, workflow, result, deadline_monotonic: Optional[float] = None
     ) -> str:
-        """Generate dynamic, contextual JARVIS response using intelligent model selection"""
+        """Generate dynamic, contextual Ironcliw response using intelligent model selection"""
         # Try intelligent model selection first
         if self.use_intelligent_selection:
             response_timeout = self._effective_response_timeout(deadline_monotonic)
@@ -254,7 +254,7 @@ class WorkflowCommandProcessor:
             action_details.append(detail)
 
         # Create prompt for Claude
-        prompt = f"""You are JARVIS, Tony Stark's sophisticated AI assistant. Generate a response for the user's command.
+        prompt = f"""You are Ironcliw, Tony Stark's sophisticated AI assistant. Generate a response for the user's command.
 
 USER'S ORIGINAL COMMAND: "{workflow.original_command}"
 
@@ -268,7 +268,7 @@ ACTION DETAILS:
 {chr(10).join(f"  {i+1}. {a['action']} '{a['target']}': {a['status']}" + (f" ({a.get('error', '')})" if a.get('error') else "") for i, a in enumerate(action_details))}
 
 GUIDELINES:
-1. Be sophisticated and witty like JARVIS from Iron Man
+1. Be sophisticated and witty like Ironcliw from Iron Man
 2. Keep it concise (1-2 sentences max)
 3. Be specific about what was accomplished (use actual targets like "Safari" or "dogs")
 4. Use elegant British phrasing ("I've opened", "launched", "executed")
@@ -319,7 +319,7 @@ Generate ONLY the response text, nothing else."""
             if not response:
                 return self._generate_basic_response(workflow, result)
 
-            logger.info(f"✨ Generated dynamic JARVIS response via Prime Router: {response}")
+            logger.info(f"✨ Generated dynamic Ironcliw response via Prime Router: {response}")
             return response
 
         except Exception as e:
@@ -333,7 +333,7 @@ Generate ONLY the response text, nothing else."""
         This method:
         1. Imports the hybrid orchestrator
         2. Builds comprehensive context from workflow execution results
-        3. Uses intelligent selection to generate JARVIS-style response
+        3. Uses intelligent selection to generate Ironcliw-style response
         4. Returns the dynamic response
         """
         try:
@@ -368,7 +368,7 @@ Generate ONLY the response text, nothing else."""
                 action_details.append(detail)
 
             # Create prompt for intelligent selection
-            prompt = f"""You are JARVIS, Tony Stark's sophisticated AI assistant. Generate a response for the user's command.
+            prompt = f"""You are Ironcliw, Tony Stark's sophisticated AI assistant. Generate a response for the user's command.
 
 USER'S ORIGINAL COMMAND: "{workflow.original_command}"
 
@@ -382,7 +382,7 @@ ACTION DETAILS:
 {chr(10).join(f"  {i+1}. {a['action']} '{a['target']}': {a['status']}" + (f" ({a.get('error', '')})" if a.get('error') else "") for i, a in enumerate(action_details))}
 
 GUIDELINES:
-1. Be sophisticated and witty like JARVIS from Iron Man
+1. Be sophisticated and witty like Ironcliw from Iron Man
 2. Keep it concise (1-2 sentences max)
 3. Be specific about what was accomplished (use actual targets like "Safari" or "dogs")
 4. Use elegant British phrasing ("I've opened", "launched", "executed")
@@ -422,7 +422,7 @@ Generate ONLY the response text, nothing else."""
             response = api_result.get("text", "").strip()
             model_used = api_result.get("model_used", "intelligent_selection")
 
-            logger.info(f"✨ Generated dynamic JARVIS response using {model_used}: {response}")
+            logger.info(f"✨ Generated dynamic Ironcliw response using {model_used}: {response}")
             return response
 
         except ImportError:
@@ -478,15 +478,15 @@ Generate ONLY the response text, nothing else."""
                 "category": "Productivity",
                 "examples": [
                     {
-                        "command": "Hey JARVIS, open Safari and search for Python tutorials",
+                        "command": "Hey Ironcliw, open Safari and search for Python tutorials",
                         "description": "Opens browser and performs search",
                     },
                     {
-                        "command": "Hey JARVIS, check my email and calendar for today",
+                        "command": "Hey Ironcliw, check my email and calendar for today",
                         "description": "Reviews email and calendar",
                     },
                     {
-                        "command": "Hey JARVIS, prepare for my meeting by opening Zoom and muting notifications",
+                        "command": "Hey Ironcliw, prepare for my meeting by opening Zoom and muting notifications",
                         "description": "Meeting preparation workflow",
                     },
                 ],
@@ -495,11 +495,11 @@ Generate ONLY the response text, nothing else."""
                 "category": "Document Creation",
                 "examples": [
                     {
-                        "command": "Hey JARVIS, open Word and create a new document",
+                        "command": "Hey Ironcliw, open Word and create a new document",
                         "description": "Starts document creation",
                     },
                     {
-                        "command": "Hey JARVIS, create a new presentation and add a title slide",
+                        "command": "Hey Ironcliw, create a new presentation and add a title slide",
                         "description": "PowerPoint workflow",
                     },
                 ],
@@ -508,11 +508,11 @@ Generate ONLY the response text, nothing else."""
                 "category": "Research",
                 "examples": [
                     {
-                        "command": "Hey JARVIS, search for machine learning on the web and open the top results",
+                        "command": "Hey Ironcliw, search for machine learning on the web and open the top results",
                         "description": "Research workflow",
                     },
                     {
-                        "command": "Hey JARVIS, find documents about project alpha and open them",
+                        "command": "Hey Ironcliw, find documents about project alpha and open them",
                         "description": "File search workflow",
                     },
                 ],
@@ -567,7 +567,7 @@ workflow_processor: Optional["WorkflowCommandProcessor"] = None
 
 
 async def handle_workflow_command(
-    command: JARVISCommand, user_id: str = "default", websocket: Optional[Any] = None
+    command: IroncliwCommand, user_id: str = "default", websocket: Optional[Any] = None
 ) -> Optional[Dict[str, Any]]:
     """Helper function to check and process workflow commands."""
     proc = get_workflow_processor()

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import json
-config_path = "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/config/voice_config.json"
+config_path = "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/config/voice_config.json"
 with open(config_path, 'r') as f:
     config = json.load(f)
 config['verification_threshold'] = config.get('previous_threshold', 0.45)

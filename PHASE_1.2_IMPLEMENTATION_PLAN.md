@@ -1,4 +1,4 @@
-# Phase 1.2 - Proximity-Aware Display Connection System
+﻿# Phase 1.2 - Proximity-Aware Display Connection System
 ## Implementation Plan & Technical Analysis
 
 **Status:** Planning & Architecture  
@@ -10,9 +10,9 @@
 
 ## 🎯 **Executive Summary**
 
-Phase 1.2 introduces **spatial intelligence** to JARVIS — enabling proximity-based display detection, automatic connection, and contextual command routing. This transforms JARVIS from "multi-monitor aware" to "environmentally intelligent."
+Phase 1.2 introduces **spatial intelligence** to Ironcliw — enabling proximity-based display detection, automatic connection, and contextual command routing. This transforms Ironcliw from "multi-monitor aware" to "environmentally intelligent."
 
-**Vision:** "When you walk near your Living Room TV, JARVIS automatically connects and extends your workspace."
+**Vision:** "When you walk near your Living Room TV, Ironcliw automatically connects and extends your workspace."
 
 ---
 

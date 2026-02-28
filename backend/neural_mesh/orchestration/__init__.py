@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Orchestration Module
+﻿"""
+Ironcliw Neural Mesh - Orchestration Module
 
 This module provides the Multi-Agent Orchestrator for workflow
 coordination and task decomposition.

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Safety Module - Gaps #16-22
 ===================================
 
@@ -11,7 +11,7 @@ Comprehensive safety validation for code evolution:
 - Gap #21: Type checking integration
 - Gap #22: Resource exhaustion prevention
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from .ast_validator import ASTValidator, ASTValidationResult

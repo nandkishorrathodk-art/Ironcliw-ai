@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.1: Saga Pattern Coordinator
 ================================
 
@@ -17,7 +17,7 @@ Solution:
     - No global locks needed
 
 Example:
-    1. Modify JARVIS file (Compensate: git checkout)
+    1. Modify Ironcliw file (Compensate: git checkout)
     2. Modify J-Prime file (Compensate: git checkout)
     3. Run tests (Compensate: N/A)
     4. If step 2 fails → Compensate step 1 automatically
@@ -29,7 +29,7 @@ Features:
     - Timeout handling per step
     - Event logging for audit
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations

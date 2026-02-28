@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test real-time monitoring interaction"""
 
 import asyncio
@@ -11,7 +11,7 @@ sys.path.insert(0, backend_path)
 
 async def test_real_time_monitoring():
     """Test the proactive real-time monitoring features"""
-    print("🎯 Testing Proactive JARVIS Monitoring System")
+    print("🎯 Testing Proactive Ironcliw Monitoring System")
     print("=" * 80)
     
     # Test 1: Create mock continuous analyzer with enhanced capabilities
@@ -53,7 +53,7 @@ async def test_real_time_monitoring():
     opportunities_found = []
     
     async def test_notification_callback(notification):
-        print(f"\n💬 JARVIS: {notification['message']}")
+        print(f"\n💬 Ironcliw: {notification['message']}")
         print(f"   Type: {notification.get('type', 'notification')}")
         print(f"   Priority: {notification['priority']}")
         if 'data' in notification:
@@ -137,7 +137,7 @@ async def test_real_time_monitoring():
     await analyzer.start_monitoring()
     await interaction_handler.start_interactive_monitoring()
     
-    print("\n   ✅ Proactive monitoring activated! JARVIS is now intelligently observing...")
+    print("\n   ✅ Proactive monitoring activated! Ironcliw is now intelligently observing...")
     
     # Test 4: Simulate workflow scenarios
     print("\n4. Simulating real workflow scenarios...")
@@ -191,7 +191,7 @@ async def test_real_time_monitoring():
     
     # Wait to see proactive interactions
     print("\n7. Observing proactive assistance (15 seconds)...")
-    print("   (JARVIS will proactively offer help based on what it observes)")
+    print("   (Ironcliw will proactively offer help based on what it observes)")
     await asyncio.sleep(15)
     
     # Test 8: Stop monitoring
@@ -214,7 +214,7 @@ async def test_real_time_monitoring():
         print(f"   {i+1}. [{notif['priority']}] {msg}")
     
     print("\n✅ Proactive real-time monitoring test completed!")
-    print("   JARVIS demonstrated intelligent, context-aware assistance capabilities")
+    print("   Ironcliw demonstrated intelligent, context-aware assistance capabilities")
 
 if __name__ == "__main__":
     asyncio.run(test_real_time_monitoring())

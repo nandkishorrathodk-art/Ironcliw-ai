@@ -1,4 +1,4 @@
-"""
+﻿"""
 Wake Word Detection Configuration
 =================================
 
@@ -77,10 +77,10 @@ class DetectionConfig:
 
 @dataclass
 class ResponseConfig:
-    """Configuration for JARVIS responses"""
+    """Configuration for Ironcliw responses"""
     # Response phrases (randomly selected)
     activation_responses: List[str] = field(default_factory=lambda:
-        os.getenv('JARVIS_ACTIVATION_RESPONSES', 
+        os.getenv('Ironcliw_ACTIVATION_RESPONSES', 
                   'I\'m online Sir. Waiting for your command.,'
                   'Yes Sir. How may I assist you?,'
                   'At your service Sir.,'
@@ -141,7 +141,7 @@ class PrivacyConfig:
 
 @dataclass
 class IntegrationConfig:
-    """Integration with JARVIS system"""
+    """Integration with Ironcliw system"""
     # WebSocket settings
     websocket_enabled: bool = os.getenv('WAKE_WORD_WEBSOCKET', 'true').lower() == 'true'
     websocket_port: int = int(os.getenv('WAKE_WORD_WS_PORT', '8765'))

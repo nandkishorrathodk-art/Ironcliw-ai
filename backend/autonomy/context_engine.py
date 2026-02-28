@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
-"""Context Engine for JARVIS Autonomous System.
+﻿#!/usr/bin/env python3
+"""Context Engine for Ironcliw Autonomous System.
 
-This module provides intelligent context awareness for the JARVIS autonomous system,
+This module provides intelligent context awareness for the Ironcliw autonomous system,
 analyzing user behavior patterns, application usage, and environmental factors to
 determine appropriate timing for autonomous actions. It prevents interruptions
 during focused work and identifies optimal moments for system interventions.

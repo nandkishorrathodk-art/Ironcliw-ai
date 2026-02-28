@@ -1,12 +1,12 @@
-# ✅ Context Intelligence System - SCENARIO READY
+﻿# ✅ Context Intelligence System - SCENARIO READY
 
 ## The Exact PRD Scenario is Now Fully Implemented!
 
-### Scenario: Mac is locked, user says "JARVIS, open Safari and search for dogs"
+### Scenario: Mac is locked, user says "Ironcliw, open Safari and search for dogs"
 
 Here's exactly what happens:
 
-## 1. **JARVIS Detects State = LOCKED** ✅
+## 1. **Ironcliw Detects State = LOCKED** ✅
 ```python
 # screen_state.py detects using multiple methods:
 - Quartz API check
@@ -58,7 +58,7 @@ Here's exactly what happens:
 - Command remains queued
 ```
 
-## 6. **JARVIS Resumes Queued Request** ✅
+## 6. **Ironcliw Resumes Queued Request** ✅
 ```python
 # context_manager.py state machine:
 CHECKING_PREREQUISITES → AWAITING_UNLOCK → UNLOCKING → EXECUTING → COMPLETED
@@ -83,7 +83,7 @@ CHECKING_PREREQUISITES → AWAITING_UNLOCK → UNLOCKING → EXECUTING → COMPL
 ## Complete Flow Trace
 
 ```
-User: "JARVIS, open Safari and search for dogs" (screen locked)
+User: "Ironcliw, open Safari and search for dogs" (screen locked)
          ↓
 jarvis_voice_api.py 
          ↓
@@ -120,7 +120,7 @@ python test_complete_scenario.py
 
 ### Live Test:
 1. Lock your Mac screen (Cmd+Ctrl+Q)
-2. Say: "JARVIS, open Safari and search for dogs"
+2. Say: "Ironcliw, open Safari and search for dogs"
 3. Watch the magic happen!
 
 ## Requirements Met
@@ -131,7 +131,7 @@ python test_complete_scenario.py
 ✅ **Auto Unlock** - Policy-based intelligent decisions
 ✅ **Error Handling** - Graceful fallbacks and recovery
 ✅ **Command Execution** - Original intent preserved and executed
-✅ **Complete Integration** - Drop-in replacement, no changes to JARVIS needed
+✅ **Complete Integration** - Drop-in replacement, no changes to Ironcliw needed
 
 ## Configuration Required
 
@@ -150,8 +150,8 @@ The system is ready to handle your exact scenario and many more!
 
 1. **It Just Works™** - No configuration files, no complex setup
 2. **Intelligent Fallbacks** - Multiple methods ensure reliability
-3. **Natural Conversation** - JARVIS speaks like a helpful assistant
+3. **Natural Conversation** - Ironcliw speaks like a helpful assistant
 4. **Secure** - Password in Keychain, policy controls
 5. **Extensible** - Easy to add new commands and behaviors
 
-The Context Intelligence System is now fully operational and ready to make JARVIS truly context-aware!
+The Context Intelligence System is now fully operational and ready to make Ironcliw truly context-aware!

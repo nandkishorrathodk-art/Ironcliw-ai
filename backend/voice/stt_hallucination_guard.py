@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 STT Hallucination Guard - Advanced Anti-Hallucination System v2.0
 ==================================================================
@@ -88,7 +88,7 @@ def _load_dynamic_config() -> Dict[str, Any]:
     
     # Try to load from config file
     config_paths = [
-        Path(os.getenv('JARVIS_CONFIG_PATH', '')) / 'hallucination_guard.json',
+        Path(os.getenv('Ironcliw_CONFIG_PATH', '')) / 'hallucination_guard.json',
         Path.home() / '.jarvis' / 'hallucination_guard.json',
         Path(__file__).parent / 'config' / 'hallucination_guard.json',
     ]
@@ -166,7 +166,7 @@ def _load_dynamic_patterns() -> Dict[str, List[str]]:
     
     # Try to load patterns from config file
     pattern_paths = [
-        Path(os.getenv('JARVIS_PATTERNS_PATH', '')) / 'hallucination_patterns.json',
+        Path(os.getenv('Ironcliw_PATTERNS_PATH', '')) / 'hallucination_patterns.json',
         Path.home() / '.jarvis' / 'hallucination_patterns.json',
         Path(__file__).parent / 'config' / 'hallucination_patterns.json',
     ]

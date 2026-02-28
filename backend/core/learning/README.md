@@ -1,4 +1,4 @@
-# Feedback Learning System
+﻿# Feedback Learning System
 
 **Adaptive intelligence that learns from user interactions**
 
@@ -6,7 +6,7 @@
 
 ## What Is This?
 
-The Feedback Learning Loop makes JARVIS **smarter over time** by learning from your engagement and dismissal patterns. It's part of the "Invisible Assistant" UX philosophy: **help when needed, invisible when not**.
+The Feedback Learning Loop makes Ironcliw **smarter over time** by learning from your engagement and dismissal patterns. It's part of the "Invisible Assistant" UX philosophy: **help when needed, invisible when not**.
 
 ### Key Features
 
@@ -176,7 +176,7 @@ All learned data is stored locally in:
 
 ## User Control
 
-### View What JARVIS Learned
+### View What Ironcliw Learned
 
 ```python
 data = loop.export_learned_data()
@@ -275,7 +275,7 @@ Next time: should_show_notification()
         ↓
     Returns (should_show, adjusted_importance)
         ↓
-    JARVIS shows or suppresses
+    Ironcliw shows or suppresses
 ```
 
 ---
@@ -303,13 +303,13 @@ This implements the "Invisible Assistant" UX:
 
 ## FAQ
 
-**Q: Will this slow down JARVIS?**
+**Q: Will this slow down Ironcliw?**
 A: No. All operations are async and take < 1ms.
 
 **Q: What if I want to reset learning?**
 A: `await loop.reset_learning()` or delete the JSON file.
 
-**Q: Can I see what JARVIS learned?**
+**Q: Can I see what Ironcliw learned?**
 A: Yes! `loop.export_learned_data()` or view the JSON file.
 
 **Q: Does it work offline?**
@@ -332,5 +332,5 @@ A: Valued patterns: 3+ events, Ignored patterns: 5+ events
 
 **Status:** ✅ Production Ready
 **Version:** 1.0
-**License:** Same as JARVIS
+**License:** Same as Ironcliw
 

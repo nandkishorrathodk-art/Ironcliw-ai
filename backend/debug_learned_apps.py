@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Debug learned apps in pattern learner"""
 
 import sys
-sys.path.append('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.append('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from api.unified_command_processor import UnifiedCommandProcessor
 

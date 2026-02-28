@@ -1,7 +1,7 @@
-# JARVIS Clean UI Redesign - Professional Interface
+﻿# Ironcliw Clean UI Redesign - Professional Interface
 
 ## Overview
-We've redesigned JARVIS with a cleaner, more professional UI/UX that focuses on simplicity and seamless voice interaction through the "Hey JARVIS" wake word.
+We've redesigned Ironcliw with a cleaner, more professional UI/UX that focuses on simplicity and seamless voice interaction through the "Hey Ironcliw" wake word.
 
 ## 🎨 Design Philosophy
 
@@ -15,7 +15,7 @@ We've redesigned JARVIS with a cleaner, more professional UI/UX that focuses on 
 ## ✨ Key Features
 
 ### 1. **Auto-Activation**
-- JARVIS automatically activates when the page loads
+- Ironcliw automatically activates when the page loads
 - No need to click any buttons to start
 - Wake word detection begins immediately
 - System responds with "Ready for your command, sir"
@@ -40,12 +40,12 @@ We've redesigned JARVIS with a cleaner, more professional UI/UX that focuses on 
 ### 4. **Clean Status Indicators**
 - Minimal status bar showing current state
 - Small dot indicators with subtle animations
-- Clear text: "Say 'Hey JARVIS'" or "Listening..."
+- Clear text: "Say 'Hey Ironcliw'" or "Listening..."
 - No overwhelming status cards
 
 ### 5. **Elegant Transcript Display**
 - Clean message cards with subtle borders
-- Color-coded: Blue for user, green for JARVIS
+- Color-coded: Blue for user, green for Ironcliw
 - Professional typography with good readability
 - Smooth slide-up animation on new messages
 
@@ -58,11 +58,11 @@ We've redesigned JARVIS with a cleaner, more professional UI/UX that focuses on 
 ## 🎤 Voice Interaction Flow
 
 ### Seamless Experience:
-1. **Page Loads** → JARVIS auto-activates
-2. **User Says** → "Hey JARVIS"
-3. **JARVIS Responds** → "Ready for your command, sir"
+1. **Page Loads** → Ironcliw auto-activates
+2. **User Says** → "Hey Ironcliw"
+3. **Ironcliw Responds** → "Ready for your command, sir"
 4. **User Speaks** → Command
-5. **JARVIS Processes** → Shows response in transcript
+5. **Ironcliw Processes** → Shows response in transcript
 
 ### Alternative:
 - Type commands directly in the input field
@@ -115,7 +115,7 @@ Muted Text:      rgba(255, 255, 255, 0.5)
 
 1. Open `http://localhost:3000`
 2. Wait 2 seconds for auto-activation
-3. Say "Hey JARVIS"
+3. Say "Hey Ironcliw"
 4. Hear "Ready for your command, sir"
 5. Speak your command
 6. See the transcript update
@@ -142,7 +142,7 @@ Muted Text:      rgba(255, 255, 255, 0.5)
 2. **Minimal controls**: Less confusion, clearer purpose
 3. **Subtle animations**: Professional, not distracting
 4. **Muted colors**: Easier on the eyes for extended use
-5. **Voice-first**: Reflects JARVIS's primary interaction mode
+5. **Voice-first**: Reflects Ironcliw's primary interaction mode
 
 ## 🎨 Future Enhancements
 

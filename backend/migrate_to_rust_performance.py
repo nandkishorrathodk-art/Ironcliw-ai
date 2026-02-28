@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Migration script to switch JARVIS to Rust-accelerated performance layer
+Migration script to switch Ironcliw to Rust-accelerated performance layer
 This will reduce CPU usage from 97% to ~25%
 """
 
@@ -163,7 +163,7 @@ def verify_performance():
 def print_migration_summary():
     """Print migration summary and next steps"""
     print("\n" + "="*60)
-    print("🎉 JARVIS RUST PERFORMANCE MIGRATION COMPLETE!")
+    print("🎉 Ironcliw RUST PERFORMANCE MIGRATION COMPLETE!")
     print("="*60)
     print("\n📊 Expected Performance Improvements:")
     print("   • CPU Usage: 97% → 25% (72% reduction)")
@@ -177,16 +177,16 @@ def print_migration_summary():
     print("   • Added memory pooling")
     print("   • Parallel vision processing")
     print("\n⚡ Next steps:")
-    print("   1. Restart the JARVIS backend")
+    print("   1. Restart the Ironcliw backend")
     print("   2. Monitor CPU usage (should be <30%)")
     print("   3. Check memory usage (should be <4GB)")
     print("   4. Run 'python -m vision.rust_accelerated_learning' for benchmarks")
-    print("\n🚀 Your JARVIS is now turbocharged with Rust!")
+    print("\n🚀 Your Ironcliw is now turbocharged with Rust!")
     print("="*60)
 
 def main():
     """Main migration process"""
-    print("\n🚀 JARVIS Rust Performance Migration")
+    print("\n🚀 Ironcliw Rust Performance Migration")
     print("=====================================")
     print("This will reduce CPU usage from 97% to ~25%")
     print("")
@@ -196,7 +196,7 @@ def main():
         return 1
     
     # Confirmation
-    response = input("\n⚠️  This will modify your JARVIS installation. Continue? (y/N): ")
+    response = input("\n⚠️  This will modify your Ironcliw installation. Continue? (y/N): ")
     if response.lower() != 'y':
         print("Migration cancelled.")
         return 0

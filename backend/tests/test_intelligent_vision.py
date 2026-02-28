@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Functional Tests for JARVIS Intelligent Vision System
+Functional Tests for Ironcliw Intelligent Vision System
 Tests the ability to detect and analyze ANY app without hardcoding
 """
 
@@ -11,7 +11,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from voice.jarvis_agent_voice import IroncliwAgentVoice
 from vision.smart_query_router import SmartQueryRouter, QueryIntent
 from vision.window_detector import WindowInfo
 
@@ -20,7 +20,7 @@ class TestIntelligentVisionFunctionality(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.jarvis = JARVISAgentVoice()
+        self.jarvis = IroncliwAgentVoice()
         self.router = SmartQueryRouter()
         
         # Create mock windows for various apps (including unknown ones)
@@ -39,7 +39,7 @@ class TestIntelligentVisionFunctionality(unittest.TestCase):
             # Unknown/new apps
             WindowInfo(
                 window_id=2,
-                app_name="SuperNewChatApp",  # App JARVIS has never seen
+                app_name="SuperNewChatApp",  # App Ironcliw has never seen
                 window_title="SuperNewChatApp - 5 unread messages",
                 bounds={"x": 800, "y": 0, "width": 600, "height": 400},
                 is_focused=False,
@@ -203,12 +203,12 @@ class TestIntegrationUnknownApps(unittest.TestCase):
     
     def setUp(self):
         """Set up integration test environment"""
-        self.jarvis = JARVISAgentVoice()
+        self.jarvis = IroncliwAgentVoice()
         self.router = SmartQueryRouter()
     
     async def test_end_to_end_unknown_app_query(self):
         """Test complete flow from query to response for unknown app"""
-        # Create a query about an app JARVIS has never seen
+        # Create a query about an app Ironcliw has never seen
         query = "do i have any notifications from FuturisticMessenger"
         
         # Step 1: Query should be detected as system command

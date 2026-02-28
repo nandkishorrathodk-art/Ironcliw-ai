@@ -1,5 +1,5 @@
-"""
-JARVIS Performance Optimizer v10.0 - Unified Performance Layer
+﻿"""
+Ironcliw Performance Optimizer v10.0 - Unified Performance Layer
 ================================================================
 
 Comprehensive performance optimization module that provides:
@@ -99,64 +99,64 @@ class PerformanceConfig:
     Dynamic performance configuration.
 
     All values can be overridden via environment variables:
-        JARVIS_CACHE_ENABLED: Enable caching (default: true)
-        JARVIS_CACHE_DEFAULT_TTL: Default TTL in seconds (default: 300)
-        JARVIS_CACHE_MAX_SIZE: Max cache entries (default: 10000)
-        JARVIS_CACHE_L2_ENABLED: Enable Redis L2 cache (default: false)
-        JARVIS_CACHE_L2_URL: Redis URL (default: redis://localhost:6379)
-        JARVIS_POOL_MIN_SIZE: Min connections per pool (default: 2)
-        JARVIS_POOL_MAX_SIZE: Max connections per pool (default: 20)
-        JARVIS_POOL_TIMEOUT: Connection timeout (default: 30)
-        JARVIS_PROFILE_ENABLED: Enable profiling (default: false)
-        JARVIS_PROFILE_SLOW_THRESHOLD_MS: Slow operation threshold (default: 100)
-        JARVIS_COMPRESSION_ENABLED: Enable response compression (default: true)
-        JARVIS_COMPRESSION_MIN_SIZE: Min size to compress (default: 1000)
+        Ironcliw_CACHE_ENABLED: Enable caching (default: true)
+        Ironcliw_CACHE_DEFAULT_TTL: Default TTL in seconds (default: 300)
+        Ironcliw_CACHE_MAX_SIZE: Max cache entries (default: 10000)
+        Ironcliw_CACHE_L2_ENABLED: Enable Redis L2 cache (default: false)
+        Ironcliw_CACHE_L2_URL: Redis URL (default: redis://localhost:6379)
+        Ironcliw_POOL_MIN_SIZE: Min connections per pool (default: 2)
+        Ironcliw_POOL_MAX_SIZE: Max connections per pool (default: 20)
+        Ironcliw_POOL_TIMEOUT: Connection timeout (default: 30)
+        Ironcliw_PROFILE_ENABLED: Enable profiling (default: false)
+        Ironcliw_PROFILE_SLOW_THRESHOLD_MS: Slow operation threshold (default: 100)
+        Ironcliw_COMPRESSION_ENABLED: Enable response compression (default: true)
+        Ironcliw_COMPRESSION_MIN_SIZE: Min size to compress (default: 1000)
     """
     # Caching
     cache_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_CACHE_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_CACHE_ENABLED", "true").lower() == "true"
     )
     cache_default_ttl: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_CACHE_DEFAULT_TTL", "300"))
+        default_factory=lambda: int(os.getenv("Ironcliw_CACHE_DEFAULT_TTL", "300"))
     )
     cache_max_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_CACHE_MAX_SIZE", "10000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_CACHE_MAX_SIZE", "10000"))
     )
     cache_l2_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_CACHE_L2_ENABLED", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_CACHE_L2_ENABLED", "false").lower() == "true"
     )
     cache_l2_url: str = field(
-        default_factory=lambda: os.getenv("JARVIS_CACHE_L2_URL", "redis://localhost:6379")
+        default_factory=lambda: os.getenv("Ironcliw_CACHE_L2_URL", "redis://localhost:6379")
     )
 
     # Connection Pooling
     pool_min_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_POOL_MIN_SIZE", "2"))
+        default_factory=lambda: int(os.getenv("Ironcliw_POOL_MIN_SIZE", "2"))
     )
     pool_max_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_POOL_MAX_SIZE", "20"))
+        default_factory=lambda: int(os.getenv("Ironcliw_POOL_MAX_SIZE", "20"))
     )
     pool_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_POOL_TIMEOUT", "30"))
+        default_factory=lambda: float(os.getenv("Ironcliw_POOL_TIMEOUT", "30"))
     )
     pool_recycle: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_POOL_RECYCLE", "3600"))
+        default_factory=lambda: int(os.getenv("Ironcliw_POOL_RECYCLE", "3600"))
     )
 
     # Profiling
     profile_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PROFILE_ENABLED", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PROFILE_ENABLED", "false").lower() == "true"
     )
     profile_slow_threshold_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PROFILE_SLOW_THRESHOLD_MS", "100"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PROFILE_SLOW_THRESHOLD_MS", "100"))
     )
 
     # Compression
     compression_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COMPRESSION_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COMPRESSION_ENABLED", "true").lower() == "true"
     )
     compression_min_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_COMPRESSION_MIN_SIZE", "1000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_COMPRESSION_MIN_SIZE", "1000"))
     )
 
 
@@ -1077,7 +1077,7 @@ def print_performance_report() -> None:
     stats = optimizer.get_stats()
 
     print("\n" + "=" * 60)
-    print("  JARVIS Performance Report v10.0")
+    print("  Ironcliw Performance Report v10.0")
     print("=" * 60)
 
     # Cache stats

@@ -1,11 +1,11 @@
-"""
-Cross-Repo State Initialization for JARVIS Enhanced VBIA v6.4
+﻿"""
+Cross-Repo State Initialization for Ironcliw Enhanced VBIA v6.4
 =================================================================
 
 Centralized state initialization module that sets up the cross-repository
 communication infrastructure for:
-- JARVIS (Main) - Voice Biometric Intelligence with Visual Security
-- JARVIS Prime - Task delegation and distributed processing
+- Ironcliw (Main) - Voice Biometric Intelligence with Visual Security
+- Ironcliw Prime - Task delegation and distributed processing
 - Reactor Core - Event analytics and threat monitoring
 
 This module creates and manages the ~/.jarvis/cross_repo/ directory structure
@@ -20,7 +20,7 @@ Features:
 - Event emission and consumption APIs
 - Thread-safe file operations with proper locking
 - v6.3: Coordinated multi-repo startup with dependency ordering
-- v6.3: Health probing for external repos (JARVIS-Prime, Reactor-Core)
+- v6.3: Health probing for external repos (Ironcliw-Prime, Reactor-Core)
 - v6.3: Timeout handling with graceful degradation
 - v6.3: Cross-repo connection validation
 - v6.4: Distributed lock manager with automatic expiration
@@ -30,11 +30,11 @@ Features:
 Architecture:
     ┌──────────────────────────────────────────────────────────┐
     │  ~/.jarvis/cross_repo/                                   │
-    │  ├── vbia_events.json       (JARVIS → All)              │
-    │  ├── vbia_requests.json     (Prime/Reactor → JARVIS)    │
-    │  ├── vbia_results.json      (JARVIS → Prime/Reactor)    │
-    │  ├── vbia_state.json        (JARVIS state broadcast)    │
-    │  ├── prime_state.json       (JARVIS Prime status)       │
+    │  ├── vbia_events.json       (Ironcliw → All)              │
+    │  ├── vbia_requests.json     (Prime/Reactor → Ironcliw)    │
+    │  ├── vbia_results.json      (Ironcliw → Prime/Reactor)    │
+    │  ├── vbia_state.json        (Ironcliw state broadcast)    │
+    │  ├── prime_state.json       (Ironcliw Prime status)       │
     │  ├── reactor_state.json     (Reactor Core status)       │
     │  ├── heartbeat.json         (Cross-repo health)         │
     │  └── locks/                 (Distributed lock files)    │
@@ -43,7 +43,7 @@ Architecture:
     │      └── reactor_state.lock                             │
     └──────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.4.0
 """
 
@@ -115,42 +115,42 @@ class CrossRepoStateConfig:
     # Base directory for cross-repo state
     base_dir: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_CROSS_REPO_DIR",
+            "Ironcliw_CROSS_REPO_DIR",
             "~/.jarvis/cross_repo"
         )
     )
 
     # Event file settings
     max_events_per_file: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_MAX_EVENTS_PER_FILE", 1000)
+        default_factory=lambda: _get_env_int("Ironcliw_MAX_EVENTS_PER_FILE", 1000)
     )
     event_rotation_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_EVENT_ROTATION", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_EVENT_ROTATION", True)
     )
 
     # State file settings
     state_update_interval_seconds: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_STATE_UPDATE_INTERVAL", 5.0)
+        default_factory=lambda: _get_env_float("Ironcliw_STATE_UPDATE_INTERVAL", 5.0)
     )
 
     # Heartbeat settings
     heartbeat_interval_seconds: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_HEARTBEAT_INTERVAL", 10.0)
+        default_factory=lambda: _get_env_float("Ironcliw_HEARTBEAT_INTERVAL", 10.0)
     )
     heartbeat_timeout_seconds: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_HEARTBEAT_TIMEOUT", 30.0)
+        default_factory=lambda: _get_env_float("Ironcliw_HEARTBEAT_TIMEOUT", 30.0)
     )
 
     # Repository paths
     jarvis_repo: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_REPO_PATH",
-            "~/Documents/repos/JARVIS-AI-Agent"
+            "Ironcliw_REPO_PATH",
+            "~/Documents/repos/Ironcliw-AI-Agent"
         )
     )
     jarvis_prime_repo: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_PRIME_REPO_PATH",
+            "Ironcliw_PRIME_REPO_PATH",
             "~/Documents/repos/jarvis-prime"
         )
     )
@@ -163,30 +163,30 @@ class CrossRepoStateConfig:
 
     # Visual security settings
     visual_security_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_VISUAL_SECURITY_ENABLED", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_VISUAL_SECURITY_ENABLED", True)
     )
     visual_security_mode: str = field(
-        default_factory=lambda: _get_env("JARVIS_VISUAL_SECURITY_MODE", "omniparser")
+        default_factory=lambda: _get_env("Ironcliw_VISUAL_SECURITY_MODE", "omniparser")
     )
 
     # v6.3: Coordinated multi-repo startup settings
     coordinated_startup_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_COORDINATED_STARTUP_ENABLED", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_COORDINATED_STARTUP_ENABLED", True)
     )
     repo_startup_timeout_seconds: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_REPO_STARTUP_TIMEOUT", 30.0)
+        default_factory=lambda: _get_env_float("Ironcliw_REPO_STARTUP_TIMEOUT", 30.0)
     )
     repo_health_probe_timeout_seconds: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_REPO_HEALTH_PROBE_TIMEOUT", 5.0)
+        default_factory=lambda: _get_env_float("Ironcliw_REPO_HEALTH_PROBE_TIMEOUT", 5.0)
     )
     repo_health_retry_count: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_REPO_HEALTH_RETRY_COUNT", 3)
+        default_factory=lambda: _get_env_int("Ironcliw_REPO_HEALTH_RETRY_COUNT", 3)
     )
     repo_health_retry_delay_seconds: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_REPO_HEALTH_RETRY_DELAY", 2.0)
+        default_factory=lambda: _get_env_float("Ironcliw_REPO_HEALTH_RETRY_DELAY", 2.0)
     )
     graceful_degradation_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_GRACEFUL_DEGRADATION_ENABLED", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_GRACEFUL_DEGRADATION_ENABLED", True)
     )
 
 
@@ -196,8 +196,8 @@ class CrossRepoStateConfig:
 
 class RepoType(str, Enum):
     """Type of repository in the cross-repo system."""
-    JARVIS = "jarvis"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw = "jarvis"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
 
 
@@ -266,7 +266,7 @@ class VBIAEvent:
     event_id: str = field(default_factory=lambda: uuid4().hex)
     event_type: EventType = EventType.SYSTEM_READY
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    source_repo: RepoType = RepoType.JARVIS
+    source_repo: RepoType = RepoType.Ironcliw
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -288,9 +288,9 @@ class RepoState:
 
 @dataclass
 class VBIARequest:
-    """A request to JARVIS VBIA system from another repository."""
+    """A request to Ironcliw VBIA system from another repository."""
     request_id: str = field(default_factory=lambda: uuid4().hex)
-    source_repo: RepoType = RepoType.JARVIS_PRIME
+    source_repo: RepoType = RepoType.Ironcliw_PRIME
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     request_type: str = "authenticate"  # authenticate, analyze_visual, check_threat
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -300,7 +300,7 @@ class VBIARequest:
 
 @dataclass
 class VBIAResult:
-    """A result from JARVIS VBIA system to another repository."""
+    """A result from Ironcliw VBIA system to another repository."""
     result_id: str = field(default_factory=lambda: uuid4().hex)
     request_id: str = ""  # Corresponding request ID
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -362,20 +362,20 @@ class CrossRepoStateInitializer:
         _default_state_workers = max(1, min(4, (os.cpu_count() or 2) // 2))
         _state_workers = max(
             1,
-            _get_env_int("JARVIS_STATE_WRITE_EXECUTOR_WORKERS", _default_state_workers),
+            _get_env_int("Ironcliw_STATE_WRITE_EXECUTOR_WORKERS", _default_state_workers),
         )
         self._state_write_executor = self._create_state_write_executor(_state_workers)
         self._state_write_workers = _state_workers
 
         # v256.0: Adaptive write-time forecasting model (no fixed global timeout).
         _seed_ewma = _get_env_float(
-            "JARVIS_STATE_WRITE_EWMA_SEED",
+            "Ironcliw_STATE_WRITE_EWMA_SEED",
             max(0.05, self.config.state_update_interval_seconds * 0.05),
         )
         self._state_write_ewma_seconds = max(0.01, _seed_ewma)
         self._state_write_jitter_seconds = 0.0
         self._state_write_history: Deque[float] = deque(
-            maxlen=max(8, _get_env_int("JARVIS_STATE_WRITE_HISTORY_SIZE", 32))
+            maxlen=max(8, _get_env_int("Ironcliw_STATE_WRITE_HISTORY_SIZE", 32))
         )
         self._state_write_timeout_streak = 0
         self._state_write_extension_events = 0
@@ -390,7 +390,7 @@ class CrossRepoStateInitializer:
 
         # State cache
         self._jarvis_state = RepoState(
-            repo_type=RepoType.JARVIS,
+            repo_type=RepoType.Ironcliw,
             status=StateStatus.INITIALIZING,
             capabilities={
                 "visual_security": self.config.visual_security_enabled,
@@ -456,7 +456,7 @@ class CrossRepoStateInitializer:
                 self._initialize_heartbeat(),
             )
 
-            # Update JARVIS state to ready
+            # Update Ironcliw state to ready
             self._jarvis_state.status = StateStatus.READY
             await self._write_jarvis_state()
 
@@ -469,7 +469,7 @@ class CrossRepoStateInitializer:
             # Emit system ready event
             await self.emit_event(VBIAEvent(
                 event_type=EventType.SYSTEM_READY,
-                source_repo=RepoType.JARVIS,
+                source_repo=RepoType.Ironcliw,
                 payload={
                     "version": "6.2.0",
                     "visual_security_enabled": self.config.visual_security_enabled,
@@ -569,11 +569,11 @@ class CrossRepoStateInitializer:
         logger.info("[CrossRepoState] ✓ vbia_state.json initialized")
 
     async def _initialize_prime_state(self) -> None:
-        """Initialize prime_state.json file (placeholder for JARVIS Prime)."""
+        """Initialize prime_state.json file (placeholder for Ironcliw Prime)."""
         prime_file = self._state_files["prime_state"]
         if not prime_file.exists():
             prime_state = RepoState(
-                repo_type=RepoType.JARVIS_PRIME,
+                repo_type=RepoType.Ironcliw_PRIME,
                 status=StateStatus.OFFLINE,
                 capabilities={"vbia_delegation": False}
             )
@@ -596,8 +596,8 @@ class CrossRepoStateInitializer:
         """Initialize heartbeat.json file."""
         heartbeat_file = self._state_files["heartbeat"]
         heartbeats = {
-            "jarvis": asdict(Heartbeat(repo_type=RepoType.JARVIS, status=StateStatus.INITIALIZING)),
-            "jarvis_prime": asdict(Heartbeat(repo_type=RepoType.JARVIS_PRIME, status=StateStatus.OFFLINE)),
+            "jarvis": asdict(Heartbeat(repo_type=RepoType.Ironcliw, status=StateStatus.INITIALIZING)),
+            "jarvis_prime": asdict(Heartbeat(repo_type=RepoType.Ironcliw_PRIME, status=StateStatus.OFFLINE)),
             "reactor_core": asdict(Heartbeat(repo_type=RepoType.REACTOR_CORE, status=StateStatus.OFFLINE)),
         }
         await self._write_json_file(heartbeat_file, heartbeats)
@@ -669,7 +669,7 @@ class CrossRepoStateInitializer:
         """
         v113.0: Broadcast CloudSQL readiness state to all cross-repo components.
 
-        This enables JARVIS Prime and Reactor Core to:
+        This enables Ironcliw Prime and Reactor Core to:
         - Know when CloudSQL is ready before attempting DB operations
         - Gracefully degrade if CloudSQL is unavailable
         - Coordinate startup timing with database availability
@@ -699,7 +699,7 @@ class CrossRepoStateInitializer:
 
         event = VBIAEvent(
             event_type=event_type,
-            source_repo=RepoType.JARVIS,
+            source_repo=RepoType.Ironcliw,
             payload=payload,
         )
 
@@ -736,7 +736,7 @@ class CrossRepoStateInitializer:
                 "latency_ms": latency_ms,
                 "failure_reason": failure_reason,
                 "version": "113.0",
-                "source_repo": RepoType.JARVIS.value,
+                "source_repo": RepoType.Ironcliw.value,
             }
 
             if metadata:
@@ -769,7 +769,7 @@ class CrossRepoStateInitializer:
         """
         v113.0: Wait for CloudSQL to become ready (for use by other repos).
 
-        This is useful for JARVIS Prime and Reactor Core to wait for CloudSQL
+        This is useful for Ironcliw Prime and Reactor Core to wait for CloudSQL
         before starting database-dependent components.
 
         Args:
@@ -811,9 +811,9 @@ class CrossRepoStateInitializer:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        v114.0: Broadcast credential lifecycle events across JARVIS Trinity repos.
+        v114.0: Broadcast credential lifecycle events across Ironcliw Trinity repos.
 
-        This enables JARVIS, JARVIS Prime, and Reactor Core to:
+        This enables Ironcliw, Ironcliw Prime, and Reactor Core to:
         - Synchronize credential validation state
         - Invalidate caches when credentials change
         - Coordinate credential refresh across all repos
@@ -836,7 +836,7 @@ class CrossRepoStateInitializer:
 
         event = VBIAEvent(
             event_type=event_type,
-            source_repo=RepoType.JARVIS,
+            source_repo=RepoType.Ironcliw,
             payload=payload,
         )
 
@@ -873,7 +873,7 @@ class CrossRepoStateInitializer:
                 "last_update": datetime.now().isoformat(),
                 "last_update_timestamp": time.time(),
                 "version": "114.0",
-                "source_repo": RepoType.JARVIS.value,
+                "source_repo": RepoType.Ironcliw.value,
             }
 
             if metadata:
@@ -1045,7 +1045,7 @@ class CrossRepoStateInitializer:
 
         backoff_factor = max(
             0.05,
-            _get_env_float("JARVIS_STATE_WRITE_BACKOFF_FACTOR", 0.35),
+            _get_env_float("Ironcliw_STATE_WRITE_BACKOFF_FACTOR", 0.35),
         )
         pressure_multiplier = 1.0 + (self._state_write_timeout_streak * backoff_factor)
         projected = base * max(1.25, pressure_multiplier)
@@ -1057,11 +1057,11 @@ class CrossRepoStateInitializer:
         )
         floor = max(
             0.05,
-            _get_env_float("JARVIS_STATE_WRITE_FORECAST_FLOOR", interval_anchor * 0.1),
+            _get_env_float("Ironcliw_STATE_WRITE_FORECAST_FLOOR", interval_anchor * 0.1),
         )
         cap = max(
             floor,
-            _get_env_float("JARVIS_STATE_WRITE_FORECAST_CAP", interval_anchor * 4.0),
+            _get_env_float("Ironcliw_STATE_WRITE_FORECAST_CAP", interval_anchor * 4.0),
         )
         return min(max(projected, floor), cap)
 
@@ -1073,11 +1073,11 @@ class CrossRepoStateInitializer:
         """Update adaptive forecast metrics from completed write."""
         alpha = min(
             0.95,
-            max(0.05, _get_env_float("JARVIS_STATE_WRITE_EWMA_ALPHA", 0.35)),
+            max(0.05, _get_env_float("Ironcliw_STATE_WRITE_EWMA_ALPHA", 0.35)),
         )
         jitter_alpha = min(
             0.95,
-            max(0.05, _get_env_float("JARVIS_STATE_WRITE_JITTER_ALPHA", alpha)),
+            max(0.05, _get_env_float("Ironcliw_STATE_WRITE_JITTER_ALPHA", alpha)),
         )
 
         prev_ewma = self._state_write_ewma_seconds
@@ -1119,7 +1119,7 @@ class CrossRepoStateInitializer:
         }
 
     async def _write_jarvis_state(self) -> None:
-        """Write JARVIS state to vbia_state.json (thread-safe).
+        """Write Ironcliw state to vbia_state.json (thread-safe).
 
         v254.0: REMOVED RobustFileLock from this method.
         Root cause of 46s lock hold: During startup, the event loop and default
@@ -1166,7 +1166,7 @@ class CrossRepoStateInitializer:
             stall_log_interval = max(
                 0.25,
                 _get_env_float(
-                    "JARVIS_STATE_WRITE_STALL_LOG_INTERVAL",
+                    "Ironcliw_STATE_WRITE_STALL_LOG_INTERVAL",
                     max(
                         self.config.state_update_interval_seconds,
                         self.config.heartbeat_interval_seconds * 0.5,
@@ -1209,7 +1209,7 @@ class CrossRepoStateInitializer:
                     cancel_grace = max(
                         0.25,
                         _get_env_float(
-                            "JARVIS_STATE_WRITE_CANCEL_GRACE",
+                            "Ironcliw_STATE_WRITE_CANCEL_GRACE",
                             self._forecast_state_write_window(),
                         ),
                     )
@@ -1231,7 +1231,7 @@ class CrossRepoStateInitializer:
 
     async def update_jarvis_status(self, status: StateStatus, metrics: Optional[Dict[str, Any]] = None) -> None:
         """
-        Update JARVIS status (thread-safe).
+        Update Ironcliw status (thread-safe).
 
         Args:
             status: New status
@@ -1255,7 +1255,7 @@ class CrossRepoStateInitializer:
                 "jarvis": self._jarvis_state,
             }
 
-            # Read JARVIS Prime state
+            # Read Ironcliw Prime state
             prime_data = await self._read_json_file(self._state_files["prime_state"], default={})
             if prime_data:
                 states["jarvis_prime"] = RepoState(**prime_data)
@@ -1294,7 +1294,7 @@ class CrossRepoStateInitializer:
                     logger.debug("[CrossRepoState] Heartbeat without lock (manager not initialized)")
                     heartbeats = await self._read_json_file(heartbeat_file, default={})
                     heartbeats["jarvis"] = asdict(Heartbeat(
-                        repo_type=RepoType.JARVIS,
+                        repo_type=RepoType.Ironcliw,
                         status=self._jarvis_state.status,
                         uptime_seconds=time.time() - self._start_time,
                         active_sessions=self._jarvis_state.metrics.get("active_sessions", 0),
@@ -1307,18 +1307,18 @@ class CrossRepoStateInitializer:
                 # v266.0: Adaptive lock-wait loop for heartbeat writes.
                 # Never skip a cycle due transient lock contention; extend wait
                 # windows with bounded backoff until acquisition succeeds.
-                _cr_ttl = float(os.environ.get("JARVIS_CROSS_REPO_LOCK_TTL", "20.0"))
+                _cr_ttl = float(os.environ.get("Ironcliw_CROSS_REPO_LOCK_TTL", "20.0"))
                 _base_timeout = _get_env_float(
-                    "JARVIS_HEARTBEAT_LOCK_TIMEOUT_BASE",
+                    "Ironcliw_HEARTBEAT_LOCK_TIMEOUT_BASE",
                     max(0.5, self.config.heartbeat_interval_seconds * 0.5),
                 )
                 _max_timeout = _get_env_float(
-                    "JARVIS_HEARTBEAT_LOCK_TIMEOUT_MAX",
+                    "Ironcliw_HEARTBEAT_LOCK_TIMEOUT_MAX",
                     max(_base_timeout, self.config.heartbeat_timeout_seconds),
                 )
-                _backoff = _get_env_float("JARVIS_HEARTBEAT_LOCK_TIMEOUT_BACKOFF", 0.5)
+                _backoff = _get_env_float("Ironcliw_HEARTBEAT_LOCK_TIMEOUT_BACKOFF", 0.5)
                 _stall_log_interval = _get_env_float(
-                    "JARVIS_HEARTBEAT_LOCK_STALL_LOG_INTERVAL",
+                    "Ironcliw_HEARTBEAT_LOCK_STALL_LOG_INTERVAL",
                     max(1.0, self.config.heartbeat_interval_seconds),
                 )
 
@@ -1341,7 +1341,7 @@ class CrossRepoStateInitializer:
                             heartbeats = await self._read_json_file(heartbeat_file, default={})
 
                             heartbeats["jarvis"] = asdict(Heartbeat(
-                                repo_type=RepoType.JARVIS,
+                                repo_type=RepoType.Ironcliw,
                                 status=self._jarvis_state.status,
                                 uptime_seconds=time.time() - self._start_time,
                                 active_sessions=self._jarvis_state.metrics.get("active_sessions", 0),
@@ -1377,7 +1377,7 @@ class CrossRepoStateInitializer:
                 await asyncio.sleep(self.config.heartbeat_interval_seconds)
 
     async def _state_update_loop(self) -> None:
-        """Background task that periodically updates JARVIS state."""
+        """Background task that periodically updates Ironcliw state."""
         logger.info("[CrossRepoState] State update loop started")
 
         while self._running:
@@ -1404,8 +1404,8 @@ class CrossRepoStateInitializer:
         v6.3: Coordinated initialization of all repos with dependency ordering.
 
         This method initializes repos in the correct order:
-        1. JARVIS (local) - Required, must succeed
-        2. JARVIS Prime - Optional, can degrade gracefully
+        1. Ironcliw (local) - Required, must succeed
+        2. Ironcliw Prime - Optional, can degrade gracefully
         3. Reactor Core - Optional, can degrade gracefully
 
         Returns:
@@ -1413,7 +1413,7 @@ class CrossRepoStateInitializer:
         """
         if not self.config.coordinated_startup_enabled:
             logger.info("[CrossRepoState] Coordinated startup disabled, skipping")
-            return {RepoType.JARVIS: True}
+            return {RepoType.Ironcliw: True}
 
         logger.info("[CrossRepoState] ═══════════════════════════════════════════════")
         logger.info("[CrossRepoState] v6.3: Starting coordinated multi-repo initialization")
@@ -1422,21 +1422,21 @@ class CrossRepoStateInitializer:
         results: Dict[RepoType, bool] = {}
         startup_start = time.time()
 
-        # Phase 1: Initialize JARVIS (local) - This is required
+        # Phase 1: Initialize Ironcliw (local) - This is required
         # v211.0: Use asyncio.wait_for for Python 3.9 compatibility
         try:
             jarvis_success = await asyncio.wait_for(
                 self._initialize_jarvis_local(),
                 timeout=self.config.repo_startup_timeout_seconds
             )
-            results[RepoType.JARVIS] = jarvis_success
+            results[RepoType.Ironcliw] = jarvis_success
 
             if not jarvis_success:
-                logger.error("[CrossRepoState] JARVIS local initialization failed - aborting")
+                logger.error("[CrossRepoState] Ironcliw local initialization failed - aborting")
                 return results
         except asyncio.TimeoutError:
-            logger.error("[CrossRepoState] JARVIS local initialization timed out")
-            results[RepoType.JARVIS] = False
+            logger.error("[CrossRepoState] Ironcliw local initialization timed out")
+            results[RepoType.Ironcliw] = False
             return results
 
         # Phase 2: Initialize external repos in parallel (with individual timeouts)
@@ -1454,7 +1454,7 @@ class CrossRepoStateInitializer:
 
             # Process results
             for i, result in enumerate(external_results):
-                repo_type = RepoType.JARVIS_PRIME if i == 0 else RepoType.REACTOR_CORE
+                repo_type = RepoType.Ironcliw_PRIME if i == 0 else RepoType.REACTOR_CORE
                 if isinstance(result, Exception):
                     logger.warning(f"[CrossRepoState] {repo_type.value} initialization failed: {result}")
                     results[repo_type] = False
@@ -1463,7 +1463,7 @@ class CrossRepoStateInitializer:
 
         except asyncio.TimeoutError:
             logger.warning("[CrossRepoState] External repo initialization timed out")
-            for repo_type in [RepoType.JARVIS_PRIME, RepoType.REACTOR_CORE]:
+            for repo_type in [RepoType.Ironcliw_PRIME, RepoType.REACTOR_CORE]:
                 if repo_type not in results:
                     results[repo_type] = False
 
@@ -1483,7 +1483,7 @@ class CrossRepoStateInitializer:
         # Emit coordinated startup event
         await self.emit_event(VBIAEvent(
             event_type=EventType.SYSTEM_READY,
-            source_repo=RepoType.JARVIS,
+            source_repo=RepoType.Ironcliw,
             payload={
                 "coordinated_startup": True,
                 "repos_initialized": {k.value: v for k, v in results.items()},
@@ -1495,20 +1495,20 @@ class CrossRepoStateInitializer:
         return results
 
     async def _initialize_jarvis_local(self) -> bool:
-        """Initialize JARVIS local state (required)."""
-        logger.info("[CrossRepoState] Phase 1: Initializing JARVIS local...")
+        """Initialize Ironcliw local state (required)."""
+        logger.info("[CrossRepoState] Phase 1: Initializing Ironcliw local...")
         try:
             # This reuses the existing initialize() logic if not already initialized
             if not self._initialized:
                 return await self.initialize()
             return True
         except Exception as e:
-            logger.error(f"[CrossRepoState] JARVIS local init failed: {e}")
+            logger.error(f"[CrossRepoState] Ironcliw local init failed: {e}")
             return False
 
     async def _initialize_jarvis_prime_with_retry(self) -> bool:
-        """Initialize JARVIS Prime with retry and health probing."""
-        logger.info("[CrossRepoState] Phase 2a: Initializing JARVIS Prime...")
+        """Initialize Ironcliw Prime with retry and health probing."""
+        logger.info("[CrossRepoState] Phase 2a: Initializing Ironcliw Prime...")
 
         for attempt in range(self.config.repo_health_retry_count):
             try:
@@ -1516,24 +1516,24 @@ class CrossRepoStateInitializer:
                 if success:
                     # Update prime state to ready
                     await self._update_prime_state(StateStatus.READY)
-                    logger.info("[CrossRepoState] ✅ JARVIS Prime initialized")
+                    logger.info("[CrossRepoState] ✅ Ironcliw Prime initialized")
                     return True
 
-                logger.debug(f"[CrossRepoState] JARVIS Prime probe attempt {attempt + 1} failed")
+                logger.debug(f"[CrossRepoState] Ironcliw Prime probe attempt {attempt + 1} failed")
 
             except Exception as e:
-                logger.debug(f"[CrossRepoState] JARVIS Prime probe error: {e}")
+                logger.debug(f"[CrossRepoState] Ironcliw Prime probe error: {e}")
 
             if attempt < self.config.repo_health_retry_count - 1:
                 await asyncio.sleep(self.config.repo_health_retry_delay_seconds)
 
         # All retries failed - graceful degradation
         if self.config.graceful_degradation_enabled:
-            logger.warning("[CrossRepoState] ⚠️ JARVIS Prime unavailable - degraded mode")
+            logger.warning("[CrossRepoState] ⚠️ Ironcliw Prime unavailable - degraded mode")
             await self._update_prime_state(StateStatus.DEGRADED)
             return False
         else:
-            raise RuntimeError("JARVIS Prime initialization failed and graceful degradation disabled")
+            raise RuntimeError("Ironcliw Prime initialization failed and graceful degradation disabled")
 
     async def _initialize_reactor_core_with_retry(self) -> bool:
         """Initialize Reactor Core with retry and health probing."""
@@ -1566,7 +1566,7 @@ class CrossRepoStateInitializer:
 
     async def _probe_jarvis_prime_health(self) -> bool:
         """
-        Probe JARVIS Prime health.
+        Probe Ironcliw Prime health.
 
         Checks:
         1. Prime state file exists and has recent heartbeat
@@ -1585,7 +1585,7 @@ class CrossRepoStateInitializer:
                         heartbeat_time = datetime.fromisoformat(last_heartbeat)
                         age = datetime.now() - heartbeat_time
                         if age < timedelta(seconds=self.config.heartbeat_timeout_seconds):
-                            logger.debug("[CrossRepoState] JARVIS Prime heartbeat valid")
+                            logger.debug("[CrossRepoState] Ironcliw Prime heartbeat valid")
                             return True
                     except (ValueError, TypeError):
                         pass
@@ -1593,11 +1593,11 @@ class CrossRepoStateInitializer:
             # Method 2: Check Prime state file
             prime_state = await self._read_json_file(self._state_files["prime_state"], default={})
             if prime_state.get("status") in ("ready", "active"):
-                logger.debug("[CrossRepoState] JARVIS Prime state valid")
+                logger.debug("[CrossRepoState] Ironcliw Prime state valid")
                 return True
 
             # Method 3: Try HTTP health check if configured
-            prime_url = _get_env("JARVIS_PRIME_HEALTH_URL", "")
+            prime_url = _get_env("Ironcliw_PRIME_HEALTH_URL", "")
             if prime_url:
                 try:
                     import aiohttp
@@ -1607,7 +1607,7 @@ class CrossRepoStateInitializer:
                             timeout=aiohttp.ClientTimeout(total=self.config.repo_health_probe_timeout_seconds)
                         ) as resp:
                             if resp.status == 200:
-                                logger.debug("[CrossRepoState] JARVIS Prime HTTP health check passed")
+                                logger.debug("[CrossRepoState] Ironcliw Prime HTTP health check passed")
                                 return True
                 except Exception:
                     pass
@@ -1620,10 +1620,10 @@ class CrossRepoStateInitializer:
                 timeout=self.config.repo_health_probe_timeout_seconds
             )
         except asyncio.TimeoutError:
-            logger.debug("[CrossRepoState] JARVIS Prime health probe timed out")
+            logger.debug("[CrossRepoState] Ironcliw Prime health probe timed out")
             return False
         except Exception as e:
-            logger.debug(f"[CrossRepoState] JARVIS Prime health probe error: {e}")
+            logger.debug(f"[CrossRepoState] Ironcliw Prime health probe error: {e}")
             return False
 
     async def _probe_reactor_core_health(self) -> bool:
@@ -1689,7 +1689,7 @@ class CrossRepoStateInitializer:
             return False
 
     async def _update_prime_state(self, status: StateStatus) -> None:
-        """Update JARVIS Prime state file."""
+        """Update Ironcliw Prime state file."""
         prime_file = self._state_files["prime_state"]
         # v6.5: Guard against None lock manager
         if self._lock_manager is None:
@@ -1700,7 +1700,7 @@ class CrossRepoStateInitializer:
             await self._write_json_file(prime_file, prime_state)
             return
         # v6.4: Use distributed lock
-        _cr_ttl = float(os.environ.get("JARVIS_CROSS_REPO_LOCK_TTL", "20.0"))
+        _cr_ttl = float(os.environ.get("Ironcliw_CROSS_REPO_LOCK_TTL", "20.0"))
         async with self._lock_manager.acquire(
             "prime_state",
             timeout=5.0,
@@ -1727,7 +1727,7 @@ class CrossRepoStateInitializer:
             await self._write_json_file(reactor_file, reactor_state)
             return
         # v6.4: Use distributed lock
-        _cr_ttl = float(os.environ.get("JARVIS_CROSS_REPO_LOCK_TTL", "20.0"))
+        _cr_ttl = float(os.environ.get("Ironcliw_CROSS_REPO_LOCK_TTL", "20.0"))
         async with self._lock_manager.acquire(
             "reactor_state",
             timeout=5.0,
@@ -1885,7 +1885,7 @@ async def initialize_cross_repo_state(
     Initialize the cross-repo state system.
 
     This is the main entry point for initializing the cross-repo communication
-    infrastructure during JARVIS startup.
+    infrastructure during Ironcliw startup.
 
     Args:
         config: Optional configuration
@@ -1920,7 +1920,7 @@ async def initialize_all_repos_coordinated(
     v6.3: Initialize all repos with coordinated startup.
 
     This is the main entry point for coordinated multi-repo initialization.
-    It initializes JARVIS first (required), then JARVIS Prime and Reactor Core
+    It initializes Ironcliw first (required), then Ironcliw Prime and Reactor Core
     in parallel with graceful degradation if they're unavailable.
 
     Args:
@@ -1931,10 +1931,10 @@ async def initialize_all_repos_coordinated(
 
     Example:
         results = await initialize_all_repos_coordinated()
-        if results[RepoType.JARVIS]:
-            print("JARVIS initialized successfully")
-        if results.get(RepoType.JARVIS_PRIME, False):
-            print("JARVIS Prime connected")
+        if results[RepoType.Ironcliw]:
+            print("Ironcliw initialized successfully")
+        if results.get(RepoType.Ironcliw_PRIME, False):
+            print("Ironcliw Prime connected")
     """
     initializer = await get_cross_repo_initializer(config)
     return await initializer.initialize_all_repos()

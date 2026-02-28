@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enhanced Vision API for JARVIS
+Enhanced Vision API for Ironcliw
 Integrates continuous monitoring with Claude AI
 """
 

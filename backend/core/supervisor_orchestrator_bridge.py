@@ -1,4 +1,4 @@
-"""
+﻿"""
 v78.0: Supervisor-Orchestrator Bridge
 =====================================
 
@@ -28,7 +28,7 @@ Usage in run_supervisor.py:
     # During shutdown
     await hooks.shutdown()
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 Version: 1.0.0
 """
 
@@ -238,8 +238,8 @@ class OrchestratorHooks:
         from .advanced_startup_orchestrator import TrinityRepo
 
         return {
-            "jarvis": self._discovered_config.repo_paths.get(TrinityRepo.JARVIS),
-            "jarvis_prime": self._discovered_config.repo_paths.get(TrinityRepo.JARVIS_PRIME),
+            "jarvis": self._discovered_config.repo_paths.get(TrinityRepo.Ironcliw),
+            "jarvis_prime": self._discovered_config.repo_paths.get(TrinityRepo.Ironcliw_PRIME),
             "reactor_core": self._discovered_config.repo_paths.get(TrinityRepo.REACTOR_CORE),
         }
 
@@ -384,7 +384,7 @@ class OrchestratorHooks:
         return status
 
     async def _verify_backend_health(self, port: int, timeout: float) -> bool:
-        """Verify JARVIS backend is healthy."""
+        """Verify Ironcliw backend is healthy."""
         if not self._connection_verifier:
             return False
 
@@ -662,8 +662,8 @@ async def enhance_supervisor_with_orchestrator(
         repos = hooks.discovered_config.repo_paths
 
         # Update bootstrapper paths if discovered
-        if TrinityRepo.JARVIS_PRIME in repos:
-            bootstrapper._jprime_repo_path = repos[TrinityRepo.JARVIS_PRIME]
+        if TrinityRepo.Ironcliw_PRIME in repos:
+            bootstrapper._jprime_repo_path = repos[TrinityRepo.Ironcliw_PRIME]
 
         if TrinityRepo.REACTOR_CORE in repos:
             bootstrapper._reactor_core_repo_path = repos[TrinityRepo.REACTOR_CORE]
@@ -710,7 +710,7 @@ async def start_trinity_health_monitor(
     Start the unified Trinity health monitor for continuous background monitoring.
 
     This provides real-time health status for all Trinity components:
-    - JARVIS Body (HTTP endpoint)
+    - Ironcliw Body (HTTP endpoint)
     - J-Prime Mind (heartbeat file)
     - Reactor-Core Nerves (heartbeat file)
     - Coding Council (heartbeat file)

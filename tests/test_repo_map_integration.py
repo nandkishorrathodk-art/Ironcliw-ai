@@ -1,11 +1,11 @@
-"""
+﻿"""
 Test Suite for Repository Map Integration
 ==========================================
 
 Tests the RepoMapEnricher and CodingQuestionDetector integration
 with the JarvisPrimeClient.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -73,13 +73,13 @@ class TestCodingQuestionDetector:
 
     def test_detects_relevant_repos(self, detector):
         """Should detect which repos are relevant based on keywords."""
-        # JARVIS main repo
-        prompt = "How does voice unlock work in JARVIS?"
+        # Ironcliw main repo
+        prompt = "How does voice unlock work in Ironcliw?"
         _, _, metadata = detector.detect(prompt)
         assert "jarvis" in metadata["relevant_repos"]
 
-        # JARVIS Prime
-        prompt = "How does the Cloud Run inference routing work in JARVIS Prime?"
+        # Ironcliw Prime
+        prompt = "How does the Cloud Run inference routing work in Ironcliw Prime?"
         _, _, metadata = detector.detect(prompt)
         assert "jarvis_prime" in metadata["relevant_repos"]
 
@@ -271,8 +271,8 @@ class TestCrossRepoContext:
     def test_multi_repo_detection(self, detector):
         """Should detect when multiple repos are relevant."""
         prompt = """
-        I want to understand how JARVIS voice commands trigger
-        training runs in Reactor Core through JARVIS Prime orchestration.
+        I want to understand how Ironcliw voice commands trigger
+        training runs in Reactor Core through Ironcliw Prime orchestration.
         """
         is_coding, confidence, metadata = detector.detect(prompt)
 
@@ -282,11 +282,11 @@ class TestCrossRepoContext:
         assert "reactor_core" in relevant
 
     def test_jarvis_voice_detection(self, detector):
-        """Should detect JARVIS main repo for voice-related queries."""
+        """Should detect Ironcliw main repo for voice-related queries."""
         prompt = "How does the voice biometric unlock work?"
         is_coding, _, metadata = detector.detect(prompt)
 
-        # Should detect as JARVIS-related based on repo patterns
+        # Should detect as Ironcliw-related based on repo patterns
         assert "jarvis" in metadata["relevant_repos"]
         # The question should be detected as coding-related
         assert is_coding is True

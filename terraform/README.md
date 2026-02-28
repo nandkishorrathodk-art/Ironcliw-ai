@@ -1,8 +1,8 @@
-# 🏗️ JARVIS Terraform Infrastructure
+﻿# 🏗️ Ironcliw Terraform Infrastructure
 
 > **Cost-Optimized GCP Infrastructure for Solo Developers**
 
-This Terraform configuration provides secure, cost-optimized infrastructure for JARVIS with a focus on **$0 fixed monthly costs** during development.
+This Terraform configuration provides secure, cost-optimized infrastructure for Ironcliw with a focus on **$0 fixed monthly costs** during development.
 
 ---
 
@@ -48,7 +48,7 @@ Monitoring alert that triggers if any VM runs > 3 hours:
 ### 3. Triple-Lock Safety System
 VMs automatically terminate through three mechanisms:
 1. **Platform-Level**: GCP `max_run_duration` = 3 hours
-2. **VM-Side**: Startup script self-destructs if JARVIS dies
+2. **VM-Side**: Startup script self-destructs if Ironcliw dies
 3. **Local Cleanup**: `shutdown_hook.py` cleans up on exit
 
 ### 4. Hard Budget Enforcement (Python)
@@ -248,10 +248,10 @@ ACCOUNT_ID            NAME                OPEN  MASTER_ACCOUNT_ID
 ### Check Current GCP Costs
 
 ```bash
-# List all JARVIS VMs
+# List all Ironcliw VMs
 gcloud compute instances list --filter="labels.app=jarvis"
 
-# Delete all JARVIS VMs (emergency cleanup)
+# Delete all Ironcliw VMs (emergency cleanup)
 gcloud compute instances delete \
   $(gcloud compute instances list --filter="labels.app=jarvis" --format="value(name)") \
   --zone=us-central1-a --quiet
@@ -259,11 +259,11 @@ gcloud compute instances delete \
 
 ---
 
-## 🔄 Integration with JARVIS
+## 🔄 Integration with Ironcliw
 
 ### Automatic Integration
 
-The Terraform outputs are used by JARVIS automatically:
+The Terraform outputs are used by Ironcliw automatically:
 
 1. **Spot VM Template**: `gcp_vm_manager.py` uses the template for creating VMs
 2. **VPC/Subnet**: VMs are launched in the configured network

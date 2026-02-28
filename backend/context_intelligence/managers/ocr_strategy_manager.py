@@ -1,5 +1,5 @@
-"""
-OCR Strategy Manager for JARVIS
+﻿"""
+OCR Strategy Manager for Ironcliw
 ================================
 
 Implements intelligent OCR with fallback strategies:

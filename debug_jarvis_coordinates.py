@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Debug script to inject into JARVIS to see what coordinates are being used
+Debug script to inject into Ironcliw to see what coordinates are being used
 Add this to the control_center_clicker files to debug
 """
 
 def debug_inject():
     """
     Add this function call to control_center_clicker.py or control_center_clicker_simple.py
-    to see what coordinates are actually being used when JARVIS runs
+    to see what coordinates are actually being used when Ironcliw runs
     """
     import pyautogui
     import traceback
@@ -91,7 +91,7 @@ def debug_inject():
 
     # Clear the log file
     with open("/tmp/jarvis_coordinate_debug.log", "w") as f:
-        f.write("JARVIS Coordinate Debug Log\n")
+        f.write("Ironcliw Coordinate Debug Log\n")
         f.write("="*80 + "\n")
 
 if __name__ == "__main__":

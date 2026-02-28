@@ -1,11 +1,11 @@
-[build-system]
+﻿[build-system]
 requires = ["maturin>=1.4,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "jarvis-rust-extensions"
 version = "0.1.0"
-description = "JARVIS Rust extensions Python bindings"
+description = "Ironcliw Rust extensions Python bindings"
 requires-python = ">=3.8"
 
 [tool.maturin]

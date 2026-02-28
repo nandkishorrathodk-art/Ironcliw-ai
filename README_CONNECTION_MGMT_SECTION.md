@@ -1,6 +1,6 @@
-## 🔐 NEW: Singleton CloudSQL Connection Management (v17.6.1)
+﻿## 🔐 NEW: Singleton CloudSQL Connection Management (v17.6.1)
 
-JARVIS now features a **comprehensive singleton connection management system** that eliminates connection leaks and ensures graceful shutdown across all components.
+Ironcliw now features a **comprehensive singleton connection management system** that eliminates connection leaks and ensures graceful shutdown across all components.
 
 ### 🎯 Connection Management Architecture
 
@@ -97,7 +97,7 @@ python diagnose_connections.py
 ══════════════════════════════════════════════════════════
 📊 Total connections: 2
    Max allowed (db-f1-micro): ~25
-   Available for JARVIS: ~22
+   Available for Ironcliw: ~22
 ✅ Connection count is healthy
 
 3. Singleton Connection Manager Test
@@ -151,7 +151,7 @@ CONNECTION_MANAGEMENT_UPGRADE.md                       # Full documentation
 🔌 Shutting down CloudSQL connection manager...
 🔌 Closing connection pool...
 ✅ Connection pool closed
-✅ JARVIS graceful shutdown complete
+✅ Ironcliw graceful shutdown complete
 ```
 
 **On Process Crash/atexit:**
@@ -185,7 +185,7 @@ python diagnose_connections.py
 # 2. Kill leaked connections
 python diagnose_connections.py --kill-leaked
 
-# 3. Emergency cleanup (kills all JARVIS processes)
+# 3. Emergency cleanup (kills all Ironcliw processes)
 python -c "from process_cleanup_manager import emergency_cleanup; emergency_cleanup(force=True)"
 ```
 

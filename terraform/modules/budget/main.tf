@@ -1,5 +1,5 @@
-# =============================================================================
-# JARVIS GCP Budget Alerts - ZERO COST
+﻿# =============================================================================
+# Ironcliw GCP Budget Alerts - ZERO COST
 # =============================================================================
 #
 # This module creates billing budget alerts to notify you BEFORE you exceed
@@ -53,7 +53,7 @@ resource "google_billing_budget" "jarvis_budget" {
   count = var.billing_account_id != "" ? 1 : 0
 
   billing_account = var.billing_account_id
-  display_name    = "JARVIS Monthly Budget ($${var.monthly_budget_usd})"
+  display_name    = "Ironcliw Monthly Budget ($${var.monthly_budget_usd})"
 
   budget_filter {
     projects = ["projects/${var.project_id}"]

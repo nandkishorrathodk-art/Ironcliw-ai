@@ -1,8 +1,8 @@
-# Video Multi-Space Intelligence - Implementation Status v10.6
+﻿# Video Multi-Space Intelligence - Implementation Status v10.6
 
 ## 🎯 Mission Complete - Phase 1
 
-We've successfully built the foundation of JARVIS's "second pair of eyes" - a Universal Visual Monitoring System that watches background windows while you work.
+We've successfully built the foundation of Ironcliw's "second pair of eyes" - a Universal Visual Monitoring System that watches background windows while you work.
 
 ---
 
@@ -54,15 +54,15 @@ watcher3 = await spawn_watcher(window_id=876, ...)  # VS Code
 
 **Environment Variables:**
 ```bash
-JARVIS_WATCHER_DEFAULT_FPS=5       # Default FPS
-JARVIS_WATCHER_MIN_FPS=1           # Min FPS limit
-JARVIS_WATCHER_MAX_FPS=10          # Max FPS limit
-JARVIS_WATCHER_MAX_PARALLEL=3      # Max simultaneous watchers
-JARVIS_WATCHER_PRIORITY="low"      # Thread priority
-JARVIS_WATCHER_TIMEOUT=300         # Default timeout (5 min)
-JARVIS_WATCHER_BUFFER_SIZE=10      # Frame buffer size
-JARVIS_WATCHER_OCR=true            # Enable OCR
-JARVIS_DETECTION_CONFIDENCE=0.75   # Detection threshold
+Ironcliw_WATCHER_DEFAULT_FPS=5       # Default FPS
+Ironcliw_WATCHER_MIN_FPS=1           # Min FPS limit
+Ironcliw_WATCHER_MAX_FPS=10          # Max FPS limit
+Ironcliw_WATCHER_MAX_PARALLEL=3      # Max simultaneous watchers
+Ironcliw_WATCHER_PRIORITY="low"      # Thread priority
+Ironcliw_WATCHER_TIMEOUT=300         # Default timeout (5 min)
+Ironcliw_WATCHER_BUFFER_SIZE=10      # Frame buffer size
+Ironcliw_WATCHER_OCR=true            # Enable OCR
+Ironcliw_DETECTION_CONFIDENCE=0.75   # Detection threshold
 ```
 
 **Stats & Monitoring:**
@@ -141,7 +141,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 - SpatialAwarenessAgent (locate windows)
 - VideoWatcherManager (spawn watchers)
 - VisualEventDetector (OCR/CV)
-- JARVIS Voice API (alerts)
+- Ironcliw Voice API (alerts)
 
 ### Phase 4: Cross-Repo Integration
 
@@ -160,7 +160,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
       "started_at": "2025-12-27T23:00:00Z",
       "status": "watching",
       "frames_processed": 1523,
-      "repo": "JARVIS-AI-Agent"
+      "repo": "Ironcliw-AI-Agent"
     }
   ],
   "recent_detections": [...],
@@ -169,8 +169,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 ```
 
 **Cross-Repo Access:**
-- **JARVIS**: Writes watcher state
-- **JARVIS Prime**: Reads state for reasoning
+- **Ironcliw**: Writes watcher state
+- **Ironcliw Prime**: Reads state for reasoning
 - **Reactor Core**: Subscribes to detection events
 
 ### Phase 5: Voice & Notification Integration
@@ -356,17 +356,17 @@ Total time wasted: ~5 minutes
 **After (God Mode with VMSI):**
 ```
 You: "Watch Terminal for 'Build Successful'"
-JARVIS: "Watching Terminal on Space 4"
+Ironcliw: "Watching Terminal on Space 4"
 [You continue working on Space 1]
 [2 minutes later]
-JARVIS: "Build successful on Space 4"
+Ironcliw: "Build successful on Space 4"
 [You switch once to see results]
 Total context switches: 1
 Total interruptions: 0
 Total time saved: ~4 minutes
 ```
 
-**This is JARVIS watching your back while you focus on what matters.** 🚀
+**This is Ironcliw watching your back while you focus on what matters.** 🚀
 
 ---
 
@@ -532,7 +532,7 @@ All dependencies verified working via import tests.
 
 The system is **95% complete** and ready for end-to-end testing.
 
-**Test Command** (after starting JARVIS):
+**Test Command** (after starting Ironcliw):
 ```python
 # Via Python (direct agent call):
 from backend.neural_mesh.agents import VisualMonitorAgent
@@ -548,7 +548,7 @@ result = await agent.watch_and_alert(
 # → Should spawn watcher, wait for text, alert when detected
 
 # Via Voice (once voice integration complete):
-"JARVIS, watch the Terminal for 'Build Successful'"
+"Ironcliw, watch the Terminal for 'Build Successful'"
 ```
 
 **Expected Behavior**:
@@ -563,4 +563,4 @@ result = await agent.watch_and_alert(
    - Auto-stops watcher
 5. User stays focused on current work the whole time
 
-**End Goal Achieved**: Say "Watch Terminal for 'Build Successful'" and JARVIS does it automatically. Implementation: **COMPLETE!** 🚀
+**End Goal Achieved**: Say "Watch Terminal for 'Build Successful'" and Ironcliw does it automatically. Implementation: **COMPLETE!** 🚀

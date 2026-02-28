@@ -1,22 +1,22 @@
-# JARVIS AI Assistant v6.3.0 - Proactive Parallelism Edition (BabyAGI Integration)
+﻿# Ironcliw AI Assistant v6.3.0 - Proactive Parallelism Edition (BabyAGI Integration)
 
 ## 🚀 NEW in v6.3.0: Proactive Parallelism - BabyAGI-Inspired Task Orchestration (December 2025)
 
-JARVIS v6.3.0 introduces **Proactive Parallelism**, a revolutionary BabyAGI-inspired system that transforms vague user intentions into concrete, executable tasks that run in parallel. This combines the "Psychic Brain" (PredictivePlanningAgent) with the "Parallel Muscle" (AgenticTaskRunner) to deliver unprecedented speed and intelligence.
+Ironcliw v6.3.0 introduces **Proactive Parallelism**, a revolutionary BabyAGI-inspired system that transforms vague user intentions into concrete, executable tasks that run in parallel. This combines the "Psychic Brain" (PredictivePlanningAgent) with the "Parallel Muscle" (AgenticTaskRunner) to deliver unprecedented speed and intelligence.
 
 ### 🎯 What is Proactive Parallelism?
 
 **Before v6.3.0:**
 ```bash
 User: "Start my day"
-JARVIS: "What would you like me to do?"
+Ironcliw: "What would you like me to do?"
 # Manual, sequential, tedious
 ```
 
 **After v6.3.0:**
 ```bash
 User: "Start my day"
-JARVIS: [Analyzing intent... morning workday detected]
+Ironcliw: [Analyzing intent... morning workday detected]
         [Expanding to 5 parallel tasks...]
 
         ✅ Opening VS Code to main workspace (Space 2)
@@ -569,7 +569,7 @@ PRODUCTION_AGENTS: List[Type[BaseNeuralMeshAgent]] = [
 ```bash
 User: "Start my day"
 
-JARVIS Response:
+Ironcliw Response:
 [Analyzing intent... detected: WORK_MODE, confidence: 95%]
 [Expanding to 5 parallel tasks based on morning workday pattern...]
 
@@ -578,7 +578,7 @@ Executing in parallel:
   ✅ Task 2: Checking email for urgent messages (Space 3) - 2.1s
   ✅ Task 3: Loading calendar for today's meetings (Space 1) - 1.7s
   ✅ Task 4: Opening Slack to #general channel (Space 4) - 2.0s
-  ✅ Task 5: Fetching Jira sprint tasks for JARVIS-123 (Space 5) - 1.8s
+  ✅ Task 5: Fetching Jira sprint tasks for Ironcliw-123 (Space 5) - 1.8s
 
 All 5 tasks completed in 2.3 seconds (4.1x speedup)!
 
@@ -596,7 +596,7 @@ Good morning, Derek! You're all set. Coffee first?
 ```bash
 User: "Prepare for the design review meeting"
 
-JARVIS Response:
+Ironcliw Response:
 [Analyzing intent... detected: MEETING_PREP, confidence: 92%]
 [Context: Meeting "Design Review" at 2 PM in calendar]
 [Expanding to 4 parallel tasks...]
@@ -623,7 +623,7 @@ You're ready for the 2 PM design review, Derek. 6 minutes until start.
 ```bash
 User: "Research React Server Components"
 
-JARVIS Response:
+Ironcliw Response:
 [Analyzing intent... detected: RESEARCH, confidence: 89%]
 [Topic: React Server Components]
 [Expanding to 6 parallel tasks...]
@@ -654,7 +654,7 @@ Research ready, Derek. Where should we start?
 ```bash
 User: "End of day"
 
-JARVIS Response:
+Ironcliw Response:
 [Analyzing intent... detected: END_OF_DAY, confidence: 96%]
 [Time: 5:47 PM, Friday evening]
 [Expanding to 5 parallel tasks...]
@@ -764,10 +764,10 @@ pytest tests/integration/test_proactive_parallelism.py -v
 # ✅ test_space_lock_prevents_race_conditions
 ```
 
-### Live Testing via JARVIS
+### Live Testing via Ironcliw
 
 ```bash
-# Start JARVIS
+# Start Ironcliw
 python3 start_system.py
 
 # Test commands:
@@ -842,7 +842,7 @@ Tradeoff: More resources for 4x speed improvement = ✅ Worth it
 ```python
 # Auto-detect user patterns and pre-load common workflows
 # E.g., if user always runs "Start my day" at 9 AM Mon-Fri,
-# JARVIS proactively suggests it at 8:55 AM
+# Ironcliw proactively suggests it at 8:55 AM
 ```
 
 ### 2. Dependency-Aware Task Ordering
@@ -871,7 +871,7 @@ Tradeoff: More resources for 4x speed improvement = ✅ Worth it
 ### 5. Voice Command Shortcuts
 ```python
 # User: "Shortcut 1"
-# JARVIS: Runs Derek's custom "Start my day" workflow
+# Ironcliw: Runs Derek's custom "Start my day" workflow
 # Currently: Requires full phrase each time
 ```
 
@@ -911,7 +911,7 @@ export LANGFUSE_SECRET_KEY=sk-lf-...
 export HELICONE_API_KEY=sk-helicone-...
 ```
 
-### 3. Start JARVIS
+### 3. Start Ironcliw
 ```bash
 python3 start_system.py
 ```
@@ -919,7 +919,7 @@ python3 start_system.py
 ### 4. Test Proactive Parallelism
 ```bash
 User: "Start my day"
-# Watch as JARVIS expands and executes 5 tasks in parallel!
+# Watch as Ironcliw expands and executes 5 tasks in parallel!
 ```
 
 ---

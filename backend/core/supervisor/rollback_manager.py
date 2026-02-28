@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Rollback Manager with Dead Man's Switch
+Ironcliw Rollback Manager with Dead Man's Switch
 ================================================
 
 Version history tracking, rollback logic, and post-update stability verification
@@ -14,13 +14,13 @@ Features:
 - Intelligent stability commitment
 - Crash pattern analysis and learning
 
-The Dead Man's Switch ensures JARVIS can safely self-update by:
+The Dead Man's Switch ensures Ironcliw can safely self-update by:
 1. Starting a probation period after each update
 2. Monitoring health via parallel heartbeat probes
 3. Auto-rolling back if stability checks fail
 4. Committing the version as "stable" once probation passes
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0 - Dead Man's Switch Edition
 """
 
@@ -145,7 +145,7 @@ class BootMetrics:
 
 @dataclass
 class VersionSnapshot:
-    """Snapshot of a working JARVIS version."""
+    """Snapshot of a working Ironcliw version."""
     id: int = 0
     git_commit: str = ""
     git_branch: str = ""
@@ -194,7 +194,7 @@ class DeadManSwitch:
     """
     Post-Update Stability Verification System.
     
-    The Dead Man's Switch is the critical safety mechanism that allows JARVIS
+    The Dead Man's Switch is the critical safety mechanism that allows Ironcliw
     to self-update safely. It ensures that broken updates are automatically
     reverted before they can cause persistent damage.
     
@@ -238,7 +238,7 @@ class DeadManSwitch:
     Example:
         >>> dms = DeadManSwitch(config, rollback_manager)
         >>> await dms.start_probation(update_commit="abc123", previous_commit="def456")
-        >>> # ... JARVIS starts up ...
+        >>> # ... Ironcliw starts up ...
         >>> result = await dms.run_probation_loop()
         >>> if result.state == ProbationState.COMMITTED:
         ...     print("Update successful!")
@@ -313,7 +313,7 @@ class DeadManSwitch:
         Start the post-update probation period.
         
         This should be called AFTER an update is applied but BEFORE
-        JARVIS fully starts up.
+        Ironcliw fully starts up.
         
         Args:
             update_commit: Git commit hash of the new version
@@ -340,8 +340,8 @@ class DeadManSwitch:
         self._current_boot_start = datetime.now()
         
         # Set environment variable for child processes
-        os.environ["JARVIS_DMS_ACTIVE"] = "1"
-        os.environ["JARVIS_DMS_UPDATE_COMMIT"] = update_commit
+        os.environ["Ironcliw_DMS_ACTIVE"] = "1"
+        os.environ["Ironcliw_DMS_UPDATE_COMMIT"] = update_commit
         
         self._notify_status_change()
         
@@ -359,7 +359,7 @@ class DeadManSwitch:
         """
         Run the main probation monitoring loop.
         
-        This continuously monitors JARVIS health until either:
+        This continuously monitors Ironcliw health until either:
         1. Probation period completes successfully → COMMITTED
         2. Too many failures occur → ROLLING_BACK
         3. Shutdown is requested → current state
@@ -423,8 +423,8 @@ class DeadManSwitch:
             logger.error(f"❌ Probation loop error: {e}")
             # On unexpected error, lean towards safety (don't auto-rollback)
         finally:
-            os.environ.pop("JARVIS_DMS_ACTIVE", None)
-            os.environ.pop("JARVIS_DMS_UPDATE_COMMIT", None)
+            os.environ.pop("Ironcliw_DMS_ACTIVE", None)
+            os.environ.pop("Ironcliw_DMS_UPDATE_COMMIT", None)
         
         return self._status
     
@@ -769,7 +769,7 @@ class DeadManSwitch:
         """
         Handle a crash during probation period.
         
-        This is called by the supervisor when JARVIS crashes during probation.
+        This is called by the supervisor when Ironcliw crashes during probation.
         It's a more aggressive trigger than normal health check failures.
         
         Args:

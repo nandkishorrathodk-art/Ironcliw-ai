@@ -1,5 +1,5 @@
-# =============================================================================
-# JARVIS Terraform Outputs - Cost-Optimized for Solo Developer
+﻿# =============================================================================
+# Ironcliw Terraform Outputs - Cost-Optimized for Solo Developer
 # =============================================================================
 
 # =============================================================================
@@ -135,7 +135,7 @@ output "triple_lock_status" {
       max_hours   = var.spot_vm_max_runtime_hours
     }
     vm_side = {
-      description = "VM self-destructs if JARVIS process dies"
+      description = "VM self-destructs if Ironcliw process dies"
       enabled     = true
     }
     local_cleanup = {
@@ -168,16 +168,16 @@ output "quick_start" {
 }
 
 # =============================================================================
-# 🧠 JARVIS-PRIME CLOUD RUN
+# 🧠 Ironcliw-PRIME CLOUD RUN
 # =============================================================================
 
 output "jarvis_prime_url" {
-  description = "JARVIS-Prime Cloud Run service URL"
+  description = "Ironcliw-Prime Cloud Run service URL"
   value       = var.enable_jarvis_prime ? module.jarvis_prime[0].service_url : null
 }
 
 output "jarvis_prime_status" {
-  description = "JARVIS-Prime deployment status"
+  description = "Ironcliw-Prime deployment status"
   value = {
     enabled           = var.enable_jarvis_prime
     service_url       = var.enable_jarvis_prime ? module.jarvis_prime[0].service_url : "Not deployed"
@@ -196,7 +196,7 @@ output "jarvis_prime_status" {
 }
 
 output "jarvis_prime_deployment_steps" {
-  description = "Steps to deploy JARVIS-Prime to Cloud Run"
+  description = "Steps to deploy Ironcliw-Prime to Cloud Run"
   value = {
     step_1 = "Build Docker image: cd jarvis-prime && docker build -t jarvis-prime:latest ."
     step_2 = "Tag for GCR: docker tag jarvis-prime:latest ${var.region}-docker.pkg.dev/${var.project_id}/jarvis-prime/jarvis-prime:latest"
@@ -208,16 +208,16 @@ output "jarvis_prime_deployment_steps" {
 }
 
 # =============================================================================
-# 🤖 JARVIS BACKEND CLOUD RUN (v9.4)
+# 🤖 Ironcliw BACKEND CLOUD RUN (v9.4)
 # =============================================================================
 
 output "jarvis_backend_url" {
-  description = "JARVIS Backend Cloud Run service URL"
+  description = "Ironcliw Backend Cloud Run service URL"
   value       = var.enable_jarvis_backend ? module.jarvis_backend[0].service_url : null
 }
 
 output "jarvis_backend_status" {
-  description = "JARVIS Backend deployment status"
+  description = "Ironcliw Backend deployment status"
   value = {
     enabled           = var.enable_jarvis_backend
     service_url       = var.enable_jarvis_backend ? module.jarvis_backend[0].service_url : "Not deployed"
@@ -244,7 +244,7 @@ output "jarvis_backend_status" {
 }
 
 output "jarvis_backend_deployment_steps" {
-  description = "Steps to deploy JARVIS Backend to Cloud Run"
+  description = "Steps to deploy Ironcliw Backend to Cloud Run"
   value = {
     step_1 = "Set API key in Secret Manager: echo -n 'sk-ant-...' | gcloud secrets versions add anthropic-api-key --data-file=-"
     step_2 = "Auth with GCR: gcloud auth configure-docker ${var.region}-docker.pkg.dev"
@@ -260,7 +260,7 @@ output "jarvis_backend_deployment_steps" {
 # =============================================================================
 
 output "unified_stack_status" {
-  description = "Status of the unified JARVIS stack"
+  description = "Status of the unified Ironcliw stack"
   value = {
     components = {
       jarvis_backend = var.enable_jarvis_backend ? "deployed" : "not deployed"

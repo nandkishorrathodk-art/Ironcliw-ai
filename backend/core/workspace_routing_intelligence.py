@@ -1,5 +1,5 @@
-"""
-JARVIS Workspace Routing Intelligence v1.0
+﻿"""
+Ironcliw Workspace Routing Intelligence v1.0
 ==========================================
 
 Intelligent routing system for Google Workspace commands with context-aware
@@ -27,7 +27,7 @@ Flow:
    - Tier 3 (Visual): Computer Use (works with any app, visual feedback)
 4. Route to GoogleWorkspaceAgent with execution mode preference
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

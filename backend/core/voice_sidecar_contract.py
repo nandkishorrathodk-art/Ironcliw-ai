@@ -1,4 +1,4 @@
-"""Voice sidecar contract client used by unified_supervisor.
+﻿"""Voice sidecar contract client used by unified_supervisor.
 
 This module contains only control-plane integration logic (HTTP/Unix-socket
 contract calls). Voice model loading and inference remain in existing modules.
@@ -135,19 +135,19 @@ def _env_command(name: str) -> List[str]:
 
 
 def contract_config_from_env() -> VoiceSidecarContractConfig:
-    transport = os.getenv("JARVIS_VOICE_SIDECAR_TRANSPORT", "http").strip().lower() or "http"
+    transport = os.getenv("Ironcliw_VOICE_SIDECAR_TRANSPORT", "http").strip().lower() or "http"
     if transport not in {"http", "unix"}:
         transport = "http"
 
     return VoiceSidecarContractConfig(
-        enabled=_env_bool("JARVIS_VOICE_SIDECAR_ENABLED", False),
-        required=_env_bool("JARVIS_VOICE_SIDECAR_REQUIRED", False),
+        enabled=_env_bool("Ironcliw_VOICE_SIDECAR_ENABLED", False),
+        required=_env_bool("Ironcliw_VOICE_SIDECAR_REQUIRED", False),
         transport=transport,
-        base_url=os.getenv("JARVIS_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9860").strip(),
-        unix_socket_path=os.getenv("JARVIS_VOICE_SIDECAR_SOCKET", "").strip(),
-        control_timeout=float(os.getenv("JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT", "5.0")),
-        health_timeout=float(os.getenv("JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT", "2.5")),
-        command=_env_command("JARVIS_VOICE_SIDECAR_COMMAND"),
+        base_url=os.getenv("Ironcliw_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9860").strip(),
+        unix_socket_path=os.getenv("Ironcliw_VOICE_SIDECAR_SOCKET", "").strip(),
+        control_timeout=float(os.getenv("Ironcliw_VOICE_SIDECAR_CONTROL_TIMEOUT", "5.0")),
+        health_timeout=float(os.getenv("Ironcliw_VOICE_SIDECAR_HEALTH_TIMEOUT", "2.5")),
+        command=_env_command("Ironcliw_VOICE_SIDECAR_COMMAND"),
     )
 
 

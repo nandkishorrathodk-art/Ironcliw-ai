@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Smart Startup Manager for JARVIS Backend
+Smart Startup Manager for Ironcliw Backend
 Handles intelligent resource-aware model loading to prevent crashes
 """
 
@@ -66,12 +66,12 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # v2.0: LITE MODE CONFIGURATION
 # =============================================================================
-# When system memory is constrained, JARVIS starts in "lite mode" which skips
+# When system memory is constrained, Ironcliw starts in "lite mode" which skips
 # heavy components to prevent OOM kills. This threshold determines when lite
 # mode activates (default: 4GB available memory).
 # =============================================================================
 
-LITE_MODE_THRESHOLD_GB = float(os.getenv("JARVIS_LITE_MODE_THRESHOLD", "4.0"))
+LITE_MODE_THRESHOLD_GB = float(os.getenv("Ironcliw_LITE_MODE_THRESHOLD", "4.0"))
 LITE_MODE_SKIP_COMPONENTS = [
     "neural_mesh_full",
     "local_llm_model",
@@ -565,7 +565,7 @@ startup_manager = SmartStartupManager()
 
 async def smart_startup():
     """Main startup orchestrator"""
-    logger.info("🎯 JARVIS Smart Startup Manager v2.0")
+    logger.info("🎯 Ironcliw Smart Startup Manager v2.0")
     logger.info("=" * 60)
     
     # Import and start memory quantizer

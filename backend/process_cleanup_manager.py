@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Intelligent Process Cleanup Manager for JARVIS
+Intelligent Process Cleanup Manager for Ironcliw
 ===============================================
 v4.0.0 - Zero-Touch & Supervisor Integration Edition
 
@@ -137,7 +137,7 @@ class IntelligentMemoryController:
         self._state_lock = threading.RLock()
         
         # Timing configuration (adaptive)
-        self._base_cooldown = float(os.getenv("JARVIS_MEMORY_COOLDOWN", "60.0"))  # v210.0: Increased from 30s
+        self._base_cooldown = float(os.getenv("Ironcliw_MEMORY_COOLDOWN", "60.0"))  # v210.0: Increased from 30s
         self._max_cooldown = 300.0      # Max cooldown (5 minutes)
         self._min_check_interval = 10.0  # v210.0: Increased from 5s to reduce noise
         self._max_check_interval = 120.0 # v210.0: Increased from 60s
@@ -209,7 +209,7 @@ class IntelligentMemoryController:
         Detect hardware profile based on RAM.
         
         v210.0: Different hardware profiles need different thresholds.
-        A 16GB MacBook running JARVIS + Chrome is expected to be at 75-85%.
+        A 16GB MacBook running Ironcliw + Chrome is expected to be at 75-85%.
         A 64GB workstation at 80% has a memory leak.
         """
         if self._total_ram_gb < 12:
@@ -234,9 +234,9 @@ class IntelligentMemoryController:
         usage on constrained systems.
         """
         # Allow environment variable overrides
-        env_moderate = os.getenv("JARVIS_MEMORY_MODERATE_THRESHOLD")
-        env_high = os.getenv("JARVIS_MEMORY_HIGH_THRESHOLD")
-        env_critical = os.getenv("JARVIS_MEMORY_CRITICAL_THRESHOLD")
+        env_moderate = os.getenv("Ironcliw_MEMORY_MODERATE_THRESHOLD")
+        env_high = os.getenv("Ironcliw_MEMORY_HIGH_THRESHOLD")
+        env_critical = os.getenv("Ironcliw_MEMORY_CRITICAL_THRESHOLD")
         
         if env_moderate and env_high and env_critical:
             return {
@@ -247,7 +247,7 @@ class IntelligentMemoryController:
         
         # Hardware-aware defaults
         # v210.0: ROOT CAUSE FIX - thresholds must account for actual baseline usage
-        # A 16GB Mac running JARVIS + Chrome typically sits at 75-85% normally
+        # A 16GB Mac running Ironcliw + Chrome typically sits at 75-85% normally
         if self._hardware_profile == "constrained":
             # 8GB systems: expect to run at 85-95% - very little headroom
             return {"moderate": 88.0, "high": 93.0, "critical": 97.0}
@@ -1238,22 +1238,22 @@ class EventDrivenCleanupTrigger:
         # Thresholds
         self.memory_pressure_threshold = 0.80
         self.cpu_pressure_threshold = float(
-            os.getenv("JARVIS_CPU_PRESSURE_MONITOR_THRESHOLD", "0.95")
+            os.getenv("Ironcliw_CPU_PRESSURE_MONITOR_THRESHOLD", "0.95")
         )
         self.check_interval = 5.0  # seconds
 
         # v259.0: CPU pressure hysteresis/state (prevents spike-driven thrash).
         self._cpu_pressure_min_samples = max(
-            1, int(os.getenv("JARVIS_CPU_PRESSURE_MIN_SAMPLES", "2"))
+            1, int(os.getenv("Ironcliw_CPU_PRESSURE_MIN_SAMPLES", "2"))
         )
         self._cpu_pressure_recovery_samples = max(
-            1, int(os.getenv("JARVIS_CPU_PRESSURE_RECOVERY_SAMPLES", "2"))
+            1, int(os.getenv("Ironcliw_CPU_PRESSURE_RECOVERY_SAMPLES", "2"))
         )
         self._cpu_pressure_recovery_hysteresis_pct = float(
-            os.getenv("JARVIS_CPU_PRESSURE_RECOVERY_HYSTERESIS_PCT", "3.0")
+            os.getenv("Ironcliw_CPU_PRESSURE_RECOVERY_HYSTERESIS_PCT", "3.0")
         )
         self._cpu_pressure_emit_cooldown = float(
-            os.getenv("JARVIS_CPU_PRESSURE_EVENT_COOLDOWN", "60.0")
+            os.getenv("Ironcliw_CPU_PRESSURE_EVENT_COOLDOWN", "60.0")
         )
         self._cpu_pressure_consecutive = 0
         self._cpu_recovery_consecutive = 0
@@ -2184,7 +2184,7 @@ class GCPVMSessionManager:
             if hostname != current_hostname:
                 continue
 
-            # Check if PID is dead or not running JARVIS
+            # Check if PID is dead or not running Ironcliw
             is_dead = False
             if not pid or not psutil.pid_exists(pid):
                 is_dead = True
@@ -2672,7 +2672,7 @@ class AGIOSCleanupIntegration:
 
 class ProcessCleanupManager:
     """
-    Enhanced Process Cleanup Manager for JARVIS
+    Enhanced Process Cleanup Manager for Ironcliw
     ============================================
     v4.0.0 - Zero-Touch & Supervisor Integration
 
@@ -2753,7 +2753,7 @@ class ProcessCleanupManager:
             "memory_threshold_warning": 0.50,  # 50% warning threshold
             "memory_threshold_critical": 0.65,  # 65% critical threshold (reduced from 70%)
             "memory_threshold_single_process": 500,  # 500MB per process threshold
-            "memory_threshold_jarvis_process": 1000,  # 1GB for JARVIS main process
+            "memory_threshold_jarvis_process": 1000,  # 1GB for Ironcliw main process
             "cpu_threshold": 0.9,  # 90% CPU usage
             "cpu_threshold_system": 80.0,  # 80% total system CPU usage threshold
             "cpu_threshold_single": 40.0,  # 40% CPU for single process (reduced from 50%)
@@ -2761,7 +2761,7 @@ class ProcessCleanupManager:
             "aggressive_cleanup": True,  # Enable aggressive memory management
             "enable_ipc_cleanup": True,  # Enable semaphore and shared memory cleanup
             "ipc_cleanup_age_threshold": 60,  # 1 minute - more aggressive IPC cleanup
-            # JARVIS-specific patterns (improved detection)
+            # Ironcliw-specific patterns (improved detection)
             "jarvis_patterns": [
                 "jarvis",
                 "backend/main.py",
@@ -2782,7 +2782,7 @@ class ProcessCleanupManager:
                 "vision_websocket",
                 "vision_manager",
             ],
-            # Strong entrypoint markers for JARVIS runtime detection.
+            # Strong entrypoint markers for Ironcliw runtime detection.
             "jarvis_entrypoint_markers": [
                 "backend/main.py",
                 "start_system.py",
@@ -2840,7 +2840,7 @@ class ProcessCleanupManager:
                 8080,
                 8765,
                 5000,
-            ],  # Common JARVIS ports including frontend
+            ],  # Common Ironcliw ports including frontend
             "system_critical": [
                 "kernel_task",
                 "WindowServer",
@@ -2906,10 +2906,10 @@ class ProcessCleanupManager:
                 "engines/voice_engine.py",
             ],
             "code_change_cleanup_cooldown_seconds": float(
-                os.getenv("JARVIS_CODE_CHANGE_CLEANUP_COOLDOWN_SECONDS", "180")
+                os.getenv("Ironcliw_CODE_CHANGE_CLEANUP_COOLDOWN_SECONDS", "180")
             ),
             "code_change_cleanup_min_age_seconds": float(
-                os.getenv("JARVIS_CODE_CHANGE_CLEANUP_MIN_AGE_SECONDS", "20")
+                os.getenv("Ironcliw_CODE_CHANGE_CLEANUP_MIN_AGE_SECONDS", "20")
             ),
         }
 
@@ -3032,8 +3032,8 @@ class ProcessCleanupManager:
         even at 83% usage because it measures actual swapping, not percentage).
         """
         cpu_percent = event.data.get('cpu_percent', 0)
-        _threshold = float(os.getenv("JARVIS_CPU_PRESSURE_OFFLOAD_THRESHOLD", "95.0"))
-        _compound_threshold = float(os.getenv("JARVIS_CPU_COMPOUND_MEMORY_THRESHOLD", "80.0"))
+        _threshold = float(os.getenv("Ironcliw_CPU_PRESSURE_OFFLOAD_THRESHOLD", "95.0"))
+        _compound_threshold = float(os.getenv("Ironcliw_CPU_COMPOUND_MEMORY_THRESHOLD", "80.0"))
 
         # Always update metrics
         self.health_monitor.metrics.current_cpu_usage_percent = cpu_percent / 100
@@ -3073,7 +3073,7 @@ class ProcessCleanupManager:
         # Without this, sustained pressure (CPU stuck at 98% for 5 minutes) would
         # spam warnings and trigger overlapping relief operations every 5s check cycle.
         _now = time.time()
-        _cooldown = float(os.getenv("JARVIS_CPU_PRESSURE_LOG_COOLDOWN", "30.0"))
+        _cooldown = float(os.getenv("Ironcliw_CPU_PRESSURE_LOG_COOLDOWN", "30.0"))
         _last_warn = getattr(self, '_last_cpu_pressure_warn', 0.0)
         if _now - _last_warn < _cooldown:
             return  # Within cooldown — skip all actions
@@ -3096,7 +3096,7 @@ class ProcessCleanupManager:
 
         # Write signal file for cross-repo coordination (R2-#3: atomic write)
         _signal_dir = os.path.expanduser(
-            os.getenv("JARVIS_SIGNAL_DIR", "~/.jarvis/signals")
+            os.getenv("Ironcliw_SIGNAL_DIR", "~/.jarvis/signals")
         )
         try:
             os.makedirs(_signal_dir, exist_ok=True)
@@ -3111,7 +3111,7 @@ class ProcessCleanupManager:
                 "compound": _compound,
                 "gcp_recommended": _gcp_recommended,
                 "timestamp": _now,
-                "expires_at": _now + float(os.getenv("JARVIS_CPU_THROTTLE_DURATION", "60.0")),
+                "expires_at": _now + float(os.getenv("Ironcliw_CPU_THROTTLE_DURATION", "60.0")),
             }
             with tempfile.NamedTemporaryFile(
                 mode='w', dir=_signal_dir, suffix='.tmp', delete=False
@@ -3125,10 +3125,10 @@ class ProcessCleanupManager:
         # Compound stress: trigger memory relief (cache clearing, GC, progressive)
         if _compound:
             _startup_loading = os.getenv(
-                "JARVIS_SUPERVISOR_LOADING", "0"
+                "Ironcliw_SUPERVISOR_LOADING", "0"
             ).lower() in ("1", "true", "yes")
             _startup_grace_seconds = float(
-                os.getenv("JARVIS_CPU_STARTUP_COMPOUND_GRACE_SECONDS", "90.0")
+                os.getenv("Ironcliw_CPU_STARTUP_COMPOUND_GRACE_SECONDS", "90.0")
             )
             _defer_relief = False
             if _startup_loading:
@@ -3172,11 +3172,11 @@ class ProcessCleanupManager:
         """
         import sys as _sys
 
-        _tier1 = float(os.getenv("JARVIS_CPU_RELIEF_TIER1", "95.0"))
-        _tier2 = float(os.getenv("JARVIS_CPU_RELIEF_TIER2", "98.0"))
-        _tier3 = float(os.getenv("JARVIS_CPU_RELIEF_TIER3", "99.5"))
-        _base_factor = float(os.getenv("JARVIS_CPU_THROTTLE_FACTOR", "4.0"))
-        _base_duration = float(os.getenv("JARVIS_CPU_THROTTLE_DURATION", "60.0"))
+        _tier1 = float(os.getenv("Ironcliw_CPU_RELIEF_TIER1", "95.0"))
+        _tier2 = float(os.getenv("Ironcliw_CPU_RELIEF_TIER2", "98.0"))
+        _tier3 = float(os.getenv("Ironcliw_CPU_RELIEF_TIER3", "99.5"))
+        _base_factor = float(os.getenv("Ironcliw_CPU_THROTTLE_FACTOR", "4.0"))
+        _base_duration = float(os.getenv("Ironcliw_CPU_THROTTLE_DURATION", "60.0"))
 
         if cpu_percent >= _tier3:
             level, throttle_factor, duration = "emergency", _base_factor * 4, _base_duration * 4
@@ -3221,12 +3221,12 @@ class ProcessCleanupManager:
             )
             return
 
-        cpu_threshold = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_THRESHOLD", "98.0"))
+        cpu_threshold = float(os.getenv("Ironcliw_CPU_CLOUD_SHIFT_THRESHOLD", "98.0"))
         emergency_cpu_threshold = float(
-            os.getenv("JARVIS_CPU_CLOUD_SHIFT_EMERGENCY_THRESHOLD", "99.5")
+            os.getenv("Ironcliw_CPU_CLOUD_SHIFT_EMERGENCY_THRESHOLD", "99.5")
         )
         compound_mem_threshold = float(
-            os.getenv("JARVIS_CPU_CLOUD_SHIFT_COMPOUND_MEMORY_MIN", "80.0")
+            os.getenv("Ironcliw_CPU_CLOUD_SHIFT_COMPOUND_MEMORY_MIN", "80.0")
         )
 
         should_shift = cpu_percent >= emergency_cpu_threshold or (
@@ -3245,7 +3245,7 @@ class ProcessCleanupManager:
             return
 
         now = time.time()
-        cooldown = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_COOLDOWN", "180.0"))
+        cooldown = float(os.getenv("Ironcliw_CPU_CLOUD_SHIFT_COOLDOWN", "180.0"))
         last_offload = getattr(self, "_last_cpu_offload_ts", 0.0)
         if now - last_offload < cooldown:
             logger.debug(
@@ -3306,7 +3306,7 @@ class ProcessCleanupManager:
                 cpu_percent=cpu_percent,
                 components=["ecapa_tdnn", "whisper", "speechbrain"],
                 estimated_duration_minutes=int(
-                    os.getenv("JARVIS_CPU_CLOUD_SHIFT_VM_DURATION_MINUTES", "30")
+                    os.getenv("Ironcliw_CPU_CLOUD_SHIFT_VM_DURATION_MINUTES", "30")
                 ),
             )
 
@@ -3421,7 +3421,7 @@ class ProcessCleanupManager:
         
         Also handles Cloud Run cold start by using generous timeouts.
         """
-        cloud_url = os.getenv("JARVIS_CLOUD_ML_ENDPOINT", "").strip()
+        cloud_url = os.getenv("Ironcliw_CLOUD_ML_ENDPOINT", "").strip()
         if not cloud_url:
             # Explicit opt-in only: do not assume a Cloud Run endpoint.
             return False
@@ -3594,7 +3594,7 @@ class ProcessCleanupManager:
                     vm_result.get("vm_id", "unknown"),
                 )
 
-        # 2. Kill non-essential JARVIS processes
+        # 2. Kill non-essential Ironcliw processes
         try:
             killed = self._kill_non_essential_processes()
             if killed:
@@ -3650,8 +3650,8 @@ class ProcessCleanupManager:
             cpu_percent = 0.0 if cpu_percent is None else float(cpu_percent)
 
             if trigger_reason == "cpu_pressure":
-                cpu_critical = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_VM_CRITICAL", "99.0"))
-                cpu_high = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_VM_HIGH", "97.0"))
+                cpu_critical = float(os.getenv("Ironcliw_CPU_CLOUD_SHIFT_VM_CRITICAL", "99.0"))
+                cpu_high = float(os.getenv("Ironcliw_CPU_CLOUD_SHIFT_VM_HIGH", "97.0"))
                 if cpu_percent >= cpu_critical:
                     urgency = "critical"
                 elif cpu_percent >= cpu_high:
@@ -3987,7 +3987,7 @@ class ProcessCleanupManager:
 
     def _kill_non_essential_processes(self) -> List[Dict]:
         """
-        Kill non-essential JARVIS processes to free memory.
+        Kill non-essential Ironcliw processes to free memory.
         Essential processes (voice unlock, main backend) are preserved.
         """
         killed = []
@@ -4038,11 +4038,11 @@ class ProcessCleanupManager:
         status = {
             "cloud_run_available": False,
             "cloud_run_url": os.getenv(
-                "JARVIS_CLOUD_ML_ENDPOINT",
+                "Ironcliw_CLOUD_ML_ENDPOINT",
                 ""
             ),
             "memory_percent": psutil.virtual_memory().percent,
-            "cloud_first_mode": os.getenv("JARVIS_CLOUD_FIRST_MODE", "false").lower() == "true",
+            "cloud_first_mode": os.getenv("Ironcliw_CLOUD_FIRST_MODE", "false").lower() == "true",
             "ml_offload_recommended": False,
         }
 
@@ -4256,7 +4256,7 @@ class ProcessCleanupManager:
         return None
 
     def _calculate_code_hash(self) -> str:
-        """Calculate hash of critical JARVIS files to detect code changes"""
+        """Calculate hash of critical Ironcliw files to detect code changes"""
         hasher = hashlib.sha256()
 
         for file_path in self.config["critical_files"]:
@@ -4283,7 +4283,7 @@ class ProcessCleanupManager:
         Args:
             clear_runtime_modules:
                 If True, also evict selected modules from ``sys.modules``.
-                Defaults to env var ``JARVIS_CLEAR_RUNTIME_MODULES`` (false).
+                Defaults to env var ``Ironcliw_CLEAR_RUNTIME_MODULES`` (false).
 
         Returns:
             Number of cache directories/files/modules removed.
@@ -4297,7 +4297,7 @@ class ProcessCleanupManager:
         # singleton subsystems (audio/voice/orchestrators) mid-startup.
         if clear_runtime_modules is None:
             clear_runtime_modules = os.getenv(
-                "JARVIS_CLEAR_RUNTIME_MODULES", "false"
+                "Ironcliw_CLEAR_RUNTIME_MODULES", "false"
             ).lower() in ("1", "true", "yes", "on")
 
         event_loop_running = False
@@ -4356,7 +4356,7 @@ class ProcessCleanupManager:
         else:
             logger.debug(
                 "Runtime module cache clear disabled "
-                "(set JARVIS_CLEAR_RUNTIME_MODULES=true to enable in non-async contexts)"
+                "(set Ironcliw_CLEAR_RUNTIME_MODULES=true to enable in non-async contexts)"
             )
 
         # STEP 2: Clear __pycache__ directories recursively
@@ -4395,7 +4395,7 @@ class ProcessCleanupManager:
         return cleared_count
 
     def _detect_code_changes(self) -> bool:
-        """Detect if JARVIS code has changed since last run"""
+        """Detect if Ironcliw code has changed since last run"""
         current_hash = self._calculate_code_hash()
         last_hash = self.code_state.get("code_hash", "")
 
@@ -4503,7 +4503,7 @@ class ProcessCleanupManager:
 
     def force_restart_cleanup(self, skip_code_check: bool = True) -> List[Dict]:
         """
-        FORCE restart cleanup - ALWAYS kills all JARVIS processes.
+        FORCE restart cleanup - ALWAYS kills all Ironcliw processes.
         Used when --restart flag is provided to ensure clean slate.
 
         ENHANCED with:
@@ -4532,7 +4532,7 @@ class ProcessCleanupManager:
         all_ports = restart_config.get_all_ports()
         api_ports = restart_config.get_api_ports()
 
-        logger.warning("🔥 ENHANCED FORCE RESTART MODE - Killing ALL JARVIS processes...")
+        logger.warning("🔥 ENHANCED FORCE RESTART MODE - Killing ALL Ironcliw processes...")
         logger.info(f"   📋 Dynamic port configuration loaded:")
         logger.info(f"      Primary API: {restart_config.primary_api_port}")
         logger.info(f"      Fallback ports: {restart_config.fallback_ports}")
@@ -4591,7 +4591,7 @@ class ProcessCleanupManager:
         current_ppid = os.getppid()
         current_time = time.time()
 
-        # Track all JARVIS processes with enhanced categorization
+        # Track all Ironcliw processes with enhanced categorization
         backend_processes = []
         frontend_processes = []
         related_processes = []
@@ -4602,11 +4602,11 @@ class ProcessCleanupManager:
         ue_state_processes = []  # NEW: Track UE state processes separately
 
         # Step 4: Enhanced process detection with multiple strategies
-        logger.info("🔍 Using multiple strategies to find ALL JARVIS processes...")
+        logger.info("🔍 Using multiple strategies to find ALL Ironcliw processes...")
 
         # Extended pattern list for better detection - DYNAMIC based on config
         jarvis_patterns = [
-            "main.py", "start_system.py", "jarvis", "JARVIS",
+            "main.py", "start_system.py", "jarvis", "Ironcliw",
             "unified_websocket", "voice_unlock", "speaker_verification",
             "whisper_audio", "hybrid_stt", "cloud-sql-proxy",
             "npm start", "react-scripts", "webpack",
@@ -4626,7 +4626,7 @@ class ProcessCleanupManager:
                 cmdline = " ".join(proc.cmdline()) if proc.cmdline() else ""
                 cmdline_lower = cmdline.lower()
 
-                # Check if process matches any JARVIS pattern
+                # Check if process matches any Ironcliw pattern
                 is_jarvis = False
                 if self._is_jarvis_process(proc):
                     is_jarvis = True
@@ -4677,7 +4677,7 @@ class ProcessCleanupManager:
 
         # Strategy 2: Port-based detection - USING DYNAMIC PORTS
         ports_to_check = [p for p in all_ports if p not in ue_blocked_ports]
-        logger.info(f"🔍 Checking for processes on JARVIS ports: {ports_to_check}")
+        logger.info(f"🔍 Checking for processes on Ironcliw ports: {ports_to_check}")
         for port in ports_to_check:
             try:
                 for conn in psutil.net_connections(kind='inet'):
@@ -4764,7 +4764,7 @@ class ProcessCleanupManager:
                 logger.error(f"   ❌ Failed to kill: {len(failed)}")
 
         # Step 6: Final verification - ensure ports are free (DYNAMIC PORTS)
-        logger.info("🔍 Verifying all JARVIS ports are free...")
+        logger.info("🔍 Verifying all Ironcliw ports are free...")
 
         # Use async port verification if possible
         try:
@@ -4804,7 +4804,7 @@ class ProcessCleanupManager:
                 pass
 
         if to_remove:
-            logger.info(f"✅ Removed {len(to_remove)} additional JARVIS modules from sys.modules")
+            logger.info(f"✅ Removed {len(to_remove)} additional Ironcliw modules from sys.modules")
 
         # Step 8: Report healthy port for next startup
         healthy_port = async_manager.get_healthy_port(exclude_blacklisted=True)
@@ -4820,7 +4820,7 @@ class ProcessCleanupManager:
             if ue_blocked_ports:
                 logger.warning(f"   ⚠️ Note: {len(ue_blocked_ports)} ports remain blocked by UE processes")
         else:
-            logger.info("✅ No JARVIS processes found - system already clean")
+            logger.info("✅ No Ironcliw processes found - system already clean")
 
         # Final step: Small delay to ensure OS has released all resources
         time.sleep(0.5)
@@ -5003,7 +5003,7 @@ class ProcessCleanupManager:
 
     def cleanup_old_instances_on_code_change(self) -> List[Dict]:
         """
-        Cleanup old JARVIS instances when code changes are detected.
+        Cleanup old Ironcliw instances when code changes are detected.
         This ensures only the latest code is running.
         Includes GCP VM cleanup for orphaned sessions.
 
@@ -5033,30 +5033,30 @@ class ProcessCleanupManager:
                     return cleaned
 
                 if (
-                    os.environ.get("JARVIS_CODE_CLEANUP_DONE") == "1"
-                    and os.environ.get("JARVIS_CODE_CLEANUP_HASH") == current_hash
+                    os.environ.get("Ironcliw_CODE_CLEANUP_DONE") == "1"
+                    and os.environ.get("Ironcliw_CODE_CLEANUP_HASH") == current_hash
                 ):
                     logger.info(
                         "Code-change cleanup already completed in this startup for this hash"
                     )
                     return cleaned
 
-                if os.environ.get("JARVIS_CODE_CLEANUP_IN_PROGRESS") == "1":
+                if os.environ.get("Ironcliw_CODE_CLEANUP_IN_PROGRESS") == "1":
                     logger.info("Code-change cleanup already in progress, skipping duplicate run")
                     return cleaned
 
-                os.environ["JARVIS_CODE_CLEANUP_IN_PROGRESS"] = "1"
+                os.environ["Ironcliw_CODE_CLEANUP_IN_PROGRESS"] = "1"
                 cleanup_started = True
 
                 # Cross-process dedupe guard for recent same-hash cleanup.
                 self.code_state = self._load_code_state()
                 if self._should_skip_recent_code_cleanup(current_hash):
                     logger.info("Recent code-change cleanup already performed for this hash, skipping")
-                    os.environ["JARVIS_CODE_CLEANUP_DONE"] = "1"
-                    os.environ["JARVIS_CODE_CLEANUP_HASH"] = current_hash
+                    os.environ["Ironcliw_CODE_CLEANUP_DONE"] = "1"
+                    os.environ["Ironcliw_CODE_CLEANUP_HASH"] = current_hash
                     return cleaned
 
-                logger.warning("🔄 Code changes detected! Cleaning up old JARVIS instances...")
+                logger.warning("🔄 Code changes detected! Cleaning up old Ironcliw instances...")
 
                 # Step 0: Gracefully shutdown ML Learning Engine before killing processes
                 try:
@@ -5094,7 +5094,7 @@ class ProcessCleanupManager:
                 current_time = time.time()
                 min_age = float(self.config.get("code_change_cleanup_min_age_seconds", 20.0))
                 backend_timeout = float(
-                    os.getenv("JARVIS_BACKEND_TERMINATE_TIMEOUT_SECONDS", "8")
+                    os.getenv("Ironcliw_BACKEND_TERMINATE_TIMEOUT_SECONDS", "8")
                 )
 
                 # Track PIDs that will be terminated (for VM cleanup)
@@ -5105,7 +5105,7 @@ class ProcessCleanupManager:
                 frontend_processes = []
                 related_processes = []
 
-                # Find all JARVIS processes
+                # Find all Ironcliw processes
                 for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time", "ppid"]):
                     try:
                         if proc.pid == current_pid or proc.pid == current_ppid:
@@ -5131,7 +5131,7 @@ class ProcessCleanupManager:
                         if not self._is_jarvis_process(proc):
                             continue
 
-                        logger.debug(f"Found JARVIS process: PID {proc.pid} - {cmdline[:100]}...")
+                        logger.debug(f"Found Ironcliw process: PID {proc.pid} - {cmdline[:100]}...")
 
                         # Categorize the process
                         is_backend_runtime = proc_name_lower.startswith("python") or any(
@@ -5305,8 +5305,8 @@ class ProcessCleanupManager:
                 self.code_state["last_cleanup_pid"] = os.getpid()
                 self._save_code_state()
 
-                os.environ["JARVIS_CODE_CLEANUP_DONE"] = "1"
-                os.environ["JARVIS_CODE_CLEANUP_HASH"] = current_hash
+                os.environ["Ironcliw_CODE_CLEANUP_DONE"] = "1"
+                os.environ["Ironcliw_CODE_CLEANUP_HASH"] = current_hash
 
                 # Summary logging
                 if cleaned:
@@ -5315,7 +5315,7 @@ class ProcessCleanupManager:
                     related_count = len([c for c in cleaned if c.get("type") == "related"])
 
                     logger.info(
-                        f"🧹 Cleaned up {len(cleaned)} old JARVIS processes: "
+                        f"🧹 Cleaned up {len(cleaned)} old Ironcliw processes: "
                         f"{backend_count} backend, {frontend_count} frontend, {related_count} related"
                     )
                     logger.info("✅ System ready for fresh code reload")
@@ -5323,7 +5323,7 @@ class ProcessCleanupManager:
                     logger.info("No old processes found to clean up")
         finally:
             if cleanup_started:
-                os.environ.pop("JARVIS_CODE_CLEANUP_IN_PROGRESS", None)
+                os.environ.pop("Ironcliw_CODE_CLEANUP_IN_PROGRESS", None)
             self._code_cleanup_guard.release()
 
         return cleaned
@@ -5361,18 +5361,18 @@ class ProcessCleanupManager:
 
     def ensure_single_instance(self) -> bool:
         """
-        Ensure only one instance of JARVIS is running on the same port.
+        Ensure only one instance of Ironcliw is running on the same port.
         Returns True if this is the only instance, False otherwise.
         """
         current_pid = os.getpid()
         target_port = int(os.getenv("BACKEND_PORT", "8010"))
 
-        # First, check for any JARVIS processes regardless of port
+        # First, check for any Ironcliw processes regardless of port
         jarvis_processes = self._find_jarvis_processes()
         other_jarvis_processes = [p for p in jarvis_processes if p["pid"] != current_pid]
 
         if other_jarvis_processes:
-            logger.warning(f"Found {len(other_jarvis_processes)} other JARVIS processes running:")
+            logger.warning(f"Found {len(other_jarvis_processes)} other Ironcliw processes running:")
             for proc in other_jarvis_processes:
                 logger.warning(
                     f"  - PID {proc['pid']}: {proc['name']} (age: {proc['age_seconds']/60:.1f} min)"
@@ -5384,7 +5384,7 @@ class ProcessCleanupManager:
                 for proc_info in other_jarvis_processes:
                     try:
                         proc = psutil.Process(proc_info["pid"])
-                        logger.info(f"Terminating old JARVIS process {proc_info['pid']}")
+                        logger.info(f"Terminating old Ironcliw process {proc_info['pid']}")
                         proc.terminate()
                         try:
                             proc.wait(timeout=5)
@@ -5402,14 +5402,14 @@ class ProcessCleanupManager:
                         for conn in proc.connections():
                             if conn.laddr.port == target_port and conn.status == "LISTEN":
                                 logger.warning(
-                                    f"JARVIS instance {proc_info['pid']} is using port {target_port}"
+                                    f"Ironcliw instance {proc_info['pid']} is using port {target_port}"
                                 )
                                 return False
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
 
         # DISABLED: net_connections hangs on macOS due to security restrictions
-        # Skip directly to returning True to allow JARVIS to start
+        # Skip directly to returning True to allow Ironcliw to start
         return True
 
         # Original code disabled (everything below is commented out):
@@ -5422,7 +5422,7 @@ class ProcessCleanupManager:
                             proc = psutil.Process(conn.pid)
                             if self._is_jarvis_process(proc):
                                 logger.warning(
-                                    f"Another JARVIS instance (PID: {conn.pid}) is already "
+                                    f"Another Ironcliw instance (PID: {conn.pid}) is already "
                                     f"running on port {target_port}"
                                 )
 
@@ -5442,9 +5442,9 @@ class ProcessCleanupManager:
                             pass
         except (psutil.AccessDenied, PermissionError):
             # Fall back to checking specific port using lsof
-            # DISABLED: lsof hangs on macOS - this was preventing JARVIS from starting
+            # DISABLED: lsof hangs on macOS - this was preventing Ironcliw from starting
             logger.info(f"Skipping lsof check (macOS compatibility)")
-            return True  # Allow JARVIS to start
+            return True  # Allow Ironcliw to start
 
             # Original code disabled:
             # result = subprocess.run(
@@ -5459,7 +5459,7 @@ class ProcessCleanupManager:
                             try:
                                 proc = psutil.Process(pid)
                                 if self._is_jarvis_process(proc):
-                                    logger.warning(f"Found JARVIS instance on port {target_port} (PID: {pid})")
+                                    logger.warning(f"Found Ironcliw instance on port {target_port} (PID: {pid})")
                                     if self._detect_code_changes():
                                         logger.info("Code changes detected, terminating old instance...")
                                         proc.terminate()
@@ -5602,7 +5602,7 @@ class ProcessCleanupManager:
                         }
                     )
 
-                # Check for old JARVIS processes that might be stuck
+                # Check for old Ironcliw processes that might be stuck
                 if self._is_jarvis_process(proc):
                     age = current_time - proc.create_time()
                     cmdline = " ".join(proc.cmdline())
@@ -5668,7 +5668,7 @@ class ProcessCleanupManager:
         return zombies
 
     def _find_jarvis_processes(self) -> List[Dict]:
-        """Find all JARVIS-related processes"""
+        """Find all Ironcliw-related processes"""
         jarvis_procs = []
 
         for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
@@ -5690,7 +5690,7 @@ class ProcessCleanupManager:
         return jarvis_procs
 
     def _is_jarvis_process(self, proc: psutil.Process) -> bool:
-        """Intelligently determine if a process is JARVIS-related"""
+        """Intelligently determine if a process is Ironcliw-related"""
         try:
             # Check process name
             proc_name = proc.name().lower()
@@ -5707,7 +5707,7 @@ class ProcessCleanupManager:
             if proc_name in self.config.get("shell_wrapper_names", []):
                 return False
 
-            # Check if it's a generic python/Python process without JARVIS context
+            # Check if it's a generic python/Python process without Ironcliw context
             if proc_name in ["python", "python3", "python3.11", "python3.12"] and not any(
                 pattern in cmdline
                 for pattern in [
@@ -5720,12 +5720,12 @@ class ProcessCleanupManager:
             ):
                 return False
 
-            # Check working directory for JARVIS project
+            # Check working directory for Ironcliw project
             try:
                 cwd = proc.cwd()
-                # Be more specific - must be JARVIS-AI-Agent directory, not just any dir with "jarvis"
+                # Be more specific - must be Ironcliw-AI-Agent directory, not just any dir with "jarvis"
                 if "jarvis-ai-agent" in cwd.lower():
-                    # It's in JARVIS directory, now check if it's actually JARVIS code
+                    # It's in Ironcliw directory, now check if it's actually Ironcliw code
                     if any(
                         pattern.lower() in cmdline for pattern in self.config["jarvis_patterns"]
                     ):
@@ -5752,7 +5752,7 @@ class ProcessCleanupManager:
                 if pattern.lower() in proc_name or pattern.lower() in cmdline:
                     return True
 
-            # Check if it's using JARVIS ports (with permission handling)
+            # Check if it's using Ironcliw ports (with permission handling)
             try:
                 for conn in proc.connections():
                     if conn.laddr.port in self.config["jarvis_port_patterns"]:
@@ -5802,7 +5802,7 @@ class ProcessCleanupManager:
         if proc_info.get("status") in ["zombie", "likely_stuck"]:
             score += 0.5
 
-        # JARVIS process factor (be more aggressive with our own processes)
+        # Ironcliw process factor (be more aggressive with our own processes)
         if is_jarvis:
             score += 0.25
 
@@ -5993,7 +5993,7 @@ class ProcessCleanupManager:
 
             cleanup_report["actions"].append(action)
 
-        # Clean up orphaned JARVIS ports
+        # Clean up orphaned Ironcliw ports
         if not dry_run:
             self._cleanup_orphaned_ports()
 
@@ -6021,7 +6021,7 @@ class ProcessCleanupManager:
         return cleanup_report
 
     def _cleanup_orphaned_ports(self):
-        """Clean up ports that might be stuck from previous JARVIS runs"""
+        """Clean up ports that might be stuck from previous Ironcliw runs"""
         # DISABLED: net_connections hangs on macOS due to security restrictions
         logger.info("Skipping orphaned ports cleanup (macOS compatibility)")
         return
@@ -6337,13 +6337,13 @@ class ProcessCleanupManager:
         old_jarvis = [p for p in state["jarvis_processes"] if p["age_seconds"] > 3600]
         if old_jarvis:
             recommendations.append(
-                f"Found {len(old_jarvis)} old JARVIS processes that may be stuck."
+                f"Found {len(old_jarvis)} old Ironcliw processes that may be stuck."
             )
 
         # Check for code changes
         if self._detect_code_changes():
             recommendations.append(
-                "⚠️ CODE CHANGES DETECTED: Old JARVIS instances should be terminated!"
+                "⚠️ CODE CHANGES DETECTED: Old Ironcliw instances should be terminated!"
             )
 
         # Check for orphaned VMs
@@ -6387,10 +6387,10 @@ class ProcessCleanupManager:
 
     def cleanup_old_jarvis_processes(self, max_age_hours: float = 12.0) -> List[Dict]:
         """
-        Specifically clean up old JARVIS processes that have been running too long
+        Specifically clean up old Ironcliw processes that have been running too long
 
         Args:
-            max_age_hours: Maximum age in hours before considering a JARVIS process stale
+            max_age_hours: Maximum age in hours before considering a Ironcliw process stale
 
         Returns:
             List of cleaned up processes
@@ -6407,9 +6407,9 @@ class ProcessCleanupManager:
                         # Check if it's the current main process
                         cmdline = " ".join(proc.cmdline())
                         if "main.py" in cmdline:
-                            # This is likely an old JARVIS main process
+                            # This is likely an old Ironcliw main process
                             logger.warning(
-                                f"Found stale JARVIS process (PID: {proc.pid}, "
+                                f"Found stale Ironcliw process (PID: {proc.pid}, "
                                 f"Age: {age_hours:.1f} hours)"
                             )
 
@@ -6424,7 +6424,7 @@ class ProcessCleanupManager:
                                         "status": "terminated",
                                     }
                                 )
-                                logger.info(f"Terminated old JARVIS process {proc.pid}")
+                                logger.info(f"Terminated old Ironcliw process {proc.pid}")
                             except psutil.TimeoutExpired:
                                 proc.kill()
                                 cleaned.append(
@@ -6435,7 +6435,7 @@ class ProcessCleanupManager:
                                         "status": "killed",
                                     }
                                 )
-                                logger.warning(f"Force killed old JARVIS process {proc.pid}")
+                                logger.warning(f"Force killed old Ironcliw process {proc.pid}")
                             except Exception as e:
                                 logger.error(f"Failed to clean up PID {proc.pid}: {e}")
 
@@ -6445,7 +6445,7 @@ class ProcessCleanupManager:
         return cleaned
 
     def get_jarvis_process_age(self) -> Optional[float]:
-        """Get the age of the main JARVIS process in hours"""
+        """Get the age of the main Ironcliw process in hours"""
         for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
             try:
                 if self._is_jarvis_process(proc):
@@ -6460,7 +6460,7 @@ class ProcessCleanupManager:
     def _cleanup_cloudsql_connections(self) -> Dict[str, int]:
         """
         Clean up orphaned CloudSQL connections by:
-        1. Terminating JARVIS processes with database connections
+        1. Terminating Ironcliw processes with database connections
         2. Triggering singleton connection manager shutdown (if available)
 
         Returns:
@@ -6474,7 +6474,7 @@ class ProcessCleanupManager:
 
         logger.info("🔌 Cleaning up CloudSQL connections...")
 
-        # Step 1: Find and terminate JARVIS processes with database connections
+        # Step 1: Find and terminate Ironcliw processes with database connections
         for proc in psutil.process_iter(["pid", "name", "cmdline", "connections"]):
             try:
                 if self._is_jarvis_process(proc):
@@ -6603,8 +6603,8 @@ class ProcessCleanupManager:
 
     def emergency_cleanup_all_jarvis(self, force_kill: bool = False) -> Dict[str, Any]:
         """
-        Emergency cleanup - kill ALL JARVIS-related processes and clean up resources.
-        Use this when JARVIS has segfaulted or is in a bad state.
+        Emergency cleanup - kill ALL Ironcliw-related processes and clean up resources.
+        Use this when Ironcliw has segfaulted or is in a bad state.
         Includes GCP VM cleanup for all sessions from this machine.
         Enhanced with CloudSQL connection cleanup.
 
@@ -6614,7 +6614,7 @@ class ProcessCleanupManager:
         Returns:
             Dictionary with cleanup results
         """
-        logger.warning("🚨 EMERGENCY CLEANUP: Killing all JARVIS processes and VMs...")
+        logger.warning("🚨 EMERGENCY CLEANUP: Killing all Ironcliw processes and VMs...")
 
         results = {
             "processes_killed": [],
@@ -6637,14 +6637,14 @@ class ProcessCleanupManager:
         except Exception as e:
             logger.error(f"Failed to kill hanging start_system.py: {e}")
 
-        # Step 1: Find and kill all JARVIS processes
+        # Step 1: Find and kill all Ironcliw processes
         for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
             try:
-                # Check if it's any kind of JARVIS-related process
+                # Check if it's any kind of Ironcliw-related process
                 cmdline = " ".join(proc.cmdline()).lower()
                 proc_name = proc.name().lower()
 
-                # Look for any JARVIS patterns in command line or process name
+                # Look for any Ironcliw patterns in command line or process name
                 is_jarvis_related = False
                 for pattern in self.config["jarvis_patterns"]:
                     if pattern.lower() in cmdline or pattern.lower() in proc_name:
@@ -6657,11 +6657,11 @@ class ProcessCleanupManager:
                             is_jarvis_related = True
                             break
 
-                # Also check if it's a Python process running in JARVIS directory
+                # Also check if it's a Python process running in Ironcliw directory
                 if "python" in proc_name and "jarvis-ai-agent" in cmdline:
                     is_jarvis_related = True
 
-                # Check if it's a Node process for JARVIS frontend
+                # Check if it's a Node process for Ironcliw frontend
                 if ("node" in proc_name or "npm" in proc_name) and (
                     "jarvis" in cmdline or "localhost:3000" in cmdline
                 ):
@@ -6681,7 +6681,7 @@ class ProcessCleanupManager:
                         )
                         continue  # Skip this process - do NOT kill it
 
-                    logger.info(f"Killing JARVIS process: {proc.name()} (PID: {proc.pid})")
+                    logger.info(f"Killing Ironcliw process: {proc.name()} (PID: {proc.pid})")
                     try:
                         if force_kill:
                             proc.kill()  # SIGKILL immediately
@@ -6704,7 +6704,7 @@ class ProcessCleanupManager:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        # Step 2: Force-free all JARVIS ports
+        # Step 2: Force-free all Ironcliw ports
         for port in self.config["jarvis_port_patterns"]:
             try:
                 # Find any process using this port
@@ -6948,7 +6948,7 @@ async def cleanup_system_for_jarvis(
     respect_zero_touch: bool = True,
 ) -> Dict[str, any]:
     """
-    Main entry point for cleaning up system before JARVIS starts.
+    Main entry point for cleaning up system before Ironcliw starts.
     Includes orphaned VM cleanup.
     
     v4.0: Now supervisor-aware:
@@ -7072,7 +7072,7 @@ def get_system_recommendations() -> List[str]:
 
 def ensure_fresh_jarvis_instance():
     """
-    Ensure JARVIS is running fresh code. Call this at startup.
+    Ensure Ironcliw is running fresh code. Call this at startup.
     Returns True if it's safe to start, False if another instance should be used.
     Includes orphaned VM cleanup (synchronous version).
     ALWAYS clears Python cache to guarantee fresh code loads.
@@ -7111,7 +7111,7 @@ def ensure_fresh_jarvis_instance():
 
 def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: int = 3):
     """
-    Comprehensive check to prevent multiple JARVIS instances from running.
+    Comprehensive check to prevent multiple Ironcliw instances from running.
     This is the main function to call at startup.
     ALWAYS clears Python cache to guarantee fresh code loads.
     
@@ -7123,7 +7123,7 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
 
     Returns:
         Tuple[bool, str]: (can_start, message)
-        - can_start: True if it's safe to start JARVIS
+        - can_start: True if it's safe to start Ironcliw
         - message: Human-readable status message
     """
     manager = ProcessCleanupManager()
@@ -7140,7 +7140,7 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
         if cleaned:
             return True, f"Cleaned {len(cleaned)} old instances due to code changes - safe to start"
 
-        # Step 3: Check for existing JARVIS processes and port conflicts
+        # Step 3: Check for existing Ironcliw processes and port conflicts
         for attempt in range(max_retries):
             jarvis_processes = manager._find_jarvis_processes()
             other_processes = [p for p in jarvis_processes if p["pid"] != current_pid]
@@ -7198,14 +7198,14 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
                     # Max retries exceeded or auto_cleanup disabled
                     return (
                         False,
-                        f"JARVIS instance already running on port {target_port} (PIDs: {port_conflict_pids}). "
+                        f"Ironcliw instance already running on port {target_port} (PIDs: {port_conflict_pids}). "
                         f"Use --emergency-cleanup to force restart.",
                     )
             else:
                 # Other processes exist but no port conflict
                 return (
                     True,
-                    f"Found {len(other_processes)} other JARVIS processes but no port conflict - safe to start",
+                    f"Found {len(other_processes)} other Ironcliw processes but no port conflict - safe to start",
                 )
 
         # Step 4: Final port availability check using socket
@@ -7238,7 +7238,7 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
                         import time
                         time.sleep(1.0)
                         if manager.ensure_single_instance():
-                            return True, f"Port {target_port} cleared - safe to start JARVIS"
+                            return True, f"Port {target_port} cleared - safe to start Ironcliw"
                     
                     return False, f"Port {target_port} blocked by PIDs: {blocking_pids}"
             except Exception as e:
@@ -7246,7 +7246,7 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
             
             return False, f"Port {target_port} in use. Another process may be running."
 
-        return True, "No conflicts detected - safe to start JARVIS"
+        return True, "No conflicts detected - safe to start Ironcliw"
 
     except Exception as e:
         logger.error(f"Error checking for multiple instances: {e}")
@@ -7255,8 +7255,8 @@ def prevent_multiple_jarvis_instances(auto_cleanup: bool = True, max_retries: in
 
 def emergency_cleanup(force: bool = False):
     """
-    Perform emergency cleanup of all JARVIS processes and GCP VMs.
-    Use this when JARVIS is stuck or has segfaulted.
+    Perform emergency cleanup of all Ironcliw processes and GCP VMs.
+    Use this when Ironcliw is stuck or has segfaulted.
 
     Args:
         force: If True, use SIGKILL immediately instead of trying graceful shutdown
@@ -7311,7 +7311,7 @@ if __name__ == "__main__":
         # Check for code changes
         if manager._detect_code_changes():
             print("\n⚠️  CODE CHANGES DETECTED!")
-            print("Old JARVIS instances will be terminated.\n")
+            print("Old Ironcliw instances will be terminated.\n")
 
         state = manager.analyze_system_state()
 
@@ -7322,7 +7322,7 @@ if __name__ == "__main__":
         print(f"  High memory processes: {len(state['high_memory_processes'])}")
         print(f"  Stuck processes: {len(state['stuck_processes'])}")
         print(f"  Zombie processes: {len(state['zombie_processes'])}")
-        print(f"  JARVIS processes: {len(state['jarvis_processes'])}")
+        print(f"  Ironcliw processes: {len(state['jarvis_processes'])}")
 
         print("\n💡 Recommendations:")
         for rec in manager.get_cleanup_recommendations():

@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh — Browsing System Adapter
+﻿"""
+Ironcliw Neural Mesh — Browsing System Adapter
 
 Wraps BrowsingAgent for Neural Mesh discovery and registration.
 Follows the same adapter pattern as vision_adapter.py and voice_adapter.py.

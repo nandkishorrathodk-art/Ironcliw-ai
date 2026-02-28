@@ -10,7 +10,7 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from intelligence.learning_database import JARVISLearningDatabase
+from intelligence.learning_database import get_learning_database
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -29,8 +29,7 @@ async def test_speaker_profiles():
     try:
         # Initialize database
         logger.info("🔗 Initializing database connection...")
-        db = JARVISLearningDatabase()
-        await db.initialize()
+        db = await get_learning_database()
         logger.info("✅ Database connected successfully")
 
         # Get all speaker profiles

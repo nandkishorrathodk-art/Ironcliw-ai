@@ -1,4 +1,4 @@
-# 🏎️ Ferrari Engine Integration - COMPLETE ✅
+﻿# 🏎️ Ferrari Engine Integration - COMPLETE ✅
 
 ## Mission Accomplished: Visual Monitor Agent v12.0
 
@@ -13,7 +13,7 @@
 ## 🎯 What Was Accomplished
 
 ### Core Integration
-Successfully integrated the Ferrari Engine (ScreenCaptureKit native C++ bridge) into JARVIS's VisualMonitorAgent, enabling:
+Successfully integrated the Ferrari Engine (ScreenCaptureKit native C++ bridge) into Ironcliw's VisualMonitorAgent, enabling:
 
 1. **GPU-Accelerated Window Capture** - 60 FPS capable, adaptive throttling
 2. **Intelligent Window Discovery** - Native fast_capture integration
@@ -125,7 +125,7 @@ Now possible with Ferrari Engine integration:
 
 ```
 User: "Watch the Terminal for 'Build Complete', then click Deploy"
-JARVIS:
+Ironcliw:
   ✅ Finds Terminal window via Ferrari Engine
   ✅ Spawns 30 FPS GPU-accelerated watcher
   ✅ Streams frames continuously
@@ -137,7 +137,7 @@ JARVIS:
 
 ```
 User: "Monitor Safari, Cursor, and Terminal simultaneously"
-JARVIS:
+Ironcliw:
   ✅ God Mode: Spawns 3 concurrent Ferrari watchers
   ✅ Each window monitored at 15-30 FPS
   ✅ GPU handles all 3 streams efficiently
@@ -147,7 +147,7 @@ JARVIS:
 
 ```
 User: "Alert me when the deployment status changes to 'Success'"
-JARVIS:
+Ironcliw:
   ✅ Identifies deployment dashboard window
   ✅ Continuous background monitoring (5 FPS adaptive)
   ✅ Zero CPU overhead (GPU streaming)
@@ -327,7 +327,7 @@ Results:
    - **Impact:** Graceful degradation, no errors
 
 3. **Screen Recording Permission** - macOS permission required
-   - **Fix:** System Preferences → Privacy → Screen Recording → Enable JARVIS
+   - **Fix:** System Preferences → Privacy → Screen Recording → Enable Ironcliw
    - **Impact:** Cannot capture frames without permission
 
 ### Recommended Dependencies
@@ -439,7 +439,7 @@ pip install pyobjc-framework-AVFoundation pyobjc-framework-Quartz \
 
 ### Impact
 
-This integration transforms JARVIS's visual intelligence from **reactive screenshots** to **proactive real-time surveillance** with:
+This integration transforms Ironcliw's visual intelligence from **reactive screenshots** to **proactive real-time surveillance** with:
 
 1. **60 FPS GPU streaming** (vs 3 FPS CPU fallback)
 2. **Sub-60ms latency** (vs 200ms+ before)
@@ -450,7 +450,7 @@ This integration transforms JARVIS's visual intelligence from **reactive screens
 ### The Vision Realized
 
 ```
-"JARVIS, watch the Terminal for 'Build Complete', then click Deploy"
+"Ironcliw, watch the Terminal for 'Build Complete', then click Deploy"
      ↓
   [Ferrari Engine activates]
      ↓

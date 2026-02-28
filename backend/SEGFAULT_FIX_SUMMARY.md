@@ -1,25 +1,25 @@
-# JARVIS Segfault & Process Cleanup Fix Summary
+﻿# Ironcliw Segfault & Process Cleanup Fix Summary
 
 ## Problem Identified
-- JARVIS was experiencing segfaults (exit code -11)
+- Ironcliw was experiencing segfaults (exit code -11)
 - Leaked semaphores and shared memory were accumulating
 - Stuck processes were not being cleaned up properly
-- Old JARVIS instances were lingering after crashes
+- Old Ironcliw instances were lingering after crashes
 
 ## Solutions Implemented
 
 ### 1. Enhanced Process Cleanup Manager (`backend/process_cleanup_manager.py`)
 
 #### New Functions Added:
-- **`emergency_cleanup_all_jarvis()`**: Aggressive cleanup of all JARVIS processes
+- **`emergency_cleanup_all_jarvis()`**: Aggressive cleanup of all Ironcliw processes
 - **`check_for_segfault_recovery()`**: Detects crashes and performs recovery
 
 #### Key Improvements:
 - Reduced stuck process detection to 10 minutes (from 1 hour)
 - More aggressive IPC cleanup (1 minute threshold)
-- Better JARVIS process pattern detection
+- Better Ironcliw process pattern detection
 - Includes frontend port 3000 in cleanup
-- Force-kills processes on all JARVIS ports
+- Force-kills processes on all Ironcliw ports
 - Removes stale PID files and code state
 - Handles leaked semaphores and shared memory
 
@@ -31,13 +31,13 @@
 - Shows CPU, memory, and process status
 
 #### `start_jarvis_clean.sh`
-- Wrapper script for clean JARVIS startup
-- Runs cleanup before starting JARVIS
+- Wrapper script for clean Ironcliw startup
+- Runs cleanup before starting Ironcliw
 - Ensures no stuck processes remain
 
 ## Usage
 
-### Emergency Cleanup (When JARVIS is stuck)
+### Emergency Cleanup (When Ironcliw is stuck)
 ```bash
 cd backend
 python -c "from process_cleanup_manager import emergency_cleanup; emergency_cleanup(force=True)"
@@ -55,7 +55,7 @@ cd backend
 python test_cleanup.py --auto
 ```
 
-### Clean Start JARVIS
+### Clean Start Ironcliw
 ```bash
 ./start_jarvis_clean.sh
 ```
@@ -66,7 +66,7 @@ python test_cleanup.py --auto
    - Python processes running `main.py`
    - Node.js frontend processes
    - WebSocket server processes
-   - Any process with JARVIS patterns
+   - Any process with Ironcliw patterns
 
 2. **Ports:**
    - 3000 (Frontend)
@@ -83,15 +83,15 @@ python test_cleanup.py --auto
 
 The cleanup manager looks for:
 - Process names/commands containing: `jarvis`, `main.py`, `voice_unlock`, `websocket_server`
-- Python processes in JARVIS directory
+- Python processes in Ironcliw directory
 - Node processes for frontend
-- Processes using JARVIS ports
+- Processes using Ironcliw ports
 - Zombie and stuck processes
 
 ## Recovery Behavior
 
 When a segfault is detected:
-1. All JARVIS processes are terminated
+1. All Ironcliw processes are terminated
 2. Ports are forcefully freed
 3. IPC resources are cleaned
 4. State files are removed
@@ -106,7 +106,7 @@ When a segfault is detected:
 
 ## Troubleshooting
 
-If JARVIS still crashes:
+If Ironcliw still crashes:
 1. Run emergency cleanup: `python -c "from process_cleanup_manager import emergency_cleanup; emergency_cleanup(force=True)"`
 2. Check for leaked semaphores: `ipcs -s`
 3. Clean them manually: `ipcs -s | grep $USER | awk '{print $2}' | xargs -n1 ipcrm -s`

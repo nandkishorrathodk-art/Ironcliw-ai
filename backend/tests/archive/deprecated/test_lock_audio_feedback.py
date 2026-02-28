@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Lock/Unlock Audio Feedback
 ===============================
 
-Tests that JARVIS provides audio feedback for lock/unlock commands.
+Tests that Ironcliw provides audio feedback for lock/unlock commands.
 """
 
 import asyncio
@@ -20,7 +20,7 @@ async def test_lock_unlock_audio():
     
     try:
         async with websockets.connect(uri) as ws:
-            print("✅ Connected to JARVIS WebSocket")
+            print("✅ Connected to Ironcliw WebSocket")
             
             # Wait for connection message
             msg = await ws.recv()
@@ -108,24 +108,24 @@ async def test_lock_unlock_audio():
             print(f"Unlock command has speak flag: {'✅ YES' if unlock_speak else '❌ NO'}")
             
             if lock_speak and unlock_speak:
-                print("\n✅ JARVIS is sending audio feedback for lock/unlock commands!")
+                print("\n✅ Ironcliw is sending audio feedback for lock/unlock commands!")
                 print("If you don't hear audio, check:")
                 print("  1. Frontend console for errors")
                 print("  2. Browser audio permissions")
                 print("  3. System volume settings")
             else:
-                print("\n❌ JARVIS is NOT sending speak flags for lock/unlock commands")
+                print("\n❌ Ironcliw is NOT sending speak flags for lock/unlock commands")
                 print("This needs to be fixed in the backend response handling")
                 
     except Exception as e:
         print(f"❌ Error: {e}")
         print("\nMake sure:")
-        print("  1. JARVIS is running on port 8000")
+        print("  1. Ironcliw is running on port 8000")
         print("  2. WebSocket endpoint is available")
 
 
 if __name__ == "__main__":
-    print("Testing JARVIS lock/unlock audio feedback...")
+    print("Testing Ironcliw lock/unlock audio feedback...")
     print("This will send lock and unlock commands to check responses\n")
     
     asyncio.run(test_lock_unlock_audio())

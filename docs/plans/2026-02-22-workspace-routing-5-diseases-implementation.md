@@ -1,4 +1,4 @@
-# Workspace Routing 5-Disease Cure — Implementation Plan
+﻿# Workspace Routing 5-Disease Cure — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -167,10 +167,10 @@ use SCHEMA_VERSION constant for version consistency."
 
 ---
 
-### Task 3: Rewrite `_handle_workspace_action()` — Direct Routing + Lifecycle + Deadline (Diseases 1, 3, 5 — JARVIS)
+### Task 3: Rewrite `_handle_workspace_action()` — Direct Routing + Lifecycle + Deadline (Diseases 1, 3, 5 — Ironcliw)
 
 **Files:**
-- Modify: `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/backend/api/unified_command_processor.py:2205-2270`
+- Modify: `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/backend/api/unified_command_processor.py:2205-2270`
 
 **Step 1: Rewrite `_handle_workspace_action()` method**
 
@@ -291,14 +291,14 @@ Replace lines 2205-2270 with:
 
 **Step 2: Verify syntax**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -c "import ast; ast.parse(open('backend/api/unified_command_processor.py').read()); print('Syntax OK')"`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -c "import ast; ast.parse(open('backend/api/unified_command_processor.py').read()); print('Syntax OK')"`
 
 Expected: `Syntax OK`
 
 **Step 3: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/api/unified_command_processor.py
 git commit -m "fix(workspace): rewrite _handle_workspace_action for direct routing + lifecycle + deadline
 
@@ -311,10 +311,10 @@ Gap 5: Deadline at UCP level, not per-handler."
 
 ---
 
-### Task 4: Fix `_summarize_workspace_result()` (Disease 2 + Gap 7 — JARVIS)
+### Task 4: Fix `_summarize_workspace_result()` (Disease 2 + Gap 7 — Ironcliw)
 
 **Files:**
-- Modify: `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/backend/api/unified_command_processor.py:1675-1706`
+- Modify: `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/backend/api/unified_command_processor.py:1675-1706`
 
 **Step 1: Expand the summarizer with formatting for all workspace actions**
 
@@ -440,14 +440,14 @@ Replace lines 1675-1706:
 
 **Step 2: Verify syntax**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -c "import ast; ast.parse(open('backend/api/unified_command_processor.py').read()); print('Syntax OK')"`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -c "import ast; ast.parse(open('backend/api/unified_command_processor.py').read()); print('Syntax OK')"`
 
 Expected: `Syntax OK`
 
 **Step 3: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/api/unified_command_processor.py
 git commit -m "fix(workspace): expand summarizer to format all workspace action results
 
@@ -459,10 +459,10 @@ search_email, and handle_workspace_query fallback path."
 
 ---
 
-### Task 5: Add `workspace_action` to All Agent Handler Results (Disease 2 — JARVIS)
+### Task 5: Add `workspace_action` to All Agent Handler Results (Disease 2 — Ironcliw)
 
 **Files:**
-- Modify: `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/backend/neural_mesh/agents/google_workspace_agent.py`
+- Modify: `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/backend/neural_mesh/agents/google_workspace_agent.py`
 
 This task adds `result["workspace_action"] = "<action_name>"` to each handler's return path. Each edit is a single-line addition before the `return result` statement.
 
@@ -620,14 +620,14 @@ Line 3408-3413 (unknown_intent):
 
 **Step 10: Verify syntax**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -c "import ast; ast.parse(open('backend/neural_mesh/agents/google_workspace_agent.py').read()); print('Syntax OK')"`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -c "import ast; ast.parse(open('backend/neural_mesh/agents/google_workspace_agent.py').read()); print('Syntax OK')"`
 
 Expected: `Syntax OK`
 
 **Step 11: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/neural_mesh/agents/google_workspace_agent.py
 git commit -m "feat(workspace): add workspace_action field to all handler results
 
@@ -638,10 +638,10 @@ instead of J-Prime's high-level intent (which was always 'action')."
 
 ---
 
-### Task 6: Add Workspace Examples to Brain Vacuum Classification (Disease 4 — JARVIS)
+### Task 6: Add Workspace Examples to Brain Vacuum Classification (Disease 4 — Ironcliw)
 
 **Files:**
-- Modify: `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/backend/core/jarvis_prime_client.py:1581-1591`
+- Modify: `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/backend/core/jarvis_prime_client.py:1581-1591`
 
 **Step 1: Expand classification prefix with workspace examples**
 
@@ -662,14 +662,14 @@ With:
 
 **Step 2: Verify syntax**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -c "import ast; ast.parse(open('backend/core/jarvis_prime_client.py').read()); print('Syntax OK')"`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -c "import ast; ast.parse(open('backend/core/jarvis_prime_client.py').read()); print('Syntax OK')"`
 
 Expected: `Syntax OK`
 
 **Step 3: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/core/jarvis_prime_client.py
 git commit -m "fix(brain-vacuum): add workspace action examples to fallback classification
 
@@ -693,7 +693,7 @@ print('classification_schema.py: OK')
 ```
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -c "
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -c "
 import ast
 for f in ['backend/api/unified_command_processor.py', 'backend/core/jarvis_prime_client.py', 'backend/neural_mesh/agents/google_workspace_agent.py']:
     ast.parse(open(f).read())
@@ -717,7 +717,7 @@ print(schema_json)
 **Step 3: Verify workspace_action appears in agent capabilities**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python3 -c "
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python3 -c "
 import sys; sys.path.insert(0, 'backend')
 from neural_mesh.agents.google_workspace_agent import GoogleWorkspaceAgent
 agent = GoogleWorkspaceAgent()
@@ -752,7 +752,7 @@ No code changes — this is validation only.
 If any tasks above weren't committed individually, create a single combined commit:
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/api/unified_command_processor.py backend/core/jarvis_prime_client.py backend/neural_mesh/agents/google_workspace_agent.py
 git commit -m "feat(workspace): cure 5 root diseases in Google Workspace routing
 

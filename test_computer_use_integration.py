@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Script for JARVIS Computer Use Integration
+Test Script for Ironcliw Computer Use Integration
 
 This script tests the Claude Computer Use API integration for dynamic,
 vision-based UI automation without hardcoded coordinates.
@@ -20,7 +20,7 @@ Requirements:
     - anthropic package installed (pip install anthropic)
     - pyautogui package installed
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -125,14 +125,14 @@ async def test_vision_navigator_integration():
 
 
 async def test_jarvis_integration(display_name: str, silent: bool = False):
-    """Test the full JARVIS Computer Use integration."""
+    """Test the full Ironcliw Computer Use integration."""
     print("\n" + "=" * 60)
-    print("TEST 3: Full JARVIS Computer Use Integration Test")
+    print("TEST 3: Full Ironcliw Computer Use Integration Test")
     print("=" * 60)
 
     try:
         from backend.display.jarvis_computer_use_integration import (
-            JARVISComputerUse,
+            IroncliwComputerUse,
             ExecutionMode,
             get_jarvis_computer_use
         )
@@ -140,13 +140,13 @@ async def test_jarvis_integration(display_name: str, silent: bool = False):
         mode = ExecutionMode.SILENT if silent else ExecutionMode.FULL_VOICE
         print(f"📢 Execution mode: {mode.value}")
 
-        jarvis = JARVISComputerUse(execution_mode=mode)
+        jarvis = IroncliwComputerUse(execution_mode=mode)
         initialized = await jarvis.initialize()
 
         if initialized:
-            print("✅ JARVIS Computer Use initialized")
+            print("✅ Ironcliw Computer Use initialized")
         else:
-            print("⚠️  JARVIS Computer Use partially initialized")
+            print("⚠️  Ironcliw Computer Use partially initialized")
 
         # Get stats
         stats = jarvis.get_stats()
@@ -157,7 +157,7 @@ async def test_jarvis_integration(display_name: str, silent: bool = False):
         return True
 
     except Exception as e:
-        print(f"❌ JARVIS integration test failed: {e}")
+        print(f"❌ Ironcliw integration test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -179,12 +179,12 @@ async def test_display_connection(display_name: str, silent: bool = False):
 
     try:
         from backend.display.jarvis_computer_use_integration import (
-            JARVISComputerUse,
+            IroncliwComputerUse,
             ExecutionMode
         )
 
         mode = ExecutionMode.SILENT if silent else ExecutionMode.FULL_VOICE
-        jarvis = JARVISComputerUse(execution_mode=mode)
+        jarvis = IroncliwComputerUse(execution_mode=mode)
         await jarvis.initialize()
 
         print(f"\n🚀 Attempting to connect to '{display_name}'...")
@@ -238,12 +238,12 @@ async def test_custom_task(silent: bool = False):
 
     try:
         from backend.display.jarvis_computer_use_integration import (
-            JARVISComputerUse,
+            IroncliwComputerUse,
             ExecutionMode
         )
 
         mode = ExecutionMode.SILENT if silent else ExecutionMode.FULL_VOICE
-        jarvis = JARVISComputerUse(execution_mode=mode)
+        jarvis = IroncliwComputerUse(execution_mode=mode)
         await jarvis.initialize()
 
         # Simple task: take a screenshot and describe what's visible
@@ -272,7 +272,7 @@ async def test_custom_task(silent: bool = False):
 async def run_all_tests(display_name: str, silent: bool = False, skip_interactive: bool = False):
     """Run all tests."""
     print("\n" + "=" * 60)
-    print("JARVIS COMPUTER USE INTEGRATION TEST SUITE")
+    print("Ironcliw COMPUTER USE INTEGRATION TEST SUITE")
     print("=" * 60)
 
     # Check requirements first
@@ -293,7 +293,7 @@ async def run_all_tests(display_name: str, silent: bool = False, skip_interactiv
     # Test 2: Vision Navigator integration
     results["navigator"] = await test_vision_navigator_integration()
 
-    # Test 3: JARVIS integration
+    # Test 3: Ironcliw integration
     results["jarvis"] = await test_jarvis_integration(display_name, silent)
 
     if not skip_interactive:
@@ -322,7 +322,7 @@ async def run_all_tests(display_name: str, silent: bool = False, skip_interactiv
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Test JARVIS Computer Use Integration"
+        description="Test Ironcliw Computer Use Integration"
     )
     parser.add_argument(
         "display_name",

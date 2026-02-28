@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Rust component management script for JARVIS.
+Rust component management script for Ironcliw.
 Can be run standalone or imported by other modules.
 """
 
@@ -29,7 +29,7 @@ BLUE = "\033[94m"
 RESET = "\033[0m"
 
 class RustManager:
-    """Manages Rust components for JARVIS."""
+    """Manages Rust components for Ironcliw."""
     
     def __init__(self):
         self.backend_dir = Path(__file__).parent
@@ -360,7 +360,7 @@ class RustManager:
 async def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
-        description="Manage Rust components for JARVIS",
+        description="Manage Rust components for Ironcliw",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Debug script to see exact backend error"""
 
 import os
@@ -7,8 +7,8 @@ import subprocess
 
 # Setup environment
 backend_path = os.path.join(os.path.dirname(__file__), "backend")
-os.environ["JARVIS_MEMORY_LEVEL"] = "critical"
-os.environ["JARVIS_MODEL_PRECISION"] = "8bit"
+os.environ["Ironcliw_MEMORY_LEVEL"] = "critical"
+os.environ["Ironcliw_MODEL_PRECISION"] = "8bit"
 os.environ["DYLD_LIBRARY_PATH"] = os.path.join(backend_path, "swift_bridge/.build/release")
 
 print("🔍 Running backend with full error output...")

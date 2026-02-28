@@ -1,8 +1,8 @@
-"""
+﻿"""
 Reactor-Core API Client - The "Ignition Key"
 ==============================================
 
-This module provides the critical connection between JARVIS and Reactor-Core,
+This module provides the critical connection between Ironcliw and Reactor-Core,
 enabling programmatic training triggers and unified learning coordination.
 
 Features:
@@ -12,11 +12,11 @@ Features:
 - Pipeline status monitoring
 - Experience log streaming
 - Cross-repo event integration
-- Robust error handling (never crashes JARVIS)
+- Robust error handling (never crashes Ironcliw)
 
 Architecture:
     ┌────────────────────────────────────────────────────────────────┐
-    │                     JARVIS-AI-Agent                            │
+    │                     Ironcliw-AI-Agent                            │
     │  ┌──────────────┐   ┌──────────────────┐   ┌───────────────┐  │
     │  │   Agentic    │ → │  Reactor-Core    │ → │   Training    │  │
     │  │   Runner     │   │  Client          │   │   Trigger     │  │
@@ -37,7 +37,7 @@ Architecture:
     │  └──────────────┘   └──────────────────┘   └───────────────┘  │
     └────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 (Ignition Key)
 """
 
@@ -277,7 +277,7 @@ class ReactorCoreClient:
     """
     Async client for Reactor-Core API.
 
-    This is the "Ignition Key" that connects JARVIS to the training pipeline,
+    This is the "Ignition Key" that connects Ironcliw to the training pipeline,
     enabling autonomous continuous learning.
 
     Usage:
@@ -971,7 +971,7 @@ class ReactorCoreClient:
             return self._experience_tracker.experience_count
 
     # =========================================================================
-    # JARVIS Prime Hot-Swap Integration (Phase 2)
+    # Ironcliw Prime Hot-Swap Integration (Phase 2)
     # =========================================================================
 
     async def swap_jarvis_prime_model(
@@ -981,7 +981,7 @@ class ReactorCoreClient:
         force: bool = False,
     ) -> Dict[str, Any]:
         """
-        Trigger hot-swap on JARVIS Prime with a new model file.
+        Trigger hot-swap on Ironcliw Prime with a new model file.
 
         This is called after training completes to deploy the new model.
 
@@ -993,7 +993,7 @@ class ReactorCoreClient:
         Returns:
             Swap result dictionary with success status and details
         """
-        jarvis_prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8001")  # v192.2: Changed to 8001
+        jarvis_prime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8001")  # v192.2: Changed to 8001
 
         try:
             import aiohttp
@@ -1014,7 +1014,7 @@ class ReactorCoreClient:
                     if response.status == 200:
                         result = await response.json()
                         logger.info(
-                            f"[ReactorClient] JARVIS Prime model swap SUCCESS: "
+                            f"[ReactorClient] Ironcliw Prime model swap SUCCESS: "
                             f"{result.get('old_version')} → {result.get('new_version')} "
                             f"({result.get('duration_seconds', 0):.2f}s)"
                         )
@@ -1022,7 +1022,7 @@ class ReactorCoreClient:
                     else:
                         text = await response.text()
                         logger.error(
-                            f"[ReactorClient] JARVIS Prime model swap FAILED: "
+                            f"[ReactorClient] Ironcliw Prime model swap FAILED: "
                             f"{response.status} - {text}"
                         )
                         return {
@@ -1031,7 +1031,7 @@ class ReactorCoreClient:
                         }
 
         except Exception as e:
-            logger.error(f"[ReactorClient] JARVIS Prime model swap error: {e}")
+            logger.error(f"[ReactorClient] Ironcliw Prime model swap error: {e}")
             return {
                 "success": False,
                 "error_message": str(e),
@@ -1039,12 +1039,12 @@ class ReactorCoreClient:
 
     async def get_jarvis_prime_status(self) -> Optional[Dict[str, Any]]:
         """
-        Get JARVIS Prime model status.
+        Get Ironcliw Prime model status.
 
         Returns:
             Status dictionary or None if unreachable
         """
-        jarvis_prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8001")  # v192.2: Changed to 8001
+        jarvis_prime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8001")  # v192.2: Changed to 8001
 
         try:
             import aiohttp
@@ -1059,17 +1059,17 @@ class ReactorCoreClient:
                     return None
 
         except Exception as e:
-            logger.warning(f"[ReactorClient] JARVIS Prime status check failed: {e}")
+            logger.warning(f"[ReactorClient] Ironcliw Prime status check failed: {e}")
             return None
 
     async def check_jarvis_prime_health(self) -> bool:
         """
-        Check if JARVIS Prime is healthy.
+        Check if Ironcliw Prime is healthy.
 
         Returns:
-            True if JARVIS Prime is running and healthy
+            True if Ironcliw Prime is running and healthy
         """
-        jarvis_prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8001")  # v192.2: Changed to 8001
+        jarvis_prime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8001")  # v192.2: Changed to 8001
 
         try:
             import aiohttp
@@ -1601,7 +1601,7 @@ class ReactorCoreClient:
         try:
             event = TrinityEvent(
                 topic=topic,
-                source=_RepoType.JARVIS,
+                source=_RepoType.Ironcliw,
                 priority=_EventPriority.NORMAL,
                 payload=payload,
                 correlation_id=correlation_id,

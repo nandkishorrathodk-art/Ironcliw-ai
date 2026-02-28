@@ -1,9 +1,9 @@
-"""
+﻿"""
 Voice Prompt Manager for Proximity-Aware Display
 =================================================
 
 Manages voice prompts and responses for display connection decisions.
-Integrates with JARVIS voice system to handle "Yes/No" responses.
+Integrates with Ironcliw voice system to handle "Yes/No" responses.
 
 Features:
 - Automatic voice prompts when near displays

@@ -1,5 +1,5 @@
-"""
-JARVIS Startup State Machine v2.0.0
+﻿"""
+Ironcliw Startup State Machine v2.0.0
 ===================================
 
 Provides a DAG-driven, wave-based parallel startup architecture:
@@ -144,7 +144,7 @@ class StartupStateMachine:
         self._register_standard_components()
 
     def _register_standard_components(self):
-        """Register the JARVIS startup phases as components with dependencies.
+        """Register the Ironcliw startup phases as components with dependencies.
 
         Maps to the actual _startup_impl() phase ordering:
         - Phases -1..3 are sequential (fatal on failure)

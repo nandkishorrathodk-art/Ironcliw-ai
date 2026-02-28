@@ -1,15 +1,15 @@
-#!/usr/bin/env python3
-"""Final test of JARVIS weather functionality"""
+﻿#!/usr/bin/env python3
+"""Final test of Ironcliw weather functionality"""
 
 import asyncio
 import os
 
 async def test_jarvis_weather():
-    """Test JARVIS weather command"""
-    print("☀️ JARVIS Weather Test - Final")
+    """Test Ironcliw weather command"""
+    print("☀️ Ironcliw Weather Test - Final")
     print("="*60)
     
-    from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+    from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
     from api.jarvis_factory import set_app_state
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
     from system_control.macos_controller import MacOSController
@@ -27,23 +27,23 @@ async def test_jarvis_weather():
     )
     set_app_state(app_state)
     
-    jarvis_api = JARVISVoiceAPI()
+    jarvis_api = IroncliwVoiceAPI()
     
     # Test
     print("\nAsking: 'What's the weather for today?'")
-    command = JARVISCommand(text="What's the weather for today?")
+    command = IroncliwCommand(text="What's the weather for today?")
     result = await jarvis_api.process_command(command)
     
     response = result.get('response', '')
-    print(f"\nJARVIS says:")
+    print(f"\nIroncliw says:")
     print(f'"{response}"')
     
     # Summary
     print("\n" + "="*60)
     print("Summary:")
-    print("✅ JARVIS opens the Weather app")
-    print("✅ JARVIS reads the weather data using Claude Vision")
-    print("✅ JARVIS communicates the weather back to you")
+    print("✅ Ironcliw opens the Weather app")
+    print("✅ Ironcliw reads the weather data using Claude Vision")
+    print("✅ Ironcliw communicates the weather back to you")
     
     if 'toronto' in response.lower():
         print("✅ Reading Toronto weather (your location)")
@@ -54,5 +54,5 @@ async def test_jarvis_weather():
     print("\nThe system is working as designed!")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_jarvis_weather())

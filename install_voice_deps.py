@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Install voice dependencies for JARVIS
+Install voice dependencies for Ironcliw
 Handles platform-specific requirements
 """
 
@@ -10,7 +10,7 @@ import platform
 
 def install_voice_dependencies():
     """Install voice-related dependencies"""
-    print("🎤 Installing JARVIS Voice Dependencies...")
+    print("🎤 Installing Ironcliw Voice Dependencies...")
     
     # Basic voice packages
     packages = [
@@ -51,7 +51,7 @@ def install_voice_dependencies():
                 print("Try: pip install --global-option='build_ext' --global-option='-I/opt/homebrew/include' --global-option='-L/opt/homebrew/lib' pyaudio")
     
     print("\n✅ Voice dependencies installation complete!")
-    print("\n🎯 Test JARVIS voice system with:")
+    print("\n🎯 Test Ironcliw voice system with:")
     print("   python test_jarvis_voice.py")
     print("\n🚀 Or start the full system with:")
     print("   python start_system.py")

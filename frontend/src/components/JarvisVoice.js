@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
 import '../styles/JarvisVoiceError.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
@@ -23,7 +23,7 @@ import CommandDetectionBanner from './CommandDetectionBanner'; // 🆕 Command d
 import { getJarvisConnectionService, ConnectionState, connectionStateToJarvisStatus } from '../services/JarvisConnectionService'; // 🆕 Unified connection service
 import TrainingStatus from './TrainingStatus'; // 🆕 Real-time training progress display (Feedback Loop)
 import { getContinuousAudioBuffer } from '../utils/ContinuousAudioBuffer'; // 🆕 Continuous audio pre-buffer for first-attempt recognition
-import { initDynamicFavicon, setFaviconState } from '../utils/DynamicFavicon'; // 🆕 Dynamic JARVIS favicon
+import { initDynamicFavicon, setFaviconState } from '../utils/DynamicFavicon'; // 🆕 Dynamic Ironcliw favicon
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -437,30 +437,30 @@ const _getStartupGreeting = () => {
 
   const greetings = {
     morning: [
-      "Good morning, Sir. JARVIS systems initialized and ready for your command.",
+      "Good morning, Sir. Ironcliw systems initialized and ready for your command.",
       "Morning, Sir. All systems operational. How may I assist you today?",
       "Systems online, Sir. Another beautiful " + dayName + " morning to be of service.",
       "Good morning. Neural networks calibrated. At your service.",
-      "Rise and shine, Sir. JARVIS fully operational.",
+      "Rise and shine, Sir. Ironcliw fully operational.",
       "Morning protocols complete. Ready to tackle today's challenges."
     ],
     afternoon: [
-      "Good afternoon, Sir. JARVIS at your disposal.",
+      "Good afternoon, Sir. Ironcliw at your disposal.",
       "Welcome back. Systems online and ready to assist.",
       "Afternoon, Sir. All systems functioning at peak efficiency.",
       "System reactivation complete. How may I help you this " + dayName + " afternoon?",
-      "JARVIS systems restored. Ready to continue where we left off."
+      "Ironcliw systems restored. Ready to continue where we left off."
     ],
     evening: [
-      "Good evening, Sir. JARVIS at your service.",
+      "Good evening, Sir. Ironcliw at your service.",
       "Welcome back. Systems online for your evening session.",
       "Evening, Sir. All systems are operational.",
       "System activation complete. How may I be of service tonight?",
-      "JARVIS online, Sir. I trust you've had a productive day?"
+      "Ironcliw online, Sir. I trust you've had a productive day?"
     ],
     night: [
       "Good evening, Sir. Working late again, I see.",
-      "Welcome back. JARVIS systems online despite the late hour.",
+      "Welcome back. Ironcliw systems online despite the late hour.",
       "System activation complete. Ready for your late-night commands.",
       "Late night session initiated. How may I assist you?",
       "Systems operational, Sir. Burning the midnight oil?"
@@ -469,10 +469,10 @@ const _getStartupGreeting = () => {
 
   // Add some variety with status messages
   const statusMessages = [
-    "JARVIS initialization complete. All systems operational.",
+    "Ironcliw initialization complete. All systems operational.",
     "System boot sequence finished. Ready to serve.",
     "Welcome back, Sir. What can I do for you today?",
-    "JARVIS online. All systems nominal.",
+    "Ironcliw online. All systems nominal.",
     "AI neural pathways synchronized. Ready to proceed.",
     "Voice recognition calibrated. Standing by for your command."
   ];
@@ -487,7 +487,7 @@ const _getStartupGreeting = () => {
   if (dayName === 'Saturday' || dayName === 'Sunday') {
     if (Math.random() < 0.3) {
       greetingPool.push(
-        "Happy " + dayName + ", Sir. JARVIS ready for your weekend commands.",
+        "Happy " + dayName + ", Sir. Ironcliw ready for your weekend commands.",
         "Weekend systems activated. How may I assist you this " + dayName + "?"
       );
     }
@@ -694,7 +694,7 @@ const JarvisVoice = () => {
   // ═══════════════════════════════════════════════════════════════════
   // v8.0: PROACTIVE UNLOCK PROGRESS STATE
   // ═══════════════════════════════════════════════════════════════════
-  // Shows visual progress when JARVIS proactively unlocks screen
+  // Shows visual progress when Ironcliw proactively unlocks screen
   // for a command like "search for dogs" while screen is locked
   // ═══════════════════════════════════════════════════════════════════
   const [proactiveUnlockProgress, setProactiveUnlockProgress] = useState(null);
@@ -706,7 +706,7 @@ const JarvisVoice = () => {
   // ═══════════════════════════════════════════════════════════════════
   // v32.0: SURVEILLANCE PROGRESS STATE - Real-time God Mode tracking
   // ═══════════════════════════════════════════════════════════════════
-  // Shows visual progress when JARVIS watches windows for targets
+  // Shows visual progress when Ironcliw watches windows for targets
   // e.g., "watch all Chrome windows for bouncing ball"
   // ═══════════════════════════════════════════════════════════════════
   const [surveillanceProgress, setSurveillanceProgress] = useState(null);
@@ -718,7 +718,7 @@ const JarvisVoice = () => {
   // v11.0: PROJECT TRINITY STATUS - Distributed Architecture Monitoring
   // ═══════════════════════════════════════════════════════════════════
   // Shows connection status of the Trinity architecture:
-  // - JARVIS Body (Execution) - J-Prime (Mind) - Reactor Core (Nerves)
+  // - Ironcliw Body (Execution) - J-Prime (Mind) - Reactor Core (Nerves)
   // ═══════════════════════════════════════════════════════════════════
   const [trinityStatus, setTrinityStatus] = useState(null);
   // { initialized, mode, components: { jarvis_body, j_prime, reactor_core }, components_online }
@@ -816,14 +816,14 @@ const JarvisVoice = () => {
   });
 
   /**
-   * 🔇 PAUSE recognition when JARVIS starts speaking
+   * 🔇 PAUSE recognition when Ironcliw starts speaking
    * This is the most aggressive and reliable way to prevent self-voice feedback
    */
   const pauseRecognitionForSpeech = (textToSpeak) => {
     const suppression = selfVoiceSuppressionRef.current;
     const now = Date.now();
 
-    console.log('🔇 [Self-Voice v2] PAUSING recognition - JARVIS speaking:', textToSpeak?.substring(0, 50));
+    console.log('🔇 [Self-Voice v2] PAUSING recognition - Ironcliw speaking:', textToSpeak?.substring(0, 50));
 
     suppression.isSpeaking = true;
     suppression.lastSpokenText = textToSpeak?.toLowerCase().trim() || '';
@@ -854,7 +854,7 @@ const JarvisVoice = () => {
   };
 
   /**
-   * 🔇 RESUME recognition after JARVIS finishes speaking
+   * 🔇 RESUME recognition after Ironcliw finishes speaking
    * Includes a cooldown delay to handle audio echo/latency
    */
   const resumeRecognitionAfterSpeech = () => {
@@ -915,7 +915,7 @@ const JarvisVoice = () => {
         
         // Backend says speaking - trust it absolutely
         if (backendState.isSpeaking) {
-          console.log('🔇 [Self-Voice v8] BLOCKED by backend: JARVIS speaking');
+          console.log('🔇 [Self-Voice v8] BLOCKED by backend: Ironcliw speaking');
           return { block: true, reason: 'backend_speaking' };
         }
         
@@ -1023,7 +1023,7 @@ const JarvisVoice = () => {
 
   // API URLs are defined globally at the top of the file
   // Ensure consistent WebSocket URL (fix port mismatch)
-  const _JARVIS_WS_URL = WS_URL;  // Use same base URL as API
+  const _Ironcliw_WS_URL = WS_URL;  // Use same base URL as API
 
   // 🆕 JarvisConnectionService integration - handles all connection state
   const jarvisConnectionServiceRef = useRef(null);
@@ -1121,7 +1121,7 @@ const JarvisVoice = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 🎨 Dynamic Favicon - Changes based on JARVIS state
+  // 🎨 Dynamic Favicon - Changes based on Ironcliw state
   useEffect(() => {
     // Initialize the dynamic favicon system on mount
     initDynamicFavicon();
@@ -1155,7 +1155,7 @@ const JarvisVoice = () => {
       };
     }
 
-    // Auto-activate JARVIS on mount for seamless wake word experience
+    // Auto-activate Ironcliw on mount for seamless wake word experience
     const autoActivate = async () => {
       // Wait for config to be ready before making any API calls
       await configPromise;
@@ -1325,6 +1325,11 @@ const JarvisVoice = () => {
       // Remove emergency activate listener
       window.removeEventListener('jarvis-emergency-activate', handleEmergencyActivate);
 
+      // Clear speechSynthesis onvoiceschanged handler to avoid stale closure after unmount
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+
       // Clear button checker interval
       // if (checkButtonsInterval) {
       //   clearInterval(checkButtonsInterval);
@@ -1428,8 +1433,8 @@ const JarvisVoice = () => {
     // Don't auto-activate when offline/reconnecting - connection service handles that
     // Only enable wake word when actually online
     if (jarvisStatus === 'online' && !continuousListening) {
-      // Enable wake word detection when JARVIS comes online
-      console.log('JARVIS online, enabling wake word detection');
+      // Enable wake word detection when Ironcliw comes online
+      console.log('Ironcliw online, enabling wake word detection');
       // Small delay to ensure speech recognition is initialized
       const timer = setTimeout(() => {
         if (recognitionRef.current) {
@@ -1455,7 +1460,7 @@ const JarvisVoice = () => {
     try {
       // Get API URL dynamically - no hardcoding
       const apiUrl = API_URL || configService.getApiUrl() || inferUrls().API_BASE_URL;
-      console.log('[JarvisVoice] Checking JARVIS status at:', apiUrl);
+      console.log('[JarvisVoice] Checking Ironcliw status at:', apiUrl);
       const response = await fetch(`${apiUrl}/voice/jarvis/status`);
       const data = await response.json();
 
@@ -1463,17 +1468,19 @@ const JarvisVoice = () => {
       const previousMode = systemMode;
       const previousStatus = jarvisStatus;
 
-      // Auto-refresh when JARVIS becomes fully ready and startup announcement is complete
+      // Auto-refresh when Ironcliw becomes fully ready and startup announcement is complete
       // This ensures the UI is fully synced with backend state
       if (previousStatus !== 'online' &&
           (data.status === 'online' || data.status === 'ready' || data.status === 'available') &&
           data.startup_announced === true &&
-          data.mode !== 'minimal') {
+          data.mode !== 'minimal' &&
+          !sessionStorage.getItem('jarvis_startup_reload_done')) {
 
-        console.log('🔄 JARVIS is fully ready with announcement complete! Auto-refreshing page...');
+        console.log('🔄 Ironcliw is fully ready with announcement complete! Auto-refreshing page...');
+        sessionStorage.setItem('jarvis_startup_reload_done', '1');
 
         // Show countdown notification before refresh
-        setResponse('✅ JARVIS is fully operational! Refreshing page in 3...');
+        setResponse('✅ Ironcliw is fully operational! Refreshing page in 3...');
 
         setTimeout(() => {
           setResponse('Refreshing in 2...');
@@ -1490,7 +1497,7 @@ const JarvisVoice = () => {
       }
 
       if (data.mode === 'minimal') {
-        console.log('🔄 JARVIS Status: Running in MINIMAL MODE');
+        console.log('🔄 Ironcliw Status: Running in MINIMAL MODE');
         console.log('  ⏳ This is temporary while full system initializes');
         console.log('  📊 Available features:', {
           voice: data.components?.voice || false,
@@ -1512,7 +1519,7 @@ const JarvisVoice = () => {
       } else {
         // Full mode detected!
         if (previousMode === 'minimal') {
-          console.log('🎉 JARVIS UPGRADED TO FULL MODE! 🎉');
+          console.log('🎉 Ironcliw UPGRADED TO FULL MODE! 🎉');
           console.log('  ✅ All features now available:');
           console.log('    • Wake word detection ("Hey Ironcliw")');
           console.log('    • ML-powered audio processing');
@@ -1528,7 +1535,7 @@ const JarvisVoice = () => {
           setShowUpgradeSuccess(true);
           setTimeout(() => setShowUpgradeSuccess(false), 10000); // Hide after 10 seconds
         } else {
-          console.log('✅ JARVIS Status: Running in FULL MODE');
+          console.log('✅ Ironcliw Status: Running in FULL MODE');
           console.log('  🚀 All systems operational');
         }
         setSystemMode('full');
@@ -1536,27 +1543,31 @@ const JarvisVoice = () => {
 
       // Map backend status to frontend status
       const status = data.status || 'offline';
-      if (status === 'standby' || status === 'ready' || status === 'available') {
-        setJarvisStatus('online'); // Show as online when in standby, ready, or available
+      const ONLINE_STATUSES = new Set([
+        'online', 'standby', 'ready', 'available', 'active',
+        'operational', 'degraded', 'interactive', 'websocket_ready',
+      ]);
+      if (ONLINE_STATUSES.has(status)) {
+        setJarvisStatus('online');
       } else {
         setJarvisStatus(status);
       }
 
-      // Connect WebSocket if JARVIS is available (including standby, ready, active, and available)
-      if (data.status === 'online' || data.status === 'standby' || data.status === 'active' || data.status === 'ready' || data.status === 'available') {
+      // Connect WebSocket if Ironcliw is available
+      if (ONLINE_STATUSES.has(data.status)) {
         if (data.mode === 'minimal') {
           console.log('📡 Minimal mode: WebSocket features limited');
         } else {
-          console.log('JARVIS is available, connecting WebSocket...');
+          console.log('Ironcliw is available, connecting WebSocket...');
         }
         setTimeout(() => {
           connectWebSocket();
         }, 500);
       } else {
-        console.log('JARVIS is offline, not connecting WebSocket');
+        console.log('Ironcliw is offline, not connecting WebSocket');
       }
     } catch (err) {
-      console.error('Failed to check JARVIS status:', err);
+      console.error('Failed to check Ironcliw status:', err);
       console.log('Setting status to offline due to error');
       setJarvisStatus('offline');
     }
@@ -1588,7 +1599,7 @@ const JarvisVoice = () => {
         if (result.error === 'permission_denied') {
           setMicrophonePermission('denied');
           setMicStatus('permission_denied');
-          setError('Microphone access denied. Please grant permission to use JARVIS.');
+          setError('Microphone access denied. Please grant permission to use Ironcliw.');
         } else if (result.error === 'no_device') {
           setMicrophonePermission('no-device');
           setMicStatus('error');
@@ -1607,7 +1618,7 @@ const JarvisVoice = () => {
         microphonePermissionManager.markAsDenied('checkMicrophonePermission_catch');
         setMicrophonePermission('denied');
         setMicStatus('permission_denied');
-        setError('Microphone access denied. Please grant permission to use JARVIS.');
+        setError('Microphone access denied. Please grant permission to use Ironcliw.');
       } else if (error.name === 'NotFoundError') {
         setMicrophonePermission('no-device');
         setMicStatus('error');
@@ -1786,7 +1797,7 @@ const JarvisVoice = () => {
         // Backend is shutting down gracefully
         console.log('[WS-ADVANCED] 🛑 Backend shutdown notification received');
         setJarvisStatus('offline');
-        setError('JARVIS backend is shutting down. System will reconnect automatically if backend restarts.');
+        setError('Ironcliw backend is shutting down. System will reconnect automatically if backend restarts.');
         setResponse('Backend shutting down...');
         // Close current connection gracefully
         if (wsRef.current) {
@@ -1798,7 +1809,7 @@ const JarvisVoice = () => {
         console.log('🖥️ Display detected:', data);
         const displayMessage = data.message || `${data.display_name} is now available`;
         setResponse(displayMessage);
-        // Speak the message using JARVIS voice
+        // Speak the message using Ironcliw voice
         if (data.message) {
           speakResponse(data.message, false);
         }
@@ -2090,7 +2101,7 @@ const JarvisVoice = () => {
 
         // NO AUDIO FEEDBACK for voice unlock (removed to prevent feedback loops)
         if ((data.message || data.text) && data.speak !== false) {
-          console.log('[JARVIS Audio] Voice unlock response (silent):', voiceUnlockText);
+          console.log('[Ironcliw Audio] Voice unlock response (silent):', voiceUnlockText);
         }
 
         // Reset waiting state after voice unlock command
@@ -2227,7 +2238,7 @@ const JarvisVoice = () => {
         // v8.0: PROACTIVE UNLOCK FLOW - Screen was locked, we unlocked it,
         // and a continuation command is scheduled in the background.
         // ═══════════════════════════════════════════════════════════════════
-        // Example: User said "search for dogs" → JARVIS unlocked screen → 
+        // Example: User said "search for dogs" → Ironcliw unlocked screen → 
         //          Now searching for dogs in background
         // ═══════════════════════════════════════════════════════════════════
         console.log('🔓 [PROACTIVE-UNLOCK] Screen unlocked, continuation scheduled:', data);
@@ -2253,7 +2264,7 @@ const JarvisVoice = () => {
         const msg = data.response || 'Screen unlocked, processing your request...';
         setResponse(msg);
         
-        // Don't speak the response - JARVIS already spoke the acknowledgment before unlock
+        // Don't speak the response - Ironcliw already spoke the acknowledgment before unlock
         // and will speak again after the continuation completes
         
         // Keep processing indicator on since continuation is coming
@@ -2427,14 +2438,14 @@ const JarvisVoice = () => {
 
         // Use the EXACT same text for both display and speech
         const responseText = data.text || data.message || 'Response received';
-        console.log('[JARVIS Audio] Setting display text:', responseText);
+        console.log('[Ironcliw Audio] Setting display text:', responseText);
         setResponse(responseText);
         setIsProcessing(false);
 
         // Use speech synthesis with Daniel voice
         if (responseText && data.speak !== false) {
           // Speak the EXACT same text that we just displayed
-          console.log('[JARVIS Audio] Speaking exact text:', responseText);
+          console.log('[Ironcliw Audio] Speaking exact text:', responseText);
           speakResponse(responseText, false);
         }
 
@@ -2797,7 +2808,7 @@ const JarvisVoice = () => {
           : data.level === 'warning'
             ? 'color: orange;'
             : 'color: #4CAF50; font-weight: bold;';
-        console.log(`%c[JARVIS DEBUG ${new Date(data.timestamp).toLocaleTimeString()}] ${data.message}`, logStyle);
+        console.log(`%c[Ironcliw DEBUG ${new Date(data.timestamp).toLocaleTimeString()}] ${data.message}`, logStyle);
         if (data.level === 'error') {
           console.error('Full error details:', data);
         }
@@ -2921,7 +2932,7 @@ const JarvisVoice = () => {
         if (data.message && data.speak !== false) {
           // Store the exact message
           const narrationText = data.message;
-          console.log('[JARVIS Audio] Narration text:', narrationText);
+          console.log('[Ironcliw Audio] Narration text:', narrationText);
 
           // For narrations, WAIT to update display until voice actually starts
           // This ensures perfect synchronization
@@ -3349,8 +3360,9 @@ const JarvisVoice = () => {
 
           // Start timeout for command (30 seconds - more time to speak)
           setTimeout(() => {
-            if (isWaitingForCommand && !isJarvisSpeaking) {
+            if (isWaitingForCommandRef.current && !isSpeakingRef.current) {
               setIsWaitingForCommand(false);
+              isWaitingForCommandRef.current = false;
               console.log('⏱️ Command timeout - returning to wake word listening');
             }
           }, 30000);
@@ -3636,7 +3648,7 @@ const JarvisVoice = () => {
 
       console.log('⚠️ Environmental audio processing DISABLED to prevent echo/feedback');
 
-      // Track if JARVIS is speaking to avoid self-triggering
+      // Track if Ironcliw is speaking to avoid self-triggering
       let _jarvisSpeaking = false;
 
       recognitionRef.current.continuous = true;
@@ -3676,7 +3688,7 @@ const JarvisVoice = () => {
         // ============================================================
         // 🔇 SELF-VOICE SUPPRESSION v2.0 - REF-BASED (No closure issues)
         // ============================================================
-        // Check if this is JARVIS hearing its own voice using ref-based system
+        // Check if this is Ironcliw hearing its own voice using ref-based system
         const blockCheck = shouldBlockSelfVoice(transcript);
         if (blockCheck.block) {
           console.log(`🔇 [Self-Voice v2] BLOCKED: "${transcript.substring(0, 50)}..." - Reason: ${blockCheck.reason}`);
@@ -3887,7 +3899,7 @@ const JarvisVoice = () => {
       recognitionRef.current.onerror = async (event) => {
         // Handle expected errors quietly:
         // - 'no-speech': Normal during silence
-        // - 'aborted' during self-voice suppression: Intentional pause for JARVIS speech
+        // - 'aborted' during self-voice suppression: Intentional pause for Ironcliw speech
         //   Grace window (cooldownMs + 500) covers aborts firing after flag cleared
         //   but before recognition.start() completes in resumeRecognitionAfterSpeech()
         const suppression = selfVoiceSuppressionRef.current;
@@ -4646,7 +4658,7 @@ const JarvisVoice = () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.warn('⚠️ WebSocket not connected! Attempting to reconnect...');
       connectWebSocket();
-      setError('Reconnecting to JARVIS...');
+      setError('Reconnecting to Ironcliw...');
 
       // Wait for connection with timeout
       for (let i = 0; i < 10; i++) {
@@ -4772,8 +4784,8 @@ const JarvisVoice = () => {
     // ═══════════════════════════════════════════════════════════════════
     // v8.0: SELF-VOICE CHECK BEFORE SENDING COMMAND
     // ═══════════════════════════════════════════════════════════════════
-    // Check if JARVIS is speaking or in cooldown before sending.
-    // This prevents sending commands that might include JARVIS's own voice.
+    // Check if Ironcliw is speaking or in cooldown before sending.
+    // This prevents sending commands that might include Ironcliw's own voice.
     // ═══════════════════════════════════════════════════════════════════
     try {
       const { getUnifiedWebSocketService } = require('../services/UnifiedWebSocketService');
@@ -4781,9 +4793,9 @@ const JarvisVoice = () => {
       if (wsService && wsService.speechState) {
         const { isSpeaking, inCooldown, cooldownRemainingMs } = wsService.speechState;
         if (isSpeaking || inCooldown) {
-          console.log(`🔇 [Self-Voice v8] Command blocked - JARVIS is ${isSpeaking ? 'speaking' : `in cooldown (${cooldownRemainingMs}ms remaining)`}`);
+          console.log(`🔇 [Self-Voice v8] Command blocked - Ironcliw is ${isSpeaking ? 'speaking' : `in cooldown (${cooldownRemainingMs}ms remaining)`}`);
           console.log(`🔇 [Self-Voice v8] Blocked command: "${command.substring(0, 50)}..."`);
-          // Don't send the command - it's likely JARVIS's own voice
+          // Don't send the command - it's likely Ironcliw's own voice
           return;
         }
       }
@@ -4913,10 +4925,10 @@ const JarvisVoice = () => {
                     if (restResult.success && restResult.response) {
                       setResponse(restResult.response);
                     } else {
-                      setResponse('⚠️ Response delayed — JARVIS is still processing');
+                      setResponse('⚠️ Response delayed — Ironcliw is still processing');
                     }
                   }).catch(() => {
-                    setResponse('⚠️ Response delayed — JARVIS is still processing');
+                    setResponse('⚠️ Response delayed — Ironcliw is still processing');
                   }).finally(() => {
                     setIsProcessing(false);
                   });
@@ -4928,14 +4940,14 @@ const JarvisVoice = () => {
         } else if (result.route === 'queued') {
           setResponse(
             result.recovering
-              ? '⚠️ JARVIS backend recovery started — command queued for automatic retry'
-              : '📤 Command queued — reconnecting to JARVIS...'
+              ? '⚠️ Ironcliw backend recovery started — command queued for automatic retry'
+              : '📤 Command queued — reconnecting to Ironcliw...'
           );
           setIsProcessing(false);
           // Trigger reconnection
           connectionService.reconnect();
         } else if (result.route === 'recovering') {
-          setResponse('⚠️ JARVIS backend recovery started — please try again shortly');
+          setResponse('⚠️ Ironcliw backend recovery started — please try again shortly');
           setIsProcessing(false);
           // Trigger reconnection
           connectionService.reconnect();
@@ -4986,7 +4998,7 @@ const JarvisVoice = () => {
         setResponse(responseText);
       } else {
         console.error(`[TEXT-CMD] REST returned ${response.status}`);
-        setResponse('⚠️ JARVIS is starting up — please try again in a moment');
+        setResponse('⚠️ Ironcliw is starting up — please try again in a moment');
       }
     } catch (error) {
       console.error('[TEXT-CMD] Direct REST failed:', error);
@@ -4995,17 +5007,17 @@ const JarvisVoice = () => {
         try {
           const recovery = await connectionService.requestBackendRecovery('jarvis_voice_direct_rest_failure');
           if (recovery?.accepted) {
-            setResponse('⚠️ JARVIS backend recovery started — retrying connection...');
+            setResponse('⚠️ Ironcliw backend recovery started — retrying connection...');
             setTimeout(() => connectionService.reconnect(), 750);
           } else {
-            setResponse('⚠️ Cannot reach JARVIS backend — recovery endpoint unavailable');
+            setResponse('⚠️ Cannot reach Ironcliw backend — recovery endpoint unavailable');
           }
         } catch (recoveryError) {
           console.error('[TEXT-CMD] Recovery request failed:', recoveryError);
-          setResponse('⚠️ Cannot reach JARVIS backend — check that the system is running');
+          setResponse('⚠️ Cannot reach Ironcliw backend — check that the system is running');
         }
       } else {
-        setResponse('⚠️ Cannot reach JARVIS backend — check that the system is running');
+        setResponse('⚠️ Cannot reach Ironcliw backend — check that the system is running');
       }
     } finally {
       setIsProcessing(false);
@@ -5021,7 +5033,7 @@ const JarvisVoice = () => {
 
     try {
       const apiUrl = API_URL || configService.getApiUrl() || inferUrls().API_BASE_URL;
-      console.log('JarvisVoice: Activating JARVIS at:', apiUrl);
+      console.log('JarvisVoice: Activating Ironcliw at:', apiUrl);
       const response = await fetch(`${apiUrl}/voice/jarvis/activate`, {
         method: 'POST',
         headers: {
@@ -5062,8 +5074,8 @@ const JarvisVoice = () => {
         enableContinuousListening();
       }, 2000);
     } catch (err) {
-      console.error('Failed to activate JARVIS:', err);
-      setError('Failed to activate JARVIS');
+      console.error('Failed to activate Ironcliw:', err);
+      setError('Failed to activate Ironcliw');
     }
   };
 
@@ -5449,7 +5461,7 @@ const JarvisVoice = () => {
 
         // Set up keep-alive mechanism
         const keepAliveInterval = setInterval(() => {
-          if (!continuousListening) {
+          if (!continuousListeningRef.current) {
             clearInterval(keepAliveInterval);
             return;
           }
@@ -5463,16 +5475,13 @@ const JarvisVoice = () => {
             console.log('⚡ Triggering keep-alive pulse');
             lastSpeechTimeRef.current = Date.now();
 
-            // Force a restart if needed
-            if (!isListening) {
-              console.log('🔄 Keep-alive: Restarting stopped recognition');
-              try {
-                recognitionRef.current.stop();
-                setTimeout(() => {
-                  recognitionRef.current.start();
-                  setIsListening(true);
-                }, 100);
-              } catch (e) {
+            // Always try to ensure recognition is running (handle "already started" gracefully)
+            console.log('🔄 Keep-alive: Ensuring recognition is running');
+            try {
+              recognitionRef.current.start();
+              setIsListening(true);
+            } catch (e) {
+              if (!e.message?.includes('already started')) {
                 console.log('Keep-alive restart:', e.message);
               }
             }
@@ -5679,14 +5688,9 @@ const JarvisVoice = () => {
         if (result.success) {
           console.log(`[TEXT COMMAND] ✅ Sent via ${result.route}`);
           if (result.route === 'rest' && result.response) {
-            // Dedup: Only update if WS hasn't already handled this request
-            if (activeRequestIdRef.current === null) {
-              console.debug('[REST] Response arrived but WS already handled it — ignoring');
-            } else {
-              activeRequestIdRef.current = null;
-              setResponse(result.response);
-              setIsProcessing(false);
-            }
+            activeRequestIdRef.current = null;
+            setResponse(result.response);
+            setIsProcessing(false);
           }
           // WebSocket: response comes through message handler
           return;
@@ -5695,8 +5699,8 @@ const JarvisVoice = () => {
         if (result.route === 'queued') {
           setResponse(
             result.recovering
-              ? '⚠️ JARVIS backend recovery started — command queued for automatic retry'
-              : '📤 Command queued — reconnecting to JARVIS...'
+              ? '⚠️ Ironcliw backend recovery started — command queued for automatic retry'
+              : '📤 Command queued — reconnecting to Ironcliw...'
           );
           setIsProcessing(false);
           connectionService.reconnect();
@@ -5704,7 +5708,7 @@ const JarvisVoice = () => {
         }
 
         if (result.route === 'recovering') {
-          setResponse('⚠️ JARVIS backend recovery started — please wait a moment');
+          setResponse('⚠️ Ironcliw backend recovery started — please wait a moment');
           setIsProcessing(false);
           connectionService.reconnect();
           return;
@@ -5758,7 +5762,7 @@ const JarvisVoice = () => {
   };
 
   const playAudioUsingPost = async (text, onStartCallback = null) => {
-    console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
+    console.log('[Ironcliw Audio] POST: Attempting to play audio via POST');
     // v241.0: 8s AbortController — backend should respond in <5s, 3s margin
     const controller = new AbortController();
     const fetchTimeout = setTimeout(() => controller.abort(), 8000);
@@ -5774,21 +5778,21 @@ const JarvisVoice = () => {
       });
       clearTimeout(fetchTimeout);
 
-      console.log('[JARVIS Audio] POST: Response status:', response.status);
-      console.log('[JARVIS Audio] POST: Content-Type:', response.headers.get('content-type'));
+      console.log('[Ironcliw Audio] POST: Response status:', response.status);
+      console.log('[Ironcliw Audio] POST: Content-Type:', response.headers.get('content-type'));
 
       if (response.ok) {
         // v242.0: Detect silent WAV via X-TTS-Status header (Disease 5 root fix)
         const ttsStatus = response.headers.get('X-TTS-Status');
         if (ttsStatus === 'silent') {
-          console.warn('[JARVIS Audio] Backend TTS failed (X-TTS-Status: silent), '
+          console.warn('[Ironcliw Audio] Backend TTS failed (X-TTS-Status: silent), '
             + 'falling back to browser speechSynthesis');
           throw new Error('TTS_SILENT_FALLBACK');
         }
 
         // Get audio data as blob
         const blob = await response.blob();
-        console.log('[JARVIS Audio] POST: Received audio blob:', blob.size, 'bytes');
+        console.log('[Ironcliw Audio] POST: Received audio blob:', blob.size, 'bytes');
 
         const audioUrl = URL.createObjectURL(blob);
 
@@ -5800,7 +5804,7 @@ const JarvisVoice = () => {
         recordSpokenText(text);
 
         audio2.onplay = () => {
-          console.log('[JARVIS Audio] POST: Playback started');
+          console.log('[Ironcliw Audio] POST: Playback started');
           // v241.0: NOW set speaking state (audio is actually playing)
           clearTimeout(fetchTimeoutRef.current);
           fetchingAudioRef.current = false;
@@ -5808,13 +5812,13 @@ const JarvisVoice = () => {
           isSpeakingRef.current = true;
           // Call the callback when audio ACTUALLY starts playing (perfect sync!)
           if (onStartCallback && typeof onStartCallback === 'function') {
-            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            console.log('[Ironcliw Audio] Calling start callback - text will appear NOW');
             onStartCallback();
           }
         };
 
         audio2.onended = () => {
-          console.log('[JARVIS Audio] POST: Playback completed');
+          console.log('[Ironcliw Audio] POST: Playback completed');
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
           fetchingAudioRef.current = false;
@@ -5828,9 +5832,9 @@ const JarvisVoice = () => {
         };
 
         audio2.onerror = (e) => {
-          console.error('[JARVIS Audio] POST: Playback error:', e);
+          console.error('[Ironcliw Audio] POST: Playback error:', e);
           if (audio2.error) {
-            console.error('[JARVIS Audio] POST: Error details:', {
+            console.error('[Ironcliw Audio] POST: Error details:', {
               code: audio2.error.code,
               message: audio2.error.message
             });
@@ -5848,16 +5852,16 @@ const JarvisVoice = () => {
         };
 
         await audio2.play();
-        console.log('[JARVIS Audio] POST: Playing audio successfully');
+        console.log('[Ironcliw Audio] POST: Playing audio successfully');
       } else {
         throw new Error(`Audio generation failed: ${response.status}`);
       }
     } catch (postError) {
       clearTimeout(fetchTimeout);
       if (postError.name === 'AbortError') {
-        console.warn('[JARVIS Audio] POST: Fetch timed out after 8s');
+        console.warn('[Ironcliw Audio] POST: Fetch timed out after 8s');
       } else {
-        console.error('[JARVIS Audio] POST: Failed:', postError);
+        console.error('[Ironcliw Audio] POST: Failed:', postError);
       }
       // Re-throw so the caller can execute the unified browser-TTS fallback path.
       // Swallowing here caused silent failures with no audible fallback.
@@ -5885,13 +5889,13 @@ const JarvisVoice = () => {
   // ============================================================
   // 🔇 SELF-VOICE SUPPRESSION SYSTEM
   // ============================================================
-  // Prevents JARVIS from hearing and responding to its own voice
+  // Prevents Ironcliw from hearing and responding to its own voice
   // Uses multiple strategies for robust echo cancellation:
   // 1. Speaking state check - ignore all input while speaking
   // 2. Cooldown period - ignore input for 500ms after speech ends
-  // 3. Text similarity - detect and filter echoes of what JARVIS just said
+  // 3. Text similarity - detect and filter echoes of what Ironcliw just said
   // 4. Audio fingerprinting - match acoustic patterns (future)
-  const lastSpokenTextRef = useRef('');           // What JARVIS just said
+  const lastSpokenTextRef = useRef('');           // What Ironcliw just said
   const lastSpokenTimeRef = useRef(0);            // When speaking started
   const speakingEndTimeRef = useRef(0);           // When speaking ended
   const selfVoiceCooldownMs = 800;                // Cooldown after speech ends (ms)
@@ -5929,7 +5933,7 @@ const JarvisVoice = () => {
   };
 
   /**
-   * Check if the recognized text is an echo of JARVIS's speech
+   * Check if the recognized text is an echo of Ironcliw's speech
    * Uses multiple strategies for robust detection
    */
   const isSelfVoiceEcho = (recognizedText) => {
@@ -5938,7 +5942,7 @@ const JarvisVoice = () => {
 
     // Strategy 1: Currently speaking - definitely our voice
     if (isSpeakingRef.current) {
-      console.log('🔇 [Self-Voice] Suppressed: JARVIS is currently speaking');
+      console.log('🔇 [Self-Voice] Suppressed: Ironcliw is currently speaking');
       return { isEcho: true, reason: 'currently_speaking', confidence: 1.0 };
     }
 
@@ -5974,7 +5978,7 @@ const JarvisVoice = () => {
   };
 
   /**
-   * Record that JARVIS just spoke something (for echo detection)
+   * Record that Ironcliw just spoke something (for echo detection)
    */
   const recordSpokenText = (text) => {
     const now = Date.now();
@@ -5993,7 +5997,7 @@ const JarvisVoice = () => {
   };
 
   /**
-   * Record that JARVIS finished speaking (for cooldown)
+   * Record that Ironcliw finished speaking (for cooldown)
    */
   const recordSpeakingEnded = () => {
     speakingEndTimeRef.current = Date.now();
@@ -6025,7 +6029,7 @@ const JarvisVoice = () => {
       const age = Date.now() - (item.enqueuedAt || 0);
       if (item.enqueuedAt && age > SPEECH_QUEUE_TTL_MS) {
         const itemText = typeof item === 'string' ? item : (item.text || '');
-        console.warn(`[JARVIS Audio] Queue item expired (${(age/1000).toFixed(1)}s old): "${itemText.substring(0, 50)}..."`);
+        console.warn(`[Ironcliw Audio] Queue item expired (${(age/1000).toFixed(1)}s old): "${itemText.substring(0, 50)}..."`);
         speechQueueRef.current.shift();
         continue;
       }
@@ -6045,7 +6049,7 @@ const JarvisVoice = () => {
   };
 
   const _stopAllSpeech = () => {
-    console.log('[JARVIS Audio] Stopping all speech and clearing queue');
+    console.log('[Ironcliw Audio] Stopping all speech and clearing queue');
     // Clear the queue
     speechQueueRef.current = [];
     // Stop browser synthesis if active
@@ -6078,7 +6082,7 @@ const JarvisVoice = () => {
       const elapsed = Date.now() - speechStartTimeRef.current;
       if (elapsed > MAX_SPEECH_DURATION_MS) {
         console.error(
-          `[JARVIS Audio] WATCHDOG: Speech stuck for ${elapsed}ms ` +
+          `[Ironcliw Audio] WATCHDOG: Speech stuck for ${elapsed}ms ` +
           `(isSpeaking=${isSpeakingRef.current}, fetching=${fetchingAudioRef.current}). ` +
           `Force-resetting.`
         );
@@ -6111,8 +6115,8 @@ const JarvisVoice = () => {
       setResponse(text);
     }
 
-    console.log('[JARVIS Audio] Speaking response:', text.substring(0, 100) + '...');
-    console.log('[JARVIS Audio] Current speaking state:', isJarvisSpeaking);
+    console.log('[Ironcliw Audio] Speaking response:', text.substring(0, 100) + '...');
+    console.log('[Ironcliw Audio] Current speaking state:', isJarvisSpeaking);
 
     // Add to speech queue instead of skipping
     speechQueueRef.current.push({ text, callback: null, enqueuedAt: Date.now() });
@@ -6124,7 +6128,7 @@ const JarvisVoice = () => {
   };
 
   const speakResponseWithCallback = async (text, onStartCallback) => {
-    console.log('[JARVIS Audio] Speaking response with callback:', text.substring(0, 100) + '...');
+    console.log('[Ironcliw Audio] Speaking response with callback:', text.substring(0, 100) + '...');
 
     // Add to speech queue with callback
     speechQueueRef.current.push({ text, callback: onStartCallback, enqueuedAt: Date.now() });
@@ -6138,7 +6142,7 @@ const JarvisVoice = () => {
   const speakResponseInternal = async (text, onStartCallback = null) => {
     // Prevent overlapping speech
     if (isSpeakingRef.current || fetchingAudioRef.current) {
-      console.log('[JARVIS Audio] Already speaking or fetching, adding to queue');
+      console.log('[Ironcliw Audio] Already speaking or fetching, adding to queue');
       return;
     }
 
@@ -6165,13 +6169,13 @@ const JarvisVoice = () => {
     const sanitizedText = sanitizeForSpeech(text);
 
     try {
-      console.log('[JARVIS Audio] Setting speaking state to true');
-      console.log('[JARVIS Audio] Text to speak (exact):', text);
+      console.log('[Ironcliw Audio] Setting speaking state to true');
+      console.log('[Ironcliw Audio] Text to speak (exact):', text);
 
       // v237.0: Guard against empty/whitespace-only text — prevents "full stop"
       // TTS artifacts from processing acks and stripped messages
       if (!sanitizedText || sanitizedText.length === 0) {
-        console.log('[JARVIS Audio] Skipping TTS: empty text after sanitization');
+        console.log('[Ironcliw Audio] Skipping TTS: empty text after sanitization');
         return;
       }
 
@@ -6182,7 +6186,7 @@ const JarvisVoice = () => {
       // 10s fetch-phase guard — if onplay hasn't fired, reset and process next
       fetchTimeoutRef.current = setTimeout(() => {
         if (fetchingAudioRef.current) {
-          console.warn('[JARVIS Audio] Fetch-phase stuck >10s, resetting');
+          console.warn('[Ironcliw Audio] Fetch-phase stuck >10s, resetting');
           fetchingAudioRef.current = false;
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
@@ -6200,11 +6204,11 @@ const JarvisVoice = () => {
       // Deterministic TTS path: always use POST so we can inspect
       // X-TTS-Status and trigger browser fallback on silent backend responses.
       // GET/audio-tag path hides headers and can fail silently.
-      console.log('[JARVIS Audio] Using POST method (header-aware path)');
+      console.log('[Ironcliw Audio] Using POST method (header-aware path)');
       await playAudioUsingPost(sanitizedText, onStartCallback);
     } catch (error) {
-      console.error('[JARVIS Audio] Playback failed:', error);
-      console.error('[JARVIS Audio] Error details:', {
+      console.error('[Ironcliw Audio] Playback failed:', error);
+      console.error('[Ironcliw Audio] Error details:', {
         name: error.name,
         message: error.message,
         stack: error.stack
@@ -6221,33 +6225,12 @@ const JarvisVoice = () => {
       setTimeout(() => processNextInSpeechQueue(), 200);
 
       // Fallback to browser speech synthesis if backend TTS fails
-      console.log('[JARVIS Audio] Falling back to browser speech synthesis...');
+      console.log('[Ironcliw Audio] Falling back to browser speech synthesis...');
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech first
         window.speechSynthesis.cancel();
 
-        // Sanitize text for browser TTS to prevent literal punctuation reading
-        // (e.g., "..." read as "full stop" by British English Daniel voice)
-        const sanitizeForSpeech = (rawText) => {
-          let cleaned = rawText;
-          cleaned = cleaned.replace(/\.{2,}/g, ' ');        // "..." → " "
-          cleaned = cleaned.replace(/\.\s*$/g, '');          // trailing "." → ""
-          // Unicode Extended_Pictographic for comprehensive emoji stripping
-          // (covers ZWJ sequences, flags, supplemental symbols, future additions)
-          try {
-            cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
-            cleaned = cleaned.replace(/\u200D/g, '');        // Zero-width joiners
-            cleaned = cleaned.replace(/[\uFE00-\uFE0F]/g, ''); // Variation selectors
-          } catch (_e) {
-            // Fallback for browsers without Unicode property escapes
-            cleaned = cleaned.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
-          }
-          cleaned = cleaned.replace(/[*_~`#]/g, '');         // markdown
-          cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
-          return cleaned;
-        };
-
-        const fallbackSpeechText = sanitizeForSpeech(text);
+        const fallbackSpeechText = sanitizedText;
         const utterance = new SpeechSynthesisUtterance(fallbackSpeechText);
         utterance.rate = 0.7;   // Even slower rate for smooth, non-rushed speech
         utterance.pitch = 0.95; // Slightly lower pitch for more authoritative tone
@@ -6255,7 +6238,7 @@ const JarvisVoice = () => {
 
         // Try to find Daniel or other British male voice
         const voices = window.speechSynthesis.getVoices();
-        console.log(`[JARVIS Audio] Available voices: ${voices.length}`);
+        console.log(`[Ironcliw Audio] Available voices: ${voices.length}`);
 
         // First try to find Daniel
         let selectedVoice = voices.find(voice => voice.name.includes('Daniel'));
@@ -6278,13 +6261,13 @@ const JarvisVoice = () => {
 
         if (selectedVoice) {
           utterance.voice = selectedVoice;
-          console.log(`[JARVIS Audio] Using voice: ${selectedVoice.name}`);
+          console.log(`[Ironcliw Audio] Using voice: ${selectedVoice.name}`);
         } else {
-          console.log('[JARVIS Audio] No British voice found, using default');
+          console.log('[Ironcliw Audio] No British voice found, using default');
         }
 
         utterance.onstart = () => {
-          console.log('[JARVIS Audio] Browser speech synthesis started');
+          console.log('[Ironcliw Audio] Browser speech synthesis started');
           clearTimeout(fetchTimeoutRef.current);
           fetchingAudioRef.current = false;
           setIsJarvisSpeaking(true);
@@ -6294,12 +6277,12 @@ const JarvisVoice = () => {
           recordSpokenText(text);
           // Call the callback when browser speech ACTUALLY starts playing (perfect sync!)
           if (onStartCallback && typeof onStartCallback === 'function') {
-            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            console.log('[Ironcliw Audio] Calling start callback - text will appear NOW');
             onStartCallback();
           }
         };
         utterance.onend = () => {
-          console.log('[JARVIS Audio] Browser speech completed');
+          console.log('[Ironcliw Audio] Browser speech completed');
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
           fetchingAudioRef.current = false;
@@ -6311,7 +6294,7 @@ const JarvisVoice = () => {
           setTimeout(() => processNextInSpeechQueue(), 200);
         };
         utterance.onerror = (e) => {
-          console.error('[JARVIS Audio] Browser speech error:', e);
+          console.error('[Ironcliw Audio] Browser speech error:', e);
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
           fetchingAudioRef.current = false;
@@ -6330,7 +6313,7 @@ const JarvisVoice = () => {
 
   return (
     <div className="jarvis-voice-container">
-      {/* JARVIS Header */}
+      {/* Ironcliw Header */}
       <div className="jarvis-header">
         <h1 className="jarvis-title">
           <span className="jarvis-logo">Ironcliw-AI</span>
@@ -6422,7 +6405,7 @@ const JarvisVoice = () => {
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* PROACTIVE UNLOCK PROGRESS - Visual feedback for autonomous unlock flow */}
-      {/* Shows when JARVIS detects locked screen and unlocks for a command     */}
+      {/* Shows when Ironcliw detects locked screen and unlocks for a command     */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {proactiveUnlockProgress && (
         <div className="proactive-unlock-container">
@@ -6941,10 +6924,10 @@ const JarvisVoice = () => {
             </div>
           )}
 
-          {/* JARVIS Response - Always show when processing, speaking, or has response */}
+          {/* Ironcliw Response - Always show when processing, speaking, or has response */}
           {(isProcessing || isJarvisSpeaking || response) && (
             <div className="jarvis-message">
-              <span className="message-label">JARVIS:</span>
+              <span className="message-label">Ironcliw:</span>
               <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
                 {/* Priority 1: Processing state (no response yet) */}
                 {isProcessing && !response ? (
@@ -6972,7 +6955,7 @@ const JarvisVoice = () => {
             type="text"
             value={textCommand}
             onChange={(e) => setTextCommand(e.target.value)}
-            placeholder="Type a command to JARVIS..."
+            placeholder="Type a command to Ironcliw..."
             className="text-command-input"
             disabled={jarvisStatus !== 'online'}
           />
@@ -7055,7 +7038,7 @@ const JarvisVoice = () => {
       {/* Simplified Control - Only show when needed */}
       {jarvisStatus === 'activating' && (
         <div className="jarvis-controls">
-          <div className="initializing-message">Initializing JARVIS systems...</div>
+          <div className="initializing-message">Initializing Ironcliw systems...</div>
         </div>
       )}
 
@@ -7067,7 +7050,7 @@ const JarvisVoice = () => {
             className="jarvis-input"
             placeholder={
               isJarvisSpeaking
-                ? "🎤 JARVIS is speaking..."
+                ? "🎤 Ironcliw is speaking..."
                 : isProcessing
                 ? "⚙️ Processing..."
                 : isTyping
@@ -7095,7 +7078,7 @@ const JarvisVoice = () => {
                 }, 2000);
               }
             }}
-            onKeyPress={(e) => {
+            onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 setIsTyping(false);
                 setLastUserInteraction(Date.now());
@@ -7109,7 +7092,7 @@ const JarvisVoice = () => {
             className="jarvis-send-button"
             onClick={() => {
               const input = document.querySelector('.jarvis-input');
-              if (input.value) {
+              if (input && input.value) {
                 sendTextCommand(input.value);
                 input.value = '';
               }

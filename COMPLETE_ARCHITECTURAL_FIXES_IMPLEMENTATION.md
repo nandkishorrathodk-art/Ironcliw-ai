@@ -1,4 +1,4 @@
-# Complete Architectural Fixes: Production-Ready Implementation
+﻿# Complete Architectural Fixes: Production-Ready Implementation
 
 **Version:** 1.0  
 **Purpose:** Solve ALL root architectural problems with production-ready code  
@@ -636,7 +636,7 @@ def _generate_user_message_from_diagnostic(
         elif any("voice profile" in str(cause).lower() or "enrollment" in str(cause).lower() for cause in root_causes):
             return (
                 "Voice unlock unavailable: No voice profile enrolled. "
-                "Please say 'JARVIS, learn my voice' to complete enrollment."
+                "Please say 'Ironcliw, learn my voice' to complete enrollment."
             )
         else:
             return f"Voice unlock unavailable: {', '.join(root_causes[:2])}"
@@ -693,7 +693,7 @@ def _generate_user_friendly_message(
         elif "no_profiles" in str(failure_reasons) or "enrollment" in str(failure_reasons):
             return (
                 "I couldn't verify your voice. No voice profile found. "
-                "Please say 'JARVIS, learn my voice' to complete enrollment."
+                "Please say 'Ironcliw, learn my voice' to complete enrollment."
             )
         else:
             return (
@@ -708,7 +708,7 @@ def _generate_user_friendly_message(
     else:
         return (
             f"Voice verification failed ({confidence:.0%} confidence). "
-            "Please try speaking more clearly or say 'JARVIS, learn my voice' to improve recognition."
+            "Please try speaking more clearly or say 'Ironcliw, learn my voice' to improve recognition."
         )
 
 def _generate_recommendations(
@@ -730,7 +730,7 @@ def _generate_recommendations(
         if any("ECAPA" in str(cause) for cause in root_causes):
             recommendations.append("Check ECAPA encoder status and model download")
         if any("profile" in str(cause).lower() for cause in root_causes):
-            recommendations.append("Complete voice enrollment: Say 'JARVIS, learn my voice'")
+            recommendations.append("Complete voice enrollment: Say 'Ironcliw, learn my voice'")
     
     # Check verification method
     if method == "none":
@@ -744,7 +744,7 @@ def _generate_recommendations(
         recommendations.append("Install dependencies: pip install numpy torch speechbrain")
     
     if "no_profiles" in str(failure_reasons) or "enrollment" in str(failure_reasons):
-        recommendations.append("Complete voice enrollment: Say 'JARVIS, learn my voice'")
+        recommendations.append("Complete voice enrollment: Say 'Ironcliw, learn my voice'")
     
     if not recommendations:
         recommendations.append("Try speaking more clearly or check microphone quality")

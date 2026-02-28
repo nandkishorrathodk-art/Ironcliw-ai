@@ -1,8 +1,8 @@
-# Activity Recognition Engine Guide
+﻿# Activity Recognition Engine Guide
 
 ## Overview
 
-The Activity Recognition Engine is part of the Intelligent Understanding System (IUS) for JARVIS Vision. It identifies what tasks users are performing and provides insights into their workflow, progress, and potential blockers.
+The Activity Recognition Engine is part of the Intelligent Understanding System (IUS) for Ironcliw Vision. It identifies what tasks users are performing and provides insights into their workflow, progress, and potential blockers.
 
 ## Key Components
 

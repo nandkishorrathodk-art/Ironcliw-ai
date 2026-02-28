@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Centralized Optional Dependency Manager for JARVIS v16.0
+Centralized Optional Dependency Manager for Ironcliw v16.0
 =========================================================
 
 Provides robust, cached checking of optional dependencies (PyTorch, CoreML, etc.)
@@ -53,7 +53,7 @@ Usage:
     if torch:
         model = torch.nn.Linear(10, 5)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 16.0.0
 """
 
@@ -273,7 +273,7 @@ class OptionalDependencyManager:
 
         # Environment overrides
         self._force_disabled: Set[str] = set(
-            os.getenv("JARVIS_DISABLE_OPTIONAL_DEPS", "").split(",")
+            os.getenv("Ironcliw_DISABLE_OPTIONAL_DEPS", "").split(",")
         )
 
         logger.debug("OptionalDependencyManager initialized")
@@ -926,7 +926,7 @@ def get_fallback_chain(dependency: str) -> List[Tuple[FallbackOption, bool]]:
 
 class CrossRepoDependencyCoordinator:
     """
-    Coordinates dependency availability across JARVIS, J-Prime, and Reactor-Core.
+    Coordinates dependency availability across Ironcliw, J-Prime, and Reactor-Core.
 
     Ensures that ML capabilities are properly detected and communicated across
     the Trinity ecosystem for optimal resource allocation.
@@ -950,7 +950,7 @@ class CrossRepoDependencyCoordinator:
         self._initialized = True
         self._capability_cache: Dict[str, Dict[str, Any]] = {}
         self._last_sync = 0.0
-        self._sync_interval = float(os.getenv("JARVIS_DEP_SYNC_INTERVAL", "60.0"))
+        self._sync_interval = float(os.getenv("Ironcliw_DEP_SYNC_INTERVAL", "60.0"))
 
     def get_local_capabilities(self) -> Dict[str, Any]:
         """Get ML capabilities for this repo."""

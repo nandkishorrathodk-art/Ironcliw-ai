@@ -1,10 +1,10 @@
-title = "JARVIS Secret Scanner Configuration"
+﻿title = "Ironcliw Secret Scanner Configuration"
 
 [extend]
 # Use default gitleaks rules
 useDefault = true
 
-# Custom rules for JARVIS-specific secrets
+# Custom rules for Ironcliw-specific secrets
 [[rules]]
 id = "anthropic-api-key"
 description = "Anthropic API Key"
@@ -74,7 +74,7 @@ regexes = [
   '''import.*password''',
   '''def.*password''',
   # Allow environment variable references
-  '''JARVIS_DB_PASSWORD''',
+  '''Ironcliw_DB_PASSWORD''',
   '''os\.getenv.*PASSWORD''',
   # Allow password variables that retrieve from Secret Manager (SAFE)
   '''db_password\s*=\s*get_secret''',
@@ -254,7 +254,7 @@ paths = [
   # Documentation
   '''docs/''',
   '''wiki/''',
-  '''JARVIS-AI.wiki/''',
+  '''Ironcliw-AI.wiki/''',
   # macOS Helper notification files (contain app names like "1Password", not secrets)
   '''backend/macos_helper/notification_monitor.py''',
   '''backend/macos_helper/intelligence/notification_triage.py''',

@@ -1,11 +1,11 @@
-# JARVIS Advanced AI/ML Integration - Complete Technical Guide
+﻿# Ironcliw Advanced AI/ML Integration - Complete Technical Guide
 
 **Author:** Derek J. Russell
 **Date:** October 25, 2025
 **Version:** 1.0.0
 **Status:** Production Implementation Guide
 
-**Companion to:** JARVIS_NEURAL_MESH_ARCHITECTURE.md
+**Companion to:** Ironcliw_NEURAL_MESH_ARCHITECTURE.md
 
 ---
 
@@ -26,11 +26,11 @@
 
 ## Overview
 
-This document provides comprehensive implementation details for integrating advanced AI/ML models into JARVIS Neural Mesh, with specific focus on:
+This document provides comprehensive implementation details for integrating advanced AI/ML models into Ironcliw Neural Mesh, with specific focus on:
 
 - **Transformer models** (BERT, T5, GPT variants)
-- **Custom embeddings** for JARVIS domain
-- **Fine-tuning** on JARVIS-specific data
+- **Custom embeddings** for Ironcliw domain
+- **Fine-tuning** on Ironcliw-specific data
 - **Reinforcement learning** for workflow optimization
 - **Production deployment** on 32GB GCP Spot VMs
 
@@ -106,7 +106,7 @@ backend = select_model_backend(model, local_ram_free)
 
 ```python
 """
-JARVIS Transformer Manager
+Ironcliw Transformer Manager
 Handles all Transformer model loading, inference, and optimization
 """
 
@@ -162,7 +162,7 @@ class ModelConfig:
 
 class TransformerManager:
     """
-    Manages all Transformer models for JARVIS
+    Manages all Transformer models for Ironcliw
 
     Features:
     - Lazy loading (load models on first use)
@@ -593,7 +593,7 @@ async def get_transformer_manager() -> TransformerManager:
 - Spot rate: $0.0638/hour
 - Regular rate: $0.2128/hour (Spot saves 70%)
 
-**Realistic JARVIS Usage:**
+**Realistic Ironcliw Usage:**
 ```
 Assumption: VM only runs when heavy ML tasks needed
 - 2 hours/day for intensive processing

@@ -1,7 +1,7 @@
-# Multi-Space Vision System - Complete Fix
+﻿# Multi-Space Vision System - Complete Fix
 
 ## Original Issue
-When asking "Where is Terminal?", JARVIS returned:
+When asking "Where is Terminal?", Ironcliw returned:
 ```
 I encountered an error analyzing your screen: ValueError. Please try again.
 ```
@@ -45,7 +45,7 @@ async def analyze_multiple_images_with_prompt(self, images: list, prompt: str, m
 Instead of "ValueError", users now see:
 ```
 "I'm trying to look across your desktop spaces to find Terminal, but I'm unable to capture screenshots at the moment. 
-Please ensure screen recording permissions are enabled for JARVIS in 
+Please ensure screen recording permissions are enabled for Ironcliw in 
 System Preferences > Security & Privacy > Privacy > Screen Recording."
 ```
 
@@ -53,8 +53,8 @@ System Preferences > Security & Privacy > Privacy > Screen Recording."
 
 1. **Grant Screen Recording Permission**:
    - Open System Preferences > Security & Privacy > Privacy > Screen Recording
-   - Add Terminal (or wherever you run JARVIS) to the allowed apps
-   - Restart JARVIS after granting permission
+   - Add Terminal (or wherever you run Ironcliw) to the allowed apps
+   - Restart Ironcliw after granting permission
 
 2. **Test Multi-Space Queries**:
    - "Where is Terminal?"
@@ -90,6 +90,6 @@ The system tries multiple methods in order:
 - ⚠️ Requires screen recording permission to fully function
 
 ## Next Steps
-1. Enable screen recording permission for JARVIS
-2. Restart JARVIS to apply all fixes
+1. Enable screen recording permission for Ironcliw
+2. Restart Ironcliw to apply all fixes
 3. Test multi-space queries to verify functionality

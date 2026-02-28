@@ -1,15 +1,15 @@
-// swift-tools-version: 5.7
+﻿// swift-tools-version: 5.7
 import PackageDescription
 
 let package = Package(
-    name: "JARVISProximityAuth",
+    name: "IroncliwProximityAuth",
     platforms: [
         .macOS(.v11)
     ],
     products: [
         .library(
-            name: "JARVISProximityAuth",
-            targets: ["JARVISProximityAuth"]),
+            name: "IroncliwProximityAuth",
+            targets: ["IroncliwProximityAuth"]),
         .executable(
             name: "ProximityService",
             targets: ["ProximityService"])
@@ -19,12 +19,12 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "JARVISProximityAuth",
+            name: "IroncliwProximityAuth",
             dependencies: [],
-            path: "Sources/JARVISProximityAuth"),
+            path: "Sources/IroncliwProximityAuth"),
         .executableTarget(
             name: "ProximityService",
-            dependencies: ["JARVISProximityAuth"],
+            dependencies: ["IroncliwProximityAuth"],
             path: "Sources/ProximityService")
     ]
 )

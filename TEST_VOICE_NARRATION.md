@@ -1,4 +1,4 @@
-# 🧪 Voice Narration Testing Guide
+﻿# 🧪 Voice Narration Testing Guide
 
 Quick reference for testing enhanced voice narration with God Mode surveillance.
 
@@ -7,7 +7,7 @@ Quick reference for testing enhanced voice narration with God Mode surveillance.
 ## 🚀 Quick Start
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -19,7 +19,7 @@ python3 run_supervisor.py
 
 **Say:**
 ```
-"JARVIS, watch Terminal for Build Complete"
+"Ironcliw, watch Terminal for Build Complete"
 ```
 
 **Expected Response:**
@@ -45,7 +45,7 @@ characteristics now."
 
 **Say:**
 ```
-"JARVIS, watch all Chrome windows for Error"
+"Ironcliw, watch all Chrome windows for Error"
 ```
 
 **Expected Response:**
@@ -72,7 +72,7 @@ I was watching 5 Chrome windows in parallel - this one triggered first."
 
 **Say:**
 ```
-"JARVIS, watch Terminal for 2 minutes when it says DONE"
+"Ironcliw, watch Terminal for 2 minutes when it says DONE"
 ```
 
 **Expected Response:**
@@ -98,7 +98,7 @@ Want me to keep looking?"
 
 **Say:**
 ```
-"JARVIS, watch Chrome for BOUNCE COUNT"
+"Ironcliw, watch Chrome for BOUNCE COUNT"
 ```
 
 **Expected Response:**
@@ -120,7 +120,7 @@ Confidence: 96%."
 
 **Say:**
 ```
-"JARVIS, watch Terminal for warning"
+"Ironcliw, watch Terminal for warning"
 ```
 
 **Expected Response:**
@@ -142,7 +142,7 @@ Looks good."
 
 **Say:**
 ```
-"JARVIS, watch Chrome for success"
+"Ironcliw, watch Chrome for success"
 ```
 
 **Expected Response:**
@@ -167,7 +167,7 @@ to confirm?"
 
 **Say:**
 ```
-"JARVIS, watch Terminal for error"
+"Ironcliw, watch Terminal for error"
 ```
 
 **Expected Response:**
@@ -254,7 +254,7 @@ Fastest detection: 2.3s. You're a surveillance pro!"
 
 **Say (first time using "all"):**
 ```
-"JARVIS, watch all Terminal windows for DONE"
+"Ironcliw, watch all Terminal windows for DONE"
 ```
 
 **Expected Response:**
@@ -304,7 +304,7 @@ well above my average of 88%."
 
 **Say:**
 ```
-"JARVIS, watch Terminal for DONE"
+"Ironcliw, watch Terminal for DONE"
 ```
 
 **Expected Response:**
@@ -329,7 +329,7 @@ well above my average of 88%."
 
 **Say:**
 ```
-"JARVIS, watch Chrome for Error"
+"Ironcliw, watch Chrome for Error"
 ```
 
 **Expected Response:**
@@ -352,7 +352,7 @@ well above my average of 88%."
 
 **Say (with Chrome closed):**
 ```
-"JARVIS, watch Chrome for Error"
+"Ironcliw, watch Chrome for Error"
 ```
 
 **Expected Response:**
@@ -376,7 +376,7 @@ Could you open Chrome first?"
 
 **Say:**
 ```
-"JARVIS, watch Terminal for 30 seconds when it says NEVER_APPEARS"
+"Ironcliw, watch Terminal for 30 seconds when it says NEVER_APPEARS"
 ```
 
 **Expected Response:**
@@ -567,4 +567,4 @@ python3 run_supervisor.py
 
 ---
 
-🎉 **Happy Testing! JARVIS is ready to communicate like a sophisticated AI assistant.**
+🎉 **Happy Testing! Ironcliw is ready to communicate like a sophisticated AI assistant.**

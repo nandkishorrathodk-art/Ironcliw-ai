@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Integration Layer v2.0 - Production-Grade Self-Improvement
 ===================================================================
 
 The ultimate integration layer that connects Ouroboros self-improvement
-with the full Trinity ecosystem. This is the "nervous system" of JARVIS.
+with the full Trinity ecosystem. This is the "nervous system" of Ironcliw.
 
 v2.0 Enhancements:
     - Coding Council integration for peer code review
@@ -323,8 +323,8 @@ class TrinityLockManager:
     Wrapper around distributed lock manager for improvement coordination.
 
     Prevents concurrent improvements to the same file across:
-    - Multiple JARVIS instances
-    - Multiple repos (JARVIS, Prime, Reactor)
+    - Multiple Ironcliw instances
+    - Multiple repos (Ironcliw, Prime, Reactor)
     """
 
     def __init__(self):
@@ -477,7 +477,7 @@ class TrinityCodeReviewer:
             )
             # Get repo root from environment or default
             repo_root = Path(os.getenv(
-                "JARVIS_REPO_PATH",
+                "Ironcliw_REPO_PATH",
                 str(Path(__file__).parent.parent.parent.parent)
             ))
             self._ast_validator = ASTValidator(repo_root)
@@ -961,7 +961,7 @@ class TrinityCoordinator:
                 get_trinity_event_bus,
                 RepoType,
             )
-            self._event_bus = await get_trinity_event_bus(RepoType.JARVIS)
+            self._event_bus = await get_trinity_event_bus(RepoType.Ironcliw)
 
             # Subscribe to model ready events
             if TrinityConfig.USE_HOT_SWAP:
@@ -1075,7 +1075,7 @@ class TrinityCoordinator:
 
             event = TrinityEvent(
                 topic=f"ouroboros.{event_type}",
-                source=RepoType.JARVIS,
+                source=RepoType.Ironcliw,
                 payload={
                     "target": target,
                     "success": success,
@@ -1469,7 +1469,7 @@ class TrinityModelClient:
             except Exception as e:
                 self.logger.warning(f"UnifiedModelServing failed: {e}")
 
-        # Strategy 2: Neural Mesh → JARVIS Prime
+        # Strategy 2: Neural Mesh → Ironcliw Prime
         if self._neural_mesh and self._neural_mesh._running:
             try:
                 result = await self._generate_via_neural_mesh(
@@ -1552,7 +1552,7 @@ class TrinityModelClient:
         temperature: float,
         max_tokens: int,
     ) -> Optional[str]:
-        """Generate via Neural Mesh → JARVIS Prime."""
+        """Generate via Neural Mesh → Ironcliw Prime."""
         try:
             from backend.core.ouroboros.neural_mesh import (
                 MessageType,

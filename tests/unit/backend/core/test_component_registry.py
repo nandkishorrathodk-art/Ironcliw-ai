@@ -1,4 +1,4 @@
-"""Tests for ComponentRegistry - the single source of truth for components."""
+﻿"""Tests for ComponentRegistry - the single source of truth for components."""
 import pytest
 import os
 
@@ -77,7 +77,7 @@ class TestComponentDefinition:
             startup_timeout=120.0,
             retry_max_attempts=3,
             fallback_for_capabilities={"inference": "claude-api"},
-            disable_env_var="JARVIS_PRIME_ENABLED",
+            disable_env_var="Ironcliw_PRIME_ENABLED",
         )
         assert defn.name == "jarvis-prime"
         assert len(defn.dependencies) == 2

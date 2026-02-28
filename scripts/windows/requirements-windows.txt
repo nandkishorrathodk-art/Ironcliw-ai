@@ -1,4 +1,4 @@
-# JARVIS Windows-Specific Python Dependencies
+﻿# Ironcliw Windows-Specific Python Dependencies
 # ═══════════════════════════════════════════════════════════════════════════════
 # Install these before general requirements.txt
 # These packages replace macOS-specific dependencies

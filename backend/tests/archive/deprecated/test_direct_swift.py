@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test direct Swift capture - should show purple indicator
 """
@@ -6,7 +6,7 @@ Test direct Swift capture - should show purple indicator
 import asyncio
 import sys
 
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from vision.direct_swift_capture import (
     start_direct_swift_capture, 

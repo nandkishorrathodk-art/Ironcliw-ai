@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Module cache cleaner for JARVIS
+Module cache cleaner for Ironcliw
 Ensures fresh imports of all modules on startup
 """
 
@@ -104,4 +104,4 @@ if __name__ == "__main__":
     cleared = clear_all_caches()
     verify_fresh_imports()
     print(f"\n✅ Module cache cleared: {cleared} modules removed")
-    print("   JARVIS will now use fresh code with all fixes!")
+    print("   Ironcliw will now use fresh code with all fixes!")

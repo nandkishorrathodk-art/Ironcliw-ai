@@ -1,12 +1,12 @@
-# Proactive Monitoring Implementation
+﻿# Proactive Monitoring Implementation
 
 ## Overview
-We've implemented a comprehensive proactive monitoring system that allows JARVIS to watch for and report changes across all desktop spaces.
+We've implemented a comprehensive proactive monitoring system that allows Ironcliw to watch for and report changes across all desktop spaces.
 
 ## Key Features
 
 ### 1. Activity Reporting Commands
-JARVIS now recognizes these natural language commands:
+Ironcliw now recognizes these natural language commands:
 - "Report any changes"
 - "Tell me what changes"
 - "Monitor activities"
@@ -15,7 +15,7 @@ JARVIS now recognizes these natural language commands:
 - "Workspace insights"
 
 ### 2. Real-Time Change Detection
-When activated, JARVIS monitors for:
+When activated, Ironcliw monitors for:
 - **Window Events**
   - New applications opening
   - Windows closing
@@ -32,7 +32,7 @@ When activated, JARVIS monitors for:
   - Application usage patterns
 
 ### 3. Natural Language Reporting
-JARVIS announces changes naturally:
+Ironcliw announces changes naturally:
 - "I notice you've opened VS Code on Desktop 2"
 - "Chrome has been closed on Desktop 1"
 - "You've switched from Desktop 1 to Desktop 3"
@@ -69,7 +69,7 @@ JARVIS announces changes naturally:
    - Checks workspace state every 5 seconds
    - Compares with previous state
    - Detects significant changes
-   - Reports via JARVIS voice
+   - Reports via Ironcliw voice
 
 3. **Purple Indicator Integration**
    - Automatically starts multi-space monitoring
@@ -81,23 +81,23 @@ JARVIS announces changes naturally:
 ### Start Activity Reporting
 ```
 User: "Report any changes across my workspace"
-JARVIS: "I'll start monitoring your workspace for changes..."
+Ironcliw: "I'll start monitoring your workspace for changes..."
 [Purple indicator appears]
 ```
 
 ### Real-Time Notifications
 ```
 [User opens Terminal on Desktop 2]
-JARVIS: "I notice you've opened Terminal on Desktop 2"
+Ironcliw: "I notice you've opened Terminal on Desktop 2"
 
 [User switches to Desktop 3]
-JARVIS: "You've switched from Desktop 1 to Desktop 3"
+Ironcliw: "You've switched from Desktop 1 to Desktop 3"
 ```
 
 ### Stop Monitoring
 ```
 User: "Stop monitoring"
-JARVIS: "I've stopped monitoring your screen"
+Ironcliw: "I've stopped monitoring your screen"
 [Purple indicator disappears]
 ```
 
@@ -114,7 +114,7 @@ python test_activity_reporting.py
 To use this feature:
 1. Start the backend: `python backend/main.py`
 2. Say: "Yes report any changes" or similar command
-3. JARVIS will confirm and start monitoring
+3. Ironcliw will confirm and start monitoring
 4. Changes will be announced via voice
 
 The system is now ready to provide proactive workspace intelligence!

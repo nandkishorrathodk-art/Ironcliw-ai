@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Activity Reporting Command Patterns for JARVIS
+Activity Reporting Command Patterns for Ironcliw
 Maps natural language requests to proactive monitoring actions
 """
 

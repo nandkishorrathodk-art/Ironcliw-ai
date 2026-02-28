@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Goal Inference Agent (v2.7)
+﻿"""
+Ironcliw Neural Mesh - Goal Inference Agent (v2.7)
 
 Advanced ML-powered intent understanding and goal inference system.
 Analyzes user commands, context, and behavioral patterns to infer

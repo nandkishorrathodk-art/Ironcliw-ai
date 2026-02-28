@@ -1,8 +1,8 @@
-# Enterprise-Grade System Hardening Implementation Plan
+﻿# Enterprise-Grade System Hardening Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Harden the JARVIS unified supervisor into an enterprise-grade control plane with deterministic lifecycle management, startup reliability with autonomous recovery, and comprehensive operational visibility through CLI dashboards.
+**Goal:** Harden the Ironcliw unified supervisor into an enterprise-grade control plane with deterministic lifecycle management, startup reliability with autonomous recovery, and comprehensive operational visibility through CLI dashboards.
 
 **Architecture:** The implementation adds missing CLI monitor commands (`--monitor-prime`, `--monitor-reactor`, `--monitor-trinity`), extends IPC status responses to include Trinity/Invincible data, adds a `--check-only` dry-run mode, and fixes the dashboard `update_component` signature. All changes are made in `unified_supervisor.py` with zero new files, using existing config/env patterns.
 
@@ -738,7 +738,7 @@ In `handle_check_only()`, add after the port checks (around line 62410):
     print(f"{BOLD}{BLUE}║{RESET}")
     print(f"{BOLD}{BLUE}║{RESET}  {CYAN}Trinity Repositories{RESET}")
 
-    prime_path = config.jarvis_prime_path or os.environ.get("JARVIS_PRIME_PATH", "")
+    prime_path = config.jarvis_prime_path or os.environ.get("Ironcliw_PRIME_PATH", "")
     reactor_path = config.reactor_core_path or os.environ.get("REACTOR_CORE_PATH", "")
 
     if prime_path:
@@ -748,7 +748,7 @@ In `handle_check_only()`, add after the port checks (around line 62410):
             warnings.append("J-Prime path does not exist")
     else:
         print(f"{BOLD}{BLUE}║{RESET}    {warn_mark()} J-Prime: Not configured")
-        warnings.append("J-Prime path not set (JARVIS_PRIME_PATH)")
+        warnings.append("J-Prime path not set (Ironcliw_PRIME_PATH)")
 
     if reactor_path:
         reactor_exists = Path(reactor_path).exists()

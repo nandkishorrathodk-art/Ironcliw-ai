@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Human-like Weather App Clicker
 Replicates exact human clicking behavior for Toronto selection
@@ -230,5 +230,5 @@ async def test_human_clicker():
 
 if __name__ == "__main__":
     import os
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_human_clicker())

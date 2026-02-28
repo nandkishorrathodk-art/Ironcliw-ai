@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intervention Orchestrator
 =========================
 
@@ -10,7 +10,7 @@ Provides proactive assistance system for autonomous execution:
 
 v1.0: Initial implementation with intervention timing and effectiveness tracking.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -32,34 +32,34 @@ class InterventionConfig:
 
     # Intervention settings
     enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_INTERVENTION_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_INTERVENTION_ENABLED", "true").lower() == "true"
     )
     min_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_INTERVENTION_MIN_INTERVAL", "10.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_INTERVENTION_MIN_INTERVAL", "10.0"))
     )
     max_queue_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_INTERVENTION_MAX_QUEUE", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_INTERVENTION_MAX_QUEUE", "5"))
     )
 
     # Timing settings
     optimal_timing_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_INTERVENTION_TIMING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_INTERVENTION_TIMING", "true").lower() == "true"
     )
     idle_detection_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_IDLE_THRESHOLD", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_IDLE_THRESHOLD", "5.0"))
     )
 
     # Learning settings
     learn_effectiveness: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_INTERVENTION_LEARN", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_INTERVENTION_LEARN", "true").lower() == "true"
     )
     min_samples_for_learning: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_LEARNING_SAMPLES", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_LEARNING_SAMPLES", "10"))
     )
 
     # Priority settings
     urgent_priority_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_URGENT_PRIORITY", "0.9"))
+        default_factory=lambda: float(os.getenv("Ironcliw_URGENT_PRIORITY", "0.9"))
     )
 
 
@@ -477,7 +477,7 @@ class InterventionOrchestrator:
             await notify_user(
                 intervention.message,
                 urgency=urgency,
-                title="JARVIS Intervention",
+                title="Ironcliw Intervention",
                 context={
                     "source": "orchestrator",
                     "intervention_type": (

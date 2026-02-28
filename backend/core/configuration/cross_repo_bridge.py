@@ -1,10 +1,10 @@
-"""
+﻿"""
 Cross-Repository Configuration Bridge v1.0
 ===========================================
 
 Provides configuration synchronization across the Trinity ecosystem:
-- JARVIS (Body) - Primary interface and execution
-- JARVIS Prime (Mind) - Intelligence and decision making
+- Ironcliw (Body) - Primary interface and execution
+- Ironcliw Prime (Mind) - Intelligence and decision making
 - Reactor Core (Learning) - Training and model updates
 
 Features:
@@ -124,12 +124,12 @@ class CrossRepoConfigConfig:
 
     # Repo paths for file-based sync
     jarvis_config_path: str = os.getenv(
-        "JARVIS_CONFIG_PATH",
-        str(Path.home() / "Documents/repos/JARVIS-AI-Agent/backend/config")
+        "Ironcliw_CONFIG_PATH",
+        str(Path.home() / "Documents/repos/Ironcliw-AI-Agent/backend/config")
     )
     prime_config_path: str = os.getenv(
         "PRIME_CONFIG_PATH",
-        str(Path.home() / "Documents/repos/JARVIS-Prime/config")
+        str(Path.home() / "Documents/repos/Ironcliw-Prime/config")
     )
     reactor_config_path: str = os.getenv(
         "REACTOR_CONFIG_PATH",

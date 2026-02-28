@@ -1,16 +1,16 @@
-"""
+﻿"""
 The Watcher - Synaptic LSP Client v2.0
 ======================================
 
 "God Mode" Pillar 2: Precision Symbol Resolution
 
-This module gives JARVIS the same superpowers as VS Code IntelliSense,
+This module gives Ironcliw the same superpowers as VS Code IntelliSense,
 but programmable. Instead of guessing where functions are defined,
-JARVIS asks the compiler directly.
+Ironcliw asks the compiler directly.
 
 Key Difference from Text-Based AI:
 - Claude Code: "I think process_image is in vision.py line 42" (hallucination risk)
-- JARVIS Watcher: "process_image is DEFINITIVELY at vision.py:42:4" (compiler verified)
+- Ironcliw Watcher: "process_image is DEFINITIVELY at vision.py:42:4" (compiler verified)
 
 The Watcher prevents crashes before they happen by verifying:
 - Every function call targets an existing function
@@ -578,8 +578,8 @@ class WatcherConfig:
     """Dynamic configuration for The Watcher."""
 
     # Workspace paths (Trinity repos)
-    JARVIS_PATH = Path(os.getenv("JARVIS_PATH", Path.home() / "Documents/repos/JARVIS-AI-Agent"))
-    JARVIS_PRIME_PATH = Path(os.getenv("JARVIS_PRIME_PATH", Path.home() / "Documents/repos/jarvis-prime"))
+    Ironcliw_PATH = Path(os.getenv("Ironcliw_PATH", Path.home() / "Documents/repos/Ironcliw-AI-Agent"))
+    Ironcliw_PRIME_PATH = Path(os.getenv("Ironcliw_PRIME_PATH", Path.home() / "Documents/repos/jarvis-prime"))
     REACTOR_CORE_PATH = Path(os.getenv("REACTOR_CORE_PATH", Path.home() / "Documents/repos/reactor-core"))
 
     # LSP Server preferences (in order of preference)
@@ -1126,7 +1126,7 @@ class SynapticLSPClient:
     """
     The Watcher's core: A programmatic LSP client for precision code analysis.
 
-    This gives JARVIS the ability to:
+    This gives Ironcliw the ability to:
     - Resolve any symbol to its exact definition
     - Find all references across the entire codebase
     - Get syntax errors and type mismatches before running
@@ -1156,8 +1156,8 @@ class SynapticLSPClient:
 
         # Trinity workspace configuration
         self._trinity_workspaces = {
-            "jarvis": WatcherConfig.JARVIS_PATH,
-            "prime": WatcherConfig.JARVIS_PRIME_PATH,
+            "jarvis": WatcherConfig.Ironcliw_PATH,
+            "prime": WatcherConfig.Ironcliw_PRIME_PATH,
             "reactor": WatcherConfig.REACTOR_CORE_PATH,
         }
 
@@ -1280,7 +1280,7 @@ class SynapticLSPClient:
             init_params = {
                 "processId": os.getpid(),
                 "clientInfo": {
-                    "name": "JARVIS-Watcher",
+                    "name": "Ironcliw-Watcher",
                     "version": "1.0.0",
                 },
                 "rootUri": self._path_to_uri(self._workspace_folders[0]),

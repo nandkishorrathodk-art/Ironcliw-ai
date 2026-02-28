@@ -1,27 +1,27 @@
-"""
-Hardware Enforcer for JARVIS Hollow Client Mode
+﻿"""
+Hardware Enforcer for Ironcliw Hollow Client Mode
 ================================================
 
 This module automatically enforces Hollow Client mode on machines with
 insufficient RAM for local 70B models. It detects system RAM at import time
-and sets JARVIS_HOLLOW_CLIENT=true if below the configurable threshold.
+and sets Ironcliw_HOLLOW_CLIENT=true if below the configurable threshold.
 
 The macOS M1 16GB Mac cannot run local 70B models - it needs Hollow Client
 mode where heavy inference is offloaded to GCP.
 
 Design Principles:
 - Enforce on import: Module-level call ensures enforcement before any code runs
-- Idempotent: If JARVIS_HOLLOW_CLIENT is already "true", do nothing
-- Configurable: RAM threshold adjustable via JARVIS_HOLLOW_RAM_THRESHOLD_GB
+- Idempotent: If Ironcliw_HOLLOW_CLIENT is already "true", do nothing
+- Configurable: RAM threshold adjustable via Ironcliw_HOLLOW_RAM_THRESHOLD_GB
 - Auditable: All enforcement decisions are logged with source context
 
 Environment Variables:
 ----------------------
-- JARVIS_HOLLOW_RAM_THRESHOLD_GB: RAM threshold in GB (default: 32.0)
+- Ironcliw_HOLLOW_RAM_THRESHOLD_GB: RAM threshold in GB (default: 32.0)
     Purpose: Machines with RAM below this threshold are forced to Hollow Client mode
     Note: 70B models typically require 64GB+ for efficient inference
 
-- JARVIS_HOLLOW_CLIENT: Set to "true" by this module when enforcement triggers
+- Ironcliw_HOLLOW_CLIENT: Set to "true" by this module when enforcement triggers
     Purpose: Signals to other modules that heavy inference should be offloaded
 
 Usage:
@@ -92,10 +92,10 @@ def enforce_hollow_client(source: str = "unknown") -> bool:
     Enforce Hollow Client mode if system RAM is below threshold.
 
     This function:
-    1. Checks if JARVIS_HOLLOW_CLIENT is already "true" (idempotent - returns True)
-    2. Gets RAM threshold from JARVIS_HOLLOW_RAM_THRESHOLD_GB (default: 32.0GB)
+    1. Checks if Ironcliw_HOLLOW_CLIENT is already "true" (idempotent - returns True)
+    2. Gets RAM threshold from Ironcliw_HOLLOW_RAM_THRESHOLD_GB (default: 32.0GB)
     3. Compares system RAM against threshold
-    4. If RAM < threshold: sets JARVIS_HOLLOW_CLIENT=true and logs
+    4. If RAM < threshold: sets Ironcliw_HOLLOW_CLIENT=true and logs
     5. If RAM >= threshold: logs at debug level, does not modify environment
 
     Args:
@@ -112,12 +112,12 @@ def enforce_hollow_client(source: str = "unknown") -> bool:
             logger.info("Running in Hollow Client mode - offloading to GCP")
     """
     # Idempotency check - if already set, return immediately
-    if os.environ.get("JARVIS_HOLLOW_CLIENT") == "true":
+    if os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true":
         return True
 
     # Get configurable threshold
     threshold_gb = get_env_float(
-        "JARVIS_HOLLOW_RAM_THRESHOLD_GB",
+        "Ironcliw_HOLLOW_RAM_THRESHOLD_GB",
         _DEFAULT_RAM_THRESHOLD_GB,
         min_val=0.0,  # Allow zero (edge case testing)
     )
@@ -128,7 +128,7 @@ def enforce_hollow_client(source: str = "unknown") -> bool:
     # Enforcement decision
     if ram_gb < threshold_gb:
         # Enforce Hollow Client mode
-        os.environ["JARVIS_HOLLOW_CLIENT"] = "true"
+        os.environ["Ironcliw_HOLLOW_CLIENT"] = "true"
         logger.info(
             f"[HardwareEnforcer] Hollow Client enforced (source: {source}): "
             f"{ram_gb:.1f}GB < {threshold_gb:.1f}GB threshold"

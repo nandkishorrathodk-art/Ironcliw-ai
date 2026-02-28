@@ -1,4 +1,4 @@
-"""
+﻿"""
 Distributed Tracing v2.0 -- Trace ID propagation for Trinity IPC.
 =================================================================
 
@@ -18,10 +18,10 @@ Features:
     - Backward-compatible with v1.0 API (start_trace, from_message, stamp_message)
 
 Environment Variables:
-    JARVIS_TRACE_BUFFER_SIZE     Max completed spans in memory (default: 1000)
-    JARVIS_SERVICE_NAME          Service name tag (default: jarvis-body)
-    JARVIS_TRACE_LOG_LEVEL       Log level for span exports (default: DEBUG)
-    JARVIS_TRACE_ENABLED         Enable/disable tracing (default: 1)
+    Ironcliw_TRACE_BUFFER_SIZE     Max completed spans in memory (default: 1000)
+    Ironcliw_SERVICE_NAME          Service name tag (default: jarvis-body)
+    Ironcliw_TRACE_LOG_LEVEL       Log level for span exports (default: DEBUG)
+    Ironcliw_TRACE_ENABLED         Enable/disable tracing (default: 1)
 
 Usage:
     from backend.core.tracing import get_tracer, start_span, traced
@@ -109,10 +109,10 @@ def _env_bool(key: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
-_TRACE_BUFFER_SIZE: int = _env_int("JARVIS_TRACE_BUFFER_SIZE", 1000)
-_SERVICE_NAME: str = os.environ.get("JARVIS_SERVICE_NAME", "jarvis-body")
-_TRACE_LOG_LEVEL: str = os.environ.get("JARVIS_TRACE_LOG_LEVEL", "DEBUG").upper()
-_TRACE_ENABLED: bool = _env_bool("JARVIS_TRACE_ENABLED", True)
+_TRACE_BUFFER_SIZE: int = _env_int("Ironcliw_TRACE_BUFFER_SIZE", 1000)
+_SERVICE_NAME: str = os.environ.get("Ironcliw_SERVICE_NAME", "jarvis-body")
+_TRACE_LOG_LEVEL: str = os.environ.get("Ironcliw_TRACE_LOG_LEVEL", "DEBUG").upper()
+_TRACE_ENABLED: bool = _env_bool("Ironcliw_TRACE_ENABLED", True)
 
 # ---------------------------------------------------------------------------
 # IPC field name constants (used for inject/extract)

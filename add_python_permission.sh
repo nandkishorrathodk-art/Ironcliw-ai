@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Step-by-step guide to add Python to Screen Recording permissions
 
 clear
@@ -160,7 +160,7 @@ echo ""
 echo "   After quitting:"
 echo "      1. Wait 3 seconds"
 echo "      2. Open Terminal again (from Applications → Utilities)"
-echo "      3. cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent"
+echo "      3. cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent"
 echo "      4. python3 check_screen_recording_permission.py"
 echo ""
 
@@ -173,7 +173,7 @@ echo "║                                                                  ║"
 echo "║  Now:                                                            ║"
 echo "║    1. Quit Terminal (Cmd+Q)                                      ║"
 echo "║    2. Reopen Terminal                                            ║"
-echo "║    3. cd to JARVIS-AI-Agent folder                               ║"
+echo "║    3. cd to Ironcliw-AI-Agent folder                               ║"
 echo "║    4. Run: python3 check_screen_recording_permission.py          ║"
 echo "║                                                                  ║"
 echo "║  You should see: ✅ Screen Recording permission is GRANTED       ║"

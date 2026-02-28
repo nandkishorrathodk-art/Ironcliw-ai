@@ -1,8 +1,8 @@
-"""
-JARVIS Notification Bridge
+﻿"""
+Ironcliw Notification Bridge
 ===========================
 
-Unified multi-channel notification delivery for proactive JARVIS output.
+Unified multi-channel notification delivery for proactive Ironcliw output.
 Channels: Voice (RealTimeVoiceCommunicator), WebSocket (broadcast_router),
           macOS native (osascript).
 
@@ -92,17 +92,17 @@ class NotificationRecord:
 _shutting_down: bool = False
 _notifications_enabled: bool = True
 _notification_history: Deque[NotificationRecord] = deque(
-    maxlen=_env_int("JARVIS_NOTIFY_HISTORY_SIZE", 200),
+    maxlen=_env_int("Ironcliw_NOTIFY_HISTORY_SIZE", 200),
 )
 _recent_notifications: Dict[str, float] = {}  # dedup_hash -> timestamp
 
-_DEDUP_WINDOW: float = _env_float("JARVIS_NOTIFY_DEDUP_WINDOW", 60.0)
-_VOICE_ACQUIRE_TIMEOUT: float = _env_float("JARVIS_NOTIFY_VOICE_TIMEOUT", 2.0)
-_VOICE_SPEAK_TIMEOUT: float = _env_float("JARVIS_NOTIFY_VOICE_SPEAK_TIMEOUT", 8.0)
+_DEDUP_WINDOW: float = _env_float("Ironcliw_NOTIFY_DEDUP_WINDOW", 60.0)
+_VOICE_ACQUIRE_TIMEOUT: float = _env_float("Ironcliw_NOTIFY_VOICE_TIMEOUT", 2.0)
+_VOICE_SPEAK_TIMEOUT: float = _env_float("Ironcliw_NOTIFY_VOICE_SPEAK_TIMEOUT", 8.0)
 _MACOS_MIN_URGENCY: int = _env_int(
-    "JARVIS_NOTIFY_MACOS_MIN_URGENCY", NotificationUrgency.HIGH,
+    "Ironcliw_NOTIFY_MACOS_MIN_URGENCY", NotificationUrgency.HIGH,
 )
-_OSASCRIPT_TIMEOUT: float = _env_float("JARVIS_NOTIFY_OSASCRIPT_TIMEOUT", 5.0)
+_OSASCRIPT_TIMEOUT: float = _env_float("Ironcliw_NOTIFY_OSASCRIPT_TIMEOUT", 5.0)
 
 
 # ─────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ async def notify_user(
     if not _notifications_enabled:
         logger.debug("[NotifyBridge] Notifications globally muted — skipping")
         return False
-    if not _env_bool("JARVIS_NOTIFICATIONS_ENABLED", True):
+    if not _env_bool("Ironcliw_NOTIFICATIONS_ENABLED", True):
         return False
 
     ctx = context or {}

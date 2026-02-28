@@ -1,8 +1,8 @@
-# Thread, Async Task, and Subprocess Cleanup Architecture
+﻿# Thread, Async Task, and Subprocess Cleanup Architecture
 
 ## Overview
 
-JARVIS implements a **comprehensive, multi-layered cleanup system** to ensure zero lingering threads, async tasks, and subprocesses at shutdown. This document describes the architecture and implementation.
+Ironcliw implements a **comprehensive, multi-layered cleanup system** to ensure zero lingering threads, async tasks, and subprocesses at shutdown. This document describes the architecture and implementation.
 
 **Latest Update (2025-11-09):** Added comprehensive subprocess lifecycle management to eliminate asyncio warnings ("Loop that handles pid X is closed" and "_GatheringFuture exception was never retrieved").
 

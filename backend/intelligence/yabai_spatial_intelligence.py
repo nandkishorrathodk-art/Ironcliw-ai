@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Yabai Spatial Intelligence Engine
 ==================================
@@ -661,7 +661,7 @@ class YabaiSpatialIntelligence:
         v78.1: Increased timeout from 5s to 10s, made configurable via env var.
         """
         # v78.1: Configurable timeout (Yabai can be slow under memory pressure)
-        query_timeout = float(os.getenv('JARVIS_YABAI_QUERY_TIMEOUT', '10.0'))
+        query_timeout = float(os.getenv('Ironcliw_YABAI_QUERY_TIMEOUT', '10.0'))
         max_retries = 3
 
         for attempt in range(max_retries):
@@ -774,7 +774,7 @@ class YabaiSpatialIntelligence:
         v78.1: Increased timeout from 5s to 10s, made configurable.
         """
         # v78.1: Configurable timeout (Yabai can be slow with many windows)
-        query_timeout = float(os.getenv('JARVIS_YABAI_QUERY_TIMEOUT', '10.0'))
+        query_timeout = float(os.getenv('Ironcliw_YABAI_QUERY_TIMEOUT', '10.0'))
         max_retries = 3
 
         for attempt in range(max_retries):

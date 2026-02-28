@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix Vision Issues - Install AVFoundation and create Vision System v2.0
 """
@@ -372,10 +372,10 @@ def main():
     
     if success_count == total_count:
         logger.info("🎉 All vision issues fixed successfully!")
-        logger.info("You can now restart JARVIS with: python start_system.py")
+        logger.info("You can now restart Ironcliw with: python start_system.py")
     else:
         logger.warning(f"⚠️  Some issues remain - {total_count - success_count} fixes failed")
-        logger.info("JARVIS will still work but with reduced functionality")
+        logger.info("Ironcliw will still work but with reduced functionality")
     
     return success_count == total_count
 

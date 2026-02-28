@@ -1,8 +1,8 @@
-# Context Intelligence System - Complete Flow
+﻿# Context Intelligence System - Complete Flow
 
 ## How All Core Modules Work Together
 
-When a user says **"JARVIS, open Safari and search for dogs"** while the screen is locked:
+When a user says **"Ironcliw, open Safari and search for dogs"** while the screen is locked:
 
 ```
 USER VOICE COMMAND

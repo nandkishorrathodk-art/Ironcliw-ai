@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Process Coordination v1.0 - Production-Grade Cross-Script Synchronization
 ==================================================================================
 
@@ -48,7 +48,7 @@ Architecture:
     │  ├── SharedStateManager (file-based fallback to env vars)             │
     │  ├── VersionCompatibilityChecker (cross-script version validation)    │
     │  ├── ProcessRecoveryEngine (crash detection + cleanup)                │
-    │  └── CrossRepoResourceCoordinator (JARVIS + Prime + Reactor)          │
+    │  └── CrossRepoResourceCoordinator (Ironcliw + Prime + Reactor)          │
     └───────────────────────────────────────────────────────────────────────┘
 
 Usage:
@@ -69,7 +69,7 @@ Usage:
         # Create VM safely
         pass
 
-Author: JARVIS Trinity v1.0 - Production-Grade Process Coordination
+Author: Ironcliw Trinity v1.0 - Production-Grade Process Coordination
 """
 
 from __future__ import annotations
@@ -142,28 +142,28 @@ COORDINATION_PROTOCOL_VERSION: Final[str] = "1.0.0"
 class EnvVars:
     """Centralized environment variable names."""
     # Supervisor coordination
-    SUPERVISOR_PID = "JARVIS_SUPERVISOR_PID"
-    SUPERVISOR_COOKIE = "JARVIS_SUPERVISOR_COOKIE"
-    SUPERVISOR_START_TIME = "JARVIS_SUPERVISOR_START_TIME"
-    SUPERVISOR_LOADING = "JARVIS_SUPERVISOR_LOADING"
-    CLEANUP_DONE = "JARVIS_CLEANUP_DONE"
-    CLEANUP_TIMESTAMP = "JARVIS_CLEANUP_TIMESTAMP"
-    MANAGED_EXTERNALLY = "JARVIS_MANAGED_EXTERNALLY"
+    SUPERVISOR_PID = "Ironcliw_SUPERVISOR_PID"
+    SUPERVISOR_COOKIE = "Ironcliw_SUPERVISOR_COOKIE"
+    SUPERVISOR_START_TIME = "Ironcliw_SUPERVISOR_START_TIME"
+    SUPERVISOR_LOADING = "Ironcliw_SUPERVISOR_LOADING"
+    CLEANUP_DONE = "Ironcliw_CLEANUP_DONE"
+    CLEANUP_TIMESTAMP = "Ironcliw_CLEANUP_TIMESTAMP"
+    MANAGED_EXTERNALLY = "Ironcliw_MANAGED_EXTERNALLY"
 
     # State directories
-    STATE_DIR = "JARVIS_STATE_DIR"
+    STATE_DIR = "Ironcliw_STATE_DIR"
     TRINITY_DIR = "TRINITY_DIR"
 
     # Timeouts
-    HEARTBEAT_INTERVAL = "JARVIS_COORD_HEARTBEAT_INTERVAL"
-    HEARTBEAT_TIMEOUT = "JARVIS_COORD_HEARTBEAT_TIMEOUT"
-    LOCK_TIMEOUT = "JARVIS_COORD_LOCK_TIMEOUT"
-    PORT_RELEASE_WAIT = "JARVIS_PORT_RELEASE_WAIT"
+    HEARTBEAT_INTERVAL = "Ironcliw_COORD_HEARTBEAT_INTERVAL"
+    HEARTBEAT_TIMEOUT = "Ironcliw_COORD_HEARTBEAT_TIMEOUT"
+    LOCK_TIMEOUT = "Ironcliw_COORD_LOCK_TIMEOUT"
+    PORT_RELEASE_WAIT = "Ironcliw_PORT_RELEASE_WAIT"
 
     # Feature flags
-    ENABLE_VERSION_CHECK = "JARVIS_ENABLE_VERSION_CHECK"
-    ENABLE_GRACEFUL_DEGRADATION = "JARVIS_ENABLE_GRACEFUL_DEGRADATION"
-    STANDALONE_MODE = "JARVIS_STANDALONE_MODE"
+    ENABLE_VERSION_CHECK = "Ironcliw_ENABLE_VERSION_CHECK"
+    ENABLE_GRACEFUL_DEGRADATION = "Ironcliw_ENABLE_GRACEFUL_DEGRADATION"
+    STANDALONE_MODE = "Ironcliw_STANDALONE_MODE"
 
 
 def _env_float(key: str, default: float) -> float:
@@ -516,12 +516,12 @@ class SupervisorHealthValidator:
         # Check environment variables first (fast path)
         supervisor_pid_str = os.environ.get(EnvVars.SUPERVISOR_PID)
         if not supervisor_pid_str:
-            return False, "No JARVIS_SUPERVISOR_PID set"
+            return False, "No Ironcliw_SUPERVISOR_PID set"
 
         try:
             supervisor_pid = int(supervisor_pid_str)
         except ValueError:
-            return False, f"Invalid JARVIS_SUPERVISOR_PID: {supervisor_pid_str}"
+            return False, f"Invalid Ironcliw_SUPERVISOR_PID: {supervisor_pid_str}"
 
         # Check if process exists
         if not await self._is_process_alive(supervisor_pid):
@@ -605,7 +605,7 @@ class SupervisorHealthValidator:
 
         # Check cleanup flag
         if os.environ.get(EnvVars.CLEANUP_DONE) != "1":
-            return False, "JARVIS_CLEANUP_DONE not set"
+            return False, "Ironcliw_CLEANUP_DONE not set"
 
         # Verify cleanup timestamp is recent
         cleanup_timestamp = os.environ.get(EnvVars.CLEANUP_TIMESTAMP)
@@ -1005,7 +1005,7 @@ class SharedStateManager:
         self._lock = asyncio.Lock()
         self._cache: Optional[SharedState] = None
         self._cache_time: float = 0
-        self._cache_ttl: float = _env_float("JARVIS_STATE_CACHE_TTL", 2.0)
+        self._cache_ttl: float = _env_float("Ironcliw_STATE_CACHE_TTL", 2.0)
 
     async def read(self, bypass_cache: bool = False) -> SharedState:
         """Read shared state."""
@@ -1418,9 +1418,9 @@ class ProcessCoordinationHub:
         self._identity = ProcessIdentity.create(entry_point)
 
         # Set environment variables for subprocess inheritance
-        os.environ[EnvVars.SUPERVISOR_PID if entry_point == EntryPoint.RUN_SUPERVISOR else "JARVIS_PROCESS_PID"] = str(self._identity.pid)
-        os.environ[EnvVars.SUPERVISOR_COOKIE if entry_point == EntryPoint.RUN_SUPERVISOR else "JARVIS_PROCESS_COOKIE"] = self._identity.cookie
-        os.environ[EnvVars.SUPERVISOR_START_TIME if entry_point == EntryPoint.RUN_SUPERVISOR else "JARVIS_PROCESS_START_TIME"] = str(self._identity.start_time)
+        os.environ[EnvVars.SUPERVISOR_PID if entry_point == EntryPoint.RUN_SUPERVISOR else "Ironcliw_PROCESS_PID"] = str(self._identity.pid)
+        os.environ[EnvVars.SUPERVISOR_COOKIE if entry_point == EntryPoint.RUN_SUPERVISOR else "Ironcliw_PROCESS_COOKIE"] = self._identity.cookie
+        os.environ[EnvVars.SUPERVISOR_START_TIME if entry_point == EntryPoint.RUN_SUPERVISOR else "Ironcliw_PROCESS_START_TIME"] = str(self._identity.start_time)
 
         return self._identity
 
@@ -1473,7 +1473,7 @@ class ProcessCoordinationHub:
         """
         Determine if we should trust supervisor's cleanup.
 
-        Use this instead of checking JARVIS_CLEANUP_DONE directly.
+        Use this instead of checking Ironcliw_CLEANUP_DONE directly.
         """
         return await self.supervisor_validator.trust_supervisor_cleanup()
 

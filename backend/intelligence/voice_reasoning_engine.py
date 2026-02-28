@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Authentication Reasoning Engine
 ======================================
 
@@ -11,10 +11,10 @@ This module implements adaptive authentication flow with:
 - Complete failure diagnosis with hypothesis generation
 - Learning from failures to improve future authentications
 
-Part of JARVIS v6.0 Clinical-Grade Intelligence Voice Authentication
+Part of Ironcliw v6.0 Clinical-Grade Intelligence Voice Authentication
 Inspired by: LangGraph (multi-step reasoning), Open Interpreter (adaptive feedback)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

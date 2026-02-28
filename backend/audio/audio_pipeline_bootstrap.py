@@ -1,4 +1,4 @@
-"""
+﻿"""
 Audio Pipeline Bootstrap (Composition Layer)
 =============================================
 
@@ -215,7 +215,7 @@ def _create_bargein_vad_consumer(barge_in):
 
     Runs in the audio thread — must be fast and non-blocking.
     """
-    _energy_threshold = float(os.getenv("JARVIS_BARGEIN_ENERGY_THRESHOLD", "0.01"))
+    _energy_threshold = float(os.getenv("Ironcliw_BARGEIN_ENERGY_THRESHOLD", "0.01"))
 
     def _on_frame(frame: np.ndarray) -> None:
         if frame.size == 0:

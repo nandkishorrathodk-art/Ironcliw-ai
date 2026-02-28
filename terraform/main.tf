@@ -1,4 +1,4 @@
-terraform {
+﻿terraform {
   required_version = ">= 1.0.0"
 
   required_providers {
@@ -96,7 +96,7 @@ module "compute" {
 #
 # For development, use:
 # - Local Redis: docker run -p 6379:6379 redis:alpine
-# - In-memory caching (built into JARVIS)
+# - In-memory caching (built into Ironcliw)
 
 module "storage" {
   count = var.enable_redis ? 1 : 0
@@ -165,11 +165,11 @@ locals {
 }
 
 # =============================================================================
-# 🧠 JARVIS-PRIME TIER-0 BRAIN (DISABLED by default - Cloud Run)
+# 🧠 Ironcliw-PRIME TIER-0 BRAIN (DISABLED by default - Cloud Run)
 # =============================================================================
 # ⚠️ COST: Pay-per-request (~$0 when idle, ~$0.02-0.05/hr when running)
 #
-# Deploys JARVIS-Prime to Cloud Run for serverless inference.
+# Deploys Ironcliw-Prime to Cloud Run for serverless inference.
 # Auto-scales 0-3 instances based on load.
 #
 # Prerequisites:
@@ -209,11 +209,11 @@ module "jarvis_prime" {
 }
 
 # =============================================================================
-# 🤖 JARVIS BACKEND CLOUD RUN (v9.4)
+# 🤖 Ironcliw BACKEND CLOUD RUN (v9.4)
 # =============================================================================
 # ⚠️ COST: Pay-per-request (~$0 when idle, ~$0.05-0.15/hr when running)
 #
-# Deploys the full JARVIS-AI-Agent backend with:
+# Deploys the full Ironcliw-AI-Agent backend with:
 # - Neural Mesh (60+ agents)
 # - Data Flywheel
 # - Intelligent Continuous Scraping
@@ -251,7 +251,7 @@ module "jarvis_backend" {
   neural_mesh_enabled    = var.neural_mesh_enabled
   neural_mesh_max_agents = var.neural_mesh_max_agents
 
-  # Integration with JARVIS-Prime (if enabled)
+  # Integration with Ironcliw-Prime (if enabled)
   jarvis_prime_url = var.enable_jarvis_prime && length(module.jarvis_prime) > 0 ? module.jarvis_prime[0].service_url : ""
 
   # Optional: Connect to Redis (if enabled)

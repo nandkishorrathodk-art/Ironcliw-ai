@@ -1,4 +1,4 @@
-# JARVIS Fresh Windows Install Blueprint
+﻿# Ironcliw Fresh Windows Install Blueprint
 ## Delete Everything → Clone → Run → Test
 **Repo:** `nandkishorrathodk-art/Ironcliw-ai`
 **Target OS:** Windows 10 / Windows 11
@@ -8,13 +8,13 @@
 
 ## TABLE OF CONTENTS
 1. [Before You Start — Checklist](#1-before-you-start--checklist)
-2. [Step 1 — Clean Delete Old JARVIS](#2-step-1--clean-delete-old-jarvis)
+2. [Step 1 — Clean Delete Old Ironcliw](#2-step-1--clean-delete-old-jarvis)
 3. [Step 2 — Install Prerequisites](#3-step-2--install-prerequisites)
 4. [Step 3 — Fresh Clone from GitHub](#4-step-3--fresh-clone-from-github)
 5. [Step 4 — Install All Python Dependencies](#5-step-4--install-all-python-dependencies)
 6. [Step 5 — Install Frontend Dependencies](#6-step-5--install-frontend-dependencies)
 7. [Step 6 — Configure Environment (.env)](#7-step-6--configure-environment-env)
-8. [Step 7 — Run JARVIS](#8-step-7--run-jarvis)
+8. [Step 7 — Run Ironcliw](#8-step-7--run-jarvis)
 9. [Step 8 — Integration Tests (Pass All 14)](#9-step-8--integration-tests-pass-all-14)
 10. [Step 9 — Voice Test](#10-step-9--voice-test)
 11. [Troubleshooting Guide](#11-troubleshooting-guide)
@@ -57,36 +57,36 @@ If anything is missing, install it first:
 
 ---
 
-## 2. Step 1 — Clean Delete Old JARVIS
+## 2. Step 1 — Clean Delete Old Ironcliw
 
 ### Option A — Delete via PowerShell (Safe)
 ```powershell
 # ⚠️ WARNING: This permanently deletes the folder
 # Make sure you have committed everything to GitHub first!
 
-# Go UP from the JARVIS folder (don't be inside it)
+# Go UP from the Ironcliw folder (don't be inside it)
 cd C:\Users\nandk
 
 # Verify git is clean before deleting
-cd JARVIS
+cd Ironcliw
 git status
 git log --oneline -3
 
 # If everything is committed and pushed:
 cd C:\Users\nandk
-Remove-Item -Recurse -Force "C:\Users\nandk\JARVIS"
+Remove-Item -Recurse -Force "C:\Users\nandk\Ironcliw"
 
 # Verify it's gone
-Test-Path "C:\Users\nandk\JARVIS"
+Test-Path "C:\Users\nandk\Ironcliw"
 # Should print: False
 ```
 
 ### Option B — Delete via Windows Explorer
 1. Open `C:\Users\nandk\`
-2. Right-click `JARVIS` folder → Delete
+2. Right-click `Ironcliw` folder → Delete
 3. Empty Recycle Bin
 
-### Also Clean JARVIS Data (Optional — keeps your voice profiles etc.)
+### Also Clean Ironcliw Data (Optional — keeps your voice profiles etc.)
 ```powershell
 # ⚠️ OPTIONAL: Only run if you want a completely fresh start
 # This deletes your learning database, voice profiles, cached data
@@ -126,14 +126,14 @@ python -c "import ctypes; print('ctypes OK')"
 ## 4. Step 3 — Fresh Clone from GitHub
 
 ```powershell
-# Go to where you want JARVIS installed
+# Go to where you want Ironcliw installed
 cd C:\Users\nandk
 
 # Clone your Windows fork
-git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git JARVIS
+git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git Ironcliw
 
 # Enter the folder
-cd JARVIS
+cd Ironcliw
 
 # Verify you're on main branch with latest commit
 git log --oneline -5
@@ -153,7 +153,7 @@ e2726392 docs(windows): Add native build dependencies to Quick Start
 
 ## 5. Step 4 — Install All Python Dependencies
 
-Run these in order from inside `C:\Users\nandk\JARVIS`:
+Run these in order from inside `C:\Users\nandk\Ironcliw`:
 
 ### Part A — Core requirements
 ```powershell
@@ -214,7 +214,7 @@ pip install pyvda pygetwindow
 ## 6. Step 5 — Install Frontend Dependencies
 
 ```powershell
-# From C:\Users\nandk\JARVIS
+# From C:\Users\nandk\Ironcliw
 cd frontend
 npm install
 cd ..
@@ -247,21 +247,21 @@ ANTHROPIC_API_KEY=sk-ant-YOUR_KEY_HERE
 FIREWORKS_API_KEY=fw-YOUR_KEY_HERE
 
 # ─── Windows Settings (these are already set correctly) ──────────
-JARVIS_AUTO_BYPASS_WINDOWS=true
-JARVIS_VOICE_BIOMETRIC_ENABLED=false
-JARVIS_ML_DEVICE=cpu
-JARVIS_DYNAMIC_PORTS=false
-JARVIS_SKIP_GCP=true
-JARVIS_SKIP_DOCKER=true
-JARVIS_DISABLE_SWIFT_EXTENSIONS=true
-JARVIS_DISABLE_RUST_EXTENSIONS=true
-JARVIS_DISABLE_COREML=true
+Ironcliw_AUTO_BYPASS_WINDOWS=true
+Ironcliw_VOICE_BIOMETRIC_ENABLED=false
+Ironcliw_ML_DEVICE=cpu
+Ironcliw_DYNAMIC_PORTS=false
+Ironcliw_SKIP_GCP=true
+Ironcliw_SKIP_DOCKER=true
+Ironcliw_DISABLE_SWIFT_EXTENSIONS=true
+Ironcliw_DISABLE_RUST_EXTENSIONS=true
+Ironcliw_DISABLE_COREML=true
 
 # ─── Voice ───────────────────────────────────────────────────────
 WHISPER_MODEL_SIZE=base
 
 # ─── Ports ───────────────────────────────────────────────────────
-JARVIS_PORT=8010
+Ironcliw_PORT=8010
 FRONTEND_PORT=3000
 ```
 
@@ -280,10 +280,10 @@ git check-ignore -v .env
 
 ---
 
-## 8. Step 7 — Run JARVIS
+## 8. Step 7 — Run Ironcliw
 
 ```powershell
-# From C:\Users\nandk\JARVIS
+# From C:\Users\nandk\Ironcliw
 python start_system.py
 ```
 
@@ -302,7 +302,7 @@ FULL MODE reached!
 ✓ Frontend verified at port 3000
 
 ============================================================
-🎯 JARVIS is ready!
+🎯 Ironcliw is ready!
 ============================================================
   • Frontend: http://localhost:3000/
   • Backend API: http://localhost:8010/docs
@@ -319,13 +319,13 @@ FULL MODE reached!
 Run this to verify all Windows port features are working:
 
 ```powershell
-# From C:\Users\nandk\JARVIS
+# From C:\Users\nandk\Ironcliw
 python test_integration.py
 ```
 
 ### Expected: 14/14 PASS
 ```
-=== JARVIS Windows Integration Test — Phases 12-20 ===
+=== Ironcliw Windows Integration Test — Phases 12-20 ===
 
   PASS  Phase 12 — notification_bridge import
   PASS  Phase 12 — ml_engine_registry import
@@ -353,29 +353,29 @@ If any FAIL — see [Troubleshooting Guide](#11-troubleshooting-guide) below.
 
 ## 10. Step 9 — Voice Test
 
-Once JARVIS is running in the browser:
+Once Ironcliw is running in the browser:
 
-### Test 1 — TTS (JARVIS speaks to you)
+### Test 1 — TTS (Ironcliw speaks to you)
 1. Open http://localhost:3000
-2. Type in the chat: `Hello JARVIS`
+2. Type in the chat: `Hello Ironcliw`
 3. You should hear **"Hello! How can I assist you today?"** in a British male voice (`en-GB-RyanNeural`)
 
 ### Test 2 — Wake Word
 1. Make sure microphone is allowed in your browser
-2. Say **"Hey JARVIS"** out loud
-3. You should see the waveform activate and JARVIS respond
+2. Say **"Hey Ironcliw"** out loud
+3. You should see the waveform activate and Ironcliw respond
 
 ### Test 3 — Vision
 1. Type: `Can you see my screen?`
-2. JARVIS should describe what's on your screen
+2. Ironcliw should describe what's on your screen
 
 ### Test 4 — System Info
 1. Type: `What's my RAM usage?`
-2. JARVIS should report your current memory stats
+2. Ironcliw should report your current memory stats
 
 ### Test 5 — Voice Command
 1. Say: **"What time is it?"**
-2. JARVIS should respond with the current time
+2. Ironcliw should respond with the current time
 
 ---
 
@@ -399,7 +399,7 @@ pip install -r requirements.txt --ignore-requires-python
 
 ```powershell
 # Test edge-tts directly
-python -c "import asyncio; import edge_tts; async def t(): c=edge_tts.Communicate('Hello JARVIS', voice='en-GB-RyanNeural'); await c.save('test.mp3'); import os; print(os.path.getsize('test.mp3'), 'bytes'); os.unlink('test.mp3'); asyncio.run(t())"
+python -c "import asyncio; import edge_tts; async def t(): c=edge_tts.Communicate('Hello Ironcliw', voice='en-GB-RyanNeural'); await c.save('test.mp3'); import os; print(os.path.getsize('test.mp3'), 'bytes'); os.unlink('test.mp3'); asyncio.run(t())"
 ```
 
 If it fails with DNS error:
@@ -424,8 +424,8 @@ python -c "import sys; sys.path.insert(0,'backend'); import core.resilience.atom
 
 ```powershell
 # Check .env has:
-JARVIS_DYNAMIC_PORTS=false
-JARVIS_PORT=8010
+Ironcliw_DYNAMIC_PORTS=false
+Ironcliw_PORT=8010
 
 # Kill any stale processes
 netstat -ano | findstr :8010
@@ -524,7 +524,7 @@ This is a known warning on Windows — it's non-fatal and can be ignored. The sy
 ✓ Backend API ready (0.6s)
 ✓ Frontend ready (0.3s)
 
-🎯 JARVIS is ready!
+🎯 Ironcliw is ready!
   • Frontend: http://localhost:3000/
   • Backend API: http://localhost:8010/docs
 ```
@@ -545,7 +545,7 @@ PASSED: 14/14
 
 ### Frontend
 - URL: http://localhost:3000
-- Should show JARVIS interface
+- Should show Ironcliw interface
 - Status: "SYSTEM READY" (not "CONNECTING")
 - Voice waveform visible in top area
 
@@ -557,12 +557,12 @@ PASSED: 14/14
 # === FRESH INSTALL IN ONE BLOCK ===
 
 # 1. Delete old (from parent folder)
-Remove-Item -Recurse -Force "C:\Users\nandk\JARVIS"
+Remove-Item -Recurse -Force "C:\Users\nandk\Ironcliw"
 
 # 2. Clone fresh
 cd C:\Users\nandk
-git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git JARVIS
-cd JARVIS
+git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git Ironcliw
+cd Ironcliw
 
 # 3. Install Python deps
 pip install -r requirements.txt
@@ -579,7 +579,7 @@ notepad .env   # Add your API keys
 python test_integration.py
 # Must show: PASSED: 14/14
 
-# 7. Start JARVIS
+# 7. Start Ironcliw
 python start_system.py
 # Opens http://localhost:3000 automatically
 ```

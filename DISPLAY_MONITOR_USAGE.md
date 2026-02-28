@@ -1,4 +1,4 @@
-# JARVIS Advanced Display Monitor - Usage Guide
+﻿# Ironcliw Advanced Display Monitor - Usage Guide
 
 **Version:** 2.0
 **Author:** Derek Russell
@@ -21,11 +21,11 @@
 
 ## 🎯 Overview
 
-The JARVIS Advanced Display Monitor is a production-ready system for detecting and managing external displays (especially AirPlay TVs) with:
+The Ironcliw Advanced Display Monitor is a production-ready system for detecting and managing external displays (especially AirPlay TVs) with:
 
 - ✅ **Zero hardcoding** - Everything is configuration-driven
 - ✅ **Multi-method detection** - AppleScript, Core Graphics, Yabai
-- ✅ **Voice integration** - JARVIS speaks when displays are detected
+- ✅ **Voice integration** - Ironcliw speaks when displays are detected
 - ✅ **Smart caching** - Reduces API calls and improves performance
 - ✅ **Event-driven** - React to display connect/disconnect events
 - ✅ **Async architecture** - Non-blocking, high-performance
@@ -359,7 +359,7 @@ osascript -e 'tell application "System Events" to tell process "ControlCenter" t
 1. Check voice is enabled in config
 2. Test macOS say command: `say "test"`
 3. Verify voice name exists: `say -v ?`
-4. Check JARVIS voice integration is available
+4. Check Ironcliw voice integration is available
 
 ### Problem: "High CPU usage"
 
@@ -475,12 +475,12 @@ Override settings via environment variables:
 
 ```bash
 # Voice settings
-export JARVIS_VOICE_ENABLED=true
-export JARVIS_VOICE_NAME=Samantha
-export JARVIS_VOICE_RATE=1.2
+export Ironcliw_VOICE_ENABLED=true
+export Ironcliw_VOICE_NAME=Samantha
+export Ironcliw_VOICE_RATE=1.2
 
 # Monitoring settings
-export JARVIS_DISPLAY_CHECK_INTERVAL=15.0
+export Ironcliw_DISPLAY_CHECK_INTERVAL=15.0
 
 # Start monitor
 python3 start_tv_monitoring.py
@@ -499,11 +499,11 @@ python3 start_tv_monitoring.py
 
 ---
 
-## 🔄 Integration with JARVIS
+## 🔄 Integration with Ironcliw
 
 ### Voice Integration
 
-The display monitor integrates with JARVIS voice systems:
+The display monitor integrates with Ironcliw voice systems:
 
 1. `voice_engine.py` (preferred)
 2. `voice_integration_handler.py` (fallback)
@@ -512,7 +512,7 @@ The display monitor integrates with JARVIS voice systems:
 ### Event Bus Integration
 
 ```python
-# Emit display events to JARVIS event bus
+# Emit display events to Ironcliw event bus
 from event_bus import EventBus
 
 event_bus = EventBus()
@@ -524,7 +524,7 @@ monitor.register_callback('display_detected', lambda **kwargs:
 
 ### Intent Routing
 
-Add display monitoring intents to JARVIS:
+Add display monitoring intents to Ironcliw:
 
 ```json
 {

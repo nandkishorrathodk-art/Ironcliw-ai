@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Observability System v4.0 - Enterprise-Grade Distributed Monitoring
 ============================================================================
 
@@ -15,7 +15,7 @@ Gap 8: Dependency Graph Visualization - Dynamic graph generation
 Gap 9: Request Flow Visualization - Request flow tracking
 Gap 10: Resource Usage Monitoring - CPU/Memory/Disk/Network monitoring
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 4.0.0
 """
 

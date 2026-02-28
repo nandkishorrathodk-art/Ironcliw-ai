@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS AGI OS - Advanced Intelligent Startup Greeter
+Ironcliw AGI OS - Advanced Intelligent Startup Greeter
 
 A sophisticated, context-aware greeting system that delivers personalized,
 dynamic greetings based on multiple contextual factors:
@@ -31,7 +31,7 @@ Features:
 Example:
     >>> greeter = await get_startup_greeter()
     >>> await greeter.greet_on_startup()
-    # JARVIS: "Good morning, Derek. You have a meeting in 30 minutes."
+    # Ironcliw: "Good morning, Derek. You have a meeting in 30 minutes."
 """
 
 import asyncio
@@ -63,7 +63,7 @@ class GreetingContext(Enum):
     SCREEN_UNLOCK = auto()       # Screen unlock after lock
     RETURN_AFTER_ABSENCE = auto() # User returns after being away
     SCHEDULED_CHECKIN = auto()   # Periodic check-in
-    VOICE_ACTIVATED = auto()     # User said "Hey JARVIS"
+    VOICE_ACTIVATED = auto()     # User said "Hey Ironcliw"
     MANUAL_REQUEST = auto()      # User explicitly requested greeting
 
 
@@ -80,7 +80,7 @@ class TimePeriod(Enum):
 
 
 class GreetingPersonality(Enum):
-    """Personality modes for JARVIS greetings."""
+    """Personality modes for Ironcliw greetings."""
     FORMAL = "formal"             # Professional, butler-like
     FRIENDLY = "friendly"         # Warm, casual
     EFFICIENT = "efficient"       # Brief, to the point
@@ -244,7 +244,7 @@ class GreetingTemplateRegistry:
             # Morning - Formal
             GreetingTemplate(
                 id="formal_morning_startup",
-                template="Good morning, {name}. JARVIS online and ready for your command.",
+                template="Good morning, {name}. Ironcliw online and ready for your command.",
                 personality=GreetingPersonality.FORMAL,
                 contexts=startup_contexts,
                 time_periods=morning_periods,
@@ -263,7 +263,7 @@ class GreetingTemplateRegistry:
             # Afternoon - Formal
             GreetingTemplate(
                 id="formal_afternoon_startup",
-                template="Good afternoon, {name}. JARVIS at your service.",
+                template="Good afternoon, {name}. Ironcliw at your service.",
                 personality=GreetingPersonality.FORMAL,
                 contexts=startup_contexts,
                 time_periods=afternoon_periods,
@@ -281,7 +281,7 @@ class GreetingTemplateRegistry:
             # Evening - Formal
             GreetingTemplate(
                 id="formal_evening_startup",
-                template="Good evening, {name}. JARVIS online, ready for your command.",
+                template="Good evening, {name}. Ironcliw online, ready for your command.",
                 personality=GreetingPersonality.FORMAL,
                 contexts=startup_contexts,
                 time_periods=evening_periods,
@@ -300,7 +300,7 @@ class GreetingTemplateRegistry:
             # Late Night - Formal
             GreetingTemplate(
                 id="formal_latenight_startup",
-                template="Good evening, {name}. JARVIS standing by.",
+                template="Good evening, {name}. Ironcliw standing by.",
                 personality=GreetingPersonality.FORMAL,
                 contexts=startup_contexts,
                 time_periods=night_periods,
@@ -308,7 +308,7 @@ class GreetingTemplateRegistry:
             ),
             GreetingTemplate(
                 id="formal_latenight_working",
-                template="{name}, JARVIS online. Working late, I see.",
+                template="{name}, Ironcliw online. Working late, I see.",
                 personality=GreetingPersonality.FORMAL,
                 contexts=wake_contexts | startup_contexts,
                 time_periods=night_periods,
@@ -322,7 +322,7 @@ class GreetingTemplateRegistry:
             # Morning - Friendly
             GreetingTemplate(
                 id="friendly_morning_startup",
-                template="Morning, {name}! JARVIS here, ready when you are.",
+                template="Morning, {name}! Ironcliw here, ready when you are.",
                 personality=GreetingPersonality.FRIENDLY,
                 contexts=startup_contexts,
                 time_periods=morning_periods,
@@ -340,7 +340,7 @@ class GreetingTemplateRegistry:
             # Afternoon - Friendly
             GreetingTemplate(
                 id="friendly_afternoon_startup",
-                template="Hey {name}! JARVIS reporting for duty.",
+                template="Hey {name}! Ironcliw reporting for duty.",
                 personality=GreetingPersonality.FRIENDLY,
                 contexts=startup_contexts,
                 time_periods=afternoon_periods,
@@ -373,7 +373,7 @@ class GreetingTemplateRegistry:
 
             GreetingTemplate(
                 id="efficient_online",
-                template="JARVIS online, {name}.",
+                template="Ironcliw online, {name}.",
                 personality=GreetingPersonality.EFFICIENT,
                 contexts=all_contexts,
                 time_periods=all_periods,
@@ -390,7 +390,7 @@ class GreetingTemplateRegistry:
             ),
             GreetingTemplate(
                 id="efficient_standing_by",
-                template="JARVIS standing by, {name}.",
+                template="Ironcliw standing by, {name}.",
                 personality=GreetingPersonality.EFFICIENT,
                 contexts=wake_contexts,
                 time_periods=all_periods,
@@ -864,7 +864,7 @@ class LongAbsenceAddition(GreetingAddition):
 
 class StartupGreeter:
     """
-    Advanced startup greeter for JARVIS AGI OS.
+    Advanced startup greeter for Ironcliw AGI OS.
 
     Delivers intelligent, context-aware greetings that adapt to:
     - Time of day with granular periods
@@ -1181,7 +1181,7 @@ class StartupGreeter:
 
         if not template:
             # Fallback greeting
-            greeting_text = f"JARVIS online, {info.owner_first_name}."
+            greeting_text = f"Ironcliw online, {info.owner_first_name}."
             template_id = "fallback"
             personality_used = GreetingPersonality.EFFICIENT
         else:
@@ -1359,7 +1359,7 @@ async def notify_sleep(user_initiated: bool = True) -> None:
     Convenience function to deliver sleep farewell.
 
     This should be called when the laptop is about to go to sleep
-    to give JARVIS a chance to say goodbye dynamically.
+    to give Ironcliw a chance to say goodbye dynamically.
 
     Args:
         user_initiated: True if user closed the laptop, False for auto-sleep

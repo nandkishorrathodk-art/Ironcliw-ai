@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive Microphone Diagnostic and Auto-Fix System
 
-This module provides automated detection and resolution of microphone issues for JARVIS.
+This module provides automated detection and resolution of microphone issues for Ironcliw.
 It performs system-level diagnostics, identifies blocking applications, tests microphone
 access, and applies automatic fixes where possible.
 
@@ -156,7 +156,7 @@ class MicrophoneDiagnostic:
             >>> print(f"Status: {results['status']}")
             >>> print(f"Found {len(results['devices'])} devices")
         """
-        print("\n🔍 JARVIS Microphone Diagnostic System")
+        print("\n🔍 Ironcliw Microphone Diagnostic System")
         print("=" * 50)
         
         results: Dict[str, Any] = {
@@ -639,7 +639,7 @@ class MicrophoneDiagnostic:
         """Generate specific recommendations based on diagnostic results.
         
         Analyzes the diagnostic results to provide actionable recommendations
-        for resolving microphone issues and optimizing JARVIS performance.
+        for resolving microphone issues and optimizing Ironcliw performance.
         
         Returns:
             List of recommendation strings for the user to follow.
@@ -654,11 +654,11 @@ class MicrophoneDiagnostic:
         
         # Browser recommendations
         if not any(r.status for r in self.diagnostic_results if r.check_name == "Browser Compatibility"):
-            recommendations.append("Use Chrome or Edge for best JARVIS voice compatibility")
+            recommendations.append("Use Chrome or Edge for best Ironcliw voice compatibility")
         
         # Blocking apps recommendations
         if self.blocking_apps:
-            recommendations.append(f"Close these apps before using JARVIS: {', '.join(self.blocking_apps[:3])}")
+            recommendations.append(f"Close these apps before using Ironcliw: {', '.join(self.blocking_apps[:3])}")
         
         # Device recommendations
         if not self.available_devices:
@@ -692,7 +692,7 @@ class MicrophoneDiagnostic:
         """
         report = []
         report.append("\n" + "=" * 60)
-        report.append("📊 JARVIS MICROPHONE DIAGNOSTIC REPORT")
+        report.append("📊 Ironcliw MICROPHONE DIAGNOSTIC REPORT")
         report.append("=" * 60)
         report.append(f"Time: {results['timestamp']}")
         report.append(f"Platform: {results['platform']}")

@@ -1,5 +1,5 @@
-"""
-JARVIS BrowsingAgent — Structured Web Automation
+﻿"""
+Ironcliw BrowsingAgent — Structured Web Automation
 
 Architecture:
 - SearchHandler: Wraps existing WebSearchExtractor (DuckDuckGo/Brave/Bing/Google/SearXNG)
@@ -555,7 +555,7 @@ class FormHandler:
 # =============================================================================
 
 class ContentIntelligence:
-    """Optional LLM-powered content analysis via JARVIS-Prime.
+    """Optional LLM-powered content analysis via Ironcliw-Prime.
 
     Caches the httpx client to reuse TCP connections across requests.
     """
@@ -691,7 +691,7 @@ class BrowsingTelemetry:
 # =============================================================================
 
 class BrowsingAgent:
-    """Structured web browsing agent for JARVIS.
+    """Structured web browsing agent for Ironcliw.
 
     Search via WebSearchExtractor API (always available).
     Navigate/extract/form via Playwright (optional).

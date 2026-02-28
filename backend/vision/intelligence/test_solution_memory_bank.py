@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for Solution Memory Bank
 Demonstrates solution capture, storage, retrieval, and application
@@ -232,7 +232,7 @@ async def test_complex_scenarios():
         git_solution = [
             {
                 'action': 'type',
-                'parameters': {'text': 'git config --global user.name "JARVIS"'},
+                'parameters': {'text': 'git config --global user.name "Ironcliw"'},
                 'wait_condition': 'command_entered'
             },
             {

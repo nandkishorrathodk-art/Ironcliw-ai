@@ -1,4 +1,4 @@
-"""
+﻿"""
 v78.0: Adaptive Timeout Manager
 ================================
 
@@ -43,7 +43,7 @@ Usage:
     with manager.track_operation(OperationType.API_CALL):
         result = await some_operation()
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 from __future__ import annotations

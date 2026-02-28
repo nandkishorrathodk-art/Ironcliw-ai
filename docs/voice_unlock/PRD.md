@@ -1,9 +1,9 @@
-# Voice-Based MacBook Unlock for JARVIS: Product Requirements Document (PRD)
+﻿# Voice-Based MacBook Unlock for Ironcliw: Product Requirements Document (PRD)
 
 ## 1. Executive Summary
 
 ### Vision
-Transform JARVIS into the perfect Apple Watch Unlock alternative, enabling MacBook unlocking through voice biometrics for users without an Apple Watch. Create a seamless "walk up and talk" experience that matches the convenience of Apple's proximity unlock.
+Transform Ironcliw into the perfect Apple Watch Unlock alternative, enabling MacBook unlocking through voice biometrics for users without an Apple Watch. Create a seamless "walk up and talk" experience that matches the convenience of Apple's proximity unlock.
 
 ### Value Proposition
 - **Apple Watch Alternative**: Get proximity-unlock convenience without buying an Apple Watch
@@ -68,7 +68,7 @@ Transform JARVIS into the perfect Apple Watch Unlock alternative, enabling MacBo
 - Voice proximity detection (volume-based)
 - Continuous voice authentication option
 - Workflow automation on voice unlock
-- Seamless JARVIS personality integration
+- Seamless Ironcliw personality integration
 
 ## 3. Technical Architecture & Swift Requirements
 
@@ -137,7 +137,7 @@ Required Frameworks:
 - **Storage**: Encrypted in Keychain
 
 ### Authentication Flow
-1. Wake phrase detection ("Hey JARVIS")
+1. Wake phrase detection ("Hey Ironcliw")
 2. Identity prompt ("Unlock my Mac")
 3. Voice analysis (1-2 seconds)
 4. Liveness verification
@@ -159,7 +159,7 @@ Required Frameworks:
 ## 5. User Experience Flow
 
 ### First-Time Setup
-1. JARVIS introduction to voice unlock
+1. Ironcliw introduction to voice unlock
 2. Microphone permission request
 3. Voice enrollment wizard
 4. Test unlock sequence
@@ -168,8 +168,8 @@ Required Frameworks:
 ### Daily Usage (Apple Watch Alternative)
 ```
 User: *approaches locked MacBook* (no Apple Watch needed)
-User: "Hey JARVIS, unlock my Mac"
-JARVIS: "Voice verified. Welcome back, Sir."
+User: "Hey Ironcliw, unlock my Mac"
+Ironcliw: "Voice verified. Welcome back, Sir."
 *Mac unlocks instantly - just like with Apple Watch*
 ```
 
@@ -194,7 +194,7 @@ JARVIS: "Voice verified. Welcome back, Sir."
 - Feature retention: 90% after 30 days
 
 ### Business KPIs
-- New JARVIS installations: +50%
+- New Ironcliw installations: +50%
 - Premium upgrade rate: +30%
 - Press coverage: 10+ tech publications
 - User testimonials: 100+ positive reviews
@@ -239,4 +239,4 @@ JARVIS: "Voice verified. Welcome back, Sir."
 - ML engineer for voice models
 - QA engineer for security testing
 
-This feature positions JARVIS as the essential Apple Watch Unlock alternative, offering the same magical unlock experience without requiring additional hardware. Perfect for the millions of Mac users who want hands-free convenience but don't own an Apple Watch. The phased approach ensures we can deliver immediate value as a Watch alternative while building toward enhanced voice authentication features.
+This feature positions Ironcliw as the essential Apple Watch Unlock alternative, offering the same magical unlock experience without requiring additional hardware. Perfect for the millions of Mac users who want hands-free convenience but don't own an Apple Watch. The phased approach ensures we can deliver immediate value as a Watch alternative while building toward enhanced voice authentication features.

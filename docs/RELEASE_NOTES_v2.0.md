@@ -1,4 +1,4 @@
-# Release Notes: JARVIS v2.0 - Unified Startup Progress System
+﻿# Release Notes: Ironcliw v2.0 - Unified Startup Progress System
 
 **Release Date:** December 19, 2025
 **Version:** 2.0.0
@@ -34,13 +34,13 @@ All Systems:   "45% (3/7 components)"  ✅ Synchronized
 
 **Before:**
 ```
-Voice: "JARVIS is online!" (at 45% progress) ❌
+Voice: "Ironcliw is online!" (at 45% progress) ❌
 Reality: Only backend ready, frontend still loading
 ```
 
 **After:**
 ```
-Voice: "JARVIS is online!" (only when hub.is_ready() = True) ✅
+Voice: "Ironcliw is online!" (only when hub.is_ready() = True) ✅
 Reality: ALL required components complete
 ```
 
@@ -122,7 +122,7 @@ python3 run_supervisor.py
 
 **What to Expect:**
 - ✅ Loading bar progress matches backend logs exactly
-- ✅ Voice announces "JARVIS is online!" only when truly ready
+- ✅ Voice announces "Ironcliw is online!" only when truly ready
 - ✅ All systems show same percentage (synchronized)
 - ✅ Smooth, monotonic progress (never decreases)
 
@@ -149,10 +149,10 @@ await hub.component_complete("backend", "Backend ready!")
 
 # Check ready state (CRITICAL for voice timing)
 if hub.is_ready():
-    await narrator.speak("JARVIS is online!")
+    await narrator.speak("Ironcliw is online!")
 
 # Mark complete
-await hub.mark_complete(True, "JARVIS is online!")
+await hub.mark_complete(True, "Ironcliw is online!")
 ```
 
 ---
@@ -221,7 +221,7 @@ python3 run_supervisor.py
 **Watch for:**
 - Console shows: `[UnifiedProgress] Hub initialized`
 - Progress logs match between systems
-- Voice says "JARVIS is online!" at the end (not prematurely)
+- Voice says "Ironcliw is online!" at the end (not prematurely)
 
 ---
 
@@ -298,7 +298,7 @@ await hub.component_complete("backend", "Ready!")
 
 ## 🙏 Credits
 
-**Developed by:** JARVIS System + Claude Sonnet 4.5
+**Developed by:** Ironcliw System + Claude Sonnet 4.5
 **Date:** December 19, 2025
 **Lines of Code:** ~1000 new, ~400 modified
 **Documentation:** 2000+ lines

@@ -1,20 +1,20 @@
-# JARVIS Manual Unlock Solution
+﻿# Ironcliw Manual Unlock Solution
 
 ## Problem
-You wanted JARVIS to handle manual "unlock my screen" commands while bypassing quiet hours policy restrictions, while still maintaining the context-aware unlock flow for scenarios where the screen is locked and you ask JARVIS to do something else.
+You wanted Ironcliw to handle manual "unlock my screen" commands while bypassing quiet hours policy restrictions, while still maintaining the context-aware unlock flow for scenarios where the screen is locked and you ask Ironcliw to do something else.
 
 ## Solution Implemented
 
 ### 1. Direct Unlock for Manual Commands
-When you explicitly say "unlock my screen", JARVIS now:
+When you explicitly say "unlock my screen", Ironcliw now:
 - Bypasses the Context Intelligence policy engine completely
 - Uses the direct unlock handler to communicate with the Voice Unlock daemon
 - Works 24/7, regardless of quiet hours (10 PM - 7 AM)
 - Provides immediate feedback: "I'll unlock your screen right away, Sir."
 
 ### 2. Context-Aware Unlock Still Works
-When the screen is locked and you ask JARVIS to do something else (e.g., "open Safari and search for dogs"):
-- JARVIS detects the locked screen through the enhanced context handler
+When the screen is locked and you ask Ironcliw to do something else (e.g., "open Safari and search for dogs"):
+- Ironcliw detects the locked screen through the enhanced context handler
 - Provides feedback: "I see your screen is locked. I'll unlock it now by typing in your password so I can [action]."
 - Unlocks the screen automatically
 - Executes your original command
@@ -41,7 +41,7 @@ When the screen is locked and you ask JARVIS to do something else (e.g., "open S
 
 ### Manual Unlock Test
 ```bash
-# Say or type in JARVIS:
+# Say or type in Ironcliw:
 "unlock my screen"
 
 # Expected: Immediate unlock, works any time of day
@@ -64,7 +64,7 @@ When the screen is locked and you ask JARVIS to do something else (e.g., "open S
 ### Voice Unlock Daemon (Port 8765)
 - Handles the actual screen unlock using AppleScript
 - No policy restrictions - executes commands as received
-- Started automatically with JARVIS
+- Started automatically with Ironcliw
 
 ### Direct Unlock Handler
 - `api/direct_unlock_handler_fixed.py`
@@ -81,11 +81,11 @@ When the screen is locked and you ask JARVIS to do something else (e.g., "open S
 If manual unlock doesn't work:
 1. Check Voice Unlock daemon is running: `ps aux | grep 8765`
 2. Ensure password is stored: Run `enable_screen_unlock.sh`
-3. Check JARVIS logs: `tail -f /tmp/jarvis.log`
+3. Check Ironcliw logs: `tail -f /tmp/jarvis.log`
 
 ## Summary
 You now have both:
 - **Manual control**: "unlock my screen" works anytime without restrictions
-- **Smart automation**: JARVIS automatically unlocks when needed for other commands
+- **Smart automation**: Ironcliw automatically unlocks when needed for other commands
 
 The quiet hours policy no longer affects manual unlock commands!

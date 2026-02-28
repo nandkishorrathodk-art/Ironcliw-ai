@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Monitoring Module
+﻿"""
+Ironcliw Neural Mesh - Monitoring Module
 
 Advanced monitoring, metrics collection, and observability for the Neural Mesh system.
 

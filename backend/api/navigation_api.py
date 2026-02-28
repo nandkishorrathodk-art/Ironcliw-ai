@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Navigation API for JARVIS Full Screen Vision & Navigation System
+Navigation API for Ironcliw Full Screen Vision & Navigation System
 Provides REST and WebSocket endpoints for workspace navigation and automation
 """
 
@@ -167,7 +167,7 @@ async def start_navigation_mode() -> Dict[str, Any]:
 
         return {
             "success": True,
-            "message": "Navigation mode activated - JARVIS has full workspace control",
+            "message": "Navigation mode activated - Ironcliw has full workspace control",
         }
 
     except Exception as e:

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Direct Lock/Unlock Test - Test screen commands without full JARVIS
-Tests that lock/unlock work even when JARVIS isn't fully initialized
+Direct Lock/Unlock Test - Test screen commands without full Ironcliw
+Tests that lock/unlock work even when Ironcliw isn't fully initialized
 """
 
 import asyncio
@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 
 async def test_lock_through_pipeline():
-    """Test lock screen command through the async pipeline without JARVIS"""
+    """Test lock screen command through the async pipeline without Ironcliw"""
 
     print("\n" + "="*70)
-    print("TESTING LOCK SCREEN WITHOUT JARVIS INSTANCE")
+    print("TESTING LOCK SCREEN WITHOUT Ironcliw INSTANCE")
     print("="*70)
 
-    # Get pipeline WITHOUT passing JARVIS instance (simulating the issue)
+    # Get pipeline WITHOUT passing Ironcliw instance (simulating the issue)
     pipeline = get_async_pipeline()  # No jarvis_instance parameter
 
     print("\n1. Testing LOCK command...")
@@ -99,9 +99,9 @@ async def test_lock_through_pipeline():
     print("TEST COMPLETE")
     print("="*70)
     print("\nKey findings:")
-    print("✅ Lock/unlock commands can now work WITHOUT JARVIS instance")
+    print("✅ Lock/unlock commands can now work WITHOUT Ironcliw instance")
     print("✅ Commands are routed directly to simple_unlock_handler")
-    print("✅ No more 'No JARVIS instance available' warnings for screen commands")
+    print("✅ No more 'No Ironcliw instance available' warnings for screen commands")
     print("="*70)
 
 

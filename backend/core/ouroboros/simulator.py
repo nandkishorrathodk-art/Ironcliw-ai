@@ -1,10 +1,10 @@
-"""
+﻿"""
 The Simulator - Runtime Introspection Engine v1.0
 ==================================================
 
 "God Mode" Pillar 3: Predictive Execution & Live Debugging
 
-This module gives JARVIS the ability to SEE code execution in real-time,
+This module gives Ironcliw the ability to SEE code execution in real-time,
 predict failures before they happen, and understand runtime behavior
 without actually running production code.
 

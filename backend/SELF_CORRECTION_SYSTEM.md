@@ -1,12 +1,12 @@
-# Self-Correction System for Control Center Detection
+﻿# Self-Correction System for Control Center Detection
 
 ## 🎯 Problem
 
-JARVIS was clicking the wrong icon in the menu bar instead of the Control Center icon. The initial Claude Vision detection was sometimes selecting nearby icons (WiFi, Bluetooth, Time, etc.) instead of the correct Control Center icon.
+Ironcliw was clicking the wrong icon in the menu bar instead of the Control Center icon. The initial Claude Vision detection was sometimes selecting nearby icons (WiFi, Bluetooth, Time, etc.) instead of the correct Control Center icon.
 
 ## ✨ Solution: Intelligent Self-Correction Feedback Loop
 
-Implemented a **2-stage verification and self-correction system** that allows JARVIS to:
+Implemented a **2-stage verification and self-correction system** that allows Ironcliw to:
 1. **Verify** it clicked the right icon
 2. **Self-correct** if it clicked the wrong icon
 3. **Learn** from mistakes by getting feedback from Claude Vision
@@ -324,7 +324,7 @@ grep -E "(Verifying|Verification|Self-correction)" ~/.jarvis/logs/*.log | tail -
 
 ## 📁 Files Modified
 
-### `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/display/vision_ui_navigator.py`
+### `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/display/vision_ui_navigator.py`
 
 **Changes:**
 
@@ -364,7 +364,7 @@ grep -E "(Verifying|Verification|Self-correction)" ~/.jarvis/logs/*.log | tail -
 
 Say **"connect to living room tv"**
 
-If JARVIS clicks the wrong icon initially, it will:
+If Ironcliw clicks the wrong icon initially, it will:
 1. Detect the error automatically
 2. Ask Claude for correction
 3. Click the correct icon

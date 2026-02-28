@@ -1,16 +1,16 @@
-/**
+﻿/**
  * main.m
- * JARVIS Voice Unlock System
+ * Ironcliw Voice Unlock System
  *
  * Main entry point for the Voice Unlock daemon
  */
 
 #import <Foundation/Foundation.h>
 #import <signal.h>
-#import "JARVISVoiceUnlockDaemon.h"
+#import "IroncliwVoiceUnlockDaemon.h"
 
 // Global daemon instance for signal handling
-static JARVISVoiceUnlockDaemon *g_daemon = nil;
+static IroncliwVoiceUnlockDaemon *g_daemon = nil;
 
 // Signal handler
 void signalHandler(int signal) {
@@ -25,7 +25,7 @@ void signalHandler(int signal) {
 
 // Usage information
 void printUsage(const char *programName) {
-    printf("JARVIS Voice Unlock Daemon\n");
+    printf("Ironcliw Voice Unlock Daemon\n");
     printf("=========================\n\n");
     printf("Usage: %s [options]\n", programName);
     printf("\nOptions:\n");
@@ -40,8 +40,8 @@ void printUsage(const char *programName) {
 
 // Version information
 void printVersion() {
-    printf("JARVIS Voice Unlock Daemon v1.0.0\n");
-    printf("Copyright (c) 2024 JARVIS AI\n");
+    printf("Ironcliw Voice Unlock Daemon v1.0.0\n");
+    printf("Copyright (c) 2024 Ironcliw AI\n");
     printf("Built with Objective-C for macOS\n");
 }
 
@@ -134,17 +134,17 @@ int main(int argc, const char * argv[]) {
         // Check status
         if (showStatus) {
             if (isDaemonRunning()) {
-                printf("JARVIS Voice Unlock Daemon is running\n");
+                printf("Ironcliw Voice Unlock Daemon is running\n");
                 return 0;
             } else {
-                printf("JARVIS Voice Unlock Daemon is not running\n");
+                printf("Ironcliw Voice Unlock Daemon is not running\n");
                 return 1;
             }
         }
         
         // Check if already running
         if (isDaemonRunning() && !testMode) {
-            NSLog(@"JARVIS Voice Unlock Daemon is already running");
+            NSLog(@"Ironcliw Voice Unlock Daemon is already running");
             return 1;
         }
         
@@ -158,11 +158,11 @@ int main(int argc, const char * argv[]) {
         signal(SIGTERM, signalHandler);
         
         // Create and configure daemon
-        g_daemon = [JARVISVoiceUnlockDaemon sharedDaemon];
+        g_daemon = [IroncliwVoiceUnlockDaemon sharedDaemon];
         
         // Set debug mode
         if (debugMode) {
-            g_daemon.options |= JARVISVoiceUnlockOptionEnableDebugLogging;
+            g_daemon.options |= IroncliwVoiceUnlockOptionEnableDebugLogging;
         }
         
         // Load configuration
@@ -171,7 +171,7 @@ int main(int argc, const char * argv[]) {
         }
         
         // Start daemon
-        NSLog(@"Starting JARVIS Voice Unlock Daemon...");
+        NSLog(@"Starting Ironcliw Voice Unlock Daemon...");
         
         NSError *error = nil;
         if (![g_daemon startMonitoringWithError:&error]) {
@@ -180,7 +180,7 @@ int main(int argc, const char * argv[]) {
             return 1;
         }
         
-        NSLog(@"JARVIS Voice Unlock Daemon started successfully");
+        NSLog(@"Ironcliw Voice Unlock Daemon started successfully");
         
         // Get initial status
         NSDictionary *status = [g_daemon getStatus];
@@ -205,7 +205,7 @@ int main(int argc, const char * argv[]) {
         [g_daemon stopMonitoring];
         removeLockFile();
         
-        NSLog(@"JARVIS Voice Unlock Daemon stopped");
+        NSLog(@"Ironcliw Voice Unlock Daemon stopped");
     }
     
     return 0;

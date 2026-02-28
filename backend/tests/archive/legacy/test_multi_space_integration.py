@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify multi-space integration
 """
@@ -110,7 +110,7 @@ def test_imports():
 
 
 if __name__ == "__main__":
-    print("=== JARVIS Multi-Space Integration Test ===\n")
+    print("=== Ironcliw Multi-Space Integration Test ===\n")
     
     # Test imports first
     test_imports()

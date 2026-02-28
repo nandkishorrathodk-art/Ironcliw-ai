@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Git Hooks Installer
+Ironcliw Git Hooks Installer
 ==========================
 
 Installs the file integrity protection hooks into the local git repository.
@@ -17,7 +17,7 @@ Usage:
     python scripts/install_hooks.py remove   # Remove hooks
     python scripts/install_hooks.py status   # Check status
 
-Author: JARVIS System
+Author: Ironcliw System
 """
 
 import os
@@ -124,10 +124,10 @@ def remove_hook(hooks_dir: Path, hook_name: str) -> Tuple[bool, str]:
         return True, f"{hook_name} not installed"
     
     try:
-        # Check if it's our hook by looking for JARVIS signature
+        # Check if it's our hook by looking for Ironcliw signature
         content = hook_path.read_text()
-        if "JARVIS" not in content:
-            return False, f"{hook_name} exists but is not a JARVIS hook - not removing"
+        if "Ironcliw" not in content:
+            return False, f"{hook_name} exists but is not a Ironcliw hook - not removing"
         
         # Backup before removing
         backup_hook(hooks_dir, hook_name)
@@ -150,7 +150,7 @@ def get_hook_status(hooks_dir: Path, hook_name: str) -> str:
     
     try:
         content = hook_path.read_text()
-        if "JARVIS" in content:
+        if "Ironcliw" in content:
             # Check if executable
             if os.access(hook_path, os.X_OK):
                 return color("installed ✓", Colors.GREEN)
@@ -164,7 +164,7 @@ def get_hook_status(hooks_dir: Path, hook_name: str) -> str:
 
 def cmd_install() -> int:
     """Install all hooks."""
-    print(color("\n🔧 Installing JARVIS Git Hooks", Colors.CYAN, Colors.BOLD))
+    print(color("\n🔧 Installing Ironcliw Git Hooks", Colors.CYAN, Colors.BOLD))
     print(color("=" * 50, Colors.CYAN))
     
     hooks_dir = get_hooks_dir()
@@ -215,7 +215,7 @@ def cmd_install() -> int:
 
 def cmd_remove() -> int:
     """Remove all hooks."""
-    print(color("\n🗑️ Removing JARVIS Git Hooks", Colors.CYAN, Colors.BOLD))
+    print(color("\n🗑️ Removing Ironcliw Git Hooks", Colors.CYAN, Colors.BOLD))
     print(color("=" * 50, Colors.CYAN))
     
     hooks_dir = get_hooks_dir()
@@ -240,7 +240,7 @@ def cmd_remove() -> int:
     print()
     
     if fail_count == 0:
-        print(color("✅ All JARVIS hooks removed!", Colors.GREEN))
+        print(color("✅ All Ironcliw hooks removed!", Colors.GREEN))
         return 0
     else:
         print(color(f"⚠️ {fail_count} hook(s) could not be removed", Colors.YELLOW))
@@ -249,7 +249,7 @@ def cmd_remove() -> int:
 
 def cmd_status() -> int:
     """Show status of all hooks."""
-    print(color("\n📊 JARVIS Git Hooks Status", Colors.CYAN, Colors.BOLD))
+    print(color("\n📊 Ironcliw Git Hooks Status", Colors.CYAN, Colors.BOLD))
     print(color("=" * 50, Colors.CYAN))
     
     hooks_dir = get_hooks_dir()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Apply all multi-space vision fixes"""
 
 import os
@@ -64,13 +64,13 @@ def main():
     print(f"\n{'❌' if fixes_needed else '✅'} Summary:")
     if fixes_needed:
         print(f"   Issues found: {', '.join(fixes_needed)}")
-        print("\n   Please restart JARVIS to apply all fixes!")
+        print("\n   Please restart Ironcliw to apply all fixes!")
     else:
         print("   All fixes are already applied!")
     
     print("\n📝 Next Steps:")
-    print("1. Restart JARVIS backend")
-    print("2. Say: 'Hey JARVIS, start monitoring my screen'")
+    print("1. Restart Ironcliw backend")
+    print("2. Say: 'Hey Ironcliw, start monitoring my screen'")
     print("3. Wait for purple indicator")
     print("4. Say: 'Where is Terminal?'")
 

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -9,7 +9,7 @@
     <!-- Program to run -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/JARVISVoiceUnlockDaemon</string>
+        <string>/usr/local/bin/IroncliwVoiceUnlockDaemon</string>
     </array>
     
     <!-- Run at load -->
@@ -44,7 +44,7 @@
     <dict>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>JARVIS_HOME</key>
+        <key>Ironcliw_HOME</key>
         <string>/Users/derekjrussell/.jarvis</string>
     </dict>
     

@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🚀 Building JARVIS Location Service"
+echo "🚀 Building Ironcliw Location Service"
 echo "=================================="
 
 # Colors
@@ -36,9 +36,9 @@ cat > "${BUNDLE_NAME}/Contents/Info.plist" << EOF
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
     <key>CFBundleName</key>
-    <string>JARVIS Location Service</string>
+    <string>Ironcliw Location Service</string>
     <key>CFBundleDisplayName</key>
-    <string>JARVIS Location Service</string>
+    <string>Ironcliw Location Service</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -54,11 +54,11 @@ cat > "${BUNDLE_NAME}/Contents/Info.plist" << EOF
     <key>LSUIElement</key>
     <true/>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>JARVIS needs your location to provide accurate weather information and location-based services. Your location data stays on your device and is only used to enhance your experience.</string>
+    <string>Ironcliw needs your location to provide accurate weather information and location-based services. Your location data stays on your device and is only used to enhance your experience.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>JARVIS can provide better contextual assistance with continuous location access. Your location data is processed locally and never sent to external servers.</string>
+    <string>Ironcliw can provide better contextual assistance with continuous location access. Your location data is processed locally and never sent to external servers.</string>
     <key>NSLocationUsageDescription</key>
-    <string>JARVIS uses your location to provide weather updates, contextual information, and location-based reminders.</string>
+    <string>Ironcliw uses your location to provide weather updates, contextual information, and location-based reminders.</string>
 </dict>
 </plist>
 EOF
@@ -93,7 +93,7 @@ fi
 echo -e "${BLUE}Creating Python wrapper...${NC}"
 cat > location_service.py << 'PYTHON_EOF'
 """
-JARVIS Location Service Python Wrapper
+Ironcliw Location Service Python Wrapper
 Provides precise location data using macOS Core Location
 """
 
@@ -245,7 +245,7 @@ echo "1. Run the app to trigger permission request:"
 echo -e "   ${BLUE}open ${BUNDLE_NAME}${NC}"
 echo ""
 echo "2. macOS will show a permission dialog:"
-echo "   'JARVIS Location Service would like to use your current location'"
+echo "   'Ironcliw Location Service would like to use your current location'"
 echo "   Click 'Allow'"
 echo ""
 echo "3. Test the service:"

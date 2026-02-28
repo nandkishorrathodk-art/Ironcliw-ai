@@ -1,8 +1,8 @@
-# JARVIS Interpreters and Command Handlers Overview
+﻿# Ironcliw Interpreters and Command Handlers Overview
 
 ## Command Processing Flow
 
-JARVIS has multiple layers of interpreters and handlers that process different types of commands. Here's a comprehensive breakdown:
+Ironcliw has multiple layers of interpreters and handlers that process different types of commands. Here's a comprehensive breakdown:
 
 ## 1. **ClaudeCommandInterpreter** (`system_control/claude_command_interpreter.py`)
 - **Purpose**: Interprets system control commands using Claude AI
@@ -45,7 +45,7 @@ JARVIS has multiple layers of interpreters and handlers that process different t
 ## Command Processing Layers
 
 ### Layer 1: Initial Input Processing
-- **JARVISAgentVoice** (`voice/jarvis_agent_voice.py`)
+- **IroncliwAgentVoice** (`voice/jarvis_agent_voice.py`)
   - Receives user input
   - Performs initial classification (system command vs. vision vs. conversation)
   - Routes to appropriate handler
@@ -80,31 +80,31 @@ JARVIS has multiple layers of interpreters and handlers that process different t
 
 ### System Command: "Close Chrome"
 ```
-User Input → JARVISAgentVoice → ClaudeCommandInterpreter → macOS Controller → App Closed
+User Input → IroncliwAgentVoice → ClaudeCommandInterpreter → macOS Controller → App Closed
 ```
 
 ### Vision Query: "How many windows are open?"
 ```
-User Input → JARVISAgentVoice → VisionQueryBypass → VisionCommandHandler → Claude Vision API → Response
+User Input → IroncliwAgentVoice → VisionQueryBypass → VisionCommandHandler → Claude Vision API → Response
 ```
 
 ### Conversation: "What's the weather today?"
 ```
-User Input → JARVISAgentVoice → Claude Chatbot → Response
+User Input → IroncliwAgentVoice → Claude Chatbot → Response
 ```
 
 ### Monitoring: "Monitor my screen"
 ```
-User Input → JARVISAgentVoice → VisionCommandHandler → Start Continuous Monitoring
+User Input → IroncliwAgentVoice → VisionCommandHandler → Start Continuous Monitoring
 ```
 
 ## Summary
 
-JARVIS uses **4-5 main interpreters/handlers** depending on configuration:
+Ironcliw uses **4-5 main interpreters/handlers** depending on configuration:
 1. ClaudeCommandInterpreter (system control)
 2. VisionCommandHandler (vision tasks)
 3. IntelligentCommandHandler (routing)
 4. AdvancedIntelligentCommandHandler (ML-enhanced)
 5. VisionQueryBypass (query optimization)
 
-This multi-layer architecture allows JARVIS to handle diverse command types efficiently while maintaining clear separation between different functionalities.
+This multi-layer architecture allows Ironcliw to handle diverse command types efficiently while maintaining clear separation between different functionalities.

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enhanced Context Wrapper - Drop-in Replacement
 =============================================
 
@@ -45,7 +45,7 @@ class EnhancedContextIntelligenceHandler:
         command_processor: The underlying command processor to execute commands
         context_manager: Manager for context intelligence operations
         feedback_manager: Manager for voice and visual feedback
-        jarvis_integration: Integration layer for JARVIS system
+        jarvis_integration: Integration layer for Ironcliw system
         execution_steps: List of execution steps for compatibility tracking
     """
     
@@ -73,7 +73,7 @@ class EnhancedContextIntelligenceHandler:
     async def _ensure_initialized(self) -> None:
         """Ensure the context intelligence system is initialized.
         
-        This method initializes the JARVIS integration if not already done.
+        This method initializes the Ironcliw integration if not already done.
         It's called automatically before processing commands.
         """
         if not self._initialized:
@@ -109,13 +109,13 @@ class EnhancedContextIntelligenceHandler:
         )
         
     def _get_emotion(self, feedback_type: FeedbackType) -> str:
-        """Map feedback type to JARVIS emotion.
+        """Map feedback type to Ironcliw emotion.
         
         Args:
             feedback_type: The type of feedback being processed
             
         Returns:
-            String representing the appropriate emotion for JARVIS
+            String representing the appropriate emotion for Ironcliw
             
         Example:
             >>> handler._get_emotion(FeedbackType.SUCCESS)

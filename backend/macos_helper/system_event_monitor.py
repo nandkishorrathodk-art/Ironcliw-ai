@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - System Event Monitor
+﻿"""
+Ironcliw macOS Helper - System Event Monitor
 
 Real-time monitoring of macOS system events using NSWorkspace notifications.
 Provides async event emission for app launches, focus changes, space transitions,
@@ -83,7 +83,7 @@ class MonitorConfig:
     startup_step_timeout_seconds: float = field(
         default_factory=lambda: max(
             0.25,
-            _env_float("JARVIS_SYSTEM_EVENT_STARTUP_STEP_TIMEOUT", 4.0),
+            _env_float("Ironcliw_SYSTEM_EVENT_STARTUP_STEP_TIMEOUT", 4.0),
         )
     )
     # Compatibility note: this now represents warmup target duration (SLO),
@@ -91,12 +91,12 @@ class MonitorConfig:
     startup_warmup_timeout_seconds: float = field(
         default_factory=lambda: max(
             1.0,
-            _env_float("JARVIS_SYSTEM_EVENT_STARTUP_WARMUP_TIMEOUT", 12.0),
+            _env_float("Ironcliw_SYSTEM_EVENT_STARTUP_WARMUP_TIMEOUT", 12.0),
         )
     )
     startup_forecast_alpha: float = field(
         default_factory=lambda: _clamp(
-            _env_float("JARVIS_SYSTEM_EVENT_STARTUP_FORECAST_ALPHA", 0.35),
+            _env_float("Ironcliw_SYSTEM_EVENT_STARTUP_FORECAST_ALPHA", 0.35),
             0.05,
             0.95,
         )
@@ -104,7 +104,7 @@ class MonitorConfig:
     subprocess_timeout_seconds: float = field(
         default_factory=lambda: max(
             0.25,
-            _env_float("JARVIS_SYSTEM_EVENT_SUBPROCESS_TIMEOUT", 3.0),
+            _env_float("Ironcliw_SYSTEM_EVENT_SUBPROCESS_TIMEOUT", 3.0),
         )
     )
 

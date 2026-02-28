@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Proactive Communication Module for JARVIS
+Proactive Communication Module for Ironcliw
 Handles natural, context-aware communication with progressive disclosure
 """
 
@@ -33,7 +33,7 @@ class ConversationState(Enum):
 
 class ProactiveCommunicator:
     """
-    Manages natural, context-aware communication between JARVIS and the user
+    Manages natural, context-aware communication between Ironcliw and the user
     Handles progressive disclosure, follow-ups, and conversation flow
     """
     
@@ -368,7 +368,7 @@ class ProactiveCommunicator:
             response: User's response text
             
         Returns:
-            JARVIS's reply
+            Ironcliw's reply
         """
         # Find most recent relevant conversation
         recent_topic = None

@@ -1,4 +1,4 @@
-# How to Restart JARVIS - Voice Authentication COMPLETE FIX
+﻿# How to Restart Ironcliw - Voice Authentication COMPLETE FIX
 
 ## Critical Update - November 11, 2025
 **FIXED**: Voice authentication now properly handles audio format conversion
@@ -10,7 +10,7 @@
 
 ### Option 1: Using the start script (Recommended)
 ```bash
-# From the JARVIS-AI-Agent directory
+# From the Ironcliw-AI-Agent directory
 python start_system.py
 ```
 
@@ -21,7 +21,7 @@ python start_system.py
 
 ### Option 3: Manual restart
 ```bash
-# If JARVIS is running, stop it first
+# If Ironcliw is running, stop it first
 pkill -f "python.*main.py"
 pkill -f "uvicorn"
 
@@ -45,7 +45,7 @@ After restarting, test voice unlock:
 
 ### 🎤 Voice Authentication - COMPLETE FIX
 1. **Audio Format Conversion** (lines 1113-1146):
-   - JARVIS sends int16 PCM audio, not float32
+   - Ironcliw sends int16 PCM audio, not float32
    - Added automatic conversion from int16 to float32
    - Properly normalizes audio for embedding extraction
 
@@ -67,7 +67,7 @@ After restarting, test voice unlock:
 ## Next Steps for >85% Voice Confidence
 
 ### Enable BEAST MODE
-After JARVIS restarts, to achieve >85% confidence:
+After Ironcliw restarts, to achieve >85% confidence:
 ```bash
 # Record new voice samples with audio data
 cd backend

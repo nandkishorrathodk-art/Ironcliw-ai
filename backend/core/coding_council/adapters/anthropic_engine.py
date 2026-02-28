@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: Unified Anthropic Engine for Coding Council
 ===================================================
 
@@ -45,7 +45,7 @@ Usage:
         complexity="complex"
     )
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 1.0.0
 """
 
@@ -196,7 +196,7 @@ class AnthropicEngineConfig:
 
     # Trinity settings
     ENABLE_TRINITY: bool = os.getenv("ANTHROPIC_ENABLE_TRINITY", "true").lower() == "true"
-    JARVIS_PRIME_URL: str = os.getenv("JARVIS_PRIME_URL", "http://localhost:8011")
+    Ironcliw_PRIME_URL: str = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8011")
     REACTOR_CORE_URL: str = os.getenv("REACTOR_CORE_URL", "http://localhost:8012")
 
     @classmethod
@@ -741,7 +741,7 @@ COMMIT: Rename and improve old_function to new_function'''
         # Extract commit message
         commit_message = self._extract_commit_message(response)
         if not commit_message:
-            commit_message = f"JARVIS: {description[:50]}"
+            commit_message = f"Ironcliw: {description[:50]}"
 
         # Auto-commit if enabled
         commit_hash = None
@@ -1159,7 +1159,7 @@ class TrinityBridge:
     Bridge for cross-repo synchronization via Trinity protocol.
 
     Connects:
-    - JARVIS (Body) - This codebase
+    - Ironcliw (Body) - This codebase
     - J-Prime (Mind) - Higher-level reasoning
     - Reactor Core (Nerves) - System coordination
 
@@ -1167,7 +1167,7 @@ class TrinityBridge:
     """
 
     def __init__(self):
-        self.jarvis_prime_url = AnthropicEngineConfig.JARVIS_PRIME_URL
+        self.jarvis_prime_url = AnthropicEngineConfig.Ironcliw_PRIME_URL
         self.reactor_core_url = AnthropicEngineConfig.REACTOR_CORE_URL
         self._session: Optional[Any] = None
 
@@ -1709,12 +1709,12 @@ async def get_anthropic_engine() -> AnthropicUnifiedEngine:
         async with _engine_lock:
             if _engine_instance is None:
                 # Determine repo root by walking up to find .git directory
-                # Path hierarchy: anthropic_engine.py -> adapters -> coding_council -> core -> backend -> JARVIS-AI-Agent
+                # Path hierarchy: anthropic_engine.py -> adapters -> coding_council -> core -> backend -> Ironcliw-AI-Agent
                 script_path = Path(__file__).resolve()
                 repo_root = None
 
                 # First check environment variable
-                env_path = os.getenv("JARVIS_REPO_PATH")
+                env_path = os.getenv("Ironcliw_REPO_PATH")
                 if env_path:
                     repo_root = Path(env_path)
                 else:

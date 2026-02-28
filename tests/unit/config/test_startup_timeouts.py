@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for backend.config.startup_timeouts module.
 
 These tests verify that:
@@ -30,11 +30,11 @@ def clean_env():
     """
     Fixture to ensure clean environment for each test.
 
-    Removes all JARVIS_ timeout env vars and resets the singleton.
+    Removes all Ironcliw_ timeout env vars and resets the singleton.
     """
     # Store original values
     original_env = {}
-    jarvis_vars = [key for key in os.environ if key.startswith("JARVIS_")]
+    jarvis_vars = [key for key in os.environ if key.startswith("Ironcliw_")]
     for key in jarvis_vars:
         original_env[key] = os.environ.pop(key)
 
@@ -175,11 +175,11 @@ class TestEnvOverrides:
     """Tests for environment variable configuration."""
 
     def test_max_timeout_env_override(self, clean_env) -> None:
-        """Test JARVIS_MAX_TIMEOUT env override."""
+        """Test Ironcliw_MAX_TIMEOUT env override."""
         from backend.config.startup_timeouts import reset_timeouts
         reset_timeouts()
 
-        with patch.dict(os.environ, {"JARVIS_MAX_TIMEOUT": "600.0"}):
+        with patch.dict(os.environ, {"Ironcliw_MAX_TIMEOUT": "600.0"}):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
             assert timeouts.max_timeout == 600.0
@@ -190,9 +190,9 @@ class TestEnvOverrides:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_CLEANUP_TIMEOUT_SIGINT": "20.0",
-            "JARVIS_CLEANUP_TIMEOUT_SIGTERM": "8.0",
-            "JARVIS_CLEANUP_TIMEOUT_SIGKILL": "3.0",
+            "Ironcliw_CLEANUP_TIMEOUT_SIGINT": "20.0",
+            "Ironcliw_CLEANUP_TIMEOUT_SIGTERM": "8.0",
+            "Ironcliw_CLEANUP_TIMEOUT_SIGKILL": "3.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -207,9 +207,9 @@ class TestEnvOverrides:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MAX_LOCK_TIMEOUT": "600.0",
-            "JARVIS_MIN_LOCK_TIMEOUT": "0.5",
-            "JARVIS_DEFAULT_LOCK_TIMEOUT": "10.0",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "600.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "0.5",
+            "Ironcliw_DEFAULT_LOCK_TIMEOUT": "10.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -219,11 +219,11 @@ class TestEnvOverrides:
             assert timeouts.default_lock_timeout == 10.0
 
     def test_prime_startup_timeout_env_override(self, clean_env) -> None:
-        """Test JARVIS_PRIME_STARTUP_TIMEOUT env override."""
+        """Test Ironcliw_PRIME_STARTUP_TIMEOUT env override."""
         from backend.config.startup_timeouts import reset_timeouts
         reset_timeouts()
 
-        with patch.dict(os.environ, {"JARVIS_PRIME_STARTUP_TIMEOUT": "900.0"}):
+        with patch.dict(os.environ, {"Ironcliw_PRIME_STARTUP_TIMEOUT": "900.0"}):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
             assert timeouts.prime_startup_timeout == 900.0
@@ -235,31 +235,31 @@ class TestEnvOverrides:
 
         # Note: All individual timeouts must be <= max_timeout to avoid capping
         env_overrides = {
-            "JARVIS_MAX_TIMEOUT": "1000.0",  # Set high enough for all other timeouts
-            "JARVIS_CLEANUP_TIMEOUT_SIGINT": "15.0",
-            "JARVIS_CLEANUP_TIMEOUT_SIGTERM": "7.0",
-            "JARVIS_CLEANUP_TIMEOUT_SIGKILL": "3.0",
-            "JARVIS_PORT_CHECK_TIMEOUT": "2.0",
-            "JARVIS_PORT_RELEASE_WAIT": "3.0",
-            "JARVIS_IPC_SOCKET_TIMEOUT": "10.0",
-            "JARVIS_LSOF_TIMEOUT": "7.0",
-            "JARVIS_DOCKER_CHECK_TIMEOUT": "15.0",
-            "JARVIS_BACKEND_HEALTH_TIMEOUT": "45.0",
-            "JARVIS_FRONTEND_HEALTH_TIMEOUT": "90.0",
-            "JARVIS_LOADING_SERVER_HEALTH_TIMEOUT": "8.0",
-            "JARVIS_HEARTBEAT_INTERVAL": "10.0",
-            "JARVIS_PRIME_STARTUP_TIMEOUT": "900.0",
-            "JARVIS_REACTOR_STARTUP_TIMEOUT": "180.0",
-            "JARVIS_REACTOR_HEALTH_TIMEOUT": "15.0",
-            "JARVIS_STARTUP_LOCK_TIMEOUT": "45.0",
-            "JARVIS_TAKEOVER_HANDOVER_TIMEOUT": "20.0",
-            "JARVIS_MAX_LOCK_TIMEOUT": "500.0",
-            "JARVIS_MIN_LOCK_TIMEOUT": "0.2",
-            "JARVIS_DEFAULT_LOCK_TIMEOUT": "8.0",
-            "JARVIS_STALE_LOCK_RETRY_TIMEOUT": "2.0",
-            "JARVIS_BROADCAST_TIMEOUT": "3.0",
-            "JARVIS_PROCESS_WAIT_TIMEOUT": "15.0",
-            "JARVIS_SUBPROCESS_TIMEOUT": "45.0",
+            "Ironcliw_MAX_TIMEOUT": "1000.0",  # Set high enough for all other timeouts
+            "Ironcliw_CLEANUP_TIMEOUT_SIGINT": "15.0",
+            "Ironcliw_CLEANUP_TIMEOUT_SIGTERM": "7.0",
+            "Ironcliw_CLEANUP_TIMEOUT_SIGKILL": "3.0",
+            "Ironcliw_PORT_CHECK_TIMEOUT": "2.0",
+            "Ironcliw_PORT_RELEASE_WAIT": "3.0",
+            "Ironcliw_IPC_SOCKET_TIMEOUT": "10.0",
+            "Ironcliw_LSOF_TIMEOUT": "7.0",
+            "Ironcliw_DOCKER_CHECK_TIMEOUT": "15.0",
+            "Ironcliw_BACKEND_HEALTH_TIMEOUT": "45.0",
+            "Ironcliw_FRONTEND_HEALTH_TIMEOUT": "90.0",
+            "Ironcliw_LOADING_SERVER_HEALTH_TIMEOUT": "8.0",
+            "Ironcliw_HEARTBEAT_INTERVAL": "10.0",
+            "Ironcliw_PRIME_STARTUP_TIMEOUT": "900.0",
+            "Ironcliw_REACTOR_STARTUP_TIMEOUT": "180.0",
+            "Ironcliw_REACTOR_HEALTH_TIMEOUT": "15.0",
+            "Ironcliw_STARTUP_LOCK_TIMEOUT": "45.0",
+            "Ironcliw_TAKEOVER_HANDOVER_TIMEOUT": "20.0",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "500.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "0.2",
+            "Ironcliw_DEFAULT_LOCK_TIMEOUT": "8.0",
+            "Ironcliw_STALE_LOCK_RETRY_TIMEOUT": "2.0",
+            "Ironcliw_BROADCAST_TIMEOUT": "3.0",
+            "Ironcliw_PROCESS_WAIT_TIMEOUT": "15.0",
+            "Ironcliw_SUBPROCESS_TIMEOUT": "45.0",
         }
 
         with patch.dict(os.environ, env_overrides):
@@ -306,7 +306,7 @@ class TestValidationInvalidValues:
         from backend.config.startup_timeouts import reset_timeouts, _DEFAULT_MAX_TIMEOUT
         reset_timeouts()
 
-        with patch.dict(os.environ, {"JARVIS_MAX_TIMEOUT": "-5.0"}):
+        with patch.dict(os.environ, {"Ironcliw_MAX_TIMEOUT": "-5.0"}):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
 
@@ -318,7 +318,7 @@ class TestValidationInvalidValues:
         from backend.config.startup_timeouts import reset_timeouts
         reset_timeouts()
 
-        with patch.dict(os.environ, {"JARVIS_PORT_CHECK_TIMEOUT": "0"}):
+        with patch.dict(os.environ, {"Ironcliw_PORT_CHECK_TIMEOUT": "0"}):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
 
@@ -330,7 +330,7 @@ class TestValidationInvalidValues:
         from backend.config.startup_timeouts import reset_timeouts
         reset_timeouts()
 
-        with patch.dict(os.environ, {"JARVIS_HEARTBEAT_INTERVAL": "not_a_number"}):
+        with patch.dict(os.environ, {"Ironcliw_HEARTBEAT_INTERVAL": "not_a_number"}):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
 
@@ -343,7 +343,7 @@ class TestValidationInvalidValues:
         reset_timeouts()
 
         # min_lock_timeout has min_value=0.01, set to 0.001
-        with patch.dict(os.environ, {"JARVIS_MIN_LOCK_TIMEOUT": "0.001"}):
+        with patch.dict(os.environ, {"Ironcliw_MIN_LOCK_TIMEOUT": "0.001"}):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
 
@@ -360,7 +360,7 @@ class TestValidationInvalidValues:
         reset_timeouts()
 
         # Empty string should be treated as not set
-        with patch.dict(os.environ, {"JARVIS_MAX_TIMEOUT": ""}):
+        with patch.dict(os.environ, {"Ironcliw_MAX_TIMEOUT": ""}):
             # Empty string converts to ValueError in float(), so uses default
             timeouts = StartupTimeouts()
             assert timeouts.max_timeout == _DEFAULT_MAX_TIMEOUT
@@ -380,8 +380,8 @@ class TestLockTimeoutRelationships:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MIN_LOCK_TIMEOUT": "0.5",
-            "JARVIS_MAX_LOCK_TIMEOUT": "100.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "0.5",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "100.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -395,8 +395,8 @@ class TestLockTimeoutRelationships:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MIN_LOCK_TIMEOUT": "100.0",
-            "JARVIS_MAX_LOCK_TIMEOUT": "100.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "100.0",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "100.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -411,8 +411,8 @@ class TestLockTimeoutRelationships:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MIN_LOCK_TIMEOUT": "200.0",
-            "JARVIS_MAX_LOCK_TIMEOUT": "100.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "200.0",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "100.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -427,9 +427,9 @@ class TestLockTimeoutRelationships:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MIN_LOCK_TIMEOUT": "10.0",
-            "JARVIS_DEFAULT_LOCK_TIMEOUT": "5.0",
-            "JARVIS_MAX_LOCK_TIMEOUT": "300.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "10.0",
+            "Ironcliw_DEFAULT_LOCK_TIMEOUT": "5.0",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "300.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -444,9 +444,9 @@ class TestLockTimeoutRelationships:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MIN_LOCK_TIMEOUT": "0.1",
-            "JARVIS_DEFAULT_LOCK_TIMEOUT": "500.0",
-            "JARVIS_MAX_LOCK_TIMEOUT": "300.0",
+            "Ironcliw_MIN_LOCK_TIMEOUT": "0.1",
+            "Ironcliw_DEFAULT_LOCK_TIMEOUT": "500.0",
+            "Ironcliw_MAX_LOCK_TIMEOUT": "300.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -471,8 +471,8 @@ class TestMaxTimeoutValidation:
 
         # Set a low max_timeout but high individual timeout
         with patch.dict(os.environ, {
-            "JARVIS_MAX_TIMEOUT": "50.0",
-            "JARVIS_PRIME_STARTUP_TIMEOUT": "600.0",  # Exceeds 50.0
+            "Ironcliw_MAX_TIMEOUT": "50.0",
+            "Ironcliw_PRIME_STARTUP_TIMEOUT": "600.0",  # Exceeds 50.0
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -487,10 +487,10 @@ class TestMaxTimeoutValidation:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MAX_TIMEOUT": "100.0",
-            "JARVIS_PRIME_STARTUP_TIMEOUT": "600.0",  # Exceeds
-            "JARVIS_REACTOR_STARTUP_TIMEOUT": "120.0",  # Exceeds
-            "JARVIS_FRONTEND_HEALTH_TIMEOUT": "60.0",  # Within limit
+            "Ironcliw_MAX_TIMEOUT": "100.0",
+            "Ironcliw_PRIME_STARTUP_TIMEOUT": "600.0",  # Exceeds
+            "Ironcliw_REACTOR_STARTUP_TIMEOUT": "120.0",  # Exceeds
+            "Ironcliw_FRONTEND_HEALTH_TIMEOUT": "60.0",  # Within limit
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -505,8 +505,8 @@ class TestMaxTimeoutValidation:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MAX_TIMEOUT": "100.0",
-            "JARVIS_PRIME_STARTUP_TIMEOUT": "100.0",  # Exactly at max
+            "Ironcliw_MAX_TIMEOUT": "100.0",
+            "Ironcliw_PRIME_STARTUP_TIMEOUT": "100.0",  # Exactly at max
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -519,8 +519,8 @@ class TestMaxTimeoutValidation:
         reset_timeouts()
 
         with patch.dict(os.environ, {
-            "JARVIS_MAX_TIMEOUT": "100.0",
-            "JARVIS_PRIME_STARTUP_TIMEOUT": "50.0",
+            "Ironcliw_MAX_TIMEOUT": "100.0",
+            "Ironcliw_PRIME_STARTUP_TIMEOUT": "50.0",
         }):
             from backend.config.startup_timeouts import StartupTimeouts
             timeouts = StartupTimeouts()
@@ -721,7 +721,7 @@ class TestSingleton:
         initial_max = initial.max_timeout
 
         # Change env and reset
-        with patch.dict(os.environ, {"JARVIS_MAX_TIMEOUT": "999.0"}):
+        with patch.dict(os.environ, {"Ironcliw_MAX_TIMEOUT": "999.0"}):
             reset_timeouts()
             updated = get_timeouts()
 

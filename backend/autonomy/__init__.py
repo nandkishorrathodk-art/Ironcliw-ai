@@ -1,16 +1,16 @@
-"""
-JARVIS Autonomous Decision System
-Transforms JARVIS into a proactive digital agent
+﻿"""
+Ironcliw Autonomous Decision System
+Transforms Ironcliw into a proactive digital agent
 
 This package provides comprehensive autonomous capabilities including:
 - LangGraph-based reasoning engine for multi-step autonomous tasks
 - LangChain tool registry with dynamic auto-discovery
 - Async tool orchestration with parallel execution
 - Multi-tier memory management and checkpointing
-- Seamless integration with existing JARVIS systems
+- Seamless integration with existing Ironcliw systems
 """
 
-# Original JARVIS autonomy components
+# Original Ironcliw autonomy components
 from .autonomous_decision_engine import (
     AutonomousDecisionEngine,
     AutonomousAction,
@@ -42,7 +42,7 @@ from .langgraph_engine import (
 # LangChain Tool Registry
 from .langchain_tools import (
     ToolRegistry,
-    JARVISTool,
+    IroncliwTool,
     FunctionTool,
     ToolCategory,
     ToolRiskLevel,
@@ -77,7 +77,7 @@ from .memory_integration import (
     MemoryPriority,
     ConversationMemory,
     EpisodicMemory,
-    JARVISCheckpointer,
+    IroncliwCheckpointer,
     create_memory_manager,
     create_checkpointer,
     get_memory_manager,
@@ -86,9 +86,9 @@ from .memory_integration import (
     recall
 )
 
-# JARVIS Integration
+# Ironcliw Integration
 from .jarvis_integration import (
-    JARVISIntegrationManager,
+    IroncliwIntegrationManager,
     IntegrationConfig,
     PermissionAdapter,
     ActionQueueAdapter,
@@ -188,7 +188,7 @@ __all__ = [
 
     # LangChain Tools
     'ToolRegistry',
-    'JARVISTool',
+    'IroncliwTool',
     'FunctionTool',
     'ToolCategory',
     'ToolRiskLevel',
@@ -219,7 +219,7 @@ __all__ = [
     'MemoryPriority',
     'ConversationMemory',
     'EpisodicMemory',
-    'JARVISCheckpointer',
+    'IroncliwCheckpointer',
     'create_memory_manager',
     'create_checkpointer',
     'get_memory_manager',
@@ -228,7 +228,7 @@ __all__ = [
     'recall',
 
     # Integration
-    'JARVISIntegrationManager',
+    'IroncliwIntegrationManager',
     'IntegrationConfig',
     'PermissionAdapter',
     'ActionQueueAdapter',

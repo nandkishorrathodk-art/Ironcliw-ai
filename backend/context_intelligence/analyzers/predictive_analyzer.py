@@ -1,5 +1,5 @@
-"""
-Predictive Analytics Engine for JARVIS
+﻿"""
+Predictive Analytics Engine for Ironcliw
 ======================================
 
 Handles high-level predictive and analytical queries:
@@ -549,7 +549,7 @@ class RecommendationEngine:
 
 class PredictiveAnalyzer:
     """
-    Main predictive analytics engine for JARVIS
+    Main predictive analytics engine for Ironcliw
 
     Handles high-level analytical queries with dynamic analysis
     """
@@ -983,7 +983,7 @@ if __name__ == "__main__":
         analyzer = PredictiveAnalyzer()
 
         print("=" * 70)
-        print("JARVIS Predictive Analytics Engine - Demo")
+        print("Ironcliw Predictive Analytics Engine - Demo")
         print("=" * 70)
 
         test_queries = [

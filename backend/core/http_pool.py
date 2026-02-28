@@ -1,5 +1,5 @@
-"""
-HTTP Connection Pool v2.0 - Shared Session Management for JARVIS
+﻿"""
+HTTP Connection Pool v2.0 - Shared Session Management for Ironcliw
 ================================================================
 
 Provides a singleton HTTP connection pool that maintains one aiohttp.ClientSession
@@ -22,13 +22,13 @@ Backward Compatibility:
     HTTPConnectionPool) is preserved as aliases.
 
 Environment Variables:
-    JARVIS_HTTP_POOL_MAX_SESSIONS       Max sessions to maintain (default: 20)
-    JARVIS_HTTP_POOL_TTL_MINUTES        Idle TTL before cleanup (default: 30)
-    JARVIS_HTTP_POOL_CONN_LIMIT         Total connections per session (default: 100)
-    JARVIS_HTTP_POOL_CONN_PER_HOST      Connections per host (default: 10)
-    JARVIS_HTTP_POOL_TIMEOUT            Total request timeout seconds (default: 30)
-    JARVIS_HTTP_POOL_CONNECT_TIMEOUT    Connection timeout seconds (default: 10)
-    JARVIS_HTTP_POOL_CLEANUP_INTERVAL   Cleanup check interval seconds (default: 300)
+    Ironcliw_HTTP_POOL_MAX_SESSIONS       Max sessions to maintain (default: 20)
+    Ironcliw_HTTP_POOL_TTL_MINUTES        Idle TTL before cleanup (default: 30)
+    Ironcliw_HTTP_POOL_CONN_LIMIT         Total connections per session (default: 100)
+    Ironcliw_HTTP_POOL_CONN_PER_HOST      Connections per host (default: 10)
+    Ironcliw_HTTP_POOL_TIMEOUT            Total request timeout seconds (default: 30)
+    Ironcliw_HTTP_POOL_CONNECT_TIMEOUT    Connection timeout seconds (default: 10)
+    Ironcliw_HTTP_POOL_CLEANUP_INTERVAL   Cleanup check interval seconds (default: 300)
 
 Usage:
     from backend.core.http_pool import managed_session, get_http_pool
@@ -45,7 +45,7 @@ Usage:
     # Shutdown:
     await close_http_pool()
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 2.0.0 (February 2026)
 """
 
@@ -339,25 +339,25 @@ class HTTPPool:
     def __init__(self) -> None:
         # Configuration — all from env vars with sane defaults
         self._max_sessions: int = _env_int(
-            "JARVIS_HTTP_POOL_MAX_SESSIONS", 20,
+            "Ironcliw_HTTP_POOL_MAX_SESSIONS", 20,
         )
         self._ttl_seconds: float = (
-            _env_float("JARVIS_HTTP_POOL_TTL_MINUTES", 30) * 60.0
+            _env_float("Ironcliw_HTTP_POOL_TTL_MINUTES", 30) * 60.0
         )
         self._conn_limit: int = _env_int(
-            "JARVIS_HTTP_POOL_CONN_LIMIT", 100,
+            "Ironcliw_HTTP_POOL_CONN_LIMIT", 100,
         )
         self._conn_per_host: int = _env_int(
-            "JARVIS_HTTP_POOL_CONN_PER_HOST", 10,
+            "Ironcliw_HTTP_POOL_CONN_PER_HOST", 10,
         )
         self._total_timeout: float = _env_float(
-            "JARVIS_HTTP_POOL_TIMEOUT", 30,
+            "Ironcliw_HTTP_POOL_TIMEOUT", 30,
         )
         self._connect_timeout: float = _env_float(
-            "JARVIS_HTTP_POOL_CONNECT_TIMEOUT", 10,
+            "Ironcliw_HTTP_POOL_CONNECT_TIMEOUT", 10,
         )
         self._cleanup_interval: float = _env_float(
-            "JARVIS_HTTP_POOL_CLEANUP_INTERVAL", 300,
+            "Ironcliw_HTTP_POOL_CLEANUP_INTERVAL", 300,
         )
 
         # Internal state
@@ -431,7 +431,7 @@ class HTTPPool:
         session = aiohttp.ClientSession(
             connector=connector,
             timeout=timeout_obj,
-            headers={"User-Agent": "JARVIS/1.0"},
+            headers={"User-Agent": "Ironcliw/1.0"},
             trust_env=True,  # Respect HTTP_PROXY / HTTPS_PROXY env vars
         )
 
@@ -873,11 +873,11 @@ def get_http_pool_stats() -> Dict[str, Any]:
 class PoolConfig:
     """Backward-compat: v1 per-session configuration (ignored by v2 pool)."""
 
-    max_connections: int = _env_int("JARVIS_HTTP_POOL_CONN_LIMIT", 100)
-    max_connections_per_host: int = _env_int("JARVIS_HTTP_POOL_CONN_PER_HOST", 10)
-    ttl_seconds: float = _env_float("JARVIS_HTTP_POOL_TTL_MINUTES", 30) * 60.0
-    connect_timeout: float = _env_float("JARVIS_HTTP_POOL_CONNECT_TIMEOUT", 10)
-    total_timeout: float = _env_float("JARVIS_HTTP_POOL_TIMEOUT", 30)
+    max_connections: int = _env_int("Ironcliw_HTTP_POOL_CONN_LIMIT", 100)
+    max_connections_per_host: int = _env_int("Ironcliw_HTTP_POOL_CONN_PER_HOST", 10)
+    ttl_seconds: float = _env_float("Ironcliw_HTTP_POOL_TTL_MINUTES", 30) * 60.0
+    connect_timeout: float = _env_float("Ironcliw_HTTP_POOL_CONNECT_TIMEOUT", 10)
+    total_timeout: float = _env_float("Ironcliw_HTTP_POOL_TIMEOUT", 30)
     keepalive_timeout: float = 30.0
     enable_cleanup_task: bool = True
     cleanup_interval: float = 300.0

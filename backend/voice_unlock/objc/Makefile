@@ -1,4 +1,4 @@
-# JARVIS Voice Unlock - Objective-C Build Configuration
+﻿# Ironcliw Voice Unlock - Objective-C Build Configuration
 # =====================================================
 
 # Compiler and flags
@@ -21,14 +21,14 @@ SECURITY_DIR = security
 SERVER_DIR = server
 
 # Source files
-DAEMON_SOURCES = $(DAEMON_DIR)/JARVISVoiceUnlockDaemon.m
-FRAMEWORK_SOURCES = $(FRAMEWORK_DIR)/JARVISVoiceAuthenticator.m \
-                    $(FRAMEWORK_DIR)/JARVISVoiceMonitor.m
-BRIDGE_SOURCES = $(BRIDGE_DIR)/JARVISWebSocketBridge.m \
-                 $(BRIDGE_DIR)/JARVISPythonBridge.m
-SECURITY_SOURCES = $(SECURITY_DIR)/JARVISScreenUnlockManager.m \
-                   $(SECURITY_DIR)/JARVISPermissionManager.m
-SERVER_SOURCES = $(SERVER_DIR)/JARVISWebSocketServer.m
+DAEMON_SOURCES = $(DAEMON_DIR)/IroncliwVoiceUnlockDaemon.m
+FRAMEWORK_SOURCES = $(FRAMEWORK_DIR)/IroncliwVoiceAuthenticator.m \
+                    $(FRAMEWORK_DIR)/IroncliwVoiceMonitor.m
+BRIDGE_SOURCES = $(BRIDGE_DIR)/IroncliwWebSocketBridge.m \
+                 $(BRIDGE_DIR)/IroncliwPythonBridge.m
+SECURITY_SOURCES = $(SECURITY_DIR)/IroncliwScreenUnlockManager.m \
+                   $(SECURITY_DIR)/IroncliwPermissionManager.m
+SERVER_SOURCES = $(SERVER_DIR)/IroncliwWebSocketServer.m
 
 ALL_SOURCES = $(DAEMON_SOURCES) $(FRAMEWORK_SOURCES) $(BRIDGE_SOURCES) $(SECURITY_SOURCES) $(SERVER_SOURCES)
 
@@ -47,8 +47,8 @@ HEADERS = $(wildcard $(DAEMON_DIR)/*.h) $(wildcard $(FRAMEWORK_DIR)/*.h) \
           $(wildcard $(SERVER_DIR)/*.h)
 
 # Target executables
-DAEMON_BINARY = $(BIN_DIR)/JARVISVoiceUnlockDaemon
-TEST_BINARY = $(BIN_DIR)/JARVISVoiceUnlockTest
+DAEMON_BINARY = $(BIN_DIR)/IroncliwVoiceUnlockDaemon
+TEST_BINARY = $(BIN_DIR)/IroncliwVoiceUnlockTest
 
 # Include paths
 INCLUDES = -I$(DAEMON_DIR) -I$(FRAMEWORK_DIR) -I$(BRIDGE_DIR) -I$(SECURITY_DIR) -I$(SERVER_DIR)
@@ -114,7 +114,7 @@ test_main.o: test_main.m $(HEADERS)
 
 # Install daemon
 install: daemon
-	@echo "Installing JARVIS Voice Unlock Daemon..."
+	@echo "Installing Ironcliw Voice Unlock Daemon..."
 	@sudo cp $(DAEMON_BINARY) /usr/local/bin/
 	@sudo cp com.jarvis.voiceunlock.plist /Library/LaunchDaemons/
 	@sudo chown root:wheel /Library/LaunchDaemons/com.jarvis.voiceunlock.plist
@@ -124,10 +124,10 @@ install: daemon
 
 # Uninstall daemon
 uninstall:
-	@echo "Uninstalling JARVIS Voice Unlock Daemon..."
+	@echo "Uninstalling Ironcliw Voice Unlock Daemon..."
 	@sudo launchctl unload /Library/LaunchDaemons/com.jarvis.voiceunlock.plist 2>/dev/null || true
 	@sudo rm -f /Library/LaunchDaemons/com.jarvis.voiceunlock.plist
-	@sudo rm -f /usr/local/bin/JARVISVoiceUnlockDaemon
+	@sudo rm -f /usr/local/bin/IroncliwVoiceUnlockDaemon
 	@echo "Uninstallation complete."
 
 # Code signing (requires valid Developer ID)
@@ -144,7 +144,7 @@ package: daemon
 	@cp $(DAEMON_BINARY) package/usr/local/bin/
 	@cp com.jarvis.voiceunlock.plist package/Library/LaunchDaemons/
 	pkgbuild --root package --identifier com.jarvis.voiceunlock \
-	         --version 1.0 --install-location / JARVISVoiceUnlock.pkg
+	         --version 1.0 --install-location / IroncliwVoiceUnlock.pkg
 	@rm -rf package
 
 # Clean build artifacts
@@ -181,7 +181,7 @@ analyze:
 
 # Help
 help:
-	@echo "JARVIS Voice Unlock - Build System"
+	@echo "Ironcliw Voice Unlock - Build System"
 	@echo "================================="
 	@echo ""
 	@echo "Available targets:"

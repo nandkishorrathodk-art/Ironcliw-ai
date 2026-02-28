@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Ferrari Engine Integration Test
 Verify that ScreenCaptureKit is automatically selected as Priority 1
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         if passed:
             print("🏁 FERRARI ENGINE TEST: PASSED ✅")
             print("   The engine swap was successful!")
-            print("   JARVIS is now running on the Ferrari Engine.")
+            print("   Ironcliw is now running on the Ferrari Engine.")
         else:
             print("🏁 FERRARI ENGINE TEST: FAILED ❌")
             print("   Review logs above for fallback reasons.")

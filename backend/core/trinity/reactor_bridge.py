@@ -1,14 +1,14 @@
-"""
+﻿"""
 Reactor Core Bridge - Integration with Training Pipeline
 =========================================================
 
-Provides integration between JARVIS and Reactor Core for:
+Provides integration between Ironcliw and Reactor Core for:
 - Publishing MODEL_READY events when training completes
-- Receiving experience batches from JARVIS
+- Receiving experience batches from Ironcliw
 - Training pipeline coordination
 - Model artifact management
 
-This module can be deployed to Reactor Core repo or used from JARVIS
+This module can be deployed to Reactor Core repo or used from Ironcliw
 to communicate with Reactor Core.
 
 Architecture:
@@ -245,7 +245,7 @@ class ModelArtifactManager:
 
 class ReactorCorePublisher:
     """
-    Publishes events from Reactor Core to JARVIS.
+    Publishes events from Reactor Core to Ironcliw.
 
     Handles MODEL_READY, TRAINING_* events.
     """
@@ -276,7 +276,7 @@ class ReactorCorePublisher:
         """
         Publish MODEL_READY event after training completes.
 
-        This is the critical event that triggers model deployment in JARVIS.
+        This is the critical event that triggers model deployment in Ironcliw.
         """
         # Register artifact
         artifact = await self._artifact_manager.register_artifact(
@@ -406,7 +406,7 @@ class ReactorCorePublisher:
 
 class ReactorCoreReceiver:
     """
-    Receives events from JARVIS in Reactor Core.
+    Receives events from Ironcliw in Reactor Core.
 
     Handles EXPERIENCE_BATCH, STATE_SYNC_* events.
     """
@@ -791,7 +791,7 @@ class TrainingPipelineIntegration:
         """
         Call when an epoch completes.
 
-        Reports progress to JARVIS.
+        Reports progress to Ironcliw.
         """
         if training_id in self._active_trainings:
             self._active_trainings[training_id]["epochs_completed"] = epoch
@@ -822,7 +822,7 @@ class TrainingPipelineIntegration:
         training_info = self._active_trainings[training_id]
         duration = time.time() - training_info["started_at"]
 
-        # Publish MODEL_READY - this triggers deployment in JARVIS
+        # Publish MODEL_READY - this triggers deployment in Ironcliw
         event = await self._publisher.publish_model_ready(
             model_path=model_path,
             model_type=training_info["model_type"],
@@ -854,7 +854,7 @@ class TrainingPipelineIntegration:
         """
         Call when training fails.
 
-        Reports failure to JARVIS.
+        Reports failure to Ironcliw.
         """
         await self._publisher.publish_training_failed(
             training_id=training_id,
@@ -873,7 +873,7 @@ class TrainingPipelineIntegration:
 
 class ReactorCoreBridge:
     """
-    Main bridge between JARVIS and Reactor Core.
+    Main bridge between Ironcliw and Reactor Core.
 
     Combines publisher, receiver, and training integration.
     """

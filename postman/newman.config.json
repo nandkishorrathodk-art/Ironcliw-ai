@@ -1,6 +1,6 @@
-{
+﻿{
   "$schema": "https://json.schemastore.org/newmanrc",
-  "description": "Newman configuration for JARVIS Postman API tests",
+  "description": "Newman configuration for Ironcliw Postman API tests",
   "globals": {
     "base_url": "http://localhost:8010",
     "speaker_name": "Derek",
@@ -9,14 +9,14 @@
     "security_level": "base"
   },
   "run": {
-    "collection": "collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json",
-    "environment": "environments/JARVIS_Environment.postman_environment.json",
+    "collection": "collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json",
+    "environment": "environments/Ironcliw_Environment.postman_environment.json",
     "reporters": ["cli", "htmlextra"],
     "reporter": {
       "htmlextra": {
         "export": "./reports/newman-report.html",
-        "title": "JARVIS Voice Auth API Tests",
-        "browserTitle": "JARVIS Tests",
+        "title": "Ironcliw Voice Auth API Tests",
+        "browserTitle": "Ironcliw Tests",
         "darkTheme": true,
         "testPaging": true,
         "logs": true,
@@ -43,8 +43,8 @@
   },
   "collections": {
     "voice-auth-intelligence": {
-      "name": "JARVIS Voice Auth Intelligence",
-      "file": "collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json",
+      "name": "Ironcliw Voice Auth Intelligence",
+      "file": "collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json",
       "folders": [
         "1. System Status",
         "2. Calibration System",
@@ -58,39 +58,39 @@
       "description": "Advanced ML-based voice authentication with calibration and anti-spoofing"
     },
     "voice-unlock-flow": {
-      "name": "JARVIS Voice Unlock Flow",
-      "file": "collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json",
+      "name": "Ironcliw Voice Unlock Flow",
+      "file": "collections/Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json",
       "description": "Sequential voice unlock authentication pipeline"
     },
     "api-collection": {
-      "name": "JARVIS AI Agent API",
-      "file": "collections/JARVIS_API_Collection.postman_collection.json",
+      "name": "Ironcliw AI Agent API",
+      "file": "collections/Ironcliw_API_Collection.postman_collection.json",
       "folders": [
         "Health & Status",
         "Startup",
         "Screen Control"
       ],
-      "description": "Complete JARVIS system API"
+      "description": "Complete Ironcliw system API"
     }
   },
   "environments": {
     "local": {
-      "name": "JARVIS Local Development",
-      "file": "environments/JARVIS_Environment.postman_environment.json",
+      "name": "Ironcliw Local Development",
+      "file": "environments/Ironcliw_Environment.postman_environment.json",
       "variables": {
         "base_url": "http://localhost:8010",
         "websocket_url": "ws://localhost:8000"
       }
     },
     "docker": {
-      "name": "JARVIS Docker",
+      "name": "Ironcliw Docker",
       "variables": {
         "base_url": "http://host.docker.internal:8010",
         "websocket_url": "ws://host.docker.internal:8000"
       }
     },
     "staging": {
-      "name": "JARVIS Staging",
+      "name": "Ironcliw Staging",
       "variables": {
         "base_url": "https://staging.jarvis.example.com",
         "websocket_url": "wss://staging.jarvis.example.com"
@@ -98,11 +98,11 @@
     }
   },
   "scripts": {
-    "test:all": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json && newman run collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json && newman run collections/JARVIS_API_Collection.postman_collection.json --folder 'Health & Status'",
-    "test:voice-auth": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json",
-    "test:voice-unlock": "newman run collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json",
-    "test:api": "newman run collections/JARVIS_API_Collection.postman_collection.json --folder 'Health & Status'",
-    "test:anti-spoofing": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --folder '4. Anti-Spoofing'",
-    "test:calibration": "newman run collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json --folder '2. Calibration System'"
+    "test:all": "newman run collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json && newman run collections/Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json && newman run collections/Ironcliw_API_Collection.postman_collection.json --folder 'Health & Status'",
+    "test:voice-auth": "newman run collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json",
+    "test:voice-unlock": "newman run collections/Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json",
+    "test:api": "newman run collections/Ironcliw_API_Collection.postman_collection.json --folder 'Health & Status'",
+    "test:anti-spoofing": "newman run collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json --folder '4. Anti-Spoofing'",
+    "test:calibration": "newman run collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json --folder '2. Calibration System'"
   }
 }

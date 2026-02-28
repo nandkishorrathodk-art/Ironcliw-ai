@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Permission Manager
+﻿"""
+Ironcliw macOS Helper - Permission Manager
 
 Manages macOS TCC (Transparency, Consent, Control) permissions.
 Provides a unified interface for checking, requesting, and monitoring
@@ -117,7 +117,7 @@ if _cf_lib is not None:
 # =============================================================================
 
 class PermissionType(str, Enum):
-    """Types of macOS permissions JARVIS may need."""
+    """Types of macOS permissions Ironcliw may need."""
     ACCESSIBILITY = "accessibility"
     SCREEN_RECORDING = "screen_recording"
     MICROPHONE = "microphone"
@@ -141,8 +141,8 @@ class PermissionStatus(str, Enum):
 
 
 class PermissionImportance(str, Enum):
-    """How important a permission is for JARVIS operation."""
-    REQUIRED = "required"  # JARVIS won't function without this
+    """How important a permission is for Ironcliw operation."""
+    REQUIRED = "required"  # Ironcliw won't function without this
     RECOMMENDED = "recommended"  # Core features need this
     OPTIONAL = "optional"  # Nice to have
 
@@ -157,7 +157,7 @@ class PermissionInfo:
     permission_type: PermissionType
     importance: PermissionImportance
     name: str  # Human-readable name
-    description: str  # Why JARVIS needs this
+    description: str  # Why Ironcliw needs this
     settings_path: str  # Path in System Settings
     features_enabled: List[str]  # Features this permission enables
     features_disabled: List[str]  # Features disabled without this
@@ -223,7 +223,7 @@ PERMISSION_DEFINITIONS: Dict[PermissionType, PermissionInfo] = {
         name="Accessibility",
         description=(
             "Required for detecting windows, reading UI elements, and performing "
-            "automated actions on your behalf. Without this, JARVIS cannot see "
+            "automated actions on your behalf. Without this, Ironcliw cannot see "
             "what's on your screen or control applications."
         ),
         settings_path="Privacy & Security > Accessibility",
@@ -245,7 +245,7 @@ PERMISSION_DEFINITIONS: Dict[PermissionType, PermissionInfo] = {
         name="Screen Recording",
         description=(
             "Required for capturing screenshots and understanding what's displayed. "
-            "JARVIS uses this to see and understand your screen content, enabling "
+            "Ironcliw uses this to see and understand your screen content, enabling "
             "intelligent assistance based on visual context."
         ),
         settings_path="Privacy & Security > Screen Recording",
@@ -266,7 +266,7 @@ PERMISSION_DEFINITIONS: Dict[PermissionType, PermissionInfo] = {
         importance=PermissionImportance.REQUIRED,
         name="Microphone",
         description=(
-            "Required for voice commands and speaker verification. JARVIS listens "
+            "Required for voice commands and speaker verification. Ironcliw listens "
             "for your voice to understand commands and verify your identity for "
             "secure operations like screen unlock."
         ),
@@ -288,7 +288,7 @@ PERMISSION_DEFINITIONS: Dict[PermissionType, PermissionInfo] = {
         importance=PermissionImportance.RECOMMENDED,
         name="Automation",
         description=(
-            "Allows JARVIS to control other applications via AppleScript. This "
+            "Allows Ironcliw to control other applications via AppleScript. This "
             "enables features like opening apps, controlling browsers, and "
             "automating repetitive tasks."
         ),
@@ -309,7 +309,7 @@ PERMISSION_DEFINITIONS: Dict[PermissionType, PermissionInfo] = {
         importance=PermissionImportance.RECOMMENDED,
         name="Notifications",
         description=(
-            "Allows JARVIS to read notifications after they appear. This enables "
+            "Allows Ironcliw to read notifications after they appear. This enables "
             "intelligent summarization of notifications and proactive assistance."
         ),
         settings_path="Privacy & Security > Notifications (app-specific)",
@@ -389,7 +389,7 @@ PERMISSION_DEFINITIONS: Dict[PermissionType, PermissionInfo] = {
 
 class PermissionManager:
     """
-    Manages macOS TCC permissions for JARVIS.
+    Manages macOS TCC permissions for Ironcliw.
 
     Provides:
     - Permission status checking

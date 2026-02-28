@@ -1,4 +1,4 @@
-# Voice Biometric Screen Unlock - Status Summary
+﻿# Voice Biometric Screen Unlock - Status Summary
 
 ## Date: 2025-11-12
 
@@ -60,7 +60,7 @@ YOU SAY: "Jarvis, unlock my screen"
    - Adaptive timing: 50-150ms per key
     ↓
 6. Screen Unlocked ✅
-   - JARVIS: "Welcome back, Derek. Your screen is now unlocked."
+   - Ironcliw: "Welcome back, Derek. Your screen is now unlocked."
 ```
 
 ---
@@ -69,7 +69,7 @@ YOU SAY: "Jarvis, unlock my screen"
 
 ### Quick Test (Command Line)
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 
 # Test password retrieval
 python backend/macos_keychain_unlock.py
@@ -83,7 +83,7 @@ python test_voice_biometric_unlock_e2e.py
 # 1. Lock your screen
 # Press: Control + Command + Q
 
-# 2. Say to JARVIS:
+# 2. Say to Ironcliw:
 "Jarvis, unlock my screen"
 
 # 3. Expected:

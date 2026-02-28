@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for JARVIS AI Agent with System Control
+Test script for Ironcliw AI Agent with System Control
 Tests voice commands and system control capabilities
 """
 
@@ -39,7 +39,7 @@ TEST_COMMANDS = [
     ("Take a screenshot", "Should capture screen"),
     
     # Web operations
-    ("Search Google for JARVIS AI", "Should open web search"),
+    ("Search Google for Ironcliw AI", "Should open web search"),
     ("Open GitHub", "Should open github.com"),
     
     # Workflows
@@ -100,18 +100,18 @@ async def test_system_control():
 
 
 async def test_jarvis_agent():
-    """Test JARVIS Agent Voice System"""
-    print("3️⃣ Testing JARVIS Agent Voice System...")
+    """Test Ironcliw Agent Voice System"""
+    print("3️⃣ Testing Ironcliw Agent Voice System...")
     
     try:
-        from backend.voice.jarvis_agent_voice import JARVISAgentVoice
-        jarvis = JARVISAgentVoice()
+        from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
+        jarvis = IroncliwAgentVoice()
         
         if not jarvis.system_control_enabled:
             print("⚠️  System control not enabled - API key missing\n")
             return
             
-        print("✅ JARVIS Agent initialized with system control\n")
+        print("✅ Ironcliw Agent initialized with system control\n")
         
         # Test capabilities
         capabilities = jarvis.get_capabilities()
@@ -142,7 +142,7 @@ async def test_jarvis_agent():
                 print("-" * 50)
                 
     except Exception as e:
-        print(f"❌ JARVIS Agent error: {e}\n")
+        print(f"❌ Ironcliw Agent error: {e}\n")
 
 
 async def test_api_integration():
@@ -150,11 +150,11 @@ async def test_api_integration():
     print("\n4️⃣ Testing API Integration...")
     
     try:
-        from backend.api.jarvis_voice_api import JARVISVoiceAPI
-        api = JARVISVoiceAPI()
+        from backend.api.jarvis_voice_api import IroncliwVoiceAPI
+        api = IroncliwVoiceAPI()
         
         if api.jarvis_available:
-            print("✅ JARVIS API initialized")
+            print("✅ Ironcliw API initialized")
             
             # Test status endpoint
             status = await api.get_status()
@@ -167,7 +167,7 @@ async def test_api_integration():
                 print("⚠️  System control not enabled")
                 
         else:
-            print("❌ JARVIS API not available")
+            print("❌ Ironcliw API not available")
             
     except Exception as e:
         print(f"❌ API integration error: {e}")
@@ -179,14 +179,14 @@ async def interactive_test():
     print("Type commands to test (or 'quit' to exit):\n")
     
     try:
-        from backend.voice.jarvis_agent_voice import JARVISAgentVoice
-        jarvis = JARVISAgentVoice()
+        from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
+        jarvis = IroncliwAgentVoice()
         
         if not jarvis.system_control_enabled:
             print("⚠️  System control disabled - configure API key")
             return
             
-        # Activate JARVIS
+        # Activate Ironcliw
         jarvis.is_active = True
         
         while True:
@@ -200,7 +200,7 @@ async def interactive_test():
                 
             try:
                 response = await jarvis.process_voice_input(command)
-                print(f"\nJARVIS: {response}")
+                print(f"\nIroncliw: {response}")
             except Exception as e:
                 print(f"\nError: {e}")
                 
@@ -213,7 +213,7 @@ async def interactive_test():
 async def main():
     """Main test function"""
     print("=" * 60)
-    print("🤖 JARVIS AI Agent System Control Test Suite")
+    print("🤖 Ironcliw AI Agent System Control Test Suite")
     print("=" * 60)
     
     # Check environment

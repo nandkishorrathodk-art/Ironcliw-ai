@@ -1,6 +1,6 @@
-//
+﻿//
 //  PredictiveEngineSwift.swift
-//  JARVIS Vision Predictive Engine
+//  Ironcliw Vision Predictive Engine
 //
 //  Purpose: Native macOS predictive pre-computation with Core ML integration
 //

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Quick Fix: Update JARVIS Screen Unlock Password
+Quick Fix: Update Ironcliw Screen Unlock Password
 No popups, just command line.
 """
 
@@ -14,7 +14,7 @@ async def update_password():
     """Update the password stored in keychain"""
     
     print("\n" + "="*60)
-    print("🔧 FIX JARVIS UNLOCK PASSWORD")
+    print("🔧 FIX Ironcliw UNLOCK PASSWORD")
     print("="*60)
     print("\nThis will update the password in macOS Keychain.")
     print("Enter your CORRECT macOS login password below.\n")
@@ -34,7 +34,7 @@ async def update_password():
     print("\n🔄 Updating keychain...")
     
     # Update the keychain entry
-    service_name = "JARVIS_Screen_Unlock"
+    service_name = "Ironcliw_Screen_Unlock"
     account_name = "jarvis_user"
     
     # Delete old entry first
@@ -60,7 +60,7 @@ async def update_password():
         "-w", password,
         "-T", "/usr/bin/security",
         "-U",
-        "-l", "JARVIS Screen Unlock"
+        "-l", "Ironcliw Screen Unlock"
     ]
     
     result = subprocess.run(add_cmd, capture_output=True)
@@ -95,7 +95,7 @@ async def update_password():
             else:
                 print("   ⚠️  Warning: Retrieved password doesn't match")
                 print("   Keychain may have issues. Try running:")
-                print("   security delete-generic-password -a jarvis_user -s JARVIS_Screen_Unlock")
+                print("   security delete-generic-password -a jarvis_user -s Ironcliw_Screen_Unlock")
                 return False
         else:
             print("   ⚠️  Could not verify password retrieval")

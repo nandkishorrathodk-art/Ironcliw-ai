@@ -1,4 +1,4 @@
-# Proactive Parallelism Testing Guide
+﻿# Proactive Parallelism Testing Guide
 
 ## ✅ YES - You CAN Test It with `python3 run_supervisor.py`
 
@@ -8,10 +8,10 @@
 
 ## 🚀 Quick Start
 
-### 1. Start JARVIS
+### 1. Start Ironcliw
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -51,9 +51,9 @@ Expected Behavior:
    - Open Slack for team updates
    - Fetch Jira sprint tasks
 3. Executes all 5 in parallel (4x speedup)
-4. JARVIS narrates progress
+4. Ironcliw narrates progress
 
-JARVIS Response:
+Ironcliw Response:
 "Analyzing intent... detected WORK_MODE, confidence 95%
  Expanding to 5 parallel tasks...
 
@@ -92,7 +92,7 @@ Expected Behavior:
    - Fetch participant list and backgrounds
 4. Executes all 4 in parallel
 
-JARVIS Response:
+Ironcliw Response:
 "Analyzing intent... detected MEETING_PREP
  Context: Meeting 'Design Review' at 2 PM in calendar
  Expanding to 4 parallel tasks...
@@ -131,7 +131,7 @@ Expected Behavior:
    - Fetch latest RSC RFC
 4. Executes all 6 in parallel
 
-JARVIS Response:
+Ironcliw Response:
 "Researching React Server Components...
  Expanding to 6 parallel tasks...
 
@@ -171,7 +171,7 @@ Expected Behavior:
    - Send end-of-day status to Slack
 4. Executes all 5 in parallel
 
-JARVIS Response:
+Ironcliw Response:
 "Wrapping up for the day...
  Expanding to 5 parallel tasks...
 
@@ -207,7 +207,7 @@ Expected Behavior:
    - Check LinkedIn messages
 3. Executes all 4 in parallel
 
-JARVIS Response:
+Ironcliw Response:
 "Checking all messages...
 
  Summary:
@@ -253,7 +253,7 @@ Expected Behavior:
    - Pause Slack notifications
 3. Executes all 3 in parallel
 
-JARVIS Response:
+Ironcliw Response:
 "Time for a break! Closing work apps...
  Spotify is ready. Enjoy your break, Derek!"
 ```
@@ -298,14 +298,14 @@ Expected Behavior:
 
 ## 🧪 Testing Workflow
 
-### Step 1: Start JARVIS
+### Step 1: Start Ironcliw
 ```bash
 python3 run_supervisor.py
 ```
 
-### Step 2: Wait for "JARVIS Ready" announcement
+### Step 2: Wait for "Ironcliw Ready" announcement
 ```
-JARVIS (voice): "All systems operational. I'm ready, Derek."
+Ironcliw (voice): "All systems operational. I'm ready, Derek."
 ```
 
 ### Step 3: Say a test command
@@ -315,7 +315,7 @@ You: "Start my day"
 
 ### Step 4: Observe the parallel execution
 ```
-Watch your Mac as JARVIS:
+Watch your Mac as Ironcliw:
 1. Switches to Space 2 → Opens VS Code
 2. Switches to Space 3 → Opens Email
 3. Switches to Space 1 → Shows Calendar
@@ -374,7 +374,7 @@ Expected response:
    ├─ Executes in parallel
    └─ Returns results
    ↓
-9. JARVIS narrates completion
+9. Ironcliw narrates completion
 ```
 
 ### Code Flow:
@@ -453,7 +453,7 @@ curl http://localhost:8000/health | jq '.agentic_runner'
 
 ## 🔗 Cross-Repo Integration Status
 
-### ✅ JARVIS (Main Repo)
+### ✅ Ironcliw (Main Repo)
 - **Status:** 100% Integrated
 - **Components:**
   - PredictivePlanningAgent
@@ -462,14 +462,14 @@ curl http://localhost:8000/health | jq '.agentic_runner'
   - Neural Mesh Coordinator
   - All 60+ agents
 
-### ⚠️ JARVIS Prime
+### ⚠️ Ironcliw Prime
 - **Status:** Needs Integration
 - **What's Missing:**
   - PredictivePlanningAgent not registered in Prime
   - No expand_and_execute endpoint
   - No parallel workflow execution
 
-**TODO:** Add PredictivePlanningAgent to JARVIS Prime's agent registry
+**TODO:** Add PredictivePlanningAgent to Ironcliw Prime's agent registry
 
 ### ⚠️ Reactor Core
 - **Status:** Needs Integration
@@ -511,7 +511,7 @@ curl http://localhost:8000/health | jq '.agentic_runner'
 
 ### ⚠️ What Needs Work:
 
-1. ⚠️ JARVIS Prime integration (add PredictivePlanningAgent)
+1. ⚠️ Ironcliw Prime integration (add PredictivePlanningAgent)
 2. ⚠️ Reactor Core integration (cross-repo events)
 3. ⚠️ Voice command routing (may need explicit "expand and execute" trigger)
 

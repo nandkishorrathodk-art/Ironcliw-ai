@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 🚀 PARALLEL VBI ORCHESTRATOR v3.0.0 - Enterprise-Grade Voice Biometric Intelligence
 ═══════════════════════════════════════════════════════════════════════════════════════
@@ -41,7 +41,7 @@ Key Features:
 - Built-in telemetry and tracing integration
 - Memory pressure monitoring to prevent OOM
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0
 """
 
@@ -121,7 +121,7 @@ class VBIOrchestratorConfig:
     def _load_config(self) -> None:
         """Load configuration from all sources."""
         config_paths = [
-            Path(os.getenv("JARVIS_VBI_CONFIG", "")) / "vbi_orchestrator.json",
+            Path(os.getenv("Ironcliw_VBI_CONFIG", "")) / "vbi_orchestrator.json",
             Path.home() / ".jarvis" / "vbi_orchestrator.json",
             Path(__file__).parent.parent / "config" / "vbi_orchestrator.json",
             Path(__file__).parent.parent / "config" / "cloud_first_config.json",
@@ -1322,7 +1322,7 @@ class SpeakerVerificationStage(VBIStage):
                 db_paths = [
                     os_module.path.expanduser("~/.jarvis/learning/jarvis_learning.db"),  # Primary location
                     os_module.path.expanduser("~/.jarvis/jarvis_learning.db"),  # Legacy location
-                    os_module.path.expanduser("~/Library/Application Support/JARVIS/jarvis_learning.db"),
+                    os_module.path.expanduser("~/Library/Application Support/Ironcliw/jarvis_learning.db"),
                     "data/jarvis_learning.db",
                 ]
                 

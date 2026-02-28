@@ -1,8 +1,8 @@
-# Voice Biometric Authentication Debugging Guide
+﻿# Voice Biometric Authentication Debugging Guide
 
 ## Executive Summary
 
-This document provides a comprehensive walkthrough of debugging and fixing JARVIS voice biometric authentication system, which was failing with 0.00% confidence. Through systematic troubleshooting, we identified and resolved multiple critical issues:
+This document provides a comprehensive walkthrough of debugging and fixing Ironcliw voice biometric authentication system, which was failing with 0.00% confidence. Through systematic troubleshooting, we identified and resolved multiple critical issues:
 
 1. **Database compatibility issues** (SQLite vs PostgreSQL)
 2. **Embedding dimension mismatches** (96D, 192D, 768D)
@@ -33,7 +33,7 @@ This document provides a comprehensive walkthrough of debugging and fixing JARVI
 
 ### System Design Philosophy
 
-The JARVIS voice biometric authentication system was designed with the following core principles:
+The Ironcliw voice biometric authentication system was designed with the following core principles:
 
 1. **Security-First**: Biometric authentication should be as secure as traditional passwords while being more convenient
 2. **Privacy-Preserving**: All voice embeddings stored locally or in encrypted cloud database, never sent to third parties
@@ -229,7 +229,7 @@ Embedding Generation Time (per 3-second audio clip):
 
 **PostgreSQL (Production via Cloud SQL)**:
 - **Scalability**: Handle millions of speaker profiles
-- **Concurrency**: Multiple JARVIS instances can share profiles
+- **Concurrency**: Multiple Ironcliw instances can share profiles
 - **ACID Compliance**: Strong data integrity guarantees
 - **Cloud Integration**: Managed by Google Cloud Platform
 - **Backups**: Automated backups and point-in-time recovery
@@ -270,7 +270,7 @@ else:
 
 **Connection Flow**:
 ```
-JARVIS → Cloud SQL Proxy (localhost:5432) → Cloud SQL Instance
+Ironcliw → Cloud SQL Proxy (localhost:5432) → Cloud SQL Instance
          ↑                                    ↑
          TLS 1.3 encrypted                   IAM authenticated
 ```
@@ -307,7 +307,7 @@ reduced_emb = np.mean(emb.reshape(target_dim, -1), axis=1)
 
 **Why Chosen over psycopg2**:
 - **Performance**: 3x faster than psycopg2 for bulk operations
-- **Async/Await**: Native async support for JARVIS's async architecture
+- **Async/Await**: Native async support for Ironcliw's async architecture
 - **Binary Protocol**: More efficient data transfer vs text protocol
 - **Connection Pooling**: Built-in pool management
 - **Type Conversion**: Automatic NumPy array serialization
@@ -559,7 +559,7 @@ class DatabaseAdapter:
 
 ```
 YOU: unlock my screen
-JARVIS: Voice verification failed (confidence: 0.00%). Please try again.
+Ironcliw: Voice verification failed (confidence: 0.00%). Please try again.
 ```
 
 ### Initial Investigation
@@ -1202,7 +1202,7 @@ if hasattr(self.speaker_engine, "get_speaker_name"):
 **Result:**
 ```
 YOU: unlock my screen
-JARVIS: Screen unlocked by Derek J. Russell ✅
+Ironcliw: Screen unlocked by Derek J. Russell ✅
 ```
 
 **Final verification flow:**
@@ -1640,7 +1640,7 @@ def normalize_for_microphone_variation(self, audio):
 
 ### Edge Case 5: Cold Start (First Use After Restart)
 
-**Scenario**: First voice unlock attempt after JARVIS restart takes 5+ seconds
+**Scenario**: First voice unlock attempt after Ironcliw restart takes 5+ seconds
 
 **Challenge**:
 ```
@@ -1656,7 +1656,7 @@ Subsequent unlocks: 0.3 seconds ✅ (fast)
 **Solution: Pre-warming** (implemented):
 ```python
 async def _preload_speaker_encoder(self):
-    """Pre-load model during JARVIS startup, not first unlock"""
+    """Pre-load model during Ironcliw startup, not first unlock"""
 
     logger.info("🔄 Pre-loading speaker encoder (ECAPA-TDNN) for instant unlock...")
 
@@ -1722,7 +1722,7 @@ async def verify_speaker(self, audio_data, expected_speaker):
 
 ### Edge Case 7: Simultaneous Multi-User Households
 
-**Scenario**: Multiple people live together, all use JARVIS
+**Scenario**: Multiple people live together, all use Ironcliw
 
 **Challenge**:
 ```python
@@ -2100,7 +2100,7 @@ $ grep "speaker profile" /tmp/jarvis_adaptive_threshold_test.log
 ### Test 3: Voice Unlock
 ```bash
 YOU: unlock my screen
-JARVIS: Screen unlocked by Derek J. Russell ✅
+Ironcliw: Screen unlocked by Derek J. Russell ✅
 
 Verification:
 - Speaker: Derek J. Russell

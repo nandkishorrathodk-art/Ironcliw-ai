@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Reconstruct embedding from recent voice samples with audio data."""
 
 import asyncio
@@ -92,7 +92,7 @@ async def reconstruct_embedding():
 
         print("\n🎯 NEXT STEP:")
         print("-" * 40)
-        print("Restart JARVIS to load the new embedding:")
+        print("Restart Ironcliw to load the new embedding:")
         print("   python start_system.py --restart")
         print("\nThen test voice unlock:")
         print("   Say: 'unlock my screen'")

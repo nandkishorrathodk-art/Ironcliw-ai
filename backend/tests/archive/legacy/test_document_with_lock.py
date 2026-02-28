@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify context-aware document creation with screen lock detection
 """
@@ -70,7 +70,7 @@ async def test_document_creation_with_lock():
     print("\n[STEP 4] Checking logs for context-aware behavior...")
     logs = subprocess.run([
         'tail', '-n', '100',
-        '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/logs/jarvis_optimized_*.log'
+        '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/logs/jarvis_optimized_*.log'
     ], capture_output=True, text=True)
 
     # Look for context-aware logs

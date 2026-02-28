@@ -1,4 +1,4 @@
-"""
+﻿"""
 Whisper Local STT Engine
 OpenAI Whisper running locally with CoreML optimization (macOS)
 Balanced accuracy and performance for medium-RAM scenarios
@@ -230,7 +230,7 @@ class WhisperLocalEngine(BaseSTTEngine):
             #
             # IMPORTANT: Prompt must NOT bias toward only "unlock" because it can cause
             # "lock" → "unlock" confusions on short commands. Keep it balanced and configurable.
-            initial_prompt = os.getenv("JARVIS_WHISPER_INITIAL_PROMPT", "").strip()
+            initial_prompt = os.getenv("Ironcliw_WHISPER_INITIAL_PROMPT", "").strip()
             if not initial_prompt:
                 initial_prompt = (
                     "hey jarvis, jarvis, "

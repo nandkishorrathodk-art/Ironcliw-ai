@@ -1,7 +1,7 @@
-"""
-Intelligent Memory Optimizer for JARVIS
+﻿"""
+Intelligent Memory Optimizer for Ironcliw
 
-This module provides advanced memory optimization capabilities for JARVIS, automatically
+This module provides advanced memory optimization capabilities for Ironcliw, automatically
 freeing memory to enable resource-intensive features like LangChain mode. It includes
 intelligent process management, system cache clearing, and application optimization.
 
@@ -206,7 +206,7 @@ class ProcessInfo:
         return False
 
 class IntelligentMemoryOptimizer:
-    """Advanced memory optimization system for JARVIS.
+    """Advanced memory optimization system for Ironcliw.
     
     This class provides intelligent memory management capabilities, automatically
     freeing memory through various strategies to enable resource-intensive features
@@ -801,12 +801,12 @@ class IntelligentMemoryOptimizer:
 
         return suggestions[:5]  # Return top 5 suggestions
 
-# Integration with JARVIS
+# Integration with Ironcliw
 class MemoryOptimizationAPI:
-    """API endpoints for memory optimization integration with JARVIS.
+    """API endpoints for memory optimization integration with Ironcliw.
     
     Provides a high-level interface for memory optimization operations,
-    designed to be used by JARVIS's main system for enabling resource-intensive
+    designed to be used by Ironcliw's main system for enabling resource-intensive
     features like LangChain mode.
     
     Attributes:

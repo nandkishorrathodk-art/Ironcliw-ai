@@ -1,5 +1,5 @@
-"""
-Advanced Rust integration for JARVIS with memory safety and performance optimizations.
+﻿"""
+Advanced Rust integration for Ironcliw with memory safety and performance optimizations.
 
 This module provides Python bindings to the high-performance Rust core with:
 - Zero-copy memory management with leak detection
@@ -83,7 +83,7 @@ class SharedMemoryBuffer:
 
 
 class RustAccelerator:
-    """Main interface for Rust acceleration in JARVIS."""
+    """Main interface for Rust acceleration in Ironcliw."""
 
     def __init__(
         self,

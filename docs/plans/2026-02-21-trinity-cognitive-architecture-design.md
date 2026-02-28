@@ -1,14 +1,14 @@
-# JARVIS Trinity Cognitive Architecture Design
+﻿# Ironcliw Trinity Cognitive Architecture Design
 
 **Date:** 2026-02-21
 **Status:** Approved
-**Scope:** Cross-repo (JARVIS Body, J-Prime, Reactor Core)
+**Scope:** Cross-repo (Ironcliw Body, J-Prime, Reactor Core)
 
 ---
 
 ## 1. Executive Summary
 
-**The Disease:** JARVIS Body contains ~11,000 lines of keyword-based classification
+**The Disease:** Ironcliw Body contains ~11,000 lines of keyword-based classification
 waterfall across `unified_command_processor.py` (6,747 lines),
 `tiered_command_router.py` (1,356 lines), `vision_command_handler.py` (~1,500 lines
 of classification), and `jarvis_voice_api.py` (~250 lines of pre-classification).
@@ -41,7 +41,7 @@ USER (text / voice / image)
         |
         v
 +-----------------------------------------------------------------------+
-|  JARVIS BODY (:8010/:3000)                                            |
+|  Ironcliw BODY (:8010/:3000)                                            |
 |                                                                       |
 |  React UI --- Voice Pipeline --- Vision Pipeline                      |
 |       \            |              /                                    |
@@ -354,7 +354,7 @@ class UnifiedCommandProcessor:
 
 | Repo | Files Modified | Files Deleted | Net Lines |
 |------|---------------|---------------|-----------|
-| **JARVIS Body** | `unified_command_processor.py`, `jarvis_prime_client.py`, `jarvis_voice_api.py`, `main.py` | `tiered_command_router.py`, `tiered_vbia_adapter.py`, `unified_command_processor_pure.py` | **-10,800** |
+| **Ironcliw Body** | `unified_command_processor.py`, `jarvis_prime_client.py`, `jarvis_voice_api.py`, `main.py` | `tiered_command_router.py`, `tiered_vbia_adapter.py`, `unified_command_processor_pure.py` | **-10,800** |
 | **J-Prime** | `run_server.py`, `server.py`, `llama_cpp_executor.py` | None | **+400** |
 | **Reactor Core** | `ingestion/telemetry_ingestor.py` | None | **+50** |
 
@@ -408,13 +408,13 @@ STEP 2: J-Prime -- Reflex Manifest Publishing (jarvis-prime repo)
   +-- Add inhibition signal support
   Deliverable: Body can read reflex manifest on boot
 
-STEP 3: Body -- Extend JarvisPrimeClient (JARVIS repo)
+STEP 3: Body -- Extend JarvisPrimeClient (Ironcliw repo)
   +-- Add classify_and_complete() method
   +-- Parse x_jarvis_routing from response
   +-- Add brain vacuum fallback (Claude API with classification prompt)
   Deliverable: Body can get structured decisions from J-Prime
 
-STEP 4: Body -- Hollow Out UCP (THE BIG SURGERY) (JARVIS repo)
+STEP 4: Body -- Hollow Out UCP (THE BIG SURGERY) (Ironcliw repo)
   +-- Keep process_command() signature
   +-- Add reflex manifest check (internal method)
   +-- Replace classification with J-Prime call (internal method)
@@ -423,12 +423,12 @@ STEP 4: Body -- Hollow Out UCP (THE BIG SURGERY) (JARVIS repo)
   +-- Golden test: run 50-query corpus, verify identical behavior
   Deliverable: UCP is ~800 lines, callers unchanged
 
-STEP 5: Body -- Clean Up Callers (JARVIS repo)
+STEP 5: Body -- Clean Up Callers (Ironcliw repo)
   +-- Remove jarvis_voice_api.py pre-classification (~250 lines)
   +-- Remove main.py lock-screen regex fast-path (~70 lines)
   Deliverable: Callers are clean pass-throughs
 
-STEP 6: Body -- Delete Dead Files (JARVIS repo)
+STEP 6: Body -- Delete Dead Files (Ironcliw repo)
   +-- tiered_command_router.py
   +-- tiered_vbia_adapter.py
   +-- unified_command_processor_pure.py

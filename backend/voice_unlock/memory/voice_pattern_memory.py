@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Pattern Memory with ChromaDB
 
 Enterprise-grade persistent storage for voice authentication patterns
@@ -1209,20 +1209,20 @@ class PersonalContextChallengeGenerator:
     - HARD: "Your last unlock was morning from home. Before that?" (sequence recall)
 
     Configuration:
-    - JARVIS_CHALLENGE_QUESTIONS: Enable challenge questions (default: true)
-    - JARVIS_CHALLENGE_DIFFICULTY: Default difficulty (easy/medium/hard, default: medium)
-    - JARVIS_CHALLENGE_TIME_TOLERANCE_HOURS: Time answer tolerance (default: 2)
+    - Ironcliw_CHALLENGE_QUESTIONS: Enable challenge questions (default: true)
+    - Ironcliw_CHALLENGE_DIFFICULTY: Default difficulty (easy/medium/hard, default: medium)
+    - Ironcliw_CHALLENGE_TIME_TOLERANCE_HOURS: Time answer tolerance (default: 2)
     """
 
     def __init__(self, memory: VoicePatternMemory):
         self.memory = memory
         self.logger = logger
         self.enabled = (
-            os.getenv("JARVIS_CHALLENGE_QUESTIONS", "true").lower() == "true"
+            os.getenv("Ironcliw_CHALLENGE_QUESTIONS", "true").lower() == "true"
         )
-        self.default_difficulty = os.getenv("JARVIS_CHALLENGE_DIFFICULTY", "medium")
+        self.default_difficulty = os.getenv("Ironcliw_CHALLENGE_DIFFICULTY", "medium")
         self.time_tolerance_hours = int(
-            os.getenv("JARVIS_CHALLENGE_TIME_TOLERANCE_HOURS", "2")
+            os.getenv("Ironcliw_CHALLENGE_TIME_TOLERANCE_HOURS", "2")
         )
 
     async def generate_challenge(

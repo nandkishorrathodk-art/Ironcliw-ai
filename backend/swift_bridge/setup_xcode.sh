@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
 # Setup script for Xcode and Swift classifier
 #
@@ -12,7 +12,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 BOLD='\033[1m'
 
-echo -e "${BOLD}🛠️  Setting up Xcode for JARVIS Swift Classifier${NC}"
+echo -e "${BOLD}🛠️  Setting up Xcode for Ironcliw Swift Classifier${NC}"
 echo "================================================"
 
 # Check if Xcode is installed

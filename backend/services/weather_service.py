@@ -1,5 +1,5 @@
-"""
-Weather Service for JARVIS
+﻿"""
+Weather Service for Ironcliw
 Provides real-time weather data using OpenWeatherMap API
 """
 
@@ -369,13 +369,13 @@ class WeatherService:
         }
 
     def format_for_jarvis(self, weather_data: Dict) -> str:
-        """Format weather data for JARVIS response
+        """Format weather data for Ironcliw response
 
         Args:
             weather_data: Weather data dictionary
 
         Returns:
-            Formatted string for JARVIS to speak
+            Formatted string for Ironcliw to speak
         """
         location = weather_data.get("location", "your location")
         temp = weather_data.get("temperature", 0)

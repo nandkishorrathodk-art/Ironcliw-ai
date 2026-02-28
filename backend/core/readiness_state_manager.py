@@ -1,4 +1,4 @@
-"""
+﻿"""
 Readiness State Manager - Multi-Phase Initialization Tracking v2.0
 ==================================================================
 
@@ -42,7 +42,7 @@ Health Endpoint Status Codes:
 - /health/ready: 200 (ready) or 503 (not ready)
 - /health/startup: 200 (startup complete) or 503 (still starting)
 
-Author: JARVIS Trinity v94.0 - Readiness State Management
+Author: Ironcliw Trinity v94.0 - Readiness State Management
 """
 
 from __future__ import annotations
@@ -300,7 +300,7 @@ class ProbeResponse:
 
 class ReadinessStateManager:
     """
-    Manages initialization and readiness state for JARVIS components.
+    Manages initialization and readiness state for Ironcliw components.
 
     v2.0 ENHANCEMENT: Intelligent Inline Readiness Tracking
     --------------------------------------------------------
@@ -908,7 +908,7 @@ class ReadinessStateManager:
         """
         v2.0: Publish readiness state to Trinity Protocol for cross-repo visibility.
 
-        This allows JARVIS-Prime and Reactor-Core to know when jarvis-body is ready.
+        This allows Ironcliw-Prime and Reactor-Core to know when jarvis-body is ready.
         """
         if not self.cross_repo_publish:
             return

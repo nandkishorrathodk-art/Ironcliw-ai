@@ -1,4 +1,4 @@
-"""
+﻿"""
 Mode Dispatcher (Layer 6a)
 ===========================
 
@@ -11,9 +11,9 @@ Modes:
     BIOMETRIC:     Voice unlock authentication
 
 Triggers:
-    "JARVIS, let's chat" / "conversation mode"  → CONVERSATION
-    "JARVIS, unlock my screen"                   → BIOMETRIC (temporary)
-    "JARVIS, stop" / "goodbye" / 5min silence    → COMMAND
+    "Ironcliw, let's chat" / "conversation mode"  → CONVERSATION
+    "Ironcliw, unlock my screen"                   → BIOMETRIC (temporary)
+    "Ironcliw, stop" / "goodbye" / 5min silence    → COMMAND
 """
 
 import asyncio
@@ -27,7 +27,7 @@ from typing import Any, Callable, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Inactivity timeout for conversation mode (seconds)
-_INACTIVITY_TIMEOUT = float(os.getenv("JARVIS_CONV_INACTIVITY_TIMEOUT", "300"))
+_INACTIVITY_TIMEOUT = float(os.getenv("Ironcliw_CONV_INACTIVITY_TIMEOUT", "300"))
 
 
 class VoiceMode(Enum):
@@ -100,10 +100,10 @@ class ModeDispatcher:
         self._speaker_audio_consumer: Optional[Callable] = None
         self._last_speaker_confidence: float = 0.0
         self._speaker_verification_interval = float(
-            os.getenv("JARVIS_SPEAKER_VERIFY_INTERVAL", "15")
+            os.getenv("Ironcliw_SPEAKER_VERIFY_INTERVAL", "15")
         )
         self._speaker_confidence_threshold = float(
-            os.getenv("JARVIS_SPEAKER_CONFIDENCE_THRESHOLD", "0.70")
+            os.getenv("Ironcliw_SPEAKER_CONFIDENCE_THRESHOLD", "0.70")
         )
 
     @property
@@ -260,7 +260,7 @@ class ModeDispatcher:
 
             async def _run_biometric_with_timeout() -> None:
                 auth_timeout = float(
-                    os.getenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "25")
+                    os.getenv("Ironcliw_BIOMETRIC_AUTH_TIMEOUT", "25")
                 )
                 try:
                     await asyncio.wait_for(
@@ -490,16 +490,16 @@ class ModeDispatcher:
         import numpy as np
 
         max_capture_seconds = float(
-            os.getenv("JARVIS_BIOMETRIC_CAPTURE_MAX_SECONDS", "6.0")
+            os.getenv("Ironcliw_BIOMETRIC_CAPTURE_MAX_SECONDS", "6.0")
         )
         min_voiced_frames = int(
-            os.getenv("JARVIS_BIOMETRIC_MIN_VOICED_FRAMES", "6")
+            os.getenv("Ironcliw_BIOMETRIC_MIN_VOICED_FRAMES", "6")
         )
         end_silence_seconds = float(
-            os.getenv("JARVIS_BIOMETRIC_END_SILENCE_SECONDS", "0.7")
+            os.getenv("Ironcliw_BIOMETRIC_END_SILENCE_SECONDS", "0.7")
         )
         voice_energy_threshold = float(
-            os.getenv("JARVIS_BIOMETRIC_VOICE_ENERGY_THRESHOLD", "0.004")
+            os.getenv("Ironcliw_BIOMETRIC_VOICE_ENERGY_THRESHOLD", "0.004")
         )
         poll_interval = 0.02
 
@@ -559,13 +559,13 @@ class ModeDispatcher:
         Falls back to VBIA adapter if the unlock service is unavailable.
         """
         verify_timeout = float(
-            os.getenv("JARVIS_BIOMETRIC_VERIFY_TIMEOUT", "12.0")
+            os.getenv("Ironcliw_BIOMETRIC_VERIFY_TIMEOUT", "12.0")
         )
         unlock_timeout = float(
-            os.getenv("JARVIS_BIOMETRIC_UNLOCK_TIMEOUT", "12.0")
+            os.getenv("Ironcliw_BIOMETRIC_UNLOCK_TIMEOUT", "12.0")
         )
         init_timeout = float(
-            os.getenv("JARVIS_BIOMETRIC_INIT_TIMEOUT", "12.0")
+            os.getenv("Ironcliw_BIOMETRIC_INIT_TIMEOUT", "12.0")
         )
 
         # Primary: strict verify -> authorized unlock
@@ -677,7 +677,7 @@ class ModeDispatcher:
         # Fallback: TieredVBIAAdapter verification only + unlock service execution
         if self._vbia_adapter is not None:
             try:
-                threshold = float(os.getenv("JARVIS_BIOMETRIC_THRESHOLD", "0.85"))
+                threshold = float(os.getenv("Ironcliw_BIOMETRIC_THRESHOLD", "0.85"))
                 passed, confidence = await self._vbia_adapter.verify_speaker(threshold)
                 if not passed:
                     return {

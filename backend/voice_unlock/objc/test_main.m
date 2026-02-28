@@ -1,21 +1,21 @@
-/**
+﻿/**
  * test_main.m
- * JARVIS Voice Unlock System
+ * Ironcliw Voice Unlock System
  *
  * Test harness for Voice Unlock components
  */
 
 #import <Foundation/Foundation.h>
-#import "JARVISVoiceUnlockDaemon.h"
-#import "JARVISVoiceAuthenticator.h"
-#import "JARVISScreenUnlockManager.h"
-#import "JARVISVoiceMonitor.h"
-#import "JARVISWebSocketBridge.h"
-#import "JARVISPythonBridge.h"
-#import "JARVISPermissionManager.h"
+#import "IroncliwVoiceUnlockDaemon.h"
+#import "IroncliwVoiceAuthenticator.h"
+#import "IroncliwScreenUnlockManager.h"
+#import "IroncliwVoiceMonitor.h"
+#import "IroncliwWebSocketBridge.h"
+#import "IroncliwPythonBridge.h"
+#import "IroncliwPermissionManager.h"
 
 // Test delegate implementations
-@interface TestDelegate : NSObject <JARVISWebSocketBridgeDelegate, JARVISVoiceMonitorDelegate, JARVISPermissionManagerDelegate, JARVISScreenUnlockDelegate>
+@interface TestDelegate : NSObject <IroncliwWebSocketBridgeDelegate, IroncliwVoiceMonitorDelegate, IroncliwPermissionManagerDelegate, IroncliwScreenUnlockDelegate>
 @property (nonatomic, strong) NSMutableArray *logs;
 @end
 
@@ -46,7 +46,7 @@
     NSLog(@"🎤 Voice monitor started listening");
 }
 
-- (void)voiceMonitorDidDetectVoice:(JARVISAudioBufferInfo *)bufferInfo {
+- (void)voiceMonitorDidDetectVoice:(IroncliwAudioBufferInfo *)bufferInfo {
     [self.logs addObject:[NSString stringWithFormat:@"Voice detected: %.2f confidence", bufferInfo.voiceConfidence]];
     NSLog(@"🗣️ Voice detected with confidence: %.2f", bufferInfo.voiceConfidence);
 }
@@ -57,9 +57,9 @@
     NSLog(@"✅ All required permissions granted");
 }
 
-- (void)missingRequiredPermissions:(NSArray<JARVISPermissionInfo *> *)permissions {
+- (void)missingRequiredPermissions:(NSArray<IroncliwPermissionInfo *> *)permissions {
     NSMutableArray *names = [NSMutableArray array];
-    for (JARVISPermissionInfo *perm in permissions) {
+    for (IroncliwPermissionInfo *perm in permissions) {
         [names addObject:perm.displayName];
     }
     [self.logs addObject:[NSString stringWithFormat:@"Missing permissions: %@", [names componentsJoinedByString:@", "]]];
@@ -67,19 +67,19 @@
 }
 
 // Screen unlock delegate
-- (void)screenStateDidChange:(JARVISScreenState)newState {
+- (void)screenStateDidChange:(IroncliwScreenState)newState {
     NSString *stateString = @"Unknown";
     switch (newState) {
-        case JARVISScreenStateUnlocked:
+        case IroncliwScreenStateUnlocked:
             stateString = @"Unlocked";
             break;
-        case JARVISScreenStateLocked:
+        case IroncliwScreenStateLocked:
             stateString = @"Locked";
             break;
-        case JARVISScreenStateScreensaver:
+        case IroncliwScreenStateScreensaver:
             stateString = @"Screensaver";
             break;
-        case JARVISScreenStateSleeping:
+        case IroncliwScreenStateSleeping:
             stateString = @"Sleeping";
             break;
         default:
@@ -95,26 +95,26 @@
 void testPermissions() {
     NSLog(@"\n=== Testing Permissions ===");
     
-    JARVISPermissionManager *permManager = [[JARVISPermissionManager alloc] init];
+    IroncliwPermissionManager *permManager = [[IroncliwPermissionManager alloc] init];
     TestDelegate *delegate = [[TestDelegate alloc] init];
     permManager.delegate = delegate;
     
     // Check all permissions
     NSLog(@"Checking permissions...");
-    for (JARVISPermissionInfo *perm in permManager.allPermissions) {
-        JARVISPermissionStatus status = [permManager statusForPermission:perm.type];
+    for (IroncliwPermissionInfo *perm in permManager.allPermissions) {
+        IroncliwPermissionStatus status = [permManager statusForPermission:perm.type];
         NSString *statusString = @"Unknown";
         switch (status) {
-            case JARVISPermissionStatusAuthorized:
+            case IroncliwPermissionStatusAuthorized:
                 statusString = @"✅ Authorized";
                 break;
-            case JARVISPermissionStatusDenied:
+            case IroncliwPermissionStatusDenied:
                 statusString = @"❌ Denied";
                 break;
-            case JARVISPermissionStatusNotDetermined:
+            case IroncliwPermissionStatusNotDetermined:
                 statusString = @"❓ Not Determined";
                 break;
-            case JARVISPermissionStatusRestricted:
+            case IroncliwPermissionStatusRestricted:
                 statusString = @"🚫 Restricted";
                 break;
         }
@@ -127,7 +127,7 @@ void testPermissions() {
 void testVoiceAuthenticator() {
     NSLog(@"\n=== Testing Voice Authenticator ===");
     
-    JARVISVoiceAuthenticator *auth = [[JARVISVoiceAuthenticator alloc] init];
+    IroncliwVoiceAuthenticator *auth = [[IroncliwVoiceAuthenticator alloc] init];
     
     // Check enrolled users
     NSArray *users = [auth enrolledUsers];
@@ -147,14 +147,14 @@ void testVoiceAuthenticator() {
 void testScreenUnlock() {
     NSLog(@"\n=== Testing Screen Unlock Manager ===");
     
-    JARVISScreenUnlockManager *unlockManager = [[JARVISScreenUnlockManager alloc] init];
+    IroncliwScreenUnlockManager *unlockManager = [[IroncliwScreenUnlockManager alloc] init];
     TestDelegate *delegate = [[TestDelegate alloc] init];
     unlockManager.delegate = delegate;
     
     // Check screen state
     BOOL locked = [unlockManager isScreenLocked];
     BOOL screensaver = [unlockManager isScreensaverActive];
-    JARVISScreenState state = [unlockManager detectScreenState];
+    IroncliwScreenState state = [unlockManager detectScreenState];
     
     NSLog(@"Screen locked: %@", locked ? @"YES" : @"NO");
     NSLog(@"Screensaver active: %@", screensaver ? @"YES" : @"NO");
@@ -166,7 +166,7 @@ void testScreenUnlock() {
 void testWebSocketBridge() {
     NSLog(@"\n=== Testing WebSocket Bridge ===");
     
-    JARVISWebSocketBridge *wsbridge = [[JARVISWebSocketBridge alloc] init];
+    IroncliwWebSocketBridge *wsbridge = [[IroncliwWebSocketBridge alloc] init];
     TestDelegate *delegate = [[TestDelegate alloc] init];
     wsbridge.delegate = delegate;
     
@@ -190,7 +190,7 @@ void testWebSocketBridge() {
 void testPythonBridge() {
     NSLog(@"\n=== Testing Python Bridge ===");
     
-    JARVISPythonBridge *pybridge = [[JARVISPythonBridge alloc] init];
+    IroncliwPythonBridge *pybridge = [[IroncliwPythonBridge alloc] init];
     
     NSLog(@"Python configuration:");
     NSLog(@"  Python path: %@", pybridge.pythonPath);
@@ -216,7 +216,7 @@ void testPythonBridge() {
 void testVoiceMonitor() {
     NSLog(@"\n=== Testing Voice Monitor ===");
     
-    JARVISVoiceMonitor *monitor = [[JARVISVoiceMonitor alloc] init];
+    IroncliwVoiceMonitor *monitor = [[IroncliwVoiceMonitor alloc] init];
     TestDelegate *delegate = [[TestDelegate alloc] init];
     monitor.delegate = delegate;
     
@@ -244,7 +244,7 @@ void testVoiceMonitor() {
 void testDaemonStatus() {
     NSLog(@"\n=== Testing Daemon Status ===");
     
-    JARVISVoiceUnlockDaemon *daemon = [JARVISVoiceUnlockDaemon sharedDaemon];
+    IroncliwVoiceUnlockDaemon *daemon = [IroncliwVoiceUnlockDaemon sharedDaemon];
     
     NSDictionary *status = [daemon getStatus];
     NSLog(@"Daemon status: %@", status);
@@ -265,8 +265,8 @@ void testDaemonStatus() {
 void runIntegrationTest() {
     NSLog(@"\n=== Running Integration Test ===");
     
-    JARVISVoiceUnlockDaemon *daemon = [JARVISVoiceUnlockDaemon sharedDaemon];
-    daemon.options |= JARVISVoiceUnlockOptionEnableDebugLogging;
+    IroncliwVoiceUnlockDaemon *daemon = [IroncliwVoiceUnlockDaemon sharedDaemon];
+    daemon.options |= IroncliwVoiceUnlockOptionEnableDebugLogging;
     
     // Check if user is enrolled
     if (![daemon isUserEnrolled]) {
@@ -280,14 +280,14 @@ void runIntegrationTest() {
         NSLog(@"✅ Daemon started successfully");
         
         // Simulate screen lock in debug mode
-        if (daemon.options & JARVISVoiceUnlockOptionEnableDebugLogging) {
+        if (daemon.options & IroncliwVoiceUnlockOptionEnableDebugLogging) {
             NSLog(@"Simulating screen lock...");
             [daemon simulateScreenLock];
             
             [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
             
             NSLog(@"Simulating voice unlock...");
-            [daemon simulateVoiceUnlock:@"Hello JARVIS, unlock my Mac"];
+            [daemon simulateVoiceUnlock:@"Hello Ironcliw, unlock my Mac"];
             
             [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
         }
@@ -302,7 +302,7 @@ void runIntegrationTest() {
 // Main test function
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
-        NSLog(@"JARVIS Voice Unlock Test Suite");
+        NSLog(@"Ironcliw Voice Unlock Test Suite");
         NSLog(@"==============================");
         NSLog(@"Running on macOS %@", [[NSProcessInfo processInfo] operatingSystemVersionString]);
         
@@ -350,15 +350,15 @@ int main(int argc, const char * argv[]) {
         
         NSLog(@"\nTest suite completed");
         NSLog(@"\nAvailable test targets:");
-        NSLog(@"  ./JARVISVoiceUnlockTest all         - Run all tests");
-        NSLog(@"  ./JARVISVoiceUnlockTest permissions - Test permissions");
-        NSLog(@"  ./JARVISVoiceUnlockTest authenticator- Test voice authenticator");
-        NSLog(@"  ./JARVISVoiceUnlockTest screen      - Test screen unlock");
-        NSLog(@"  ./JARVISVoiceUnlockTest websocket   - Test WebSocket bridge");
-        NSLog(@"  ./JARVISVoiceUnlockTest python      - Test Python bridge");
-        NSLog(@"  ./JARVISVoiceUnlockTest monitor     - Test voice monitor");
-        NSLog(@"  ./JARVISVoiceUnlockTest daemon      - Test daemon status");
-        NSLog(@"  ./JARVISVoiceUnlockTest integration - Run integration test");
+        NSLog(@"  ./IroncliwVoiceUnlockTest all         - Run all tests");
+        NSLog(@"  ./IroncliwVoiceUnlockTest permissions - Test permissions");
+        NSLog(@"  ./IroncliwVoiceUnlockTest authenticator- Test voice authenticator");
+        NSLog(@"  ./IroncliwVoiceUnlockTest screen      - Test screen unlock");
+        NSLog(@"  ./IroncliwVoiceUnlockTest websocket   - Test WebSocket bridge");
+        NSLog(@"  ./IroncliwVoiceUnlockTest python      - Test Python bridge");
+        NSLog(@"  ./IroncliwVoiceUnlockTest monitor     - Test voice monitor");
+        NSLog(@"  ./IroncliwVoiceUnlockTest daemon      - Test daemon status");
+        NSLog(@"  ./IroncliwVoiceUnlockTest integration - Run integration test");
     }
     
     return 0;

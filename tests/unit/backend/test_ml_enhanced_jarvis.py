@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for ML-Enhanced JARVIS Voice System
+Test script for ML-Enhanced Ironcliw Voice System
 Demonstrates:
 - Personalized wake word detection with 80%+ false positive reduction
 - Dynamic threshold adjustment based on environment
@@ -17,7 +17,7 @@ from datetime import datetime
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from backend.voice.jarvis_voice import EnhancedJARVISVoiceAssistant
+from backend.voice.jarvis_voice import EnhancedIroncliwVoiceAssistant
 
 # Configure logging
 logging.basicConfig(
@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 async def test_ml_enhanced_jarvis():
-    """Test the ML-enhanced JARVIS system"""
+    """Test the ML-enhanced Ironcliw system"""
     print("\n" + "="*60)
-    print("🤖 ML-ENHANCED JARVIS TEST")
+    print("🤖 ML-ENHANCED Ironcliw TEST")
     print("="*60 + "\n")
     
     # Check API key
@@ -41,10 +41,10 @@ async def test_ml_enhanced_jarvis():
         return
     
     print("✅ Anthropic API key found")
-    print("\n🚀 Initializing ML-Enhanced JARVIS...")
+    print("\n🚀 Initializing ML-Enhanced Ironcliw...")
     
-    # Create JARVIS with ML enhancements enabled
-    jarvis = EnhancedJARVISVoiceAssistant(api_key, enable_ml_training=True)
+    # Create Ironcliw with ML enhancements enabled
+    jarvis = EnhancedIroncliwVoiceAssistant(api_key, enable_ml_training=True)
     
     # Check if ML enhanced system is available
     if jarvis.ml_enhanced_system:
@@ -58,7 +58,7 @@ async def test_ml_enhanced_jarvis():
         print("   Some features may be limited")
     
     print("\n📊 Available ML Features:")
-    print("   1. Say 'Hey JARVIS' - Wake word detection")
+    print("   1. Say 'Hey Ironcliw' - Wake word detection")
     print("   2. Say 'show ML performance' - View false positive reduction stats")
     print("   3. Say 'improve accuracy' - Personalized calibration")
     print("   4. Say 'personalized tips' - Get ML-based improvement suggestions")
@@ -83,10 +83,10 @@ async def test_ml_enhanced_jarvis():
     print("-"*60 + "\n")
     
     try:
-        # Start JARVIS
+        # Start Ironcliw
         await jarvis.start()
     except KeyboardInterrupt:
-        print("\n\n🛑 Shutting down ML-Enhanced JARVIS...")
+        print("\n\n🛑 Shutting down ML-Enhanced Ironcliw...")
         
         # Show final ML performance if available
         if jarvis.ml_enhanced_system:
@@ -101,7 +101,7 @@ async def test_ml_enhanced_jarvis():
             print(f"     - Confidence: {metrics['current_thresholds']['confidence']:.2f}")
         
         await jarvis._shutdown()
-        print("\n✅ ML-Enhanced JARVIS shutdown complete")
+        print("\n✅ ML-Enhanced Ironcliw shutdown complete")
 
 
 if __name__ == "__main__":

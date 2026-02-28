@@ -1,4 +1,4 @@
-# Unified Supervisor Kernel Design
+﻿# Unified Supervisor Kernel Design
 
 **Date:** 2026-01-31
 **Status:** Approved
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-Create a **Monolithic Kernel** - a single, self-contained file (~55k lines) that acts as the absolute authority for the entire JARVIS system. This eliminates "import hell" during crashes and ensures the Supervisor has total context without relying on external modules.
+Create a **Monolithic Kernel** - a single, self-contained file (~55k lines) that acts as the absolute authority for the entire Ironcliw system. This eliminates "import hell" during crashes and ensures the Supervisor has total context without relying on external modules.
 
 ### Key Decisions
 

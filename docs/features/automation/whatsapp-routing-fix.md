@@ -1,4 +1,4 @@
-# JARVIS WhatsApp Command Routing Fix
+﻿# Ironcliw WhatsApp Command Routing Fix
 
 ## Problem Solved ✅
 
@@ -30,7 +30,7 @@ The command "open WhatsApp" was being misrouted to the vision handler instead of
   - Maintains command history for learning
   - Provides feedback mechanism
 
-### 4. Fix Applied to JARVIS Voice Agent
+### 4. Fix Applied to Ironcliw Voice Agent
 - **Location**: `backend/voice/jarvis_agent_voice_fix.py`
 - **Applied in**: `backend/api/jarvis_voice_api.py`
 - **Result**: All voice commands now use intelligent routing instead of keyword matching
@@ -53,7 +53,7 @@ The command "open WhatsApp" was being misrouted to the vision handler instead of
 
 ## How It Works
 
-1. **User says**: "Hey JARVIS, open WhatsApp"
+1. **User says**: "Hey Ironcliw, open WhatsApp"
 2. **Swift Classifier**:
    - Analyzes linguistic structure
    - Identifies "open" as action verb
@@ -73,12 +73,12 @@ The command "open WhatsApp" was being misrouted to the vision handler instead of
 
 ## Usage
 
-The fix is automatically applied when JARVIS starts. No configuration needed.
+The fix is automatically applied when Ironcliw starts. No configuration needed.
 
 ```python
 # The fix is applied automatically in jarvis_voice_api.py:
 from voice.jarvis_agent_voice_fix import patch_jarvis_voice_agent
-patch_jarvis_voice_agent(JARVISAgentVoice)
+patch_jarvis_voice_agent(IroncliwAgentVoice)
 ```
 
 ## Verification

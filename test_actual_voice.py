@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test with actual voice recording."""
 
 import asyncio
@@ -32,7 +32,7 @@ async def test_actual_voice():
     await asyncio.sleep(1)
     print("   🎤 RECORDING NOW - SPEAK!")
 
-    # Audio parameters (match JARVIS)
+    # Audio parameters (match Ironcliw)
     SAMPLE_RATE = 16000
     CHANNELS = 1
     CHUNK_SIZE = 1024
@@ -61,8 +61,8 @@ async def test_actual_voice():
     # Convert to bytes
     audio_bytes = b''.join(frames)
 
-    # Test 1: Raw bytes as JARVIS would send
-    print("\n1️⃣ Testing with raw PCM bytes (as JARVIS sends)...")
+    # Test 1: Raw bytes as Ironcliw would send
+    print("\n1️⃣ Testing with raw PCM bytes (as Ironcliw sends)...")
     result = await service.verify_speaker(audio_bytes)
     print(f"   Result: {result.get('verified', False)}")
     print(f"   Confidence: {result.get('confidence', 0):.2%}")

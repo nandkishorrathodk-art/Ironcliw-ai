@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Unlock API Router
 ======================
 
@@ -190,16 +190,15 @@ async def get_speaker_service():
 
 
 async def get_learning_db():
-    """Get or initialize the JARVISLearningDatabase."""
+    """Get or initialize the IroncliwLearningDatabase."""
     global _learning_db
     if _learning_db is None:
         try:
-            from intelligence.learning_database import JARVISLearningDatabase
-            _learning_db = JARVISLearningDatabase()
-            await _learning_db.initialize()
-            logger.info("✅ JARVISLearningDatabase initialized")
+            from intelligence.learning_database import get_learning_database
+            _learning_db = await get_learning_database()
+            logger.info("✅ IroncliwLearningDatabase initialized")
         except Exception as e:
-            logger.error(f"Failed to initialize JARVISLearningDatabase: {e}")
+            logger.error(f"Failed to initialize IroncliwLearningDatabase: {e}")
             raise
     return _learning_db
 
@@ -990,7 +989,7 @@ async def get_voice_profile_health():
                 try:
                     health["profiles"] = await _asyncio.wait_for(
                         _loop.run_in_executor(None, _collect_profiles),
-                        timeout=float(os.getenv("JARVIS_HEALTH_PROFILES_TIMEOUT", "5.0")),
+                        timeout=float(os.getenv("Ironcliw_HEALTH_PROFILES_TIMEOUT", "5.0")),
                     )
                 except _asyncio.TimeoutError:
                     health["profiles"] = []
@@ -1715,15 +1714,15 @@ async def get_transparency_config():
                 "announce_infrastructure": TransparencyConfig.announce_infrastructure(),
             },
             "environment_variables": {
-                "JARVIS_TRANSPARENCY_ENABLED": os.getenv("JARVIS_TRANSPARENCY_ENABLED", "true"),
-                "JARVIS_VERBOSE_MODE": os.getenv("JARVIS_VERBOSE_MODE", "false"),
-                "JARVIS_DEBUG_VOICE": os.getenv("JARVIS_DEBUG_VOICE", "false"),
-                "JARVIS_TRACE_RETENTION_HOURS": os.getenv("JARVIS_TRACE_RETENTION_HOURS", "24"),
-                "JARVIS_CLOUD_STATUS_ENABLED": os.getenv("JARVIS_CLOUD_STATUS_ENABLED", "true"),
-                "JARVIS_EXPLAIN_DECISIONS": os.getenv("JARVIS_EXPLAIN_DECISIONS", "true"),
-                "JARVIS_ANNOUNCE_CONFIDENCE": os.getenv("JARVIS_ANNOUNCE_CONFIDENCE", "borderline"),
-                "JARVIS_ANNOUNCE_LATENCY": os.getenv("JARVIS_ANNOUNCE_LATENCY", "false"),
-                "JARVIS_ANNOUNCE_INFRASTRUCTURE": os.getenv("JARVIS_ANNOUNCE_INFRASTRUCTURE", "false"),
+                "Ironcliw_TRANSPARENCY_ENABLED": os.getenv("Ironcliw_TRANSPARENCY_ENABLED", "true"),
+                "Ironcliw_VERBOSE_MODE": os.getenv("Ironcliw_VERBOSE_MODE", "false"),
+                "Ironcliw_DEBUG_VOICE": os.getenv("Ironcliw_DEBUG_VOICE", "false"),
+                "Ironcliw_TRACE_RETENTION_HOURS": os.getenv("Ironcliw_TRACE_RETENTION_HOURS", "24"),
+                "Ironcliw_CLOUD_STATUS_ENABLED": os.getenv("Ironcliw_CLOUD_STATUS_ENABLED", "true"),
+                "Ironcliw_EXPLAIN_DECISIONS": os.getenv("Ironcliw_EXPLAIN_DECISIONS", "true"),
+                "Ironcliw_ANNOUNCE_CONFIDENCE": os.getenv("Ironcliw_ANNOUNCE_CONFIDENCE", "borderline"),
+                "Ironcliw_ANNOUNCE_LATENCY": os.getenv("Ironcliw_ANNOUNCE_LATENCY", "false"),
+                "Ironcliw_ANNOUNCE_INFRASTRUCTURE": os.getenv("Ironcliw_ANNOUNCE_INFRASTRUCTURE", "false"),
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -1828,7 +1827,7 @@ async def get_trace_summary(trace_id: str):
     """
     Get human-readable summary of a decision trace.
 
-    This is what JARVIS would say if you asked "why did you make that decision?"
+    This is what Ironcliw would say if you asked "why did you make that decision?"
 
     Args:
         trace_id: The trace ID to summarize
@@ -1960,10 +1959,10 @@ async def get_transparency_stats():
 @router.post("/transparency/speak-debug")
 async def speak_debug_report(trace_id: Optional[str] = None):
     """
-    Have JARVIS speak a debug report for the last or specified authentication.
+    Have Ironcliw speak a debug report for the last or specified authentication.
 
     This is useful for debugging voice authentication issues hands-free.
-    JARVIS will verbally explain what happened during authentication.
+    Ironcliw will verbally explain what happened during authentication.
 
     Args:
         trace_id: Specific trace ID to report on (uses last if not provided)
@@ -2017,9 +2016,9 @@ async def speak_debug_report(trace_id: Optional[str] = None):
 @router.post("/transparency/explain-last")
 async def explain_last_authentication():
     """
-    Have JARVIS verbally explain the last authentication decision.
+    Have Ironcliw verbally explain the last authentication decision.
 
-    JARVIS will speak a detailed explanation of WHY the last
+    Ironcliw will speak a detailed explanation of WHY the last
     authentication succeeded or failed, including:
     - Confidence breakdown
     - Best hypothesis (if borderline)

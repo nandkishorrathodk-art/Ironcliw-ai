@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 import AppKit
 import CoreServices
 import IOKit
@@ -6,7 +6,7 @@ import IOKit.audio
 import Network
 import Security
 
-/// Comprehensive System Control module for JARVIS
+/// Comprehensive System Control module for Ironcliw
 /// Provides secure, robust system operations with permission management
 public class SystemControl {
     

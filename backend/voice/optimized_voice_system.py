@@ -1,4 +1,4 @@
-"""
+﻿"""
 Optimized ML Voice System for 16GB MacBook Pro
 Integrates all optimization components
 """
@@ -253,7 +253,7 @@ class OptimizedVoiceSystem(MLEnhancedVoiceSystem):
 async def create_optimized_jarvis(api_key: str, 
                                 preset: str = "16gb_macbook_pro") -> OptimizedVoiceSystem:
     """
-    Create an optimized JARVIS voice system
+    Create an optimized Ironcliw voice system
     
     Presets:
     - "16gb_macbook_pro": Balanced performance for 16GB RAM

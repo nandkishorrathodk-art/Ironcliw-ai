@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Memory usage test for Claude Vision Analyzer
 Tests RAM consumption under various loads to identify potential crash risks
@@ -601,7 +601,7 @@ async def main():
     logger.info("="*70)
     logger.info(f"VISION ANALYZER MEMORY USAGE TEST")
     logger.info(f"Mode: {'MOCK' if use_mock else 'LIVE API'}")
-    logger.info(f"Testing for 16GB macOS system running JARVIS")
+    logger.info(f"Testing for 16GB macOS system running Ironcliw")
     logger.info("="*70)
     
     if not use_mock and not os.getenv('ANTHROPIC_API_KEY'):
@@ -623,7 +623,7 @@ async def main():
         logger.info(f"- Concurrent requests: Linear scaling with slight overhead")
         logger.info(f"- Memory leaks: Minimal (< 0.5 MB per analysis)")
         logger.info(f"- Cache overhead: ~2-5 MB per cached result")
-        logger.info(f"\n⚠️ CRASH RISK: Keep total usage under 2GB to leave room for other JARVIS components")
+        logger.info(f"\n⚠️ CRASH RISK: Keep total usage under 2GB to leave room for other Ironcliw components")
     else:
         logger.error("\n❌ MEMORY USAGE TEST FAILED!")
     

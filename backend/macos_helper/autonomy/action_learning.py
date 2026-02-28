@@ -1,5 +1,5 @@
-"""
-Action Learning System for JARVIS Autonomous Actions.
+﻿"""
+Action Learning System for Ironcliw Autonomous Actions.
 
 This module provides machine learning capabilities for action optimization,
 including success prediction, pattern learning, and adaptive behavior.
@@ -13,10 +13,10 @@ Key Features:
     - Adaptive execution strategies
 
 Environment Variables:
-    JARVIS_LEARNING_ENABLED: Enable learning system (default: true)
-    JARVIS_LEARNING_MIN_SAMPLES: Minimum samples for predictions (default: 10)
-    JARVIS_LEARNING_DECAY_FACTOR: Time decay for old data (default: 0.95)
-    JARVIS_LEARNING_CONFIDENCE_THRESHOLD: Min confidence for predictions (default: 0.7)
+    Ironcliw_LEARNING_ENABLED: Enable learning system (default: true)
+    Ironcliw_LEARNING_MIN_SAMPLES: Minimum samples for predictions (default: 10)
+    Ironcliw_LEARNING_DECAY_FACTOR: Time decay for old data (default: 0.95)
+    Ironcliw_LEARNING_CONFIDENCE_THRESHOLD: Min confidence for predictions (default: 0.7)
 """
 
 from __future__ import annotations
@@ -241,11 +241,11 @@ class ActionLearningConfig:
     def from_env(cls) -> "ActionLearningConfig":
         """Create configuration from environment variables."""
         return cls(
-            enabled=os.getenv("JARVIS_LEARNING_ENABLED", "true").lower() == "true",
-            min_samples_for_prediction=int(os.getenv("JARVIS_LEARNING_MIN_SAMPLES", "10")),
-            decay_factor=float(os.getenv("JARVIS_LEARNING_DECAY_FACTOR", "0.95")),
-            confidence_threshold=float(os.getenv("JARVIS_LEARNING_CONFIDENCE_THRESHOLD", "0.7")),
-            max_history_size=int(os.getenv("JARVIS_LEARNING_MAX_HISTORY", "10000")),
+            enabled=os.getenv("Ironcliw_LEARNING_ENABLED", "true").lower() == "true",
+            min_samples_for_prediction=int(os.getenv("Ironcliw_LEARNING_MIN_SAMPLES", "10")),
+            decay_factor=float(os.getenv("Ironcliw_LEARNING_DECAY_FACTOR", "0.95")),
+            confidence_threshold=float(os.getenv("Ironcliw_LEARNING_CONFIDENCE_THRESHOLD", "0.7")),
+            max_history_size=int(os.getenv("Ironcliw_LEARNING_MAX_HISTORY", "10000")),
         )
 
 

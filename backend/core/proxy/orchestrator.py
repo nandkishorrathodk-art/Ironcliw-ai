@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Proxy Orchestrator - Central coordination for all proxy layers
 
 Integrates:
@@ -7,9 +7,9 @@ Integrates:
 - Layer 3: Proxy Lifecycle Controller
 - Layer 4: Health Aggregator
 
-Provides single entry point for proxy management across JARVIS ecosystem.
+Provides single entry point for proxy management across Ironcliw ecosystem.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -75,7 +75,7 @@ class OrchestratorConfig:
     """Configuration loaded from environment variables."""
 
     # Repository identification
-    REPO_NAME: Final[str] = os.getenv("JARVIS_REPO_NAME", "jarvis")
+    REPO_NAME: Final[str] = os.getenv("Ironcliw_REPO_NAME", "jarvis")
 
     # Startup behavior
     CLOUDSQL_REQUIRED: Final[bool] = os.getenv("CLOUDSQL_REQUIRED", "true").lower() == "true"
@@ -83,13 +83,13 @@ class OrchestratorConfig:
     STARTUP_TIMEOUT: Final[float] = float(os.getenv("ORCHESTRATOR_STARTUP_TIMEOUT", "120.0"))
 
     # Cross-repo startup
-    START_PRIME: Final[bool] = os.getenv("START_JARVIS_PRIME", "false").lower() == "true"
+    START_PRIME: Final[bool] = os.getenv("START_Ironcliw_PRIME", "false").lower() == "true"
     START_REACTOR: Final[bool] = os.getenv("START_REACTOR_CORE", "false").lower() == "true"
-    PRIME_PATH: Final[str] = os.getenv("JARVIS_PRIME_PATH", "")
+    PRIME_PATH: Final[str] = os.getenv("Ironcliw_PRIME_PATH", "")
     REACTOR_PATH: Final[str] = os.getenv("REACTOR_CORE_PATH", "")
 
     # State persistence
-    STATE_DIR: Final[Path] = Path(os.getenv("JARVIS_STATE_DIR", str(Path.home() / ".jarvis")))
+    STATE_DIR: Final[Path] = Path(os.getenv("Ironcliw_STATE_DIR", str(Path.home() / ".jarvis")))
     CROSS_REPO_STATE_FILE: Final[Path] = STATE_DIR / "cross_repo" / "unified_state.json"
 
 
@@ -581,8 +581,8 @@ class UnifiedProxyOrchestrator:
                     stderr=asyncio.subprocess.PIPE,
                     env={
                         **os.environ,
-                        "JARVIS_REPO_NAME": repo_name,
-                        "START_JARVIS_PRIME": "false",  # Don't cascade
+                        "Ironcliw_REPO_NAME": repo_name,
+                        "START_Ironcliw_PRIME": "false",  # Don't cascade
                         "START_REACTOR_CORE": "false",
                     },
                 )

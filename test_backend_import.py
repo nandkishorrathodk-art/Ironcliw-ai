@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify backend/main.py imports successfully on Windows.
 """
@@ -12,7 +12,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 print("=" * 70)
-print("JARVIS Backend Import Test")
+print("Ironcliw Backend Import Test")
 print("=" * 70)
 print(f"Python version: {sys.version}")
 print(f"Platform: {sys.platform}")
@@ -42,10 +42,10 @@ try:
     print(f"[OK] backend.main imported successfully")
     
     # Check if platform constants are set
-    if hasattr(main_module, 'JARVIS_PLATFORM'):
-        print(f"[OK] JARVIS_PLATFORM = {main_module.JARVIS_PLATFORM}")
-    if hasattr(main_module, 'JARVIS_IS_WINDOWS'):
-        print(f"[OK] JARVIS_IS_WINDOWS = {main_module.JARVIS_IS_WINDOWS}")
+    if hasattr(main_module, 'Ironcliw_PLATFORM'):
+        print(f"[OK] Ironcliw_PLATFORM = {main_module.Ironcliw_PLATFORM}")
+    if hasattr(main_module, 'Ironcliw_IS_WINDOWS'):
+        print(f"[OK] Ironcliw_IS_WINDOWS = {main_module.Ironcliw_IS_WINDOWS}")
     
     # Check if FastAPI app was created
     if hasattr(main_module, 'app'):

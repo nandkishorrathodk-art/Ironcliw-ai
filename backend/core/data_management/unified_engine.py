@@ -1,8 +1,8 @@
-"""
+﻿"""
 Unified Data Management Engine v1.0
 ====================================
 
-The central nervous system for data management across the JARVIS Trinity.
+The central nervous system for data management across the Ironcliw Trinity.
 Implements enterprise-grade data lifecycle management with:
 
 1. TRAINING DATA COLLECTION
@@ -167,7 +167,7 @@ class DataManagementConfig:
     @staticmethod
     def get_data_root() -> Path:
         default = Path.home() / ".jarvis" / "data_management"
-        return Path(os.getenv("JARVIS_DATA_ROOT", str(default)))
+        return Path(os.getenv("Ironcliw_DATA_ROOT", str(default)))
 
     @staticmethod
     def get_versions_path() -> Path:
@@ -2516,7 +2516,7 @@ class UnifiedDataManagementEngine:
     - Intelligent Sampling
     - Data Lineage
 
-    This is the main entry point for data management in the JARVIS ecosystem.
+    This is the main entry point for data management in the Ironcliw ecosystem.
     """
 
     _instance: Optional["UnifiedDataManagementEngine"] = None

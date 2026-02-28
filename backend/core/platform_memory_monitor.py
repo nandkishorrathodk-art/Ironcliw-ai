@@ -164,6 +164,7 @@ class PlatformMemoryMonitor:
         self.platform = platform.system().lower()
         self.is_macos = self.platform == "darwin"
         self.is_linux = self.platform == "linux"
+        self.is_windows = self.platform == "windows"
 
         # macOS tracking
         self.last_page_outs: Optional[int] = None  # Track cumulative for delta calculation
@@ -271,6 +272,8 @@ class PlatformMemoryMonitor:
             await self._add_macos_pressure(snapshot)
         elif self.is_linux:
             await self._add_linux_pressure(snapshot)
+        elif self.is_windows:
+            await self._add_windows_pressure(snapshot)
         else:
             # Fallback for unknown platforms
             self._add_fallback_pressure(snapshot)
@@ -434,6 +437,42 @@ class PlatformMemoryMonitor:
             f"PSI some={psi_some:.1f}% full={psi_full:.1f}% | "
             f"reclaimable={reclaimable_gb:.1f}GB | actual_avail={actual_pressure_gb:.1f}GB"
         )
+
+    async def _add_windows_pressure(self, snapshot: MemoryPressureSnapshot) -> None:
+        """Add Windows-specific memory pressure detection.
+
+        Uses psutil to read Windows swap memory statistics, which can be an
+        effective indicator of system memory pressure (page file usage).
+
+        Args:
+            snapshot: MemoryPressureSnapshot to populate with Windows metrics
+        """
+        try:
+            swap = psutil.swap_memory()
+            
+            # Use swap memory usage as an indicator for Windows
+            if snapshot.available_gb < 1.0 or swap.percent > 90.0:
+                snapshot.pressure_level = "critical"
+                snapshot.gcp_shift_recommended = True
+                snapshot.gcp_shift_urgent = True
+                snapshot.reasoning = f"Critical Windows memory pressure: {snapshot.available_gb:.1f}GB available, swap {swap.percent:.1f}% used"
+            elif snapshot.available_gb < 2.0 or swap.percent > 80.0:
+                snapshot.pressure_level = "high"
+                snapshot.gcp_shift_recommended = True
+                snapshot.gcp_shift_urgent = False
+                snapshot.reasoning = f"High Windows memory pressure: {snapshot.available_gb:.1f}GB available, swap {swap.percent:.1f}% used"
+            elif snapshot.usage_percent > 90:
+                snapshot.pressure_level = "elevated"
+                snapshot.gcp_shift_recommended = False
+                snapshot.reasoning = f"High usage ({snapshot.usage_percent:.0f}%), swap is {swap.percent:.1f}%"
+            else:
+                snapshot.pressure_level = "normal"
+                snapshot.gcp_shift_recommended = False
+                snapshot.reasoning = f"{snapshot.available_gb:.1f}GB available, swap {swap.percent:.1f}%"
+
+        except Exception as e:
+            logger.debug(f"Failed to get Windows swap info: {e}")
+            self._add_fallback_pressure(snapshot)
 
     def _add_fallback_pressure(self, snapshot: MemoryPressureSnapshot) -> None:
         """Add fallback pressure detection for unknown platforms.

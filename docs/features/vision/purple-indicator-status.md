@@ -1,7 +1,7 @@
-# Purple Indicator and Vision Status Integration
+﻿# Purple Indicator and Vision Status Integration
 
 ## Overview
-This document describes the implementation of the purple indicator persistence and vision status synchronization for JARVIS.
+This document describes the implementation of the purple indicator persistence and vision status synchronization for Ironcliw.
 
 ## Problem Statement
 1. Purple indicator disappears after a few seconds when monitoring starts
@@ -40,7 +40,7 @@ This document describes the implementation of the purple indicator persistence a
 - **Features**:
   - Initializes during startup
   - Connects to WebSocket manager
-  - Updates JARVIS UI
+  - Updates Ironcliw UI
 
 ### 5. Multi-Space Capture Integration
 - **File**: `vision/multi_space_capture_engine.py`
@@ -114,7 +114,7 @@ python test_activity_reporting.py
 ```
 
 ### Manual Test
-1. Start JARVIS backend
+1. Start Ironcliw backend
 2. Say "Start monitoring my screen"
 3. Observe:
    - Purple indicator appears and stays visible
@@ -171,7 +171,7 @@ Swift Process → Python Monitor → Status Manager → WebSocket → UI
 ## Concise Response Update
 
 ### Problem
-When users said "start monitoring my screen", JARVIS would give a long technical explanation about being in manual mode, vision disconnected, and listing all available options.
+When users said "start monitoring my screen", Ironcliw would give a long technical explanation about being in manual mode, vision disconnected, and listing all available options.
 
 ### Solution
 Updated the vision command handler prompts to enforce concise responses:

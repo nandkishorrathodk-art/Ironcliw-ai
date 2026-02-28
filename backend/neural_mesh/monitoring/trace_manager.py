@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Distributed Trace Manager
+﻿"""
+Ironcliw Neural Mesh - Distributed Trace Manager
 
 Comprehensive tracing system for tracking message flows and operations
 across the Neural Mesh infrastructure.

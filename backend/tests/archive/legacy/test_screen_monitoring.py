@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test Screen Monitoring Functionality"""
 
 import asyncio
@@ -7,10 +7,10 @@ import sys
 from dotenv import load_dotenv
 
 # Add backend to path
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 async def test_monitoring():
-    """Test screen monitoring through JARVIS"""
+    """Test screen monitoring through Ironcliw"""
     print("🖥️  Testing Screen Monitoring")
     print("="*60)
     
@@ -72,22 +72,22 @@ async def test_monitoring():
         import traceback
         traceback.print_exc()
     
-    # Test 3: Through JARVIS voice handler
-    print("\n🧪 Test 3: Through JARVIS Voice Handler")
+    # Test 3: Through Ironcliw voice handler
+    print("\n🧪 Test 3: Through Ironcliw Voice Handler")
     try:
-        from voice.jarvis_agent_voice import JARVISAgentVoice
+        from voice.jarvis_agent_voice import IroncliwAgentVoice
         from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
         
-        # Create JARVIS with vision
+        # Create Ironcliw with vision
         vision = ClaudeVisionAnalyzer(os.getenv('ANTHROPIC_API_KEY'))
-        jarvis = JARVISAgentVoice(vision_analyzer=vision)
+        jarvis = IroncliwAgentVoice(vision_analyzer=vision)
         
         # Process monitoring command with wake word
-        response = await jarvis.process_voice_input("Hey JARVIS, start monitoring my screen")
-        print(f"🎤 JARVIS response: {response}")
+        response = await jarvis.process_voice_input("Hey Ironcliw, start monitoring my screen")
+        print(f"🎤 Ironcliw response: {response}")
         
     except Exception as e:
-        print(f"❌ JARVIS test failed: {e}")
+        print(f"❌ Ironcliw test failed: {e}")
         import traceback
         traceback.print_exc()
     

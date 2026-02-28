@@ -1,5 +1,5 @@
-"""
-Video Stream Capture Module for JARVIS Vision System
+﻿"""
+Video Stream Capture Module for Ironcliw Vision System
 Real-time video capture with memory-safe processing and sliding window support
 Designed for 16GB macOS systems with intelligent memory management
 """

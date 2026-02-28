@@ -1,4 +1,4 @@
-# ✅ Fixed: Speech Recognition Network Error Handling v10.6
+﻿# ✅ Fixed: Speech Recognition Network Error Handling v10.6
 
 ## Overview
 
@@ -368,7 +368,7 @@ def _calculate_health_score(connection_health: dict) -> float:
 
 def _get_fallback_api_url() -> str:
     """Get localhost fallback URL (always available)."""
-    port = os.getenv("JARVIS_PORT", "8010")
+    port = os.getenv("Ironcliw_PORT", "8010")
     return f"http://localhost:{port}"
 
 def _check_browser_compatibility(user_agent: str) -> dict:
@@ -609,7 +609,7 @@ No configuration needed - works out of the box!
 **Optional Environment Variables:**
 ```bash
 # Backend port for fallback URL
-export JARVIS_PORT=8010  # Default: 8010
+export Ironcliw_PORT=8010  # Default: 8010
 ```
 
 **Dynamic Configuration (loaded from backend):**

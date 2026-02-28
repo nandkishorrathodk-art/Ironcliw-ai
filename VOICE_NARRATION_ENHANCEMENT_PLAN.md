@@ -1,13 +1,13 @@
-# 🎤 Voice Narration Enhancement Plan - Startup & Real-Time Interactions
+﻿# 🎤 Voice Narration Enhancement Plan - Startup & Real-Time Interactions
 
 ## 📋 Executive Summary
 
 Bring the same level of sophistication, context-awareness, and human-like communication from **God Mode Surveillance** to:
-1. **Startup Narration** (when JARVIS boots up)
+1. **Startup Narration** (when Ironcliw boots up)
 2. **Real-Time User Interactions** (ongoing conversation)
 3. **System Events** (updates, health checks, errors)
 
-**Goal:** Transform JARVIS from "robotic announcements" to "sophisticated AI assistant with personality, learning, and context awareness" across ALL voice interactions.
+**Goal:** Transform Ironcliw from "robotic announcements" to "sophisticated AI assistant with personality, learning, and context awareness" across ALL voice interactions.
 
 ---
 
@@ -22,7 +22,7 @@ Bring the same level of sophistication, context-awareness, and human-like commun
 - ✅ Progress milestone announcements (25%, 50%, 75%, 100%)
 - ✅ Slow startup awareness
 - ✅ Hot reload announcements (v5.0)
-- ✅ Data Flywheel, Learning, JARVIS Prime phases (v6.0)
+- ✅ Data Flywheel, Learning, Ironcliw Prime phases (v6.0)
 - ✅ VBIA, Visual Security, Cross-Repo phases (v6.2)
 
 #### 2. **unified_voice_orchestrator.py**
@@ -153,7 +153,7 @@ def _get_time_aware_greeting(self, hour: int) -> str:
 
 **10 AM Startup:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational. How can I help today?"
+"Good morning, Derek! Ironcliw online. All systems operational. How can I help today?"
 [Enthusiastic, energetic tone]
 ```
 
@@ -224,7 +224,7 @@ STARTUP_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 5000, 10000]
 
 **100th Startup:**
 ```
-"JARVIS online. Milestone: 100 startups completed!
+"Ironcliw online. Milestone: 100 startups completed!
 Stats: 96% success rate, average 11.3 seconds, fastest 6.8 seconds.
 You've powered me up quite a bit, Derek."
 ```
@@ -247,7 +247,7 @@ Thank you for the opportunity to improve."
 # BEFORE (4 variations):
 StartupPhase.COMPLETE: {
     "complete": [
-        "JARVIS online. All systems operational.",
+        "Ironcliw online. All systems operational.",
         "Good to be back, Sir. How may I assist you?",
         "Systems restored. Ready when you are.",
         "Initialization complete. At your service.",
@@ -257,7 +257,7 @@ StartupPhase.COMPLETE: {
 # AFTER (8 variations with user_name):
 StartupPhase.COMPLETE: {
     "complete": [
-        f"JARVIS online, {user_name}. All systems operational.",
+        f"Ironcliw online, {user_name}. All systems operational.",
         f"Good to be back, {user_name}. How may I assist you?",
         f"Systems restored, {user_name}. Ready when you are.",
         f"Initialization complete. At your service, {user_name}.",
@@ -320,26 +320,26 @@ self.conversation_stats = {
 **Repeated Questions:**
 ```
 User: "What's the weather?"
-JARVIS: "72 degrees and sunny, Derek."
+Ironcliw: "72 degrees and sunny, Derek."
 
 [5 minutes later]
 User: "What's the weather?"
-JARVIS: "Still 72 and sunny, Derek. Same as 5 minutes ago."
+Ironcliw: "Still 72 and sunny, Derek. Same as 5 minutes ago."
 ```
 
 **Related Follow-Up:**
 ```
 User: "Open Chrome"
-JARVIS: "Chrome opened, Derek."
+Ironcliw: "Chrome opened, Derek."
 
 User: "What did I just open?"
-JARVIS: "Chrome, Derek. I just opened it for you a moment ago."
+Ironcliw: "Chrome, Derek. I just opened it for you a moment ago."
 ```
 
 **Long Gap:**
 ```
-User: "Hey JARVIS" [after 6 hours of silence]
-JARVIS: "Welcome back, Derek. It's been quiet for a while. What can I do for you?"
+User: "Hey Ironcliw" [after 6 hours of silence]
+Ironcliw: "Welcome back, Derek. It's been quiet for a while. What can I do for you?"
 ```
 
 #### Enhancement 2.2: Mood & Time-Aware Responses
@@ -367,21 +367,21 @@ def _get_response_style(self) -> ResponseStyle:
 **3 AM:**
 ```
 User: "Open Terminal"
-JARVIS: [Whispers] "Terminal opened."
+Ironcliw: [Whispers] "Terminal opened."
 [Quiet, minimal response]
 ```
 
 **8 AM:**
 ```
 User: "Open Terminal"
-JARVIS: "Good morning! Terminal's up and ready, Derek."
+Ironcliw: "Good morning! Terminal's up and ready, Derek."
 [Energetic, enthusiastic]
 ```
 
 **2 PM:**
 ```
 User: "Open Terminal"
-JARVIS: "Terminal opened, Derek."
+Ironcliw: "Terminal opened, Derek."
 [Professional, efficient]
 ```
 
@@ -403,14 +403,14 @@ self.interaction_patterns = {
 **Frequent Command:**
 ```
 User: "Open Chrome" [50th time]
-JARVIS: "Chrome opened, Derek. You use this quite a bit -
+Ironcliw: "Chrome opened, Derek. You use this quite a bit -
 want me to auto-open it at startup?"
 ```
 
 **New Command:**
 ```
 User: "Open Docker" [first time]
-JARVIS: "Docker opened. First time you've asked for this, Derek.
+Ironcliw: "Docker opened. First time you've asked for this, Derek.
 Adding to my command vocabulary."
 ```
 
@@ -421,7 +421,7 @@ User: "Open VSCode"
 User: "Open Chrome"
 [Detected 5 times in a row]
 
-JARVIS: "I notice you often open Terminal, VSCode, and Chrome together, Derek.
+Ironcliw: "I notice you often open Terminal, VSCode, and Chrome together, Derek.
 Want me to create a 'dev setup' command that opens all three at once?"
 ```
 
@@ -449,7 +449,7 @@ enabling it in System Preferences?"
 **Success Celebrations:**
 ```
 [After 3 failed attempts, then success]
-JARVIS: "There we go! Got it working on the third try.
+Ironcliw: "There we go! Got it working on the third try.
 Sometimes persistence pays off, Derek."
 ```
 
@@ -611,19 +611,19 @@ faster startup, improved vision. Ready to try them out?"
 
 **BEFORE:**
 ```
-"JARVIS online. All systems operational."
+"Ironcliw online. All systems operational."
 [Robotic, generic, no personality]
 ```
 
 **AFTER:**
 ```
-"Good morning, Derek! JARVIS online in 8 seconds - that's my fastest yet!
+"Good morning, Derek! Ironcliw online in 8 seconds - that's my fastest yet!
 All systems operational. Ready for action. What's first on the agenda?
 
 By the way, that was my 100th startup. Stats: 96% success rate,
 average 11.3 seconds. You've powered me up quite a bit."
 ```
 
-**Result:** JARVIS communicates like a sophisticated AI assistant with personality, learning, and context awareness across **ALL** voice interactions - startup, real-time, and system events.
+**Result:** Ironcliw communicates like a sophisticated AI assistant with personality, learning, and context awareness across **ALL** voice interactions - startup, real-time, and system events.
 
 🚀 **Ready to implement when you give the word!**

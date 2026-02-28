@@ -1,4 +1,4 @@
-# Response Formatting Fix for JARVIS Multi-Window
+﻿# Response Formatting Fix for Ironcliw Multi-Window
 
 ## Issue
 Test results showing garbled responses with section markers appearing in output:
@@ -37,7 +37,7 @@ Response: Sir, You're NOTIFICATIONS: No window changes detected in 3 seconds...
 ### After Fix:
 ```
 Response: Sir, you're working in Cursor on test_multi_window_phase1.py. Also using: Chrome, Finder.
-Response: Sir, you're working on the JARVIS-AI-Agent project.
+Response: Sir, you're working on the Ironcliw-AI-Agent project.
 ```
 
 ## Testing

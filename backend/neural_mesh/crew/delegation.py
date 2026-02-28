@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Crew Delegation System
+﻿"""
+Ironcliw Neural Mesh - Crew Delegation System
 
 Dynamic task delegation and routing between agents.
 

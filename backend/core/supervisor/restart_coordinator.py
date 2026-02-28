@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Restart Coordinator v1.0
+Ironcliw Restart Coordinator v1.0
 ================================
 
-Async-safe restart coordination system for JARVIS Supervisor.
+Async-safe restart coordination system for Ironcliw Supervisor.
 
 This module provides a thread-safe, async-compatible mechanism for signaling
 restart requests from anywhere in the supervisor without using sys.exit()
@@ -25,7 +25,7 @@ Key Features:
 - Priority-based restart scheduling
 - Integration with existing supervisor architecture
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -43,7 +43,7 @@ from typing import Any, Callable, Optional, List
 logger = logging.getLogger(__name__)
 
 # v108.4: Startup grace period to prevent hot-reload restarts during startup
-STARTUP_GRACE_PERIOD_SECONDS = float(os.getenv("JARVIS_RESTART_GRACE_PERIOD", "120"))
+STARTUP_GRACE_PERIOD_SECONDS = float(os.getenv("Ironcliw_RESTART_GRACE_PERIOD", "120"))
 
 
 class RestartUrgency(str, Enum):
@@ -103,7 +103,7 @@ class RestartRequest:
 
 class RestartCoordinator:
     """
-    Async-safe restart coordination for JARVIS Supervisor.
+    Async-safe restart coordination for Ironcliw Supervisor.
 
     This coordinator provides a centralized mechanism for components
     to request restarts without using sys.exit() directly (which
@@ -200,7 +200,7 @@ class RestartCoordinator:
             return False
 
         # v108.4: Skip non-critical restarts during startup grace period
-        # This prevents hot-reload from killing JARVIS before it's fully started
+        # This prevents hot-reload from killing Ironcliw before it's fully started
         if urgency not in (RestartUrgency.HIGH, RestartUrgency.CRITICAL):
             elapsed = time.time() - self._startup_time
             if elapsed < STARTUP_GRACE_PERIOD_SECONDS:

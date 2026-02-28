@@ -1,7 +1,7 @@
-"""
+﻿"""
 Phase 3: Autonomous Action Execution Module
 
-This module provides the autonomous action execution layer for JARVIS,
+This module provides the autonomous action execution layer for Ironcliw,
 enabling intelligent, safe, and adaptive execution of system actions.
 
 Architecture:
@@ -51,14 +51,14 @@ Key Features:
     - Real-time learning from execution outcomes
 
 Environment Variables:
-    JARVIS_ACTION_EXECUTOR_MAX_RETRIES: Maximum retry attempts (default: 3)
-    JARVIS_ACTION_EXECUTOR_TIMEOUT: Default action timeout in seconds (default: 30)
-    JARVIS_ACTION_CIRCUIT_BREAKER_THRESHOLD: Failure threshold for circuit breaker (default: 5)
-    JARVIS_ACTION_CIRCUIT_BREAKER_RESET_SECONDS: Circuit breaker reset time (default: 60)
-    JARVIS_ACTION_LEARNING_ENABLED: Enable learning system (default: true)
-    JARVIS_ACTION_SAFETY_LEVEL: Default safety level (default: standard)
-    JARVIS_ACTION_PERMISSION_MODE: Permission mode (default: paranoid)
-    JARVIS_ACTION_DRY_RUN_MODE: Enable dry-run mode (default: false)
+    Ironcliw_ACTION_EXECUTOR_MAX_RETRIES: Maximum retry attempts (default: 3)
+    Ironcliw_ACTION_EXECUTOR_TIMEOUT: Default action timeout in seconds (default: 30)
+    Ironcliw_ACTION_CIRCUIT_BREAKER_THRESHOLD: Failure threshold for circuit breaker (default: 5)
+    Ironcliw_ACTION_CIRCUIT_BREAKER_RESET_SECONDS: Circuit breaker reset time (default: 60)
+    Ironcliw_ACTION_LEARNING_ENABLED: Enable learning system (default: true)
+    Ironcliw_ACTION_SAFETY_LEVEL: Default safety level (default: standard)
+    Ironcliw_ACTION_PERMISSION_MODE: Permission mode (default: paranoid)
+    Ironcliw_ACTION_DRY_RUN_MODE: Enable dry-run mode (default: false)
 """
 
 from .action_registry import (

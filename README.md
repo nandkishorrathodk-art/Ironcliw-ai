@@ -1,8 +1,8 @@
-<div align="center">
+﻿<div align="center">
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%">
 
-# ⚡ IRONCLIW-AI · JARVIS
+# ⚡ IRONCLIW-AI · Ironcliw
 ### *Just A Rather Very Intelligent System*
 
 **The world's most advanced personal AI agent — now fully on Windows.**
@@ -10,10 +10,11 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/nandkishorrathodk-art/Ironcliw-ai)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Electron](https://img.shields.io/badge/Electron-29-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React_18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org)
 [![Claude AI](https://img.shields.io/badge/Claude_AI-FF6B00?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Phase](https://img.shields.io/badge/Port_Phase-12_Complete-success?style=for-the-badge)](WINDOWS_PORT_BLUEPRINT.md)
+[![Phase](https://img.shields.io/badge/Phase-13_Electron_Desktop-blueviolet?style=for-the-badge)](jarvis-electron/)
 [![Stars](https://img.shields.io/github/stars/nandkishorrathodk-art/Ironcliw-ai?style=for-the-badge&color=gold)](https://github.com/nandkishorrathodk-art/Ironcliw-ai/stargazers)
 [![Code Size](https://img.shields.io/github/languages/code-size/nandkishorrathodk-art/Ironcliw-ai?style=for-the-badge&color=purple)](https://github.com/nandkishorrathodk-art/Ironcliw-ai)
 
@@ -40,6 +41,7 @@
 - [Platform Support](#%EF%B8%8F-platform-support)
 - [Features](#-features)
 - [Quick Start](#-quick-start-windows)
+- [Electron Desktop App](#-electron-desktop-app-new)
 - [Configuration Reference](#-configuration-reference)
 - [Project Structure](#-project-structure)
 - [API Reference](#-api-reference)
@@ -60,14 +62,14 @@
 
 ## 🤖 What Is This?
 
-**Ironcliw-AI** is a Windows port of the [drussell23/JARVIS](https://github.com/drussell23/JARVIS) personal AI agent — a **self-hosted, voice-activated autonomous assistant** inspired by Iron Man's J.A.R.V.I.S.
+**Ironcliw-AI** is a Windows port of the [drussell23/Ironcliw](https://github.com/drussell23/Ironcliw) personal AI agent — a **self-hosted, voice-activated autonomous assistant** inspired by Iron Man's J.A.R.V.I.S.
 
 It is not just a chatbot. It is a **full autonomous AI operating system** that:
 
 | Capability | Description |
 |:-----------|:------------|
 | 🧠 **Thinks** | Multi-LLM reasoning (Claude 3.5 Sonnet + Fireworks Llama 70B) |
-| 🎤 **Listens** | Wake word "Hey JARVIS" + Whisper STT with 12-model circuit breaker |
+| 🎤 **Listens** | Wake word "Hey Ironcliw" + Whisper STT with 12-model circuit breaker |
 | 🗣️ **Speaks** | Microsoft Neural TTS (`en-GB-RyanNeural`) — sounds human |
 | 👁️ **Sees** | Real-time screen capture (30 FPS) + Claude Vision understanding |
 | 🤖 **Acts** | Ghost Hands: autonomous browser, keyboard, mouse control |
@@ -79,7 +81,7 @@ It is not just a chatbot. It is a **full autonomous AI operating system** that:
 ### How It Works (30-Second Version)
 
 ```
-You say "Hey JARVIS, open Chrome and search for AI news"
+You say "Hey Ironcliw, open Chrome and search for AI news"
   ↓
 Whisper STT converts speech → text
   ↓
@@ -91,7 +93,7 @@ Ghost Hands launches Chrome via pyautogui
   ↓
 Vision system confirms Chrome is open (mss capture)
   ↓
-JARVIS types "AI news" and presses Enter
+Ironcliw types "AI news" and presses Enter
   ↓
 Neural TTS says "Done sir, here are the latest AI news results"
 ```
@@ -105,7 +107,7 @@ Neural TTS says "Done sir, here are the latest AI news results"
 ```mermaid
 graph TB
     subgraph User["👤 User Layer"]
-        VOICE["🎤 Voice Input<br/>Hey JARVIS"]
+        VOICE["🎤 Voice Input<br/>Hey Ironcliw"]
         SCREEN["🖥️ Screen<br/>Desktop Activity"]
         BROWSER["🌐 Browser<br/>http://localhost:3000"]
     end
@@ -122,7 +124,7 @@ graph TB
         subgraph VoiceSystem["🎤 Voice System"]
             STT["Hybrid STT Router<br/>Whisper + Cloud"]
             TTS["Neural TTS<br/>en-GB-RyanNeural"]
-            WAKE["Wake Word Detector<br/>Hey JARVIS"]
+            WAKE["Wake Word Detector<br/>Hey Ironcliw"]
             BIOMETRIC["Voice Biometrics<br/>ECAPA-TDNN"]
         end
 
@@ -214,7 +216,7 @@ sequenceDiagram
     participant TTS as 🗣️ Neural TTS
     participant MEM as 💾 Memory
 
-    U->>F: Voice: "Hey JARVIS, open Spotify"
+    U->>F: Voice: "Hey Ironcliw, open Spotify"
     F->>API: WebSocket: audio stream
     API->>STT: Raw audio bytes
     
@@ -303,7 +305,7 @@ graph TB
     end
 
     MIC --> WAKE_DET
-    WAKE_DET -->|"Hey JARVIS"| VAD
+    WAKE_DET -->|"Hey Ironcliw"| VAD
     VAD -->|Speech segment| WHISPER_LOCAL
     WHISPER_LOCAL -->|Failure| CLOUD_STT
     CLOUD_STT -->|Failure| CIRCUIT
@@ -563,7 +565,7 @@ graph LR
 |:---------|:------:|:--------|
 | **Windows 10** | ✅ | Full support — pywin32, pyautogui, mss, pycaw |
 | **Windows 11** | ✅ | Full support — toast notifications, Windows Terminal |
-| **macOS** | ⚠️ | Upstream — see [drussell23/JARVIS](https://github.com/drussell23/JARVIS) |
+| **macOS** | ⚠️ | Upstream — see [drussell23/Ironcliw](https://github.com/drussell23/Ironcliw) |
 | **Linux** | 🔧 | Partial — Platform Abstraction Layer compatible |
 
 ### Windows Feature Matrix
@@ -594,7 +596,7 @@ graph LR
 <details>
 <summary><b>Multi-LLM Routing Engine</b></summary>
 
-JARVIS uses an intelligent router to pick the best LLM for each query:
+Ironcliw uses an intelligent router to pick the best LLM for each query:
 
 | Model | Provider | Use Case | Latency |
 |:------|:---------|:---------|:--------|
@@ -609,11 +611,11 @@ JARVIS uses an intelligent router to pick the best LLM for each query:
 <details>
 <summary><b>Goal Inference Engine</b></summary>
 
-JARVIS doesn't just respond to commands — it **infers your intent**:
+Ironcliw doesn't just respond to commands — it **infers your intent**:
 
 ```
 User: "I need to send an email to John"
-JARVIS infers:
+Ironcliw infers:
   → Open email client (Outlook)
   → Create new message
   → Set recipient: John (from contacts)
@@ -664,7 +666,7 @@ Text Output
 <details>
 <summary><b>Neural Text-to-Speech</b></summary>
 
-JARVIS speaks with Microsoft's Neural TTS engine:
+Ironcliw speaks with Microsoft's Neural TTS engine:
 
 | Voice | Language | Style |
 |:------|:---------|:------|
@@ -690,7 +692,7 @@ JARVIS speaks with Microsoft's Neural TTS engine:
 | Enrolled Profiles | Per-user |
 | Backend Options | Local / Cloud Run / Docker |
 
-**Enrollment**: Say "JARVIS, learn my voice" — records 3 samples, extracts embeddings, stores in database.
+**Enrollment**: Say "Ironcliw, learn my voice" — records 3 samples, extracts embeddings, stores in database.
 
 </details>
 
@@ -713,7 +715,7 @@ JARVIS speaks with Microsoft's Neural TTS engine:
 <details>
 <summary><b>Ghost Hands Automation</b></summary>
 
-JARVIS can control your computer autonomously:
+Ironcliw can control your computer autonomously:
 
 | Action | Method | Platform |
 |:-------|:-------|:---------|
@@ -732,7 +734,7 @@ JARVIS can control your computer autonomously:
 <details>
 <summary><b>GCP Auto-Scaling Architecture</b></summary>
 
-When local RAM exceeds 80%, JARVIS automatically deploys to GCP:
+When local RAM exceeds 80%, Ironcliw automatically deploys to GCP:
 
 | Resource | Spec | Cost |
 |:---------|:-----|:-----|
@@ -801,7 +803,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
 FIREWORKS_API_KEY=fw-xxxxx
 ```
 
-#### 5. Launch JARVIS
+#### 5. Launch Ironcliw
 ```powershell
 python start_system.py
 ```
@@ -812,7 +814,91 @@ http://localhost:3000
 ```
 
 > **💡 First launch** takes ~60-90 seconds (model loading). Subsequent launches are faster (~30s).
-> Say **"Hey JARVIS"** to activate voice control.
+> Say **"Hey Ironcliw"** to activate voice control.
+
+---
+
+## 🖥️ Electron Desktop App *(NEW)*
+
+> **Phase 13** — A fully native sci-fi desktop interface for Ironcliw, built with Electron 29.
+
+The `jarvis-electron/` folder contains a standalone desktop application that replaces the browser-based frontend with a **premium, holographic, glassmorphism UI** — inspired by Tony Stark's J.A.R.V.I.S. interface.
+
+### ✨ Electron App Features
+
+| Feature | Description |
+|:--------|:------------|
+| 🎨 **Holographic Orb** | Animated 3D rotating rings with pulsing reactive core |
+| 🌌 **Particle Canvas** | Real-time floating particle field background |
+| 📊 **Live Metrics** | CPU, RAM, Network bars auto-updating from backend |
+| 🔊 **Waveform Canvas** | Live audio visualizer during voice input |
+| 🤖 **Boot Sequence** | Cinematic startup animation with progress bar |
+| 💬 **Chat Log** | Conversation history with Ironcliw/User bubbles |
+| ⚡ **Quick Commands** | One-click buttons for common voice commands |
+| 🎤 **Push-to-Talk** | Click mic button to record and send voice |
+| 🪟 **Frameless Window** | Custom title bar with minimize/maximize/close |
+| 🔌 **Auto-Connect** | WebSocket reconnection to backend on `ws://localhost:8010` |
+
+### 🚀 Launch the Electron App
+
+#### Prerequisites
+```powershell
+# Node.js 18+ required
+node --version   # should show v18 or higher
+```
+
+#### Install & Run
+```powershell
+# 1. Navigate to the electron app folder
+cd jarvis-electron
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the backend first (in another terminal)
+cd ..
+python start_system.py
+
+# 4. Launch the desktop app
+cd jarvis-electron
+npm start
+```
+
+#### Build Windows Installer
+```powershell
+npm run build
+# Output: dist/Ironcliw Setup 1.0.0.exe
+```
+
+### 📁 Electron App Structure
+
+```
+jarvis-electron/
+├── main.js              # Electron main process — window creation, IPC
+├── preload.js           # Secure context bridge (Node ↔ Renderer)
+├── package.json         # App config + electron-builder settings
+└── renderer/
+    ├── index.html       # 3-panel sci-fi UI layout
+    ├── style.css        # Full glassmorphism + neon + animations
+    └── app.js           # WebSocket client + all UI interactivity
+```
+
+### 🔌 How It Connects to JARVIS Backend
+
+```mermaid
+graph LR
+    ELECTRON["🖥️ Electron App\nrenderer/app.js"] -->|WebSocket| BACKEND["🐍 FastAPI Backend\nws://localhost:8010"]
+    BACKEND -->|JSON events| ELECTRON
+    ELECTRON -->|IPC| MAIN["⚙️ main.js\nElectron Main Process"]
+    MAIN -->|spawn| PYTHON["🐍 start_system.py\nOptional auto-start"]
+
+    style ELECTRON fill:#47848F,stroke:#fff,color:#fff
+    style BACKEND fill:#009688,stroke:#fff,color:#fff
+    style MAIN fill:#533483,stroke:#fff,color:#fff
+    style PYTHON fill:#3776AB,stroke:#fff,color:#fff
+```
+
+The Electron app connects via WebSocket to the existing FastAPI backend at `ws://localhost:8010`. No changes to the backend are needed — it works as a drop-in replacement for the browser UI.
 
 ---
 
@@ -825,12 +911,12 @@ http://localhost:3000
 
 | Variable | Default | Description |
 |:---------|:--------|:------------|
-| `JARVIS_LLM_PROVIDER` | `fireworks` | Primary LLM: `fireworks`, `claude`, `groq` |
+| `Ironcliw_LLM_PROVIDER` | `fireworks` | Primary LLM: `fireworks`, `claude`, `groq` |
 | `ANTHROPIC_API_KEY` | — | Claude API key |
 | `FIREWORKS_API_KEY` | — | Fireworks AI API key |
-| `JARVIS_GROQ_API_KEY` | — | Groq API key (fallback) |
-| `JARVIS_LLM_TEMPERATURE` | `0.7` | Response creativity (0-1) |
-| `JARVIS_LLM_MAX_TOKENS` | `4096` | Max response length |
+| `Ironcliw_GROQ_API_KEY` | — | Groq API key (fallback) |
+| `Ironcliw_LLM_TEMPERATURE` | `0.7` | Response creativity (0-1) |
+| `Ironcliw_LLM_MAX_TOKENS` | `4096` | Max response length |
 
 </details>
 
@@ -840,10 +926,10 @@ http://localhost:3000
 | Variable | Default | Description |
 |:---------|:--------|:------------|
 | `WHISPER_MODEL_SIZE` | `base` | STT model: tiny/base/small/medium |
-| `JARVIS_TTS_VOICE` | `en-GB-RyanNeural` | Neural TTS voice name |
-| `JARVIS_VOICE_BIOMETRIC_ENABLED` | `false` | Enable voice auth |
-| `JARVIS_WAKE_WORD` | `hey jarvis` | Wake word phrase |
-| `JARVIS_VOICE_GAIN` | `1.0` | Microphone gain multiplier |
+| `Ironcliw_TTS_VOICE` | `en-GB-RyanNeural` | Neural TTS voice name |
+| `Ironcliw_VOICE_BIOMETRIC_ENABLED` | `false` | Enable voice auth |
+| `Ironcliw_WAKE_WORD` | `hey jarvis` | Wake word phrase |
+| `Ironcliw_VOICE_GAIN` | `1.0` | Microphone gain multiplier |
 
 </details>
 
@@ -852,11 +938,11 @@ http://localhost:3000
 
 | Variable | Default | Description |
 |:---------|:--------|:------------|
-| `JARVIS_ML_DEVICE` | `cpu` | ML device: `cpu`, `cuda`, `directml` |
-| `JARVIS_LAZY_LOAD_MODELS` | `true` | Load models on demand |
-| `JARVIS_MEMORY_LIMIT` | `4096` | RAM target (MB) |
-| `JARVIS_DYNAMIC_PORTS` | `false` | Auto-assign ports |
-| `JARVIS_MAX_WORKERS` | `4` | Thread pool size |
+| `Ironcliw_ML_DEVICE` | `cpu` | ML device: `cpu`, `cuda`, `directml` |
+| `Ironcliw_LAZY_LOAD_MODELS` | `true` | Load models on demand |
+| `Ironcliw_MEMORY_LIMIT` | `4096` | RAM target (MB) |
+| `Ironcliw_DYNAMIC_PORTS` | `false` | Auto-assign ports |
+| `Ironcliw_MAX_WORKERS` | `4` | Thread pool size |
 
 </details>
 
@@ -865,11 +951,11 @@ http://localhost:3000
 
 | Variable | Default | Description |
 |:---------|:--------|:------------|
-| `JARVIS_AUTO_BYPASS_WINDOWS` | `true` | Skip voice auth on Windows |
-| `JARVIS_DISABLE_SWIFT_EXTENSIONS` | `true` | Disable macOS Swift |
-| `JARVIS_DISABLE_RUST_EXTENSIONS` | `true` | Disable Rust layer |
-| `JARVIS_DISABLE_COREML` | `true` | Disable CoreML |
-| `JARVIS_NOTIFICATION_PROVIDER` | `win10toast` | Notification backend |
+| `Ironcliw_AUTO_BYPASS_WINDOWS` | `true` | Skip voice auth on Windows |
+| `Ironcliw_DISABLE_SWIFT_EXTENSIONS` | `true` | Disable macOS Swift |
+| `Ironcliw_DISABLE_RUST_EXTENSIONS` | `true` | Disable Rust layer |
+| `Ironcliw_DISABLE_COREML` | `true` | Disable CoreML |
+| `Ironcliw_NOTIFICATION_PROVIDER` | `win10toast` | Notification backend |
 
 </details>
 
@@ -878,11 +964,11 @@ http://localhost:3000
 
 | Variable | Default | Description |
 |:---------|:--------|:------------|
-| `JARVIS_SKIP_GCP` | `true` | Disable GCP integration |
-| `JARVIS_SKIP_DOCKER` | `true` | Disable Docker ECAPA |
-| `JARVIS_PREFER_CLOUD_RUN` | `false` | Use Cloud Run ECAPA |
-| `JARVIS_GCP_PROJECT_ID` | — | GCP project ID |
-| `JARVIS_SPOT_VM_ZONE` | `us-central1-a` | Spot VM zone |
+| `Ironcliw_SKIP_GCP` | `true` | Disable GCP integration |
+| `Ironcliw_SKIP_DOCKER` | `true` | Disable Docker ECAPA |
+| `Ironcliw_PREFER_CLOUD_RUN` | `false` | Use Cloud Run ECAPA |
+| `Ironcliw_GCP_PROJECT_ID` | — | GCP project ID |
+| `Ironcliw_SPOT_VM_ZONE` | `us-central1-a` | Spot VM zone |
 
 </details>
 
@@ -900,6 +986,15 @@ Ironcliw-ai/
 ├── 📄 WINDOWS_PORT_BLUEPRINT.md    # 700-line macOS→Windows guide
 ├── 📄 SECURITY.md                  # Security policy
 ├── 📄 LICENSE                      # MIT License
+│
+├── 🖥️ jarvis-electron/             # NEW: Electron Desktop App (Phase 13)
+│   ├── main.js                     # Electron main process
+│   ├── preload.js                  # Secure context bridge
+│   ├── package.json                # App config + electron-builder
+│   └── renderer/
+│       ├── index.html              # 3-panel holographic UI
+│       ├── style.css               # Glassmorphism + neon animations
+│       └── app.js                  # WebSocket client + interactivity
 │
 ├── 🐍 backend/                     # FastAPI Python backend
 │   ├── main.py                     # Entry point (UTF-8 bootstrap)
@@ -967,7 +1062,10 @@ Ironcliw-ai/
 │   ├── 🔌 system_control/          # OS Integration
 │   │   ├── fast_app_launcher.py             # Cross-platform launcher
 │   │   ├── dynamic_app_controller.py        # Intelligent app control
-│   │   └── location_service.py              # Geo-location
+│   │   └── location_service.py             # Geo-location
+│   │
+│   ├── 🔌 mcp_integration/         # MCP Tools Integration
+│   │   └── (Model Context Protocol tools)
 │   │
 │   ├── 🧪 tests/                   # Test Suite
 │   │   ├── archive/                         # Legacy tests
@@ -978,7 +1076,7 @@ Ironcliw-ai/
 │       ├── ScreenCapture/                   # GDI+ screen capture
 │       └── SystemControl/                   # Win32 API wrappers
 │
-└── ⚛️ frontend/                    # React 18 UI
+└── ⚛️ frontend/                    # React 18 UI (Browser-based)
     ├── package.json
     └── src/
         ├── App.js                           # Main app component
@@ -995,7 +1093,7 @@ Ironcliw-ai/
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/chat` | Send message to JARVIS |
+| `POST` | `/api/chat` | Send message to Ironcliw |
 | `POST` | `/api/voice/transcribe` | Upload audio for STT |
 | `GET` | `/api/status` | System health check |
 | `GET` | `/api/system/info` | CPU, RAM, disk info |
@@ -1025,16 +1123,16 @@ Ironcliw-ai/
 ## 🗣️ Voice Commands
 
 ### General
-| Say This | JARVIS Does |
+| Say This | Ironcliw Does |
 |:---------|:------------|
-| "Hey JARVIS" | Activate listening |
+| "Hey Ironcliw" | Activate listening |
 | "What can you do?" | List capabilities |
 | "What time is it?" | Speak current time |
 | "Tell me a joke" | Generate and speak joke |
 | "Goodbye" | End conversation |
 
 ### System Control
-| Say This | JARVIS Does |
+| Say This | Ironcliw Does |
 |:---------|:------------|
 | "Set volume to 50%" | Adjust system volume (pycaw) |
 | "Lock my screen" | `LockWorkStation()` |
@@ -1043,7 +1141,7 @@ Ironcliw-ai/
 | "Prevent sleep" | `SetThreadExecutionState` |
 
 ### App Control
-| Say This | JARVIS Does |
+| Say This | Ironcliw Does |
 |:---------|:------------|
 | "Open Chrome" | Launch Chrome (4-strategy) |
 | "Open Spotify" | Launch Spotify |
@@ -1053,7 +1151,7 @@ Ironcliw-ai/
 | "Close this window" | `win32gui` close active |
 
 ### Vision & Screen
-| Say This | JARVIS Does |
+| Say This | Ironcliw Does |
 |:---------|:------------|
 | "Can you see my screen?" | Capture + analyze |
 | "What app am I using?" | Active window detection |
@@ -1062,9 +1160,9 @@ Ironcliw-ai/
 | "Take a screenshot" | Save PNG to disk |
 
 ### Voice Biometrics
-| Say This | JARVIS Does |
+| Say This | Ironcliw Does |
 |:---------|:------------|
-| "JARVIS, learn my voice" | Start enrollment (3 samples) |
+| "Ironcliw, learn my voice" | Start enrollment (3 samples) |
 | "Who am I?" | Speaker identification |
 | "Verify me" | Run biometric check |
 
@@ -1092,7 +1190,7 @@ graph TB
     VISION_INIT --> GH_INIT["🤖 Ghost Hands Init"]
     GH_INIT --> FRONTEND["⚛️ Start Frontend<br/>npm run dev · Port 3000"]
     FRONTEND --> BROWSER["🌐 Open Browser<br/>http://localhost:3000"]
-    BROWSER --> READY["✅ JARVIS READY<br/>~60-90s total"]
+    BROWSER --> READY["✅ Ironcliw READY<br/>~60-90s total"]
 
     style START fill:#e94560,stroke:#fff,color:#fff
     style READY fill:#00cc66,stroke:#fff,color:#fff
@@ -1167,11 +1265,11 @@ graph TB
 
 | Issue | Solution |
 |:------|:---------|
-| High RAM (>80%) | Set `JARVIS_MEMORY_LIMIT=3072` |
-| Slow startup | Set `JARVIS_LAZY_LOAD_MODELS=true` |
+| High RAM (>80%) | Set `Ironcliw_MEMORY_LIMIT=3072` |
+| Slow startup | Set `Ironcliw_LAZY_LOAD_MODELS=true` |
 | ECAPA blocking | Already fixed (fast-fail) |
 | Port conflicts | Kill stuck ports or change in `.env` |
-| No GPU | `JARVIS_ML_DEVICE=cpu` (default) |
+| No GPU | `Ironcliw_ML_DEVICE=cpu` (default) |
 
 ---
 
@@ -1288,7 +1386,7 @@ Contributions are welcome! This is an active Windows port with ongoing improveme
 
 | Role | Credit |
 |:-----|:-------|
-| **Original JARVIS** | [Derek Russell (drussell23)](https://github.com/drussell23) — [JARVIS](https://github.com/drussell23/JARVIS) |
+| **Original Ironcliw** | [Derek Russell (drussell23)](https://github.com/drussell23) — [Ironcliw](https://github.com/drussell23/Ironcliw) |
 | **Windows Port** | [Nandkishor Rathod](https://github.com/nandkishorrathodk-art) |
 | **Neural TTS** | Microsoft Azure — `en-GB-RyanNeural` via [edge-tts](https://github.com/rany2/edge-tts) |
 | **LLM** | [Anthropic Claude](https://anthropic.com) + [Fireworks AI](https://fireworks.ai) |
@@ -1304,7 +1402,7 @@ Contributions are welcome! This is an active Windows port with ongoing improveme
 
 **MIT License** — see [LICENSE](LICENSE)
 
-Original JARVIS project by [drussell23](https://github.com/drussell23). 
+Original Ironcliw project by [drussell23](https://github.com/drussell23). 
 Windows port and modifications by [Nandkishor Rathod](https://github.com/nandkishorrathodk-art) (2026).
 
 ```
@@ -1325,7 +1423,7 @@ copies of the Software...
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%">
 
-### ⚡ Ironcliw-AI · JARVIS
+### ⚡ Ironcliw-AI · Ironcliw
 
 **Built with ❤️ by [Nandkishor Rathod](https://github.com/nandkishorrathodk-art)**
 

@@ -1,5 +1,5 @@
-"""
-Configuration package for the JARVIS backend application.
+﻿"""
+Configuration package for the Ironcliw backend application.
 ==========================================================
 
 This package provides configuration management for the backend application,

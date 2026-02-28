@@ -1,4 +1,4 @@
-# Pure Intelligence Migration Guide
+﻿# Pure Intelligence Migration Guide
 
 This guide shows how to migrate from the template-based system to pure Claude Vision intelligence.
 
@@ -256,4 +256,4 @@ grep -r "I can see\|It appears\|Your screen shows" backend/api/
 # Should return: No results (all templates removed)
 ```
 
-The migration transforms JARVIS from a scripted bot to a truly intelligent assistant.
+The migration transforms Ironcliw from a scripted bot to a truly intelligent assistant.

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Piper TTS Engine — Local Neural TTS with True Streaming
 =========================================================
 
@@ -30,14 +30,14 @@ from .base_tts_engine import BaseTTSEngine, TTSChunk, TTSConfig, TTSEngine, TTSR
 logger = logging.getLogger(__name__)
 
 # Default Piper voice — high quality, ~50MB
-_DEFAULT_VOICE = os.getenv("JARVIS_PIPER_VOICE", "en_US-lessac-medium")
+_DEFAULT_VOICE = os.getenv("Ironcliw_PIPER_VOICE", "en_US-lessac-medium")
 _MODELS_DIR = Path(os.getenv(
-    "JARVIS_PIPER_MODELS_DIR",
+    "Ironcliw_PIPER_MODELS_DIR",
     os.path.expanduser("~/.jarvis/piper_models")
 ))
 
 # Chunk size for streaming output (in samples)
-_STREAM_CHUNK_SAMPLES = int(os.getenv("JARVIS_PIPER_CHUNK_SAMPLES", "8000"))
+_STREAM_CHUNK_SAMPLES = int(os.getenv("Ironcliw_PIPER_CHUNK_SAMPLES", "8000"))
 
 
 class PiperTTSEngine(BaseTTSEngine):

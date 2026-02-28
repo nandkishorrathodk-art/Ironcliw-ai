@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Display Monitor for JARVIS
+Advanced Display Monitor for Ironcliw
 ====================================
 
 Production-ready, fully async, dynamic display monitoring system with:

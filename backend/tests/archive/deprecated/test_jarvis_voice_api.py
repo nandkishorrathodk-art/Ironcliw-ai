@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test dynamic error handling in JARVIS Voice API"""
+﻿#!/usr/bin/env python3
+"""Test dynamic error handling in Ironcliw Voice API"""
 
 import pytest
 import asyncio
@@ -34,8 +34,8 @@ def test_dynamic_error_handling():
         assert result == "fallback"
         
         # Test safe_getattr
-        obj = SimpleNamespace(name="JARVIS", version="2.0")
-        assert handler.safe_getattr(obj, "name") == "JARVIS"
+        obj = SimpleNamespace(name="Ironcliw", version="2.0")
+        assert handler.safe_getattr(obj, "name") == "Ironcliw"
         assert handler.safe_getattr(obj, "nonexistent", "default") == "default"
         assert handler.safe_getattr(None, "anything", "default") == "default"
         
@@ -114,11 +114,11 @@ def test_voice_command_creation():
 async def test_api_graceful_fallbacks():
     """Test that API endpoints handle errors gracefully"""
     try:
-        from api.jarvis_voice_api import JARVISVoiceAPI
+        from api.jarvis_voice_api import IroncliwVoiceAPI
         
-        # Create API without JARVIS available
+        # Create API without Ironcliw available
         with patch.dict('os.environ', {}, clear=True):
-            api = JARVISVoiceAPI()
+            api = IroncliwVoiceAPI()
             
             # Test status endpoint
             status = await api.get_status()
@@ -151,7 +151,7 @@ async def test_api_graceful_fallbacks():
 
 
 if __name__ == "__main__":
-    print("🧪 Testing JARVIS Voice API Dynamic Error Handling...\n")
+    print("🧪 Testing Ironcliw Voice API Dynamic Error Handling...\n")
     
     # Run synchronous tests
     test1 = test_dynamic_error_handling()

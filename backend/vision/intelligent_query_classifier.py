@@ -1,5 +1,5 @@
-"""
-Intelligent Query Classifier for JARVIS Vision System
+﻿"""
+Intelligent Query Classifier for Ironcliw Vision System
 Uses Claude API for zero-hardcoded pattern classification.
 
 Classifies queries into three categories:
@@ -325,7 +325,7 @@ class IntelligentQueryClassifier:
         Build a prompt for Claude to classify the query.
         Dynamic prompt that adapts to context.
         """
-        prompt = f"""You are an intelligent query classifier for JARVIS, an AI assistant with vision capabilities.
+        prompt = f"""You are an intelligent query classifier for Ironcliw, an AI assistant with vision capabilities.
 
 Classify this user query into ONE of three categories:
 

@@ -1,8 +1,8 @@
-# Intelligent Vision Approach - No More Hardcoding
+﻿# Intelligent Vision Approach - No More Hardcoding
 
 ## The Problem with Hardcoding
 
-Previously, JARVIS was using hardcoded lists of apps and phrases:
+Previously, Ironcliw was using hardcoded lists of apps and phrases:
 - Specific app names: "WhatsApp", "Discord", "Slack"
 - Specific phrases: "whatsapp notifications", "discord messages"
 
@@ -13,11 +13,11 @@ This approach was limiting because:
 
 ## The New Intelligent Approach
 
-JARVIS now uses **pattern-based intelligence** instead of hardcoded lists.
+Ironcliw now uses **pattern-based intelligence** instead of hardcoded lists.
 
 ### 1. Intelligent Query Detection
 
-Instead of checking for exact phrases, JARVIS now looks for **query patterns**:
+Instead of checking for exact phrases, Ironcliw now looks for **query patterns**:
 
 ```python
 screen_query_indicators = [
@@ -38,7 +38,7 @@ This catches ANY variation:
 
 ### 2. Generic Screen Content Detection
 
-JARVIS now routes ANY query that seems to be about screen content to vision:
+Ironcliw now routes ANY query that seems to be about screen content to vision:
 
 ```python
 screen_content_keywords = [
@@ -66,10 +66,10 @@ This matches:
 
 ### 4. Let Vision Do the Work
 
-The key insight: **JARVIS can SEE the screen!** 
+The key insight: **Ironcliw can SEE the screen!** 
 
 When a user asks "Do I have notifications from X?":
-1. JARVIS detects it's a screen query (has "notifications" + "from")
+1. Ironcliw detects it's a screen query (has "notifications" + "from")
 2. Routes to workspace intelligence
 3. Vision system captures ALL windows
 4. Smart router finds windows matching the query
@@ -81,27 +81,27 @@ When a user asks "Do I have notifications from X?":
 ### Before (Hardcoded):
 ```
 User: "Do I have any notifications from WeChat?"
-JARVIS: "I don't have access to your personal messages"
+Ironcliw: "I don't have access to your personal messages"
 (WeChat wasn't in the hardcoded list)
 ```
 
 ### After (Intelligent):
 ```
 User: "Do I have any notifications from WeChat?"
-JARVIS: "Sir, I can see WeChat is open with 5 unread messages."
+Ironcliw: "Sir, I can see WeChat is open with 5 unread messages."
 (Vision detected 'chat' pattern and analyzed the screen)
 ```
 
 ### Works with ANY App:
 ```
 User: "Check my CustomWorkApp notifications"
-JARVIS: "I can see CustomWorkApp in your dock showing a red badge with the number 3."
+Ironcliw: "I can see CustomWorkApp in your dock showing a red badge with the number 3."
 
 User: "Any alerts in that blue app?"
-JARVIS: "The Telegram app (blue icon) shows 2 unread chats."
+Ironcliw: "The Telegram app (blue icon) shows 2 unread chats."
 
 User: "Do I have anything new?"
-JARVIS: "Sir, I see notification badges on Discord (4), Mail (12), and Slack (1)."
+Ironcliw: "Sir, I see notification badges on Discord (4), Mail (12), and Slack (1)."
 ```
 
 ## Benefits
@@ -122,4 +122,4 @@ The intelligence now works in layers:
 4. **Vision Analysis Layer**: Actually looks at the screen
 5. **Response Layer**: Describes what's actually visible
 
-This approach makes JARVIS truly intelligent - it doesn't need to know about every app in advance, it just needs to understand what the user is asking and then LOOK at the screen to answer.
+This approach makes Ironcliw truly intelligent - it doesn't need to know about every app in advance, it just needs to understand what the user is asking and then LOOK at the screen to answer.

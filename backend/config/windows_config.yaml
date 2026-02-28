@@ -1,4 +1,4 @@
-# JARVIS Windows Platform Configuration
+﻿# Ironcliw Windows Platform Configuration
 # Windows-specific settings and overrides
 # Version: 1.0.0
 
@@ -11,11 +11,11 @@ platform:
 
 # System Paths (Windows-specific)
 paths:
-  config_dir: "%APPDATA%\\JARVIS"
-  logs_dir: "%APPDATA%\\JARVIS\\logs"
-  data_dir: "%LOCALAPPDATA%\\JARVIS\\data"
-  cache_dir: "%LOCALAPPDATA%\\JARVIS\\cache"
-  temp_dir: "%TEMP%\\JARVIS"
+  config_dir: "%APPDATA%\\Ironcliw"
+  logs_dir: "%APPDATA%\\Ironcliw\\logs"
+  data_dir: "%LOCALAPPDATA%\\Ironcliw\\data"
+  cache_dir: "%LOCALAPPDATA%\\Ironcliw\\cache"
+  temp_dir: "%TEMP%\\Ironcliw"
 
 # Screen Capture Configuration
 screen_capture:
@@ -102,7 +102,7 @@ ml_models:
   device: "auto"  # Auto-detect GPU/CPU
   quantization: "dynamic"  # Dynamic quantization for speed
   cache_models: true
-  cache_path: "%LOCALAPPDATA%\\JARVIS\\models"
+  cache_path: "%LOCALAPPDATA%\\Ironcliw\\models"
 
 # Docker Configuration (Windows-specific paths)
 docker:
@@ -135,7 +135,7 @@ update:
 # Logging Configuration
 logging:
   level: "INFO"
-  file: "%APPDATA%\\JARVIS\\logs\\jarvis.log"
+  file: "%APPDATA%\\Ironcliw\\logs\\jarvis.log"
   max_size_mb: 50
   backup_count: 3
   console_output: true
@@ -167,9 +167,9 @@ security:
   
 # Environment Variables (Windows-specific defaults)
 env_defaults:
-  JARVIS_PLATFORM: "windows"
-  JARVIS_AUTH_BYPASS: "true"
-  JARVIS_TTS_ENGINE: "pyttsx3"
-  JARVIS_CAPTURE_METHOD: "mss"
-  JARVIS_GPU_BACKEND: "directx"
-  JARVIS_CONFIG_DIR: "%APPDATA%\\JARVIS"
+  Ironcliw_PLATFORM: "windows"
+  Ironcliw_AUTH_BYPASS: "true"
+  Ironcliw_TTS_ENGINE: "pyttsx3"
+  Ironcliw_CAPTURE_METHOD: "mss"
+  Ironcliw_GPU_BACKEND: "directx"
+  Ironcliw_CONFIG_DIR: "%APPDATA%\\Ironcliw"

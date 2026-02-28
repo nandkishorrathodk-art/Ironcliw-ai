@@ -1,4 +1,4 @@
-"""
+﻿"""
 LangGraph Phase Manager
 =======================
 
@@ -15,7 +15,7 @@ Phases:
     REFLECTING   - Evaluating results and outcomes
     LEARNING     - Consolidating insights for future tasks
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -39,51 +39,51 @@ class PhaseManagerConfig:
 
     # Phase transition settings
     min_analysis_confidence: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIN_ANALYSIS_CONFIDENCE", "0.7"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIN_ANALYSIS_CONFIDENCE", "0.7"))
     )
     min_planning_confidence: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIN_PLANNING_CONFIDENCE", "0.75"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIN_PLANNING_CONFIDENCE", "0.75"))
     )
     min_execution_confidence: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIN_EXECUTION_CONFIDENCE", "0.8"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIN_EXECUTION_CONFIDENCE", "0.8"))
     )
 
     # Timeout settings (seconds)
     analysis_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_ANALYSIS_TIMEOUT", "30"))
+        default_factory=lambda: float(os.getenv("Ironcliw_ANALYSIS_TIMEOUT", "30"))
     )
     planning_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PLANNING_TIMEOUT", "60"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PLANNING_TIMEOUT", "60"))
     )
     execution_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_EXECUTION_TIMEOUT", "300"))
+        default_factory=lambda: float(os.getenv("Ironcliw_EXECUTION_TIMEOUT", "300"))
     )
     reflection_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_REFLECTION_TIMEOUT", "30"))
+        default_factory=lambda: float(os.getenv("Ironcliw_REFLECTION_TIMEOUT", "30"))
     )
 
     # Checkpoint settings
     checkpoint_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PHASE_CHECKPOINTS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PHASE_CHECKPOINTS", "true").lower() == "true"
     )
     max_checkpoints_per_task: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MAX_CHECKPOINTS", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MAX_CHECKPOINTS", "10"))
     )
 
     # Learning settings
     learning_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PHASE_LEARNING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PHASE_LEARNING", "true").lower() == "true"
     )
     learning_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_LEARNING_THRESHOLD", "0.85"))
+        default_factory=lambda: float(os.getenv("Ironcliw_LEARNING_THRESHOLD", "0.85"))
     )
 
     # Retry settings
     max_phase_retries: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MAX_PHASE_RETRIES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MAX_PHASE_RETRIES", "3"))
     )
     retry_backoff_base: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_RETRY_BACKOFF_BASE", "1.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_RETRY_BACKOFF_BASE", "1.5"))
     )
 
 

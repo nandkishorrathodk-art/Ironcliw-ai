@@ -1,8 +1,8 @@
-"""
-Vision Cognitive Loop - The "Eyes" of JARVIS
+﻿"""
+Vision Cognitive Loop - The "Eyes" of Ironcliw
 ==============================================
 
-This module implements the Vision-First Agentic Loop that enables JARVIS
+This module implements the Vision-First Agentic Loop that enables Ironcliw
 to "see" the OS state before acting, validate actions visually, and
 coordinate across multiple macOS Spaces.
 
@@ -37,7 +37,7 @@ Key Features:
 - Spatial Orchestration: Multi-space awareness via Yabai
 - Visual Memory: Enriches training data with visual context
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 (Vision-Cognitive Loop)
 """
 
@@ -198,7 +198,7 @@ class CognitiveLoopResult:
 
 class VisionCognitiveLoop:
     """
-    The Vision-Cognitive Loop - Enables JARVIS to see, think, act, and verify.
+    The Vision-Cognitive Loop - Enables Ironcliw to see, think, act, and verify.
 
     This class integrates:
     - VisionIntelligence: Screen capture and analysis
@@ -904,7 +904,7 @@ class VisionCognitiveLoop:
         """
         Get formatted visual context for inclusion in LLM prompts.
 
-        This is called before planning to provide JARVIS Prime with
+        This is called before planning to provide Ironcliw Prime with
         awareness of the current OS state.
 
         Returns:

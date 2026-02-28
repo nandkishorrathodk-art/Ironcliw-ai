@@ -1,4 +1,4 @@
-# ✅ **CORRECTED UNDERSTANDING - What You ACTUALLY Wanted**
+﻿# ✅ **CORRECTED UNDERSTANDING - What You ACTUALLY Wanted**
 
 ## 🤦 **I Completely Misunderstood Your Request!**
 
@@ -27,7 +27,7 @@
 
 ## 📋 **Your Actual Requirement (Restated)**
 
-> "I have Screen Mirroring on my MacBook. When 'Living Room TV' shows up as available in the menu, JARVIS should ask me if I want to extend to it. If I say yes, connect. If I say no, don't ask again for a while."
+> "I have Screen Mirroring on my MacBook. When 'Living Room TV' shows up as available in the menu, Ironcliw should ask me if I want to extend to it. If I say yes, connect. If I say no, don't ask again for a while."
 
 **KEY INSIGHT: Apple Watch is NOT needed! Living Room TV is already discoverable in the Screen Mirroring menu!**
 
@@ -66,11 +66,11 @@ STEP 1: You turn on Living Room TV
   → TV broadcasts AirPlay
   → Shows up in Screen Mirroring menu ✅
 
-STEP 2: JARVIS polls menu (every 10s)
+STEP 2: Ironcliw polls menu (every 10s)
   → "Living Room TV is now available" ✅
 
-STEP 3: JARVIS prompts you
-  JARVIS: "Sir, I see Living Room TV is now available. 
+STEP 3: Ironcliw prompts you
+  Ironcliw: "Sir, I see Living Room TV is now available. 
            Would you like to extend your display to it?"
 
 STEP 4: You respond
@@ -105,9 +105,9 @@ curl -X POST http://localhost:8000/api/display-monitor/start
 - Connects to Wi-Fi
 - Broadcasts AirPlay availability
 
-### **4. JARVIS Detects & Prompts (within 10s)**
+### **4. Ironcliw Detects & Prompts (within 10s)**
 ```
-JARVIS: "Sir, I see Living Room TV is now available. 
+Ironcliw: "Sir, I see Living Room TV is now available. 
          Would you like to extend your display to it?"
 ```
 
@@ -147,7 +147,7 @@ YOU: "No" → Skips (won't ask for 1 hour)
 ## 💡 **Key Insights**
 
 ### **What I Misunderstood:**
-1. ❌ I thought you wanted JARVIS to detect when YOU are NEAR the TV (proximity)
+1. ❌ I thought you wanted Ironcliw to detect when YOU are NEAR the TV (proximity)
 2. ❌ I thought Apple Watch was needed to track YOUR movement
 3. ❌ I built a complex spatial intelligence system
 
@@ -206,7 +206,7 @@ RIGHT UNDERSTANDING:
 1. Register "Living Room TV"
 2. Start monitoring
 3. Turn on TV
-4. JARVIS will prompt you
+4. Ironcliw will prompt you
 
 **No Apple Watch, No Proximity, No Complexity!** 🎉
 

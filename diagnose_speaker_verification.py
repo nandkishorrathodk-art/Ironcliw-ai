@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Diagnose Speaker Verification Issues
 This script checks the entire speaker verification pipeline to find where it's failing
@@ -13,7 +13,7 @@ sys.path.append('backend')
 from voice.speaker_verification_service import SpeakerVerificationService
 from voice.engines.speechbrain_engine import SpeechBrainEngine
 from voice.stt_config import STTConfig
-from intelligence.learning_database import JARVISLearningDatabase
+from intelligence.learning_database import IroncliwLearningDatabase
 import logging
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -29,7 +29,7 @@ async def diagnose():
     try:
         # Step 1: Check database and profiles
         logger.info("\n🔍 STEP 1: Checking Database and Profiles...")
-        db = JARVISLearningDatabase()
+        db = IroncliwLearningDatabase()
         await db.initialize()
 
         profiles = await db.get_all_speaker_profiles()

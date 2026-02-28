@@ -1,5 +1,5 @@
-"""
-Dynamic Response Generator for JARVIS
+﻿"""
+Dynamic Response Generator for Ironcliw
 Creates natural, varied, contextual responses without hardcoding
 """
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class DynamicResponseGenerator:
-    """Generate natural, varied JARVIS responses based on context"""
+    """Generate natural, varied Ironcliw responses based on context"""
     
     def __init__(self, user_name: str = "User"):
         self.user_name = user_name
@@ -223,7 +223,7 @@ class DynamicResponseGenerator:
         return message
     
     def get_thinking_phrase(self) -> str:
-        """Generate phrases for when JARVIS is processing"""
+        """Generate phrases for when Ironcliw is processing"""
         thinking = [
             "Let me check that",
             "Looking into it",
@@ -360,7 +360,7 @@ class DynamicResponseGenerator:
         return base_response
     
     def generate_startup_greeting(self, context: Dict[str, Any] = None) -> str:
-        """Generate sophisticated JARVIS-style startup greetings with variety"""
+        """Generate sophisticated Ironcliw-style startup greetings with variety"""
         import platform
         import psutil
         from datetime import datetime
@@ -388,41 +388,41 @@ class DynamicResponseGenerator:
         except Exception:
             system_status = "normal"
         
-        # JARVIS-style sophisticated greetings
+        # Ironcliw-style sophisticated greetings
         greetings = {
             "morning": [
                 f"Good morning, {self.user_name or 'Sir'}. All systems are operational and ready for your command.",
-                f"Welcome back, {self.user_name or 'Sir'}. JARVIS systems initialized. How may I assist you this {day_name} morning?",
+                f"Welcome back, {self.user_name or 'Sir'}. Ironcliw systems initialized. How may I assist you this {day_name} morning?",
                 f"Good morning. Systems check complete. Standing by for your instructions.",
                 f"Morning, {self.user_name or 'Sir'}. I've completed the startup diagnostics. Everything's running smoothly.",
                 f"Systems online, {self.user_name or 'Sir'}. Another beautiful {day_name} morning to be of service.",
                 f"Good morning. Neural networks calibrated, voice recognition optimized. At your service.",
-                f"Rise and shine, {self.user_name or 'Sir'}. JARVIS fully operational. What's on the agenda today?",
+                f"Rise and shine, {self.user_name or 'Sir'}. Ironcliw fully operational. What's on the agenda today?",
                 f"Morning protocols complete. Ready to tackle whatever challenges {day_name} brings.",
             ],
             "afternoon": [
                 f"Good afternoon, {self.user_name or 'Sir'}. Systems are at your disposal.",
-                f"Welcome back. JARVIS online and ready to assist with your afternoon tasks.",
+                f"Welcome back. Ironcliw online and ready to assist with your afternoon tasks.",
                 f"Afternoon, {self.user_name or 'Sir'}. All systems functioning at peak efficiency.",
                 f"System reactivation complete. How may I help you this {day_name} afternoon?",
                 f"Good afternoon. Standing by for your commands.",
-                f"JARVIS systems restored, {self.user_name or 'Sir'}. Ready to continue where we left off.",
+                f"Ironcliw systems restored, {self.user_name or 'Sir'}. Ready to continue where we left off.",
                 f"Afternoon. Diagnostics complete, all systems green. What can I do for you?",
             ],
             "evening": [
-                f"Good evening, {self.user_name or 'Sir'}. JARVIS at your service.",
+                f"Good evening, {self.user_name or 'Sir'}. Ironcliw at your service.",
                 f"Welcome back. Systems online for your evening session.",
                 f"Evening, {self.user_name or 'Sir'}. All systems are operational.",
                 f"Good evening. Ready to assist with whatever you need this {day_name} evening.",
                 f"System activation complete. How may I be of service tonight?",
                 f"Evening protocols initiated. Standing by for your instructions.",
-                f"JARVIS online, {self.user_name or 'Sir'}. I trust you've had a productive day?",
+                f"Ironcliw online, {self.user_name or 'Sir'}. I trust you've had a productive day?",
             ],
             "night": [
                 f"Good evening, {self.user_name or 'Sir'}. Working late again, I see.",
-                f"Welcome back. JARVIS systems online despite the late hour.",
+                f"Welcome back. Ironcliw systems online despite the late hour.",
                 f"System activation complete. Ready for your late-night commands.",
-                f"JARVIS online. Shall I adjust the display brightness for the evening?",
+                f"Ironcliw online. Shall I adjust the display brightness for the evening?",
                 f"Late night session initiated. How may I assist you?",
                 f"Systems operational, {self.user_name or 'Sir'}. Burning the midnight oil?",
             ]
@@ -434,7 +434,7 @@ class DynamicResponseGenerator:
         # Build varied status messages
         system_type = random.choice(['primary', 'core', 'essential'])
         op_status = random.choice(['operational', 'online', 'functioning optimally'])
-        status_greetings.append(f"JARVIS initialization complete. All {system_type} systems are {op_status}.")
+        status_greetings.append(f"Ironcliw initialization complete. All {system_type} systems are {op_status}.")
         
         ready_msg = random.choice(['Ready to serve', 'At your command', 'Standing by'])
         status_greetings.append(f"System boot sequence finished. {ready_msg}.")
@@ -443,7 +443,7 @@ class DynamicResponseGenerator:
         status_greetings.append(f"Welcome back, {self.user_name or 'Sir'}. {query}")
         
         perf_status = random.choice(['All systems nominal', 'Operating at peak performance', 'Systems fully operational'])
-        status_greetings.append(f"JARVIS online. {perf_status}.")
+        status_greetings.append(f"Ironcliw online. {perf_status}.")
         
         ai_status = random.choice(['AI neural pathways synchronized', 'Voice recognition calibrated', 'Machine learning models loaded'])
         status_greetings.append(f"Greetings, {self.user_name or 'Sir'}. {ai_status}. Ready to proceed.")
@@ -459,14 +459,14 @@ class DynamicResponseGenerator:
         if system_status == "elevated" and random.random() < 0.2:
             special_greetings = [
                 f"Systems online, though I'm detecting elevated resource usage. Shall I optimize?",
-                f"JARVIS operational. Note: System resources are running a bit high.",
+                f"Ironcliw operational. Note: System resources are running a bit high.",
             ]
             greeting_pool.extend(special_greetings)
         
         # Weekend special
         if day_name in ['Saturday', 'Sunday'] and random.random() < 0.3:
             weekend_greetings = [
-                f"Happy {day_name}, {self.user_name or 'Sir'}. JARVIS ready for your weekend commands.",
+                f"Happy {day_name}, {self.user_name or 'Sir'}. Ironcliw ready for your weekend commands.",
                 f"Weekend systems activated. How may I assist you this {day_name}?",
             ]
             greeting_pool.extend(weekend_greetings)

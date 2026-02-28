@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 🔐 SPEAKER VERIFICATION TEST
 ═══════════════════════════════════════════════════════════════════════
@@ -12,7 +12,7 @@ Usage:
     python3 scripts/test_speaker_verification.py --verbose
     python3 scripts/test_speaker_verification.py --json
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -804,7 +804,7 @@ def main():
             print("  1. Ensure ~/.jarvis/learning/jarvis_learning.db exists")
             print("  2. Run voice enrollment to create a profile")
             print("  3. Install dependencies: pip install numpy")
-            print("  4. Restart JARVIS: python3 start_system.py --restart")
+            print("  4. Restart Ironcliw: python3 start_system.py --restart")
         
         print()
     

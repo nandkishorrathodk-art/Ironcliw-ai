@@ -1,5 +1,5 @@
-"""
-Minimal to Full Mode Upgrader for JARVIS.
+﻿"""
+Minimal to Full Mode Upgrader for Ironcliw.
 Monitors system health and automatically upgrades from minimal to full mode when possible.
 """
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class MinimalToFullUpgrader:
     """
-    Advanced upgrader that monitors JARVIS running in minimal mode and automatically 
+    Advanced upgrader that monitors Ironcliw running in minimal mode and automatically 
     upgrades to full mode when all components become available.
     
     Features:
@@ -427,7 +427,7 @@ class MinimalToFullUpgrader:
         """Advanced monitor with intelligent retry strategies and performance tracking."""
         self._metrics['start_time'] = datetime.now()
         
-        logger.info("🚀 JARVIS Upgrade Monitor Started")
+        logger.info("🚀 Ironcliw Upgrade Monitor Started")
         logger.info(f"📋 Configuration: Check interval {self.check_interval}s, Max attempts {self._max_attempts}")
         logger.info(f"🎯 Required components: {', '.join(self.required_components)}")
         
@@ -490,7 +490,7 @@ class MinimalToFullUpgrader:
                         logger.info("  • Rust components loaded")
                         logger.info("=" * 60)
                         logger.info(f"⏱️  Upgrade completed in {self._upgrade_attempts} attempts")
-                        logger.info("🚀 JARVIS is now running at full capacity!")
+                        logger.info("🚀 Ironcliw is now running at full capacity!")
                         logger.info("=" * 60)
                         
                         await self._record_upgrade_success()
@@ -720,7 +720,7 @@ class MinimalToFullUpgrader:
         """Attempt upgrade with advanced recovery mechanisms and progress tracking."""
         upgrade_start = time.time()
         
-        logger.info("🚀 Starting JARVIS Full Mode Upgrade Process")
+        logger.info("🚀 Starting Ironcliw Full Mode Upgrade Process")
         logger.info("=" * 60)
         
         try:
@@ -778,7 +778,7 @@ class MinimalToFullUpgrader:
             
             logger.info("=" * 60)
             logger.info(f"✅ Upgrade completed successfully in {upgrade_time:.1f} seconds!")
-            logger.info("🎉 JARVIS is now running in FULL MODE with all components active")
+            logger.info("🎉 Ironcliw is now running in FULL MODE with all components active")
             logger.info("=" * 60)
             
             return True

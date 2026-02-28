@@ -1,8 +1,8 @@
-"""
-Voice Unlock Integration for JARVIS API
+﻿"""
+Voice Unlock Integration for Ironcliw API
 ======================================
 
-This module integrates the Voice Unlock daemon with JARVIS's main API.
+This module integrates the Voice Unlock daemon with Ironcliw's main API.
 """
 
 import asyncio
@@ -120,7 +120,7 @@ async def initialize_voice_unlock():
 
 async def handle_voice_unlock_in_jarvis(command: str) -> dict:
     """
-    Handle voice unlock commands from JARVIS
+    Handle voice unlock commands from Ironcliw
     
     This should be called from unified_command_processor when
     voice unlock commands are detected.
@@ -131,7 +131,7 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
     if not voice_unlock_connector or not voice_unlock_connector.connected:
         await initialize_voice_unlock()
     
-    # Map JARVIS commands to daemon commands
+    # Map Ironcliw commands to daemon commands
     if "enable voice unlock" in command_lower:
         result = await voice_unlock_connector.enable_monitoring()
         return {
@@ -177,7 +177,7 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             if voice_unlock_connector and voice_unlock_connector.connected:
                 result = await voice_unlock_connector.send_command("unlock_screen", {
                     "source": "jarvis_command",
-                    "authenticated": True  # Already authenticated via JARVIS
+                    "authenticated": True  # Already authenticated via Ironcliw
                 })
                 
                 if result and result.get('success'):
@@ -192,7 +192,7 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             unlock_manager = get_unlock_manager()
             
             success, message = await unlock_manager.unlock_screen(
-                reason="User command from JARVIS",
+                reason="User command from Ironcliw",
                 command_context={"command": command, "source": "voice"}
             )
             
@@ -237,7 +237,7 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             from context_intelligence.core.unlock_manager import get_unlock_manager
             unlock_manager = get_unlock_manager()
             
-            success, message = await unlock_manager.lock_screen("User command from JARVIS")
+            success, message = await unlock_manager.lock_screen("User command from Ironcliw")
             
             if success:
                 return {
@@ -284,7 +284,7 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             return {
                 'type': 'proximity_auth',
                 'action': 'enroll_prompt',
-                'message': 'Sir, I need you to say "Hello JARVIS, this is [your name]" three times for voice enrollment.',
+                'message': 'Sir, I need you to say "Hello Ironcliw, this is [your name]" three times for voice enrollment.',
                 'requires_audio': True,
                 'success': True
             }

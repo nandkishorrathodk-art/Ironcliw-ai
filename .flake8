@@ -1,5 +1,5 @@
-[flake8]
-# Linter configuration for JARVIS AI Agent
+﻿[flake8]
+# Linter configuration for Ironcliw AI Agent
 
 # Exclude files that should not be linted
 exclude =

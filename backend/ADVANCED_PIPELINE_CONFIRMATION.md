@@ -1,4 +1,4 @@
-# ✅ CONFIRMED: Using AdvancedAsyncPipeline
+﻿# ✅ CONFIRMED: Using AdvancedAsyncPipeline
 
 **Date:** October 5, 2025
 **Status:** ✅ **VERIFIED**
@@ -60,7 +60,7 @@ from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
 | Vision System V2 | ✅ | `self.pipeline = get_async_pipeline()` | 1 call | AdvancedAsyncPipeline |
 | Weather System | ✅ | `self.pipeline = get_async_pipeline()` | 1 call | AdvancedAsyncPipeline |
 | WebSocket Handlers | ✅ | `self.pipeline = get_async_pipeline()` | 1 call | AdvancedAsyncPipeline |
-| JARVIS Voice API | ✅ | `self.async_pipeline = get_async_pipeline()` | 1 call | AdvancedAsyncPipeline |
+| Ironcliw Voice API | ✅ | `self.async_pipeline = get_async_pipeline()` | 1 call | AdvancedAsyncPipeline |
 
 ---
 
@@ -148,7 +148,7 @@ result = await self.pipeline.process_async(
 # ✅ Calls AdvancedAsyncPipeline.process_async()
 ```
 
-**6. JARVIS Voice API:**
+**6. Ironcliw Voice API:**
 ```python
 response = await self.async_pipeline.process_async(text, self.user_name)
 # ✅ Calls AdvancedAsyncPipeline.process_async()
@@ -207,7 +207,7 @@ Because we're using **AdvancedAsyncPipeline** (not a basic pipeline):
 ✅ **30+ retry mechanisms** - Exponential backoff active
 ✅ **~608s timeout protection** - Per-stage timeouts
 
-**JARVIS is using the most advanced async pipeline architecture possible!** 🚀💥
+**Ironcliw is using the most advanced async pipeline architecture possible!** 🚀💥
 
 ---
 

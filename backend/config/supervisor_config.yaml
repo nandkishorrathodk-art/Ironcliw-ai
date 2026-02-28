@@ -1,10 +1,10 @@
-# JARVIS Self-Updating Lifecycle Manager Configuration
+﻿# Ironcliw Self-Updating Lifecycle Manager Configuration
 # Zero hardcoding - all settings configurable and environment-overridable
 # Version: 1.1.0 - Cross-platform support added
 
 # Platform Configuration (Cross-platform support)
 platform:
-  # Auto-detect platform or override with JARVIS_PLATFORM env var
+  # Auto-detect platform or override with Ironcliw_PLATFORM env var
   auto_detect: true
   
   # Platform-specific config files (loaded based on detected platform)
@@ -219,7 +219,7 @@ security:
     
   # Update source restrictions
   allowed_sources:
-    - github.com/drussell23/JARVIS-AI-Agent
+    - github.com/drussell23/Ironcliw-AI-Agent
     
   # Sandbox updates (run as current user, no sudo)
   sandbox:

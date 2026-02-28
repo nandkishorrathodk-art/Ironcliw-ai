@@ -1,4 +1,4 @@
-# ✅ AirPlay Discovery - IMPLEMENTATION COMPLETE
+﻿# ✅ AirPlay Discovery - IMPLEMENTATION COMPLETE
 
 ## 🎯 **Problem Solved**
 
@@ -14,7 +14,7 @@
 ### **Before (Missing Feature):**
 
 ```
-❌ JARVIS could only detect ACTIVE displays:
+❌ Ironcliw could only detect ACTIVE displays:
    → Core Graphics API: CGGetActiveDisplayList
    → Only sees displays that are ALREADY CONNECTED
    → If Sony TV is on but not connected → NOT DETECTED
@@ -30,7 +30,7 @@
 ### **After (With AirPlay Discovery):**
 
 ```
-✅ JARVIS discovers AVAILABLE displays (not yet connected):
+✅ Ironcliw discovers AVAILABLE displays (not yet connected):
    → AirPlay Discovery Service
    → Scans for devices in Screen Sharing menu
    → Detects Sony TV BEFORE connection
@@ -39,7 +39,7 @@
    → Proximity detected: 2.5m ✅
    → AirPlay scan: "Sony TV" found ✅
    → TV is available (on the network) ✅
-   → JARVIS: "Would you like to connect to Sony Living Room TV?"
+   → Ironcliw: "Would you like to connect to Sony Living Room TV?"
    → USER: "Yes"
    → AppleScript connects via AirPlay ✅
 
@@ -136,7 +136,7 @@ SETUP (One-Time):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 1. Sony TV is on and connected to Wi-Fi (AirPlay enabled)
-2. Register TV in JARVIS:
+2. Register TV in Ironcliw:
 
 curl -X POST http://localhost:8000/api/proximity-display/register \
   -H "Content-Type: application/json" \
@@ -159,7 +159,7 @@ DAILY USE:
 
 8:00 PM - You walk to living room with Apple Watch
 
-[JARVIS - Internal Processing]
+[Ironcliw - Internal Processing]
 1. Bluetooth scan: "Derek's Apple Watch" at -55 dBm
 2. Distance: 2.5 meters from MacBook
 3. Proximity zone: NEAR
@@ -176,14 +176,14 @@ DAILY USE:
 8. Connection decision: PROMPT_USER
 9. Generate voice prompt...
 
-[JARVIS - Voice Output]
+[Ironcliw - Voice Output]
 "Sir, I see you're near the Sony Living Room TV, 
  about 2.5 meters away. Shall I connect?"
 
 [YOU]
 "Yes"
 
-[JARVIS - AirPlay Connection]
+[Ironcliw - AirPlay Connection]
 1. AppleScript execution:
    → Click "Screen Mirroring" menu bar item
    → Find "Sony Living Room TV" in menu
@@ -192,7 +192,7 @@ DAILY USE:
 2. Connection time: ~3-5 seconds (wireless)
 3. Status: CONNECTED ✅
 
-[JARVIS - Confirmation]
+[Ironcliw - Confirmation]
 "Connecting to Sony Living Room TV... Done, sir."
 
 [RESULT]
@@ -256,7 +256,7 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
   }'
 
 # 4. Walk near TV with Apple Watch
-# 5. JARVIS will prompt to connect
+# 5. Ironcliw will prompt to connect
 # 6. Say "Yes" to connect wirelessly via AirPlay
 ```
 
@@ -414,8 +414,8 @@ Timestamp Add Instance Name
 
 **Result:**
 - ✅ Walk near Sony TV (AirPlay) with Apple Watch
-- ✅ JARVIS discovers TV is available (not yet connected)
-- ✅ JARVIS prompts: "Would you like to connect?"
+- ✅ Ironcliw discovers TV is available (not yet connected)
+- ✅ Ironcliw prompts: "Would you like to connect?"
 - ✅ Say "Yes" → Wireless AirPlay connection in ~3-5s
 - ✅ Sony TV becomes second screen (no cable needed!)
 

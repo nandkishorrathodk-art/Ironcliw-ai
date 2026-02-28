@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Start backend on port 8010 for frontend compatibility
 """
@@ -9,7 +9,7 @@ import os
 
 def main():
     """Start the backend on port 8010"""
-    print("🚀 Starting JARVIS Backend on port 8010 (for frontend compatibility)")
+    print("🚀 Starting Ironcliw Backend on port 8010 (for frontend compatibility)")
     print("=" * 60)
     
     # Set environment variable

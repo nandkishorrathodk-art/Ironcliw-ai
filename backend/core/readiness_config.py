@@ -1,5 +1,5 @@
-"""
-JARVIS Unified Readiness Configuration Module
+﻿"""
+Ironcliw Unified Readiness Configuration Module
 ==============================================
 
 Central configuration for component criticality and status display semantics.
@@ -35,7 +35,7 @@ Usage:
     # Get dashboard status
     dashboard = config.status_to_dashboard("skipped")  # Returns "skipped"
 
-Author: JARVIS Trinity - Readiness Integrity Fixes
+Author: Ironcliw Trinity - Readiness Integrity Fixes
 """
 
 from __future__ import annotations
@@ -166,10 +166,10 @@ class ReadinessConfig:
     - Timeout and threshold values
 
     Configuration can be overridden via environment variables:
-    - JARVIS_VERIFICATION_TIMEOUT: Verification timeout in seconds
-    - JARVIS_UNHEALTHY_THRESHOLD_FAILURES: Consecutive failures before unhealthy
-    - JARVIS_UNHEALTHY_THRESHOLD_SECONDS: Seconds before unhealthy
-    - JARVIS_REVOCATION_COOLDOWN_SECONDS: Cooldown between revocations
+    - Ironcliw_VERIFICATION_TIMEOUT: Verification timeout in seconds
+    - Ironcliw_UNHEALTHY_THRESHOLD_FAILURES: Consecutive failures before unhealthy
+    - Ironcliw_UNHEALTHY_THRESHOLD_SECONDS: Seconds before unhealthy
+    - Ironcliw_REVOCATION_COOLDOWN_SECONDS: Cooldown between revocations
     """
 
     # Component classification
@@ -189,16 +189,16 @@ class ReadinessConfig:
     def __post_init__(self) -> None:
         """Load configuration from environment variables."""
         # Override with environment variables if set
-        if env_timeout := os.environ.get("JARVIS_VERIFICATION_TIMEOUT"):
+        if env_timeout := os.environ.get("Ironcliw_VERIFICATION_TIMEOUT"):
             object.__setattr__(self, "verification_timeout", float(env_timeout))
 
-        if env_failures := os.environ.get("JARVIS_UNHEALTHY_THRESHOLD_FAILURES"):
+        if env_failures := os.environ.get("Ironcliw_UNHEALTHY_THRESHOLD_FAILURES"):
             object.__setattr__(self, "unhealthy_threshold_failures", int(env_failures))
 
-        if env_seconds := os.environ.get("JARVIS_UNHEALTHY_THRESHOLD_SECONDS"):
+        if env_seconds := os.environ.get("Ironcliw_UNHEALTHY_THRESHOLD_SECONDS"):
             object.__setattr__(self, "unhealthy_threshold_seconds", float(env_seconds))
 
-        if env_cooldown := os.environ.get("JARVIS_REVOCATION_COOLDOWN_SECONDS"):
+        if env_cooldown := os.environ.get("Ironcliw_REVOCATION_COOLDOWN_SECONDS"):
             object.__setattr__(self, "revocation_cooldown_seconds", float(env_cooldown))
 
     def get_criticality(self, component_name: str) -> ComponentCriticality:

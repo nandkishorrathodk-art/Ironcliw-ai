@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Notification Monitor
+﻿"""
+Ironcliw macOS Helper - Notification Monitor
 
 Monitors system and app notifications post-delivery using UserNotifications framework.
 Provides intelligent notification summarization and AGI OS integration.
@@ -382,8 +382,8 @@ class NotificationMonitor:
     async def _init_learning_db(self) -> None:
         """Initialize learning database connection."""
         try:
-            from intelligence.learning_database import JARVISLearningDatabase
-            self._learning_db = JARVISLearningDatabase(
+            from intelligence.learning_database import IroncliwLearningDatabase
+            self._learning_db = IroncliwLearningDatabase(
                 db_path=self.config.learning_db_path
             )
             await self._learning_db.initialize()

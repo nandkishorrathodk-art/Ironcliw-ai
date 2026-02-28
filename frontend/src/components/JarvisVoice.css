@@ -1,4 +1,4 @@
-/* ============================================
+﻿/* ============================================
    J.A.R.V.I.S. - CINEMATIC MINIMAL INTERFACE
    Pure Black Background with Glowing Elements
    ============================================ */
@@ -840,7 +840,7 @@ AudioQualityStatsDisplay {
 }
 
 /* ==================== PROACTIVE UNLOCK PROGRESS ==================== */
-/* v8.0: Autonomous unlock visualization - shows when JARVIS unlocks screen for a command */
+/* v8.0: Autonomous unlock visualization - shows when Ironcliw unlocks screen for a command */
 
 .proactive-unlock-container {
   position: fixed;

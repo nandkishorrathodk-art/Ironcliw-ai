@@ -1,7 +1,7 @@
+﻿# =============================================================================
+# Ironcliw-Prime Cloud Run Module
 # =============================================================================
-# JARVIS-Prime Cloud Run Module
-# =============================================================================
-# Deploys JARVIS-Prime Tier-0 Brain to Google Cloud Run
+# Deploys Ironcliw-Prime Tier-0 Brain to Google Cloud Run
 #
 # Features:
 # - Serverless (pay per request, scales to zero)
@@ -118,7 +118,7 @@ variable "environment" {
 resource "google_artifact_registry_repository" "jarvis_prime" {
   location      = var.region
   repository_id = "jarvis-prime"
-  description   = "JARVIS-Prime Docker images"
+  description   = "Ironcliw-Prime Docker images"
   format        = "DOCKER"
 
   labels = {
@@ -164,11 +164,11 @@ resource "google_cloud_run_v2_service" "jarvis_prime" {
 
       # Environment variables
       env {
-        name  = "JARVIS_PRIME_HOST"
+        name  = "Ironcliw_PRIME_HOST"
         value = "0.0.0.0"
       }
       env {
-        name  = "JARVIS_PRIME_PORT"
+        name  = "Ironcliw_PRIME_PORT"
         value = "8000"
       }
       env {
@@ -298,8 +298,8 @@ resource "google_vpc_access_connector" "jarvis_prime" {
 
 resource "google_service_account" "jarvis_prime" {
   account_id   = "jarvis-prime-${var.environment}"
-  display_name = "JARVIS-Prime Service Account"
-  description  = "Service account for JARVIS-Prime Cloud Run"
+  display_name = "Ironcliw-Prime Service Account"
+  description  = "Service account for Ironcliw-Prime Cloud Run"
 }
 
 # Allow Cloud Run to pull images from Artifact Registry
@@ -339,7 +339,7 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 # =============================================================================
 
 output "service_url" {
-  description = "JARVIS-Prime Cloud Run service URL"
+  description = "Ironcliw-Prime Cloud Run service URL"
   value       = google_cloud_run_v2_service.jarvis_prime.uri
 }
 

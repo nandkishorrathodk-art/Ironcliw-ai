@@ -1,5 +1,5 @@
-"""
-JARVIS Voice Command Handler for Voice Unlock
+﻿"""
+Ironcliw Voice Command Handler for Voice Unlock
 ============================================
 
 Fully async, dynamic command handler with:
@@ -101,9 +101,9 @@ class CommandConfig:
 
         # Override with environment variables
         env_mappings = {
-            "JARVIS_FUZZY_THRESHOLD": ("fuzzy_match_threshold", float),
-            "JARVIS_LEARNING_ENABLED": ("learning_enabled", lambda x: x.lower() == "true"),
-            "JARVIS_COMMAND_HISTORY_LIMIT": ("command_history_limit", int),
+            "Ironcliw_FUZZY_THRESHOLD": ("fuzzy_match_threshold", float),
+            "Ironcliw_LEARNING_ENABLED": ("learning_enabled", lambda x: x.lower() == "true"),
+            "Ironcliw_COMMAND_HISTORY_LIMIT": ("command_history_limit", int),
         }
 
         for env_key, (config_key, converter) in env_mappings.items():
@@ -542,11 +542,11 @@ class CommandPatternRegistry:
         # Unlock patterns
         CommandPattern(
             r"(?:hey |hi |hello )?jarvis[,.]? (?:please )?unlock (?:my |the )?(?:mac|screen|computer|system)",
-            CommandType.UNLOCK, priority=10, description="Standard unlock with JARVIS prefix"
+            CommandType.UNLOCK, priority=10, description="Standard unlock with Ironcliw prefix"
         ),
         CommandPattern(
             r"unlock (?:my |the )?(?:screen|mac|computer|system)",
-            CommandType.UNLOCK, priority=5, description="Direct unlock without JARVIS"
+            CommandType.UNLOCK, priority=5, description="Direct unlock without Ironcliw"
         ),
         CommandPattern(
             r"jarvis[,.\s]* (?:this is |it'?s )(\w+)",
@@ -572,11 +572,11 @@ class CommandPatternRegistry:
         # Lock patterns
         CommandPattern(
             r"(?:hey )?jarvis[,.]? (?:please )?lock (?:my |the )?(?:mac|computer|system|screen)",
-            CommandType.LOCK, priority=10, description="Standard lock with JARVIS"
+            CommandType.LOCK, priority=10, description="Standard lock with Ironcliw"
         ),
         CommandPattern(
             r"lock (?:my |the )?(?:screen|mac|computer)",
-            CommandType.LOCK, priority=5, description="Direct lock without JARVIS"
+            CommandType.LOCK, priority=5, description="Direct lock without Ironcliw"
         ),
         CommandPattern(
             r"jarvis[,.]? (?:activate |enable )?(?:security|lock)",
@@ -759,7 +759,7 @@ class FuzzyMatcher:
             "unlock my mack": "unlock my mac",
             "unblock my mac": "unlock my mac",
 
-            # JARVIS variations
+            # Ironcliw variations
             "jar vis": "jarvis",
             "jar vase": "jarvis",
             "jarvas": "jarvis",
@@ -938,7 +938,7 @@ class FuzzyMatcher:
 
 class ResponseGenerator:
     """
-    Dynamic response generator for JARVIS voice feedback.
+    Dynamic response generator for Ironcliw voice feedback.
     Supports templates and context-aware responses.
     """
 
@@ -997,7 +997,7 @@ class ResponseGenerator:
                 "Processing your unlock command.",
             ],
             "help": [
-                "Available commands: unlock, lock, status, enroll. Say 'Hey JARVIS' followed by your command.",
+                "Available commands: unlock, lock, status, enroll. Say 'Hey Ironcliw' followed by your command.",
             ],
         }
 
@@ -1032,9 +1032,9 @@ class ResponseGenerator:
 # Main Command Handler
 # =============================================================================
 
-class JARVISCommandHandler:
+class IroncliwCommandHandler:
     """
-    Fully async JARVIS voice command handler.
+    Fully async Ironcliw voice command handler.
 
     Features:
     - Multi-strategy command matching (regex, fuzzy, phonetic, learned)
@@ -1074,7 +1074,7 @@ class JARVISCommandHandler:
             await self._learning_engine.load()
 
             self._initialized = True
-            logger.info("JARVISCommandHandler initialized")
+            logger.info("IroncliwCommandHandler initialized")
 
     async def parse_command(self, text: str) -> Optional[VoiceCommand]:
         """
@@ -1223,7 +1223,7 @@ class JARVISCommandHandler:
         command: VoiceCommand,
         result: Dict[str, Any]
     ) -> str:
-        """Generate JARVIS response based on command and result"""
+        """Generate Ironcliw response based on command and result"""
         await self.initialize()
 
         context = {
@@ -1311,17 +1311,17 @@ class JARVISCommandHandler:
 # Module-level convenience functions
 # =============================================================================
 
-_handler_instance: Optional[JARVISCommandHandler] = None
+_handler_instance: Optional[IroncliwCommandHandler] = None
 _handler_lock = LazyAsyncLock()  # v100.1: Lazy initialization to avoid "no running event loop" error
 
 
-async def get_command_handler() -> JARVISCommandHandler:
+async def get_command_handler() -> IroncliwCommandHandler:
     """Get or create the singleton command handler instance"""
     global _handler_instance
 
     async with _handler_lock:
         if _handler_instance is None:
-            _handler_instance = JARVISCommandHandler()
+            _handler_instance = IroncliwCommandHandler()
             await _handler_instance.initialize()
 
     return _handler_instance
@@ -1338,18 +1338,18 @@ async def parse_command(text: str) -> Optional[VoiceCommand]:
 # =============================================================================
 
 async def test_jarvis_commands():
-    """Test JARVIS command parsing with various inputs"""
-    handler = JARVISCommandHandler()
+    """Test Ironcliw command parsing with various inputs"""
+    handler = IroncliwCommandHandler()
     await handler.initialize()
 
     test_phrases = [
         # Standard commands (should use regex)
-        "Hey JARVIS, unlock my Mac",
-        "JARVIS, this is Derek",
+        "Hey Ironcliw, unlock my Mac",
+        "Ironcliw, this is Derek",
         "unlock my screen",
-        "JARVIS, lock the computer",
-        "JARVIS, what's the status?",
-        "JARVIS, enroll user Sarah",
+        "Ironcliw, lock the computer",
+        "Ironcliw, what's the status?",
+        "Ironcliw, enroll user Sarah",
 
         # STT error variations (should use fuzzy)
         "Hey Jarvis, I'm Lach Ma's Green",  # "unlock my screen"
@@ -1362,11 +1362,11 @@ async def test_jarvis_commands():
         # Edge cases
         "hello jarvis please unlock my computer",
         "open sesame jarvis",
-        "JARVIS I'm leaving",
+        "Ironcliw I'm leaving",
     ]
 
     print("=" * 60)
-    print("JARVIS Command Handler - Async Test Suite")
+    print("Ironcliw Command Handler - Async Test Suite")
     print("=" * 60)
 
     for phrase in test_phrases:

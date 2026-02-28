@@ -1,21 +1,21 @@
-# 🔐 Context-Aware Screen Unlock Implementation for JARVIS
+﻿# 🔐 Context-Aware Screen Unlock Implementation for Ironcliw
 
 ## Overview
-JARVIS now has full context awareness to automatically detect when your screen is locked and unlock it before executing commands that require screen access.
+Ironcliw now has full context awareness to automatically detect when your screen is locked and unlock it before executing commands that require screen access.
 
 ## How It Works
 
 ### 1. Command Reception
-When you say: **"Hey JARVIS, open Safari and search for dogs"**
+When you say: **"Hey Ironcliw, open Safari and search for dogs"**
 
 ### 2. Context Analysis
-JARVIS analyzes the command:
+Ironcliw analyzes the command:
 - ✅ Detects this command requires screen access
 - ✅ Checks if the screen is currently locked
 - ✅ Determines unlock is needed
 
 ### 3. User Communication
-JARVIS responds:
+Ironcliw responds:
 > "I see your screen is locked. I'll unlock it now by typing in your password so I can search for dogs."
 
 ### 4. Automatic Unlock
@@ -29,7 +29,7 @@ JARVIS responds:
 - Provides step-by-step feedback
 
 ### 6. Confirmation
-JARVIS confirms:
+Ironcliw confirms:
 > "I see your screen is locked. I'll unlock it now by typing in your password so I can search for dogs. I've opened Safari and searched for dogs as requested."
 
 ## Key Components
@@ -45,7 +45,7 @@ JARVIS confirms:
 - Sends correct message format
 - Handles unlock operations
 
-### 3. **JARVIS Voice API Integration**
+### 3. **Ironcliw Voice API Integration**
 - Uses enhanced context handler for all commands
 - Sends real-time updates via WebSocket
 - Provides execution step tracking
@@ -87,17 +87,17 @@ cd backend
 python3 test_context_aware_unlock.py
 ```
 
-### 2. Test with JARVIS Running
-1. Start JARVIS:
+### 2. Test with Ironcliw Running
+1. Start Ironcliw:
    ```bash
    python3 start_system.py
    ```
 
 2. Lock your screen (Cmd+Ctrl+Q)
 
-3. Say: "Hey JARVIS, open Safari and search for dogs"
+3. Say: "Hey Ironcliw, open Safari and search for dogs"
 
-4. Watch JARVIS:
+4. Watch Ironcliw:
    - Detect locked screen
    - Announce unlock intention
    - Unlock screen
@@ -143,19 +143,19 @@ self.screen_required_patterns = [
 
 ## Future Enhancements
 
-1. **Learning System**: JARVIS learns which commands need screen
+1. **Learning System**: Ironcliw learns which commands need screen
 2. **Smart Delays**: Adaptive timing based on system performance
 3. **Multi-Step Commands**: Handle complex workflows
 4. **Preference Learning**: Remember user preferences
 
 ## Summary
 
-JARVIS now intelligently handles screen lock context:
+Ironcliw now intelligently handles screen lock context:
 - ✅ Detects when screen is locked
 - ✅ Communicates clearly with user
 - ✅ Unlocks screen automatically
 - ✅ Executes commands seamlessly
 - ✅ Provides step-by-step feedback
 
-**Your screen lock is no longer a barrier - JARVIS handles it transparently!**
+**Your screen lock is no longer a barrier - Ironcliw handles it transparently!**
 

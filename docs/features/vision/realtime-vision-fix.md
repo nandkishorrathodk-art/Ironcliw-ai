@@ -1,7 +1,7 @@
-# Real-Time Vision Fix - No More Generic Responses
+﻿# Real-Time Vision Fix - No More Generic Responses
 
 ## Problem
-JARVIS was giving generic, repetitive responses instead of actually analyzing what's on screen:
+Ironcliw was giving generic, repetitive responses instead of actually analyzing what's on screen:
 - "what is the battery percentage?" → Generic screen description
 - "can you see my terminal?" → Same generic response
 - "what windows are open?" → Same generic response
@@ -69,6 +69,6 @@ elif 'terminal' in query:
 - **Specific answers** to specific questions
 - **Real-time analysis** of what's actually on screen
 - **No hardcoded responses** - everything from Claude Vision
-- **Natural conversation** - JARVIS personality preserved
+- **Natural conversation** - Ironcliw personality preserved
 
-Now JARVIS actually sees and understands your screen in real-time!
+Now Ironcliw actually sees and understands your screen in real-time!

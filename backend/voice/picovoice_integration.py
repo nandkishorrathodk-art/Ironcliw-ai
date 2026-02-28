@@ -1,4 +1,4 @@
-"""
+﻿"""
 Advanced Wake Word Detection System
 Combines Picovoice Porcupine with energy-based fallback for robust, low-latency detection
 
@@ -661,7 +661,7 @@ async def test_wake_word_detector():
     detector = UnifiedWakeWordDetector(config)
 
     print(f"\n✅ Detector initialized (mode: {detector.get_mode()})")
-    print("\n👂 Listening for 'Hey JARVIS'...")
+    print("\n👂 Listening for 'Hey Ironcliw'...")
     print("   Speak clearly and wait for detection")
 
     # Define callback

@@ -1,5 +1,5 @@
-"""
-Error Handling Matrix for JARVIS
+﻿"""
+Error Handling Matrix for Ironcliw
 =================================
 
 Provides comprehensive error handling with graceful degradation:

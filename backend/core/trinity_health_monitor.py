@@ -1,9 +1,9 @@
-"""
+﻿"""
 v108.0: Trinity Cross-Repo Health Monitor
 ==========================================
 
 Unified health monitoring for all three Trinity components:
-- JARVIS (Body) - HTTP endpoint + internal components
+- Ironcliw (Body) - HTTP endpoint + internal components
 - J-Prime (Mind) - Heartbeat file + HTTP endpoint
 - Reactor-Core (Nerves) - Heartbeat file + HTTP endpoint
 
@@ -22,7 +22,7 @@ Architecture:
     ┌─────────────────────────────────────────────────────────────┐
     │              Trinity Health Monitor (Unified)                │
     ├─────────────┬─────────────────────────┬────────────────────┤
-    │   JARVIS    │       J-Prime           │   Reactor-Core     │
+    │   Ironcliw    │       J-Prime           │   Reactor-Core     │
     │   (Body)    │       (Mind)            │    (Nerves)        │
     ├─────────────┼─────────────────────────┼────────────────────┤
     │ HTTP:8010   │ Heartbeat + HTTP:8000   │ Heartbeat + HTTP   │
@@ -32,7 +32,7 @@ Architecture:
 CRITICAL v108.0 FIX: All timeouts now come from TrinityOrchestrationConfig
 to prevent mismatched configuration values causing cascading failures.
 
-Author: JARVIS v108.0
+Author: Ironcliw v108.0
 Version: 2.0.0
 """
 
@@ -70,8 +70,8 @@ class ComponentStatus(str, Enum):
 
 class TrinityComponent(str, Enum):
     """Trinity architecture components."""
-    JARVIS_BODY = "jarvis_body"        # JARVIS-AI-Agent
-    JARVIS_PRIME = "jarvis_prime"      # J-Prime (Mind)
+    Ironcliw_BODY = "jarvis_body"        # Ironcliw-AI-Agent
+    Ironcliw_PRIME = "jarvis_prime"      # J-Prime (Mind)
     REACTOR_CORE = "reactor_core"      # Reactor-Core (Nerves)
     CODING_COUNCIL = "coding_council"  # Coding Council subsystem
     TRINITY_SYNC = "trinity_sync"      # Overall Trinity synchronization
@@ -217,8 +217,8 @@ class TrinityHealthConfig:
 
     # Component weights for health score calculation
     component_weights: Dict[TrinityComponent, float] = field(default_factory=lambda: {
-        TrinityComponent.JARVIS_BODY: 1.0,      # Critical
-        TrinityComponent.JARVIS_PRIME: 0.7,    # Important but optional
+        TrinityComponent.Ironcliw_BODY: 1.0,      # Critical
+        TrinityComponent.Ironcliw_PRIME: 0.7,    # Important but optional
         TrinityComponent.REACTOR_CORE: 0.7,    # Important but optional
         TrinityComponent.CODING_COUNCIL: 0.5,  # Nice to have
         TrinityComponent.TRINITY_SYNC: 0.8,    # Important for cross-repo
@@ -235,8 +235,8 @@ class TrinityHealthConfig:
             max_heartbeat_age_seconds=float(os.getenv("TRINITY_MAX_HEARTBEAT_AGE", "45.0")),
             http_timeout_seconds=float(os.getenv("TRINITY_HTTP_TIMEOUT", "10.0")),
             check_interval_seconds=float(os.getenv("TRINITY_CHECK_INTERVAL", "10.0")),
-            jarvis_backend_port=int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
-            jarvis_prime_port=int(os.getenv("JARVIS_PRIME_PORT", "8000")),
+            jarvis_backend_port=int(os.getenv("Ironcliw_BACKEND_PORT", "8010")),
+            jarvis_prime_port=int(os.getenv("Ironcliw_PRIME_PORT", "8000")),
             reactor_core_port=int(os.getenv("REACTOR_CORE_PORT", "8090")),
         )
 
@@ -256,8 +256,8 @@ class TrinityHealthConfig:
 
             # Use the most lenient heartbeat threshold for general checks
             # Component-specific checks will use get_heartbeat_threshold()
-            body_profile = orch_config.get_profile(ComponentType.JARVIS_BODY)
-            prime_profile = orch_config.get_profile(ComponentType.JARVIS_PRIME)
+            body_profile = orch_config.get_profile(ComponentType.Ironcliw_BODY)
+            prime_profile = orch_config.get_profile(ComponentType.Ironcliw_PRIME)
 
             return cls(
                 trinity_dir=orch_config.trinity_dir,
@@ -298,8 +298,8 @@ class TrinityHealthConfig:
             orch_config = get_orchestration_config()
 
             component_map = {
-                TrinityComponent.JARVIS_BODY: ComponentType.JARVIS_BODY,
-                TrinityComponent.JARVIS_PRIME: ComponentType.JARVIS_PRIME,
+                TrinityComponent.Ironcliw_BODY: ComponentType.Ironcliw_BODY,
+                TrinityComponent.Ironcliw_PRIME: ComponentType.Ironcliw_PRIME,
                 TrinityComponent.REACTOR_CORE: ComponentType.REACTOR_CORE,
                 TrinityComponent.CODING_COUNCIL: ComponentType.CODING_COUNCIL,
             }
@@ -325,8 +325,8 @@ class TrinityHealthConfig:
             orch_config = get_orchestration_config()
 
             component_map = {
-                TrinityComponent.JARVIS_BODY: ComponentType.JARVIS_BODY,
-                TrinityComponent.JARVIS_PRIME: ComponentType.JARVIS_PRIME,
+                TrinityComponent.Ironcliw_BODY: ComponentType.Ironcliw_BODY,
+                TrinityComponent.Ironcliw_PRIME: ComponentType.Ironcliw_PRIME,
                 TrinityComponent.REACTOR_CORE: ComponentType.REACTOR_CORE,
                 TrinityComponent.CODING_COUNCIL: ComponentType.CODING_COUNCIL,
             }
@@ -358,8 +358,8 @@ class TrinityHealthConfig:
             orch_config = get_orchestration_config()
 
             component_map = {
-                TrinityComponent.JARVIS_BODY: ComponentType.JARVIS_BODY,
-                TrinityComponent.JARVIS_PRIME: ComponentType.JARVIS_PRIME,
+                TrinityComponent.Ironcliw_BODY: ComponentType.Ironcliw_BODY,
+                TrinityComponent.Ironcliw_PRIME: ComponentType.Ironcliw_PRIME,
                 TrinityComponent.REACTOR_CORE: ComponentType.REACTOR_CORE,
                 TrinityComponent.CODING_COUNCIL: ComponentType.CODING_COUNCIL,
             }
@@ -399,7 +399,7 @@ class TrinityHealthMonitor:
     Unified health monitor for all Trinity components.
 
     Monitors:
-    - JARVIS Body (HTTP endpoints, internal components)
+    - Ironcliw Body (HTTP endpoints, internal components)
     - J-Prime Mind (heartbeat files, HTTP endpoint)
     - Reactor-Core Nerves (heartbeat files, HTTP endpoint)
     - Coding Council (heartbeat files, HTTP endpoint)
@@ -561,13 +561,13 @@ class TrinityHealthMonitor:
 
     async def _check_jarvis_body(self) -> ComponentHealthStatus:
         """
-        Check JARVIS Body (main backend) health.
+        Check Ironcliw Body (main backend) health.
 
         v94.0: Now uses /health/ready endpoint instead of /health/ping
         to properly detect initialization state. This fixes the false
         positive issue where health checks passed during initialization.
         """
-        status = ComponentHealthStatus(component=TrinityComponent.JARVIS_BODY)
+        status = ComponentHealthStatus(component=TrinityComponent.Ironcliw_BODY)
         checks = []
 
         # v94.0: First check readiness endpoint (the KEY fix for false positives)
@@ -612,7 +612,7 @@ class TrinityHealthMonitor:
                 status.last_error = f"Still initializing ({progress:.0f}%)"
 
                 self.log.debug(
-                    f"[TrinityHealthMonitor] JARVIS Body in STARTING state "
+                    f"[TrinityHealthMonitor] Ironcliw Body in STARTING state "
                     f"(phase={phase}, progress={progress:.0f}%)"
                 )
             else:
@@ -641,11 +641,11 @@ class TrinityHealthMonitor:
         as OPTIONAL_OFFLINE instead of UNHEALTHY - this allows the system to operate
         without J-Prime running.
         """
-        status = ComponentHealthStatus(component=TrinityComponent.JARVIS_PRIME)
+        status = ComponentHealthStatus(component=TrinityComponent.Ironcliw_PRIME)
         checks = []
 
         # v108.0: Get component-specific threshold
-        stale_threshold = self.config.get_heartbeat_threshold(TrinityComponent.JARVIS_PRIME)
+        stale_threshold = self.config.get_heartbeat_threshold(TrinityComponent.Ironcliw_PRIME)
 
         # Heartbeat file check (primary)
         # Support both naming conventions
@@ -680,7 +680,7 @@ class TrinityHealthMonitor:
             status.consecutive_failures = 0
         else:
             # v108.0: CRITICAL FIX - Check if in startup grace period before marking unhealthy
-            if self.config.is_in_startup_grace_period(TrinityComponent.JARVIS_PRIME):
+            if self.config.is_in_startup_grace_period(TrinityComponent.Ironcliw_PRIME):
                 status.status = ComponentStatus.STARTING
                 status.last_error = f"J-Prime starting (in grace period) - {heartbeat_result.error}"
                 self.log.debug(
@@ -852,16 +852,16 @@ class TrinityHealthMonitor:
         status = ComponentHealthStatus(component=TrinityComponent.TRINITY_SYNC)
 
         # Trinity sync is healthy if:
-        # - JARVIS Body is healthy AND
+        # - Ironcliw Body is healthy AND
         # - At least one of J-Prime or Reactor-Core is healthy
         body_healthy = self._component_status.get(
-            TrinityComponent.JARVIS_BODY,
-            ComponentHealthStatus(component=TrinityComponent.JARVIS_BODY)
+            TrinityComponent.Ironcliw_BODY,
+            ComponentHealthStatus(component=TrinityComponent.Ironcliw_BODY)
         ).is_healthy
 
         prime_healthy = self._component_status.get(
-            TrinityComponent.JARVIS_PRIME,
-            ComponentHealthStatus(component=TrinityComponent.JARVIS_PRIME)
+            TrinityComponent.Ironcliw_PRIME,
+            ComponentHealthStatus(component=TrinityComponent.Ironcliw_PRIME)
         ).is_operational
 
         reactor_healthy = self._component_status.get(
@@ -876,7 +876,7 @@ class TrinityHealthMonitor:
             status.last_error = "No cross-repo components available"
         else:
             status.status = ComponentStatus.UNHEALTHY
-            status.last_error = "JARVIS Body not healthy"
+            status.last_error = "Ironcliw Body not healthy"
 
         status.last_check = time.time()
         return status
@@ -1102,7 +1102,7 @@ class TrinityHealthMonitor:
     def _determine_overall_status(self, snapshot: TrinityHealthSnapshot) -> ComponentStatus:
         """Determine overall system status based on health score and components."""
         # Critical component check
-        body_status = snapshot.components.get(TrinityComponent.JARVIS_BODY)
+        body_status = snapshot.components.get(TrinityComponent.Ironcliw_BODY)
         if body_status and body_status.status == ComponentStatus.UNHEALTHY:
             return ComponentStatus.UNHEALTHY
 

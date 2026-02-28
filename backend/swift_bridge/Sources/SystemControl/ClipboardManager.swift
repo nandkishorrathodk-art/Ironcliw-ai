@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 import AppKit
 import UniformTypeIdentifiers
 
@@ -447,7 +447,7 @@ public extension ClipboardManager {
         if success && notify {
             // Post notification for UI feedback
             NotificationCenter.default.post(
-                name: NSNotification.Name("JARVISClipboardCopied"),
+                name: NSNotification.Name("IroncliwClipboardCopied"),
                 object: nil,
                 userInfo: ["text": text]
             )

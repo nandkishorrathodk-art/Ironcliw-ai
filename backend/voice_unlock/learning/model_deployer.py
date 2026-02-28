@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Model Deployer - Automatic Model Deployment from Reactor-Core.
 =====================================================================
 
@@ -22,7 +22,7 @@ Architecture:
     │  └── RollbackController (handles automatic rollback)                │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v81.0 - Unified Learning Loop
+Author: Ironcliw Trinity v81.0 - Unified Learning Loop
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Integrated Assistant - Seamless Vision & Control
+Ironcliw Integrated Assistant - Seamless Vision & Control
 Dynamic AI assistant with proactive notifications and contextual interactions
 """
 
@@ -20,7 +20,7 @@ from vision.workspace_analyzer import WorkspaceAnalyzer
 from vision.dynamic_vision_engine import get_dynamic_vision_engine
 from vision.dynamic_multi_window_engine import get_dynamic_multi_window_engine
 from system_control.vision_action_handler import get_vision_action_handler
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from voice.jarvis_agent_voice import IroncliwAgentVoice
 from system_control.dynamic_app_controller import DynamicAppController
 from system_control.claude_command_interpreter import ClaudeCommandInterpreter
 
@@ -47,9 +47,9 @@ class IntegratedResponse:
     follow_up_needed: bool = False
     confidence: float = 1.0
 
-class JARVISIntegratedAssistant:
+class IroncliwIntegratedAssistant:
     """
-    Fully integrated JARVIS assistant combining vision, voice, and control
+    Fully integrated Ironcliw assistant combining vision, voice, and control
     with zero hardcoding and dynamic learning
     """
     
@@ -66,7 +66,7 @@ class JARVISIntegratedAssistant:
         self.vision_handler = get_vision_action_handler()
         
         # Voice component
-        self.voice_system = JARVISAgentVoice(user_name)
+        self.voice_system = IroncliwAgentVoice(user_name)
         
         # System control
         self.app_controller = DynamicAppController()
@@ -90,7 +90,7 @@ class JARVISIntegratedAssistant:
         # Load learned data
         self._load_interaction_history()
         
-        logger.info(f"JARVIS Integrated Assistant initialized for {user_name}")
+        logger.info(f"Ironcliw Integrated Assistant initialized for {user_name}")
     
     async def process_vision_command(self, command: str) -> IntegratedResponse:
         """
@@ -605,17 +605,17 @@ class JARVISIntegratedAssistant:
 
 async def test_integrated_assistant():
     """Test the integrated assistant"""
-    print("🤖 Testing JARVIS Integrated Assistant")
+    print("🤖 Testing Ironcliw Integrated Assistant")
     print("=" * 50)
     
     # Initialize assistant
-    assistant = JARVISIntegratedAssistant("Sir")
+    assistant = IroncliwIntegratedAssistant("Sir")
     
     # Test 1: Vision command with proactive information
     print("\n1️⃣ Testing vision command...")
     response = await assistant.process_vision_command("describe my screen")
     
-    print(f"\n🗣️ JARVIS says:")
+    print(f"\n🗣️ Ironcliw says:")
     print(response.verbal_response)
     
     print(f"\n📊 Visual Context:")

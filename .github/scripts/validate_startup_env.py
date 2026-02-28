@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Validate that start_system.py properly propagates environment variables to backend.
 
@@ -15,11 +15,11 @@ class EnvVarValidator:
     """Validates environment variable propagation in start_system.py"""
 
     REQUIRED_CLOUD_SQL_VARS = {
-        "JARVIS_DB_TYPE",
-        "JARVIS_DB_CONNECTION_NAME",
-        "JARVIS_DB_HOST",
-        "JARVIS_DB_PORT",
-        "JARVIS_DB_PASSWORD",
+        "Ironcliw_DB_TYPE",
+        "Ironcliw_DB_CONNECTION_NAME",
+        "Ironcliw_DB_HOST",
+        "Ironcliw_DB_PORT",
+        "Ironcliw_DB_PASSWORD",
     }
 
     def __init__(self, start_system_path: Path):
@@ -57,11 +57,11 @@ class EnvVarValidator:
     def check_env_dict_assignments(self):
         """Check that Cloud SQL env vars are set in the env dict passed to backend"""
         # Find where env dict is created and passed to backend subprocess
-        env_pattern = r'env\["JARVIS_DB_(\w+)"\]\s*='
+        env_pattern = r'env\["Ironcliw_DB_(\w+)"\]\s*='
 
         found_vars = set()
         for match in re.finditer(env_pattern, self.content):
-            var_name = f"JARVIS_DB_{match.group(1)}"
+            var_name = f"Ironcliw_DB_{match.group(1)}"
             found_vars.add(var_name)
 
         missing_vars = self.REQUIRED_CLOUD_SQL_VARS - found_vars
@@ -82,23 +82,23 @@ class EnvVarValidator:
             return
 
         # Check if config values are assigned to env dict
-        config_to_env_pattern = r'env\["JARVIS_DB_\w+"\]\s*=\s*db_config'
+        config_to_env_pattern = r'env\["Ironcliw_DB_\w+"\]\s*=\s*db_config'
 
         if not re.search(config_to_env_pattern, self.content):
             self.warnings.append("Cloud SQL config loaded but may not be propagated to env dict")
 
     def check_host_and_port_set(self):
-        """Specifically check that JARVIS_DB_HOST and JARVIS_DB_PORT are set"""
-        # Check for JARVIS_DB_HOST = 127.0.0.1
-        if 'env["JARVIS_DB_HOST"] = "127.0.0.1"' not in self.content:
-            if 'env["JARVIS_DB_HOST"]' not in self.content:
-                self.errors.append('JARVIS_DB_HOST must be set to "127.0.0.1" for proxy connection')
+        """Specifically check that Ironcliw_DB_HOST and Ironcliw_DB_PORT are set"""
+        # Check for Ironcliw_DB_HOST = 127.0.0.1
+        if 'env["Ironcliw_DB_HOST"] = "127.0.0.1"' not in self.content:
+            if 'env["Ironcliw_DB_HOST"]' not in self.content:
+                self.errors.append('Ironcliw_DB_HOST must be set to "127.0.0.1" for proxy connection')
             else:
-                self.warnings.append('JARVIS_DB_HOST is set but may not be "127.0.0.1"')
+                self.warnings.append('Ironcliw_DB_HOST is set but may not be "127.0.0.1"')
 
-        # Check for JARVIS_DB_PORT
-        if 'env["JARVIS_DB_PORT"]' not in self.content:
-            self.errors.append("JARVIS_DB_PORT must be set in env dict")
+        # Check for Ironcliw_DB_PORT
+        if 'env["Ironcliw_DB_PORT"]' not in self.content:
+            self.errors.append("Ironcliw_DB_PORT must be set in env dict")
 
     def check_pre_loading_vs_backend_env(self):
         """
@@ -108,11 +108,11 @@ class EnvVarValidator:
         but not propagated to the subprocess env dict.
         """
         # Find os.environ assignments
-        os_environ_pattern = r'os\.environ\["(JARVIS_DB_\w+)"\]'
+        os_environ_pattern = r'os\.environ\["(Ironcliw_DB_\w+)"\]'
         os_environ_vars = set(re.findall(os_environ_pattern, self.content))
 
         # Find env dict assignments
-        env_dict_pattern = r'env\["(JARVIS_DB_\w+)"\]'
+        env_dict_pattern = r'env\["(Ironcliw_DB_\w+)"\]'
         env_dict_vars = set(re.findall(env_dict_pattern, self.content))
 
         # Warn if vars are set in os.environ but not in env dict

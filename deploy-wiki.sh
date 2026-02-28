@@ -1,7 +1,7 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 ###############################################################################
-# JARVIS GitHub Wiki Deployment Script
+# Ironcliw GitHub Wiki Deployment Script
 #
 # This script automates the deployment of Wiki documentation to GitHub's
 # Wiki repository (separate from the main codebase).
@@ -19,8 +19,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-WIKI_REPO_URL="https://github.com/drussell23/JARVIS-AI.wiki.git"
-WIKI_DIR="JARVIS-AI.wiki"
+WIKI_REPO_URL="https://github.com/drussell23/Ironcliw-AI.wiki.git"
+WIKI_DIR="Ironcliw-AI.wiki"
 SOURCE_WIKI_DIR="wiki"
 
 ###############################################################################
@@ -53,7 +53,7 @@ print_info() {
 # Pre-flight Checks
 ###############################################################################
 
-print_header "JARVIS Wiki Deployment"
+print_header "Ironcliw Wiki Deployment"
 
 # Check if source wiki directory exists
 if [ ! -d "$SOURCE_WIKI_DIR" ]; then
@@ -136,7 +136,7 @@ print_header "Step 3: Generating Wiki Sidebar"
 
 # GitHub Wiki uses _Sidebar.md for navigation
 cat > "$WIKI_DIR/_Sidebar.md" << 'EOF'
-# 📚 JARVIS Wiki
+# 📚 Ironcliw Wiki
 
 ## 🏠 Getting Started
 - [Home](Home)
@@ -174,7 +174,7 @@ print_header "Step 4: Generating Wiki Footer"
 cat > "$WIKI_DIR/_Footer.md" << 'EOF'
 ---
 
-📚 **JARVIS AI Agent Wiki** | [Main Repository](https://github.com/drussell23/JARVIS-AI) | [Issues](https://github.com/drussell23/JARVIS-AI/issues) | [Discussions](https://github.com/drussell23/JARVIS-AI/discussions)
+📚 **Ironcliw AI Agent Wiki** | [Main Repository](https://github.com/drussell23/Ironcliw-AI) | [Issues](https://github.com/drussell23/Ironcliw-AI/issues) | [Discussions](https://github.com/drussell23/Ironcliw-AI/discussions)
 
 Last updated: $(date +"%Y-%m-%d %H:%M:%S")
 EOF
@@ -190,7 +190,7 @@ print_header "Step 5: Deploying to GitHub"
 cd "$WIKI_DIR"
 
 # Configure git (if needed)
-git config user.name "$(git config user.name || echo 'JARVIS Wiki Bot')"
+git config user.name "$(git config user.name || echo 'Ironcliw Wiki Bot')"
 git config user.email "$(git config user.email || echo 'noreply@jarvis.ai')"
 
 # Check for changes
@@ -238,7 +238,7 @@ print_header "Deployment Complete"
 
 echo ""
 print_success "Your Wiki is now live at:"
-echo -e "${GREEN}https://github.com/drussell23/JARVIS-AI/wiki${NC}"
+echo -e "${GREEN}https://github.com/drussell23/Ironcliw-AI/wiki${NC}"
 echo ""
 
 print_info "Deployed Pages:"

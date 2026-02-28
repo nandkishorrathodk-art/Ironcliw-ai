@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Context-Aware Model Loader for JARVIS
+Context-Aware Model Loader for Ironcliw
 =====================================
 
 Intelligently loads ML models based on user context, proximity, and system state.

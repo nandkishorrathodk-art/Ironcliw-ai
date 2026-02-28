@@ -1,5 +1,5 @@
-"""
-macOS Weather Provider for JARVIS
+﻿"""
+macOS Weather Provider for Ironcliw
 Uses system commands and intelligent location detection
 """
 
@@ -94,7 +94,7 @@ class MacOSWeatherProvider:
                 "zoom": 10  # City-level detail
             }
             headers = {
-                "User-Agent": "JARVIS-Weather/1.0"
+                "User-Agent": "Ironcliw-Weather/1.0"
             }
             
             async with aiohttp.ClientSession() as session:

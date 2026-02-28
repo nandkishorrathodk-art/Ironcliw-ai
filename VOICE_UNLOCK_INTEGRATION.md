@@ -1,4 +1,4 @@
-# Voice Unlock Integration Architecture
+﻿# Voice Unlock Integration Architecture
 
 ## Overview
 
@@ -19,7 +19,7 @@ screen_lock_detector.py    voice_unlock_bridge.py
     ↓                      ↓
 websocket_integration.py   Feature Extraction
     ↓
-Objective-C Daemon (JARVISScreenUnlockManager)
+Objective-C Daemon (IroncliwScreenUnlockManager)
 ```
 
 ### Integration Flow
@@ -141,17 +141,17 @@ class VoiceUnlockWebSocketHandler:
     async def _broadcast_to_clients(data)
 ```
 
-**Used By:** Main JARVIS WebSocket server
+**Used By:** Main Ironcliw WebSocket server
 
 ### 5. Objective-C Components
 
 **Location:** `backend/voice_unlock/objc/`
 
 **Components:**
-- `JARVISScreenUnlockManager.m` - Low-level unlock operations
-- `JARVISWebSocketBridge.m` - Native WebSocket bridge
-- `JARVISPythonBridge.m` - Python interop
-- `JARVISVoiceUnlockDaemon.m` - Background daemon
+- `IroncliwScreenUnlockManager.m` - Low-level unlock operations
+- `IroncliwWebSocketBridge.m` - Native WebSocket bridge
+- `IroncliwPythonBridge.m` - Python interop
+- `IroncliwVoiceUnlockDaemon.m` - Background daemon
 
 **Features:**
 - ✅ Native macOS APIs

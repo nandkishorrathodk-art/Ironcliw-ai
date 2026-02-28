@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Fix Voice Biometric Authentication in JARVIS
+Fix Voice Biometric Authentication in Ironcliw
 This script addresses the two main issues:
 1. Screen not actually unlocking - integrate with macOS unlock
 2. Voice biometric not recognizing user - connect to Cloud SQL data
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceAuthenticationFix:
-    """Fix voice authentication issues in JARVIS"""
+    """Fix voice authentication issues in Ironcliw"""
 
     def __init__(self):
         self.speaker_service = None
@@ -49,7 +49,7 @@ class VoiceAuthenticationFix:
             # Force Cloud SQL mode
             config = DatabaseConfig()
             config.db_type = "cloudsql"
-            config.db_password = os.getenv("JARVIS_DB_PASSWORD")  # Get from environment
+            config.db_password = os.getenv("Ironcliw_DB_PASSWORD")  # Get from environment
 
             self.db_adapter = CloudDatabaseAdapter(config)
             await self.db_adapter.initialize()
@@ -101,12 +101,12 @@ class VoiceAuthenticationFix:
 
     async def _init_speaker_verification(self):
         """Initialize speaker verification with Cloud SQL data"""
-        from intelligence.learning_database import JARVISLearningDatabase
+        from intelligence.learning_database import get_learning_database
         from voice.speaker_verification_service import SpeakerVerificationService
 
         try:
             # Create learning DB with Cloud SQL adapter
-            learning_db = JARVISLearningDatabase()
+            learning_db = await get_learning_database()
             learning_db.db_adapter = self.db_adapter  # Use our Cloud SQL adapter
 
             # Initialize speaker service
@@ -212,7 +212,7 @@ class ScreenUnlockFix:
 
 
 async def apply_fixes():
-    """Apply all fixes to JARVIS"""
+    """Apply all fixes to Ironcliw"""
     logger.info("\n" + "=" * 60)
     logger.info("🔧 APPLYING VOICE BIOMETRIC & UNLOCK FIXES")
     logger.info("=" * 60)

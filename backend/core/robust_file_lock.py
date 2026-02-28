@@ -1,4 +1,4 @@
-"""
+﻿"""
 RobustFileLock - POSIX Cross-Process File Locking using fcntl.flock().
 
 v214.0: REENTRANT SUPPORT - Same async task can re-acquire locks it holds.
@@ -45,7 +45,7 @@ if sys.platform == "win32":
 # Configuration (expansion deferred to runtime)
 # =============================================================================
 
-LOCK_DIR_RAW = os.environ.get("JARVIS_LOCK_DIR", "~/.jarvis/cross_repo/locks")
+LOCK_DIR_RAW = os.environ.get("Ironcliw_LOCK_DIR", "~/.jarvis/cross_repo/locks")
 LOCK_ACQUIRE_TIMEOUT_S = float(os.environ.get("LOCK_ACQUIRE_TIMEOUT_S", "10.0"))
 LOCK_POLL_INTERVAL_S = float(os.environ.get("LOCK_POLL_INTERVAL_S", "0.05"))
 LOCK_STALE_WARNING_S = float(os.environ.get("LOCK_STALE_WARNING_S", "30.0"))
@@ -102,7 +102,7 @@ class RobustFileLock:
         self._source = source
 
         # Expand path at runtime (handles both ~ and $VAR)
-        lock_dir_raw = os.environ.get("JARVIS_LOCK_DIR", "~/.jarvis/cross_repo/locks")
+        lock_dir_raw = os.environ.get("Ironcliw_LOCK_DIR", "~/.jarvis/cross_repo/locks")
         self._lock_dir = Path(os.path.expanduser(os.path.expandvars(lock_dir_raw)))
         self._lock_file = self._lock_dir / f"{lock_name}.lock"
 

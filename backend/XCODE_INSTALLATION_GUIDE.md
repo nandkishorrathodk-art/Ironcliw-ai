@@ -1,7 +1,7 @@
-# Xcode Installation Guide for JARVIS Swift Classifier
+﻿# Xcode Installation Guide for Ironcliw Swift Classifier
 
 ## Current Status
-✅ **JARVIS is fully functional** with the Python fallback classifier
+✅ **Ironcliw is fully functional** with the Python fallback classifier
 - Intelligent command routing is working
 - No hardcoded patterns
 - Learning capabilities active
@@ -34,14 +34,14 @@ The Python fallback is already providing:
 - ✅ Improves with usage
 
 ### What You Get with Swift
-When Xcode is installed, JARVIS will automatically use the Swift classifier for:
+When Xcode is installed, Ironcliw will automatically use the Swift classifier for:
 - 🚀 Faster classification (5-10ms vs 50ms)
 - 🎯 Higher accuracy (80-95%)
 - 🧠 Better linguistic analysis
 - 📱 Native macOS integration
 
 ### Installation Progress
-While Xcode downloads (can take 30-60 minutes), JARVIS continues working perfectly with the Python classifier. Once Xcode is installed and you run `./build.sh`, JARVIS will automatically switch to Swift.
+While Xcode downloads (can take 30-60 minutes), Ironcliw continues working perfectly with the Python classifier. Once Xcode is installed and you run `./build.sh`, Ironcliw will automatically switch to Swift.
 
 ## Testing After Installation
 
@@ -62,4 +62,4 @@ If you see "Swift classifier not available" after installing Xcode:
 3. Accept license: `sudo xcodebuild -license accept`
 4. Rebuild: `cd backend/swift_bridge && ./build.sh clean && ./build.sh`
 
-Remember: **JARVIS works great with the Python fallback**, so you can start using intelligent routing immediately!
+Remember: **Ironcliw works great with the Python fallback**, so you can start using intelligent routing immediately!

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Proactive Intelligence Engine - Phase 4
 ========================================
@@ -833,7 +833,7 @@ class ProactiveIntelligenceEngine:
 
             # Store feedback to Learning DB
             if self.learning_db and response != 'ignored':
-                # This helps JARVIS learn what suggestions are valuable
+                # This helps Ironcliw learn what suggestions are valuable
                 accepted = (response == 'accepted')
                 # Note: We'd need to add a method to track suggestion feedback
                 logger.info(f"[PIE] User {response} suggestion: {suggestion.title}")

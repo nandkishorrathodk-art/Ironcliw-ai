@@ -1,4 +1,4 @@
-"""Supervisor-focused tests for UnifiedVoiceOrchestrator speech routing."""
+﻿"""Supervisor-focused tests for UnifiedVoiceOrchestrator speech routing."""
 
 import sys
 import types
@@ -25,9 +25,9 @@ class _DummyProc:
 @pytest.mark.asyncio
 async def test_execute_say_device_free_prefers_direct_say_with_canonical_voice(monkeypatch):
     """Device-free startup speech should use direct say with canonical voice."""
-    monkeypatch.setenv("JARVIS_ENFORCE_CANONICAL_VOICE", "true")
-    monkeypatch.setenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel")
-    monkeypatch.setenv("JARVIS_VOICE_NAME", "Samantha")
+    monkeypatch.setenv("Ironcliw_ENFORCE_CANONICAL_VOICE", "true")
+    monkeypatch.setenv("Ironcliw_CANONICAL_VOICE_NAME", "Daniel")
+    monkeypatch.setenv("Ironcliw_VOICE_NAME", "Samantha")
     monkeypatch.setattr(
         "backend.core.supervisor.unified_voice_orchestrator.platform.system",
         lambda: "Darwin",
@@ -79,8 +79,8 @@ async def test_execute_say_device_free_prefers_direct_say_with_canonical_voice(m
 @pytest.mark.asyncio
 async def test_execute_say_device_held_does_not_fall_back_to_legacy_paths(monkeypatch):
     """When device is held and AudioBus TTS fails, orchestrator should skip speech safely."""
-    monkeypatch.setenv("JARVIS_ENFORCE_CANONICAL_VOICE", "true")
-    monkeypatch.setenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel")
+    monkeypatch.setenv("Ironcliw_ENFORCE_CANONICAL_VOICE", "true")
+    monkeypatch.setenv("Ironcliw_CANONICAL_VOICE_NAME", "Daniel")
     monkeypatch.setattr(
         "backend.core.supervisor.unified_voice_orchestrator.platform.system",
         lambda: "Darwin",

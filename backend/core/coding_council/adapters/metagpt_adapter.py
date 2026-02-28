@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: MetaGPT Framework Adapter (Anthropic-Powered)
 ====================================================
 
@@ -22,7 +22,7 @@ MetaGPT provides:
 
 For complex features requiring structured planning.
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 2.0.0
 """
 

@@ -1,5 +1,5 @@
-"""
-SOP Enforcement System for JARVIS - MetaGPT Inspired
+﻿"""
+SOP Enforcement System for Ironcliw - MetaGPT Inspired
 =====================================================
 
 Implements Standard Operating Procedures (SOPs) and action validation
@@ -13,7 +13,7 @@ Features:
 - Review and revision cycles
 - Human-in-the-loop integration points
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -61,36 +61,36 @@ class SOPConfig:
     """Configuration for SOP enforcement."""
     # Execution mode
     default_execution_mode: str = field(
-        default_factory=lambda: get_env_str("JARVIS_SOP_EXEC_MODE", "by_order")
+        default_factory=lambda: get_env_str("Ironcliw_SOP_EXEC_MODE", "by_order")
     )
 
     # Validation settings
     strict_validation: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_SOP_STRICT_VALIDATION", True)
+        default_factory=lambda: get_env_bool("Ironcliw_SOP_STRICT_VALIDATION", True)
     )
     allow_partial_output: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_SOP_ALLOW_PARTIAL", False)
+        default_factory=lambda: get_env_bool("Ironcliw_SOP_ALLOW_PARTIAL", False)
     )
 
     # Review settings
     auto_review: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_SOP_AUTO_REVIEW", True)
+        default_factory=lambda: get_env_bool("Ironcliw_SOP_AUTO_REVIEW", True)
     )
     max_review_iterations: int = field(
-        default_factory=lambda: get_env_int("JARVIS_SOP_MAX_REVIEWS", 3)
+        default_factory=lambda: get_env_int("Ironcliw_SOP_MAX_REVIEWS", 3)
     )
 
     # Retry settings
     max_retries: int = field(
-        default_factory=lambda: get_env_int("JARVIS_SOP_MAX_RETRIES", 3)
+        default_factory=lambda: get_env_int("Ironcliw_SOP_MAX_RETRIES", 3)
     )
     retry_delay_seconds: float = field(
-        default_factory=lambda: float(get_env_str("JARVIS_SOP_RETRY_DELAY", "1.0"))
+        default_factory=lambda: float(get_env_str("Ironcliw_SOP_RETRY_DELAY", "1.0"))
     )
 
     # Human-in-the-loop
     require_human_approval: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_SOP_HUMAN_APPROVAL", False)
+        default_factory=lambda: get_env_bool("Ironcliw_SOP_HUMAN_APPROVAL", False)
     )
 
 
@@ -941,7 +941,7 @@ class MessageGate:
 
 
 # ============================================================================
-# Pre-built SOPs for JARVIS
+# Pre-built SOPs for Ironcliw
 # ============================================================================
 
 def create_code_review_sop(config: Optional[SOPConfig] = None) -> StandardOperatingProcedure:

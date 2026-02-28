@@ -1,9 +1,9 @@
-"""
-JARVIS Central Lazy Import Registry
+﻿"""
+Ironcliw Central Lazy Import Registry
 ====================================
 
 This module provides pre-configured LazyProxy instances for heavy modules
-that are commonly used across JARVIS. By importing from here instead of
+that are commonly used across Ironcliw. By importing from here instead of
 directly importing heavy modules, startup time is dramatically reduced.
 
 All proxies are JIT-loaded - they only incur import cost when first accessed.
@@ -121,7 +121,7 @@ requests = LazyProxy("requests", preload_hint=False)
 
 
 # =============================================================================
-# JARVIS Internal Heavy Modules
+# Ironcliw Internal Heavy Modules
 # =============================================================================
 
 def get_lazy_neural_mesh_coordinator():
@@ -135,10 +135,10 @@ def get_lazy_neural_mesh_coordinator():
 
 
 def get_lazy_jarvis_bridge():
-    """Lazy loader for JARVISBridge (heavy)."""
+    """Lazy loader for IroncliwBridge (heavy)."""
     return LazyProxy(
         "backend.neural_mesh.jarvis_bridge",
-        "JARVISBridge",
+        "IroncliwBridge",
         singleton=True,
         preload_hint=True
     )
@@ -248,7 +248,7 @@ def print_import_report():
     stats = get_import_stats()
 
     print("\n" + "=" * 60)
-    print("  JARVIS Lazy Import Report")
+    print("  Ironcliw Lazy Import Report")
     print("=" * 60)
     print(f"  Total proxies: {stats['total_proxies']}")
     print(f"  Loaded: {stats['loaded_proxies']}")

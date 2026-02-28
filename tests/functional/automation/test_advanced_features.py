@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for the advanced JARVIS features in the unified launcher
+Test script for the advanced Ironcliw features in the unified launcher
 """
 
 import asyncio
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 async def test_advanced_features():
     """Test the advanced features in the unified launcher"""
     
-    print("🧪 Testing Advanced JARVIS Features\n")
+    print("🧪 Testing Advanced Ironcliw Features\n")
     
     # Import the unified launcher
     try:
@@ -99,7 +99,7 @@ async def test_advanced_features():
 def main():
     """Main entry point"""
     print("=" * 60)
-    print("JARVIS Advanced Features Test Suite")
+    print("Ironcliw Advanced Features Test Suite")
     print("=" * 60)
     
     # Check Python version
@@ -110,7 +110,7 @@ def main():
     # Run async tests
     asyncio.run(test_advanced_features())
     
-    print("\n💡 To start JARVIS with all advanced features:")
+    print("\n💡 To start Ironcliw with all advanced features:")
     print("   python start_system.py")
     print("\n💡 Options:")
     print("   --backend-only   Start only backend services")

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: LSP-Compatible Server
 ============================
 
@@ -14,7 +14,7 @@ can connect to, enabling:
 
 LSP Spec: https://microsoft.github.io/language-server-protocol/
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 """
 
 from __future__ import annotations
@@ -542,7 +542,7 @@ class LSPServer:
                 "codeActionProvider": True,
             },
             "serverInfo": {
-                "name": "JARVIS Coding Council",
+                "name": "Ironcliw Coding Council",
                 "version": "77.3",
             },
         }
@@ -668,7 +668,7 @@ class LSPServer:
                 items.append(CompletionItem(
                     label=s.text[:50] + ("..." if len(s.text) > 50 else ""),
                     kind=CompletionItemKind.SNIPPET,
-                    detail=f"JARVIS ({s.confidence:.0%})",
+                    detail=f"Ironcliw ({s.confidence:.0%})",
                     insert_text=s.text,
                     documentation=s.documentation,
                 ).to_dict())
@@ -698,14 +698,14 @@ class LSPServer:
 
         actions = []
 
-        # For each diagnostic, offer a "Fix with JARVIS" action
+        # For each diagnostic, offer a "Fix with Ironcliw" action
         for diag in diagnostics:
             actions.append({
-                "title": f"Fix with JARVIS: {diag.get('message', 'Unknown')[:50]}",
+                "title": f"Fix with Ironcliw: {diag.get('message', 'Unknown')[:50]}",
                 "kind": "quickfix",
                 "diagnostics": [diag],
                 "command": {
-                    "title": "Fix with JARVIS",
+                    "title": "Fix with Ironcliw",
                     "command": "jarvis.fix",
                     "arguments": [uri, diag],
                 },

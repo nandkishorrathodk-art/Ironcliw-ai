@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Enhanced Vision Pipeline v1.0 - Complete System Test
 ====================================================
@@ -101,7 +101,7 @@ async def test_complete_pipeline():
     print("\n🎯 Ready to execute:")
     print("   pipeline.execute_pipeline(target='control_center')")
     print("")
-    print("💡 In production, JARVIS will automatically use this pipeline when you say:")
+    print("💡 In production, Ironcliw will automatically use this pipeline when you say:")
     print("   'connect to my living room tv'")
     print("")
     print("🚀 Features enabled:")

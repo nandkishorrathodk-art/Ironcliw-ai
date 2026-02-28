@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Commit Message Hook - File Integrity Metadata
+Ironcliw Commit Message Hook - File Integrity Metadata
 =====================================================
 
 This hook runs after the commit message is entered to:

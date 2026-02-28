@@ -1,4 +1,4 @@
-"""
+﻿"""
 Review Workflow System - PR/MR Integration
 ============================================
 
@@ -31,7 +31,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -61,7 +61,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
-logger = logging.getLogger("JARVIS.ReviewWorkflow")
+logger = logging.getLogger("Ironcliw.ReviewWorkflow")
 
 
 # =============================================================================
@@ -1249,7 +1249,7 @@ class ReviewWorkflowEngine:
 
 class CrossRepoReviewCoordinator:
     """
-    Coordinates reviews across JARVIS, JARVIS-Prime, and Reactor-Core.
+    Coordinates reviews across Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
     Enables:
     - Cross-repo PR creation

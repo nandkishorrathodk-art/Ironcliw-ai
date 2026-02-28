@@ -1,7 +1,7 @@
-# Vision Universal Understanding Fix
+﻿# Vision Universal Understanding Fix
 
 ## Problem
-When users ask natural language questions about their screen content (e.g., "how many windows do i have open on my Chrome browser?"), JARVIS would return an error: "Unknown vision action: analyze_window". 
+When users ask natural language questions about their screen content (e.g., "how many windows do i have open on my Chrome browser?"), Ironcliw would return an error: "Unknown vision action: analyze_window". 
 
 This occurred because the system was trying to map natural language queries to predefined actions instead of using Claude's vision API to understand and answer any question about the screen.
 
@@ -50,7 +50,7 @@ Implemented a vision query bypass system that:
 6. User gets accurate answer based on actual screen content
 
 ## Benefits
-- Universal understanding: JARVIS can answer ANY question about screen content
+- Universal understanding: Ironcliw can answer ANY question about screen content
 - No hardcoding: Works with any application, UI element, or query pattern
 - Natural language: Users can ask questions in their own words
 - Accurate: Responses based on actual screen analysis, not predefined actions
@@ -65,4 +65,4 @@ print(f'Should bypass: {VisionQueryBypass.should_bypass_interpretation(query)}')
 "
 ```
 
-The fix ensures JARVIS leverages Claude's powerful vision capabilities for universal screen understanding without being limited by predefined actions.
+The fix ensures Ironcliw leverages Claude's powerful vision capabilities for universal screen understanding without being limited by predefined actions.

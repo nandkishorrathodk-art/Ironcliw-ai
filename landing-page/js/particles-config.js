@@ -1,4 +1,4 @@
-// Particle.js Configuration for JARVIS Landing Page
+﻿// Particle.js Configuration for Ironcliw Landing Page
 
 particlesJS('particles-js', {
     particles: {

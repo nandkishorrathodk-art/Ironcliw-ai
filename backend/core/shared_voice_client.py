@@ -1,9 +1,9 @@
-# backend/core/shared_voice_client.py
+﻿# backend/core/shared_voice_client.py
 """
 Shared Voice Client - Cross-repo voice announcement client.
 
 This is a standalone module designed to be copied to or symlinked from
-JARVIS Prime and Reactor Core repos. It has NO dependencies on JARVIS internals.
+Ironcliw Prime and Reactor Core repos. It has NO dependencies on Ironcliw internals.
 
 Sends announcements to the VoiceOrchestrator via Unix domain socket IPC.
 Provides:
@@ -17,7 +17,7 @@ Usage:
 
     # Option 1: Use the convenience function
     await announce(
-        message="JARVIS Prime ready",
+        message="Ironcliw Prime ready",
         context=VoiceContext.TRINITY,
         priority=VoicePriority.HIGH,
         source="jarvis_prime",
@@ -29,7 +29,7 @@ Usage:
     await client.announce("Model loaded", VoicePriority.NORMAL, "init")
     await client.stop()
 
-Author: JARVIS Voice Orchestrator v1.0
+Author: Ironcliw Voice Orchestrator v1.0
 """
 
 from __future__ import annotations
@@ -410,7 +410,7 @@ async def announce(
 
 async def get_voice_coordinator() -> Optional[VoiceClient]:
     """
-    Backward-compatible alias. Returns the default JARVIS client.
+    Backward-compatible alias. Returns the default Ironcliw client.
 
     Note: In the new architecture, there's no coordinator object on the client side.
     This returns the client for compatibility with code expecting a coordinator.

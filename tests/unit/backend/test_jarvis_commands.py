@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS commands directly"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw commands directly"""
 
 import asyncio
 import sys
@@ -8,14 +8,14 @@ import os
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from backend.voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
 
 async def test_commands():
-    """Test various JARVIS commands"""
-    print("Initializing JARVIS Agent...")
+    """Test various Ironcliw commands"""
+    print("Initializing Ironcliw Agent...")
     
-    jarvis = JARVISAgentVoice()
-    jarvis.running = True  # Activate JARVIS
+    jarvis = IroncliwAgentVoice()
+    jarvis.running = True  # Activate Ironcliw
     
     # Test commands
     test_cases = [

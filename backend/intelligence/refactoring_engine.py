@@ -1,4 +1,4 @@
-"""
+﻿"""
 Advanced Refactoring Engine v1.0
 ================================
 
@@ -13,7 +13,7 @@ Operations:
 4. Change Function Signature - Update parameters and all call sites
 
 Features:
-- Cross-repo reference finding (JARVIS, JARVIS-Prime, Reactor-Core)
+- Cross-repo reference finding (Ironcliw, Ironcliw-Prime, Reactor-Core)
 - Atomic transactions with rollback
 - Pre/post validation
 - NetworkX dependency analysis
@@ -44,7 +44,7 @@ Architecture:
     │                                                                  │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -364,7 +364,7 @@ class RefactoringTransaction:
         elif "reactor-core" in path_str.lower():
             return RepoType.REACTOR
         else:
-            return RepoType.JARVIS
+            return RepoType.Ironcliw
 
 
 # =============================================================================

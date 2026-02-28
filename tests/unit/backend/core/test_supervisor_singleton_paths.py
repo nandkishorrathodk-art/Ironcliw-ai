@@ -1,4 +1,4 @@
-"""Path-resolution tests for supervisor singleton lock runtime directories."""
+﻿"""Path-resolution tests for supervisor singleton lock runtime directories."""
 
 import importlib
 import os
@@ -13,27 +13,27 @@ def _import_fresh_supervisor_singleton():
 
 
 def test_lock_dir_uses_explicit_env_when_writable(monkeypatch, tmp_path):
-    """Writable JARVIS_LOCK_DIR should be selected without fallback."""
+    """Writable Ironcliw_LOCK_DIR should be selected without fallback."""
     lock_dir = tmp_path / "locks"
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(lock_dir))
-    monkeypatch.setenv("JARVIS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(lock_dir))
+    monkeypatch.setenv("Ironcliw_HOME", str(tmp_path / "home"))
 
     mod = _import_fresh_supervisor_singleton()
 
     assert mod.LOCK_DIR == lock_dir
     assert mod.LOCK_DIR.exists()
-    assert os.environ["JARVIS_LOCK_DIR"] == str(lock_dir)
+    assert os.environ["Ironcliw_LOCK_DIR"] == str(lock_dir)
 
 
 def test_lock_dir_falls_back_when_explicit_env_is_not_writable(monkeypatch, tmp_path):
     """Non-writable or invalid lock path should trigger deterministic fallback."""
     invalid_lock_dir = "/dev/null/not-a-dir"
-    monkeypatch.setenv("JARVIS_LOCK_DIR", invalid_lock_dir)
-    monkeypatch.setenv("JARVIS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", invalid_lock_dir)
+    monkeypatch.setenv("Ironcliw_HOME", str(tmp_path / "home"))
 
     mod = _import_fresh_supervisor_singleton()
 
     assert str(mod.LOCK_DIR) != invalid_lock_dir
     assert mod.LOCK_DIR.exists()
-    assert os.environ["JARVIS_LOCK_DIR"] == str(mod.LOCK_DIR)
+    assert os.environ["Ironcliw_LOCK_DIR"] == str(mod.LOCK_DIR)
 

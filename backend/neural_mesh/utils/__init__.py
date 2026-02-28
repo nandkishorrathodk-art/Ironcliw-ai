@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Utilities Module
+﻿"""
+Ironcliw Neural Mesh - Utilities Module
 
 Common utilities used across the Neural Mesh system.
 """

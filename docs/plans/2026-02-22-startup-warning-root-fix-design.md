@@ -1,4 +1,4 @@
-# Startup Warning Root Fix — v244.0 Design
+﻿# Startup Warning Root Fix — v244.0 Design
 
 **Date:** 2026-02-22
 **Status:** Approved
@@ -8,7 +8,7 @@
 
 ## Problem Statement
 
-Three warning clusters appear on every JARVIS startup:
+Three warning clusters appear on every Ironcliw startup:
 
 1. `No module named 'core.tiered_vbia_adapter'` — dead import after intentional deletion (commit 167fcecb)
 2. `Cannot wire execute_tier2 (missing: TieredCommandRouter)` — same commit, dead wiring code

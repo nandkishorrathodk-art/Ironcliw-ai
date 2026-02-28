@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Crew Multi-Agent Collaboration
+﻿"""
+Ironcliw Neural Mesh - Crew Multi-Agent Collaboration
 
 The main Crew class that orchestrates multi-agent collaboration.
 
@@ -438,7 +438,7 @@ class Crew:
         # In a full implementation, this would invoke the agent's LLM
 
         if agent.underlying_agent:
-            # If agent wraps a real JARVIS agent, use it
+            # If agent wraps a real Ironcliw agent, use it
             underlying = agent.underlying_agent
             if hasattr(underlying, 'execute_task'):
                 return await underlying.execute_task(task.context)
@@ -495,7 +495,7 @@ class Crew:
         """
         self._mesh_coordinator = coordinator
 
-        # Create adapters for each agent's underlying JARVIS agent
+        # Create adapters for each agent's underlying Ironcliw agent
         for agent in self.agents.values():
             if agent.underlying_agent:
                 await self._create_mesh_adapter(agent)
@@ -540,14 +540,14 @@ class Crew:
         config: CrewAgentConfig,
     ) -> CrewAgent:
         """
-        Wrap an existing JARVIS agent for crew use.
+        Wrap an existing Ironcliw agent for crew use.
 
         Args:
-            jarvis_agent: Existing JARVIS agent instance
+            jarvis_agent: Existing Ironcliw agent instance
             config: Configuration for the crew agent wrapper
 
         Returns:
-            CrewAgent that wraps the JARVIS agent
+            CrewAgent that wraps the Ironcliw agent
         """
         crew_agent = CrewAgent.from_config(config)
         crew_agent.underlying_agent = jarvis_agent

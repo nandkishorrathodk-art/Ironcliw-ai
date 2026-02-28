@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Auto Configuration Endpoint
 Helps clients automatically discover correct API configuration
@@ -165,17 +165,17 @@ async def list_endpoints() -> Dict[str, Any]:
                 }
             },
             "voice": {
-                "description": "Voice and JARVIS endpoints",
+                "description": "Voice and Ironcliw endpoints",
                 "endpoints": {
                     "status": {
                         "url": f"{base_url}/voice/jarvis/status",
                         "method": "GET",
-                        "description": "JARVIS system status"
+                        "description": "Ironcliw system status"
                     },
                     "command": {
                         "url": f"{base_url}/voice/jarvis/command",
                         "method": "POST",
-                        "description": "Send command to JARVIS"
+                        "description": "Send command to Ironcliw"
                     }
                 }
             },
@@ -202,10 +202,10 @@ async def get_client_config(request: Request) -> Response:
     
     # Generate JavaScript config
     js_config = f"""
-// Auto-generated JARVIS API Configuration
+// Auto-generated Ironcliw API Configuration
 // Generated at: {server_info['base_url']}/auto-config/client-config
 
-window.JARVIS_CONFIG = {{
+window.Ironcliw_CONFIG = {{
     API_BASE_URL: '{server_info['base_url']}',
     WS_BASE_URL: '{server_info['ws_url']}',
     
@@ -217,7 +217,7 @@ window.JARVIS_CONFIG = {{
         mlAudioStatus: '{server_info['base_url']}/audio/ml/status',
         mlAudioStream: '{server_info['ws_url']}/audio/ml/stream',
         
-        // Voice/JARVIS
+        // Voice/Ironcliw
         jarvisStatus: '{server_info['base_url']}/voice/jarvis/status',
         jarvisCommand: '{server_info['base_url']}/voice/jarvis/command',
         
@@ -239,7 +239,7 @@ window.JARVIS_CONFIG = {{
         try {{
             const response = await fetch('{server_info['base_url']}/auto-config');
             const config = await response.json();
-            console.log('Updated JARVIS config:', config);
+            console.log('Updated Ironcliw config:', config);
             return config;
         }} catch (error) {{
             console.error('Failed to update config:', error);
@@ -247,7 +247,7 @@ window.JARVIS_CONFIG = {{
     }}
 }};
 
-console.log('JARVIS API Configuration loaded:', window.JARVIS_CONFIG);
+console.log('Ironcliw API Configuration loaded:', window.Ironcliw_CONFIG);
 """
     
     return Response(

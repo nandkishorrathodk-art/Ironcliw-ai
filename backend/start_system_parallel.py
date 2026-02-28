@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Parallel Start System for JARVIS
+Parallel Start System for Ironcliw
 Replaces sequential startup with parallel execution
 Reduces startup time from 107+ seconds to ~30 seconds
 """
@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class JarvisParallelSystem:
-    """Manages the entire JARVIS system with parallel startup"""
+    """Manages the entire Ironcliw system with parallel startup"""
     
     def __init__(self):
         self.startup_manager = ParallelStartupManager()
@@ -37,7 +37,7 @@ class JarvisParallelSystem:
         self.start_time = None
         
     async def start(self):
-        """Start the entire JARVIS system in parallel"""
+        """Start the entire Ironcliw system in parallel"""
         self.start_time = time.time()
         
         # Print startup banner
@@ -75,7 +75,7 @@ class JarvisParallelSystem:
     def _print_banner(self):
         """Print startup banner"""
         print("\n" + "=" * 70)
-        print("🚀 JARVIS AI AGENT - PARALLEL STARTUP")
+        print("🚀 Ironcliw AI AGENT - PARALLEL STARTUP")
         print("⚡ Optimized for speed - No more waiting!")
         print("=" * 70)
     
@@ -201,7 +201,7 @@ class JarvisParallelSystem:
         successful_services, failed_services = service_results
         
         print("\n" + "=" * 70)
-        print(f"✨ JARVIS PARALLEL STARTUP COMPLETE in {elapsed:.1f}s!")
+        print(f"✨ Ironcliw PARALLEL STARTUP COMPLETE in {elapsed:.1f}s!")
         print("=" * 70)
         
         print(f"\n📊 Results:")
@@ -224,17 +224,17 @@ class JarvisParallelSystem:
         print(f"  Improvement:  {107/elapsed:.1f}x faster!")
         
         print("\n🎤 Voice Commands:")
-        print('  Say "Hey JARVIS" to activate')
+        print('  Say "Hey Ironcliw" to activate')
         print('  Say "Start monitoring my screen" for vision')
         print('  Say "Stop monitoring" to disable vision')
         
         print("\n" + "=" * 70)
-        print("🤖 JARVIS is ready! Open http://localhost:3000")
+        print("🤖 Ironcliw is ready! Open http://localhost:3000")
         print("=" * 70 + "\n")
 
 async def shutdown_handler(system: JarvisParallelSystem):
     """Handle shutdown gracefully"""
-    logger.info("\n🛑 Shutting down JARVIS...")
+    logger.info("\n🛑 Shutting down Ironcliw...")
     await system.startup_manager.shutdown_all_services()
     logger.info("✅ Shutdown complete")
 
@@ -260,7 +260,7 @@ async def main():
         except KeyboardInterrupt:
             await shutdown_handler(system)
     else:
-        logger.error("❌ Failed to start JARVIS")
+        logger.error("❌ Failed to start Ironcliw")
         sys.exit(1)
 
 if __name__ == "__main__":

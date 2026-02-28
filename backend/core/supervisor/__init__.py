@@ -1,10 +1,10 @@
-"""
+﻿"""
 Self-Updating Lifecycle Manager - Supervisor Module v3.0 - Zero-Touch Edition
 
-Exposes core supervisor components for JARVIS self-management.
+Exposes core supervisor components for Ironcliw self-management.
 
 Components:
-- `JARVISSupervisor` - Main lifecycle watchdog
+- `IroncliwSupervisor` - Main lifecycle watchdog
 - `UpdateEngine` - Async parallel update orchestration (v2.0: Zero-Touch support)
 - `RollbackManager` - Version history and rollback logic
 - `DeadManSwitch` - Post-update stability verification
@@ -43,7 +43,7 @@ from .supervisor_config import (
     PrimeDirectivesConfig,
     DeadManSwitchConfig,
 )
-from .jarvis_supervisor import JARVISSupervisor, SupervisorState, ExitCode
+from .jarvis_supervisor import IroncliwSupervisor, SupervisorState, ExitCode
 from .update_engine import (
     UpdateEngine,
     UpdatePhase,
@@ -159,7 +159,7 @@ __all__ = [
     "PrimeDirectivesConfig",
     "DeadManSwitchConfig",
     # Supervisor
-    "JARVISSupervisor",
+    "IroncliwSupervisor",
     "SupervisorState",
     "ExitCode",
     # Update Engine

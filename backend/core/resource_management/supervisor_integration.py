@@ -1,9 +1,9 @@
-"""
+﻿"""
 Resource Management Supervisor Integration v1.0
 ================================================
 
 Provides integration between the Resource Management system and the
-JARVIS Supervisor for centralized startup/shutdown management.
+Ironcliw Supervisor for centralized startup/shutdown management.
 
 Features:
 - Single-command initialization
@@ -121,7 +121,7 @@ class ResourceManagementHealthReport:
 
 class ResourceManagementSupervisorCoordinator:
     """
-    Coordinates resource management with the JARVIS supervisor.
+    Coordinates resource management with the Ironcliw supervisor.
 
     Responsibilities:
     - Initialize all resource management components

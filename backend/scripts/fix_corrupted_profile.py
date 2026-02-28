@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix Corrupted Speaker Profile Script
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 async def fix_profile(db, speaker_name: str = None):
     """Fix corrupted speaker profile by re-generating embedding from voice samples."""
     print(f"\n{'=' * 80}")
-    print(f"🔧 JARVIS Voice Profile Repair Tool")
+    print(f"🔧 Ironcliw Voice Profile Repair Tool")
     print(f"{'=' * 80}\n")
 
     # Get profiles

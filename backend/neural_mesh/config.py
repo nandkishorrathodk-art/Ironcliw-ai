@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Configuration System
+﻿"""
+Ironcliw Neural Mesh - Configuration System
 
 Centralized configuration for all Neural Mesh components.
 Supports YAML files, environment variables, and programmatic configuration.
@@ -166,7 +166,7 @@ class NeuralMeshConfig:
     """Master configuration for the entire Neural Mesh system."""
 
     # Identity - used by integration.py for coordinator naming
-    name: str = "JARVIS-Neural-Mesh"
+    name: str = "Ironcliw-Neural-Mesh"
 
     # Feature flags - used by integration.py for selective initialization
     enable_monitoring: bool = True
@@ -198,7 +198,7 @@ class NeuralMeshConfig:
         """Initialize paths and validate configuration."""
         # Set default data directory
         if not self.data_directory:
-            jarvis_home = os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis"))
+            jarvis_home = os.environ.get("Ironcliw_HOME", str(Path.home() / ".jarvis"))
             self.data_directory = str(Path(jarvis_home) / "neural_mesh")
 
         # Set default log directory

@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 echo ""
-echo "🔒 JARVIS SCREEN UNLOCK TEST"
+echo "🔒 Ironcliw SCREEN UNLOCK TEST"
 echo "================================"
 echo ""
 echo "This will:"

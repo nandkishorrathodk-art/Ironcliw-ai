@@ -1,7 +1,7 @@
-"""
-JARVIS Computer Use Integration
+﻿"""
+Ironcliw Computer Use Integration
 
-This module provides a high-level integration layer between JARVIS and the
+This module provides a high-level integration layer between Ironcliw and the
 Claude Computer Use API. It combines:
 - Vision-based UI automation (no hardcoded coordinates)
 - Multi-branch reasoning for robust failure recovery
@@ -9,19 +9,19 @@ Claude Computer Use API. It combines:
 - Chain execution with real-time feedback
 
 Usage Example:
-    >>> from backend.display.jarvis_computer_use_integration import JARVISComputerUse
-    >>> jarvis_cu = JARVISComputerUse()
+    >>> from backend.display.jarvis_computer_use_integration import IroncliwComputerUse
+    >>> jarvis_cu = IroncliwComputerUse()
     >>> await jarvis_cu.initialize()
     >>>
     >>> # Connect to display with full voice narration
     >>> result = await jarvis_cu.connect_to_display("Living Room TV")
-    >>> # JARVIS: "Connecting to Living Room TV..."
-    >>> # JARVIS: "Opening Control Center..."
-    >>> # JARVIS: "Found Screen Mirroring, selecting..."
-    >>> # JARVIS: "Found Living Room TV, connecting..."
-    >>> # JARVIS: "Successfully connected to Living Room TV!"
+    >>> # Ironcliw: "Connecting to Living Room TV..."
+    >>> # Ironcliw: "Opening Control Center..."
+    >>> # Ironcliw: "Found Screen Mirroring, selecting..."
+    >>> # Ironcliw: "Found Living Room TV, connecting..."
+    >>> # Ironcliw: "Successfully connected to Living Room TV!"
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -53,8 +53,8 @@ class ExecutionMode(str, Enum):
 
 
 @dataclass
-class JARVISTaskResult:
-    """Result of a JARVIS Computer Use task."""
+class IroncliwTaskResult:
+    """Result of a Ironcliw Computer Use task."""
     task_id: str
     task_name: str
     success: bool
@@ -68,9 +68,9 @@ class JARVISTaskResult:
     raw_result: Optional[Dict[str, Any]] = None
 
 
-class JARVISComputerUse:
+class IroncliwComputerUse:
     """
-    JARVIS Computer Use Integration.
+    Ironcliw Computer Use Integration.
 
     Provides a unified interface for vision-based UI automation with
     voice narration and intelligent fallback mechanisms.
@@ -90,7 +90,7 @@ class JARVISComputerUse:
         max_retries: int = 3
     ):
         """
-        Initialize JARVIS Computer Use integration.
+        Initialize Ironcliw Computer Use integration.
 
         Args:
             execution_mode: Voice narration mode
@@ -109,13 +109,13 @@ class JARVISComputerUse:
 
         # State
         self._initialized = False
-        self._task_history: List[JARVISTaskResult] = []
+        self._task_history: List[IroncliwTaskResult] = []
         self._narration_queue: asyncio.Queue = (
             BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.DROP_OLDEST, name="cu_narration")
             if BoundedAsyncQueue is not None else asyncio.Queue()
         )
 
-        logger.info("[JARVIS CU] JARVIS Computer Use integration created")
+        logger.info("[Ironcliw CU] Ironcliw Computer Use integration created")
 
     async def initialize(self) -> bool:
         """
@@ -127,7 +127,7 @@ class JARVISComputerUse:
         if self._initialized:
             return True
 
-        logger.info("[JARVIS CU] Initializing JARVIS Computer Use...")
+        logger.info("[Ironcliw CU] Initializing Ironcliw Computer Use...")
 
         try:
             # Initialize TTS first (for narration)
@@ -143,14 +143,14 @@ class JARVISComputerUse:
             await self._init_reasoning_engine()
 
             self._initialized = True
-            logger.info("[JARVIS CU] ✅ JARVIS Computer Use initialized successfully")
+            logger.info("[Ironcliw CU] ✅ Ironcliw Computer Use initialized successfully")
 
-            await self._narrate("JARVIS Computer Use system ready.", priority=1)
+            await self._narrate("Ironcliw Computer Use system ready.", priority=1)
 
             return True
 
         except Exception as e:
-            logger.error(f"[JARVIS CU] ❌ Initialization failed: {e}")
+            logger.error(f"[Ironcliw CU] ❌ Initialization failed: {e}")
             return False
 
     async def _get_tts(self):
@@ -166,19 +166,19 @@ class JARVISComputerUse:
     async def _init_tts(self) -> None:
         """Initialize TTS engine for voice narration."""
         if self.execution_mode == ExecutionMode.SILENT:
-            logger.info("[JARVIS CU] Silent mode - TTS disabled")
+            logger.info("[Ironcliw CU] Silent mode - TTS disabled")
             return
 
         try:
             tts = await self._get_tts()
             if tts:
-                # Set JARVIS voice to Daniel (British male voice)
+                # Set Ironcliw voice to Daniel (British male voice)
                 tts.set_voice("Daniel")
-                logger.info("[JARVIS CU] ✅ TTS engine initialized with Daniel voice")
+                logger.info("[Ironcliw CU] ✅ TTS engine initialized with Daniel voice")
             else:
-                logger.warning("[JARVIS CU] TTS engine not available")
+                logger.warning("[Ironcliw CU] TTS engine not available")
         except Exception as e:
-            logger.warning(f"[JARVIS CU] TTS initialization failed: {e}")
+            logger.warning(f"[Ironcliw CU] TTS initialization failed: {e}")
 
     async def _init_computer_use(self) -> None:
         """Initialize Claude Computer Use connector."""
@@ -194,9 +194,9 @@ class JARVISComputerUse:
             self._computer_use_connector = get_computer_use_connector(
                 tts_callback=tts_callback
             )
-            logger.info("[JARVIS CU] ✅ Computer Use connector initialized")
+            logger.info("[Ironcliw CU] ✅ Computer Use connector initialized")
         except Exception as e:
-            logger.warning(f"[JARVIS CU] Computer Use initialization failed: {e}")
+            logger.warning(f"[Ironcliw CU] Computer Use initialization failed: {e}")
 
     async def _init_vision_navigator(self) -> None:
         """Initialize Vision UI Navigator (fallback)."""
@@ -204,9 +204,9 @@ class JARVISComputerUse:
             from backend.display.vision_ui_navigator import VisionUINavigator
 
             self._vision_navigator = VisionUINavigator()
-            logger.info("[JARVIS CU] ✅ Vision Navigator initialized")
+            logger.info("[Ironcliw CU] ✅ Vision Navigator initialized")
         except Exception as e:
-            logger.warning(f"[JARVIS CU] Vision Navigator initialization failed: {e}")
+            logger.warning(f"[Ironcliw CU] Vision Navigator initialization failed: {e}")
 
     async def _init_reasoning_engine(self) -> None:
         """Initialize Reasoning Graph Engine."""
@@ -223,9 +223,9 @@ class JARVISComputerUse:
                 tts_callback=tts_callback,
                 narration_style=NarrationStyle.DETAILED
             )
-            logger.info("[JARVIS CU] ✅ Reasoning Engine initialized")
+            logger.info("[Ironcliw CU] ✅ Reasoning Engine initialized")
         except Exception as e:
-            logger.warning(f"[JARVIS CU] Reasoning Engine initialization failed: {e}")
+            logger.warning(f"[Ironcliw CU] Reasoning Engine initialization failed: {e}")
 
     def _create_tts_callback(self) -> Optional[Callable[[str], Awaitable[None]]]:
         """Create TTS callback for voice narration."""
@@ -238,7 +238,7 @@ class JARVISComputerUse:
                 try:
                     await tts.speak(text)
                 except Exception as e:
-                    logger.warning(f"[JARVIS CU] TTS failed: {e}")
+                    logger.warning(f"[Ironcliw CU] TTS failed: {e}")
 
         return speak
 
@@ -261,23 +261,23 @@ class JARVISComputerUse:
             return
 
         if self.execution_mode == ExecutionMode.SUMMARY_VOICE and priority > 1 and not force:
-            logger.info(f"[JARVIS CU] (Not narrated): {message}")
+            logger.info(f"[Ironcliw CU] (Not narrated): {message}")
             return
 
-        logger.info(f"[JARVIS CU] 🔊 {message}")
+        logger.info(f"[Ironcliw CU] 🔊 {message}")
 
         tts = await self._get_tts()
         if tts:
             try:
                 await tts.speak(message)
             except Exception as e:
-                logger.warning(f"[JARVIS CU] Narration failed: {e}")
+                logger.warning(f"[Ironcliw CU] Narration failed: {e}")
 
     async def connect_to_display(
         self,
         display_name: str,
         narrate: bool = True
-    ) -> JARVISTaskResult:
+    ) -> IroncliwTaskResult:
         """
         Connect to a display using vision-based automation.
 
@@ -292,11 +292,11 @@ class JARVISComputerUse:
             narrate: Whether to enable voice narration
 
         Returns:
-            JARVISTaskResult with connection details
+            IroncliwTaskResult with connection details
 
         Example:
             >>> result = await jarvis.connect_to_display("Living Room TV")
-            >>> # JARVIS narrates: "Connecting to Living Room TV..."
+            >>> # Ironcliw narrates: "Connecting to Living Room TV..."
         """
         task_id = str(uuid4())
         start_time = asyncio.get_event_loop().time()
@@ -328,7 +328,7 @@ class JARVISComputerUse:
                         await self._narrate(msg, priority=1)
                         narration_transcript.append(msg)
 
-                    return JARVISTaskResult(
+                    return IroncliwTaskResult(
                         task_id=task_id,
                         task_name=f"connect_to_display:{display_name}",
                         success=True,
@@ -342,7 +342,7 @@ class JARVISComputerUse:
                     )
                 else:
                     # Computer Use failed - log and continue to fallback
-                    logger.warning(f"[JARVIS CU] Computer Use failed: {result.final_message}")
+                    logger.warning(f"[Ironcliw CU] Computer Use failed: {result.final_message}")
                     if narrate:
                         msg = "Computer Use unavailable, trying alternative approach..."
                         await self._narrate(msg, priority=2)
@@ -368,7 +368,7 @@ class JARVISComputerUse:
                         await self._narrate(msg, priority=1)
                         narration_transcript.append(msg)
 
-                return JARVISTaskResult(
+                return IroncliwTaskResult(
                     task_id=task_id,
                     task_name=f"connect_to_display:{display_name}",
                     success=result.success,
@@ -389,7 +389,7 @@ class JARVISComputerUse:
                 await self._narrate(msg, priority=1)
                 narration_transcript.append(msg)
 
-            return JARVISTaskResult(
+            return IroncliwTaskResult(
                 task_id=task_id,
                 task_name=f"connect_to_display:{display_name}",
                 success=False,
@@ -404,14 +404,14 @@ class JARVISComputerUse:
 
         except Exception as e:
             duration = asyncio.get_event_loop().time() - start_time
-            logger.error(f"[JARVIS CU] Connection failed: {e}")
+            logger.error(f"[Ironcliw CU] Connection failed: {e}")
 
             if narrate:
                 msg = f"Connection failed: {str(e)}"
                 await self._narrate(msg, priority=1)
                 narration_transcript.append(msg)
 
-            return JARVISTaskResult(
+            return IroncliwTaskResult(
                 task_id=task_id,
                 task_name=f"connect_to_display:{display_name}",
                 success=False,
@@ -445,7 +445,7 @@ class JARVISComputerUse:
         task_description: str,
         context: Optional[Dict[str, Any]] = None,
         narrate: bool = True
-    ) -> JARVISTaskResult:
+    ) -> IroncliwTaskResult:
         """
         Execute a custom task using Claude Computer Use.
 
@@ -458,7 +458,7 @@ class JARVISComputerUse:
             narrate: Whether to enable voice narration
 
         Returns:
-            JARVISTaskResult with task execution details
+            IroncliwTaskResult with task execution details
 
         Example:
             >>> result = await jarvis.execute_custom_task(
@@ -494,7 +494,7 @@ class JARVISComputerUse:
                     await self._narrate(msg, priority=1)
                     narration_transcript.append(msg)
 
-                return JARVISTaskResult(
+                return IroncliwTaskResult(
                     task_id=task_id,
                     task_name=f"custom_task:{task_description[:30]}",
                     success=success,
@@ -520,7 +520,7 @@ class JARVISComputerUse:
                 await self._narrate(msg, priority=1)
                 narration_transcript.append(msg)
 
-            return JARVISTaskResult(
+            return IroncliwTaskResult(
                 task_id=task_id,
                 task_name=f"custom_task:{task_description[:30]}",
                 success=False,
@@ -535,9 +535,9 @@ class JARVISComputerUse:
 
         except Exception as e:
             duration = asyncio.get_event_loop().time() - start_time
-            logger.error(f"[JARVIS CU] Custom task failed: {e}")
+            logger.error(f"[Ironcliw CU] Custom task failed: {e}")
 
-            return JARVISTaskResult(
+            return IroncliwTaskResult(
                 task_id=task_id,
                 task_name=f"custom_task:{task_description[:30]}",
                 success=False,
@@ -554,7 +554,7 @@ class JARVISComputerUse:
         self,
         display_name: Optional[str] = None,
         narrate: bool = True
-    ) -> JARVISTaskResult:
+    ) -> IroncliwTaskResult:
         """
         Disconnect from current display.
 
@@ -563,7 +563,7 @@ class JARVISComputerUse:
             narrate: Whether to enable voice narration
 
         Returns:
-            JARVISTaskResult with disconnection details
+            IroncliwTaskResult with disconnection details
         """
         task_description = "Disconnect from the current screen mirroring session"
         if display_name:
@@ -575,7 +575,7 @@ class JARVISComputerUse:
             narrate=narrate
         )
 
-    def get_task_history(self, limit: int = 10) -> List[JARVISTaskResult]:
+    def get_task_history(self, limit: int = 10) -> List[IroncliwTaskResult]:
         """Get recent task history."""
         return self._task_history[-limit:]
 
@@ -600,17 +600,17 @@ class JARVISComputerUse:
 # Factory Functions
 # ============================================================================
 
-_default_instance: Optional[JARVISComputerUse] = None
+_default_instance: Optional[IroncliwComputerUse] = None
 
 
 async def get_jarvis_computer_use(
     execution_mode: ExecutionMode = ExecutionMode.FULL_VOICE
-) -> JARVISComputerUse:
-    """Get or create the default JARVIS Computer Use instance."""
+) -> IroncliwComputerUse:
+    """Get or create the default Ironcliw Computer Use instance."""
     global _default_instance
 
     if _default_instance is None:
-        _default_instance = JARVISComputerUse(execution_mode=execution_mode)
+        _default_instance = IroncliwComputerUse(execution_mode=execution_mode)
         await _default_instance.initialize()
 
     return _default_instance
@@ -619,7 +619,7 @@ async def get_jarvis_computer_use(
 async def connect_to_display_easy(
     display_name: str,
     narrate: bool = True
-) -> JARVISTaskResult:
+) -> IroncliwTaskResult:
     """
     Easy function to connect to a display.
 
@@ -628,7 +628,7 @@ async def connect_to_display_easy(
         narrate: Whether to narrate
 
     Returns:
-        JARVISTaskResult
+        IroncliwTaskResult
 
     Example:
         >>> from backend.display.jarvis_computer_use_integration import connect_to_display_easy

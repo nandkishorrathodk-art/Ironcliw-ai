@@ -1,5 +1,5 @@
-"""
-LangGraph Autonomous Reasoning Engine for JARVIS
+﻿"""
+LangGraph Autonomous Reasoning Engine for Ironcliw
 
 This module implements a sophisticated state machine using LangGraph that enables
 autonomous reasoning with planning, reflection, and adaptive execution capabilities.
@@ -8,7 +8,7 @@ Features:
 - Multi-node reasoning pipeline (analyze → plan → execute → reflect → learn)
 - Dynamic state management with type safety
 - Conditional routing based on confidence and context
-- Integration with JARVIS autonomy systems
+- Integration with Ironcliw autonomy systems
 - Async-first design with parallel execution support
 - Checkpointing and recovery capabilities
 """
@@ -1200,7 +1200,7 @@ class LearningNode(BaseReasoningNode):
             return
 
         try:
-            # Interface with JARVIS learning database
+            # Interface with Ironcliw learning database
             await self.learning_db.store_experience(experience)
         except Exception as e:
             self.logger.error(f"Failed to store experience: {e}")
@@ -1274,13 +1274,13 @@ def should_continue(state: GraphState) -> str:
 
 class LangGraphReasoningEngine:
     """
-    Main LangGraph-based reasoning engine for JARVIS.
+    Main LangGraph-based reasoning engine for Ironcliw.
 
     Orchestrates the multi-node reasoning pipeline with support for:
     - Dynamic node registration
     - Checkpointing and recovery
     - Async execution
-    - Integration with JARVIS subsystems
+    - Integration with Ironcliw subsystems
     """
 
     def __init__(
@@ -1564,8 +1564,8 @@ def create_reasoning_engine(
     Factory function to create a configured reasoning engine.
 
     Args:
-        permission_manager: JARVIS permission manager instance
-        action_executor: JARVIS action executor instance
+        permission_manager: Ironcliw permission manager instance
+        action_executor: Ironcliw action executor instance
         tool_orchestrator: Tool orchestrator for execution
         learning_db: Learning database for persistence
         llm_client: LLM client for advanced reasoning

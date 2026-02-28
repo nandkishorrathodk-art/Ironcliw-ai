@@ -1,4 +1,4 @@
-"""
+﻿"""
 Optimization Configuration for 16GB MacBook Pro
 Dynamic resource management and performance tuning
 """
@@ -135,28 +135,28 @@ class OptimizationConfig:
         config = cls()
         
         # Optimization level
-        if level := os.getenv("JARVIS_OPTIMIZATION_LEVEL"):
+        if level := os.getenv("Ironcliw_OPTIMIZATION_LEVEL"):
             try:
                 config.level = OptimizationLevel(level)
             except ValueError:
                 pass
         
         # Memory settings
-        if val := os.getenv("JARVIS_MAX_MEMORY_PERCENT"):
+        if val := os.getenv("Ironcliw_MAX_MEMORY_PERCENT"):
             config.memory.max_memory_usage_percent = float(val)
-        if val := os.getenv("JARVIS_MAX_MODELS_IN_MEMORY"):
+        if val := os.getenv("Ironcliw_MAX_MODELS_IN_MEMORY"):
             config.memory.max_models_in_memory = int(val)
             
         # Streaming settings
-        if val := os.getenv("JARVIS_CHUNK_SIZE"):
+        if val := os.getenv("Ironcliw_CHUNK_SIZE"):
             config.streaming.chunk_size_samples = int(val)
-        if val := os.getenv("JARVIS_LOW_LATENCY"):
+        if val := os.getenv("Ironcliw_LOW_LATENCY"):
             config.streaming.low_latency_mode = val.lower() == "true"
             
         # macOS settings
-        if val := os.getenv("JARVIS_USE_COREML"):
+        if val := os.getenv("Ironcliw_USE_COREML"):
             config.macos.use_coreml = val.lower() == "true"
-        if val := os.getenv("JARVIS_USE_METAL"):
+        if val := os.getenv("Ironcliw_USE_METAL"):
             config.macos.use_metal = val.lower() == "true"
             
         # Apply optimization level presets
@@ -207,7 +207,7 @@ PRESETS = {
     "16gb_macbook_pro": OptimizationConfig(
         level=OptimizationLevel.BALANCED,
         memory=MemoryConfig(
-            max_memory_usage_percent=25.0,  # ~4GB for JARVIS
+            max_memory_usage_percent=25.0,  # ~4GB for Ironcliw
             max_models_in_memory=3,
             audio_buffer_max_mb=50.0
         ),

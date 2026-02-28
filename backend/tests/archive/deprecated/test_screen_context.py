@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Screen Lock Context Awareness
 ==================================
@@ -51,7 +51,7 @@ async def test_context_awareness():
     
     api_url = "http://localhost:8000/api/command"
     
-    print("🧪 Testing JARVIS Screen Lock Context Awareness")
+    print("🧪 Testing Ironcliw Screen Lock Context Awareness")
     print("=" * 60)
     
     # Wait for backend to be ready
@@ -122,10 +122,10 @@ async def test_context_awareness():
     print("\n" + "=" * 60)
     print("✅ Context awareness test completed!")
     print("\n🎯 Expected behavior:")
-    print("1. JARVIS should detect the locked screen")
-    print("2. JARVIS should say: 'Your screen is locked. I'll unlock it now by typing in the password.'")
-    print("3. JARVIS should unlock the screen")
-    print("4. JARVIS should then execute the command (open Safari)")
+    print("1. Ironcliw should detect the locked screen")
+    print("2. Ironcliw should say: 'Your screen is locked. I'll unlock it now by typing in the password.'")
+    print("3. Ironcliw should unlock the screen")
+    print("4. Ironcliw should then execute the command (open Safari)")
     print("5. The response should include confirmation of all steps taken")
 
 

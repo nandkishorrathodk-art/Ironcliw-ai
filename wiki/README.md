@@ -1,8 +1,8 @@
-# JARVIS AI Agent - Complete Wiki Documentation
+﻿# Ironcliw AI Agent - Complete Wiki Documentation
 
 > **Production-Ready Documentation** | **115.9K+ Content** | **9 Complete Guides** | **150+ Examples**
 
-This directory contains the complete GitHub Wiki documentation for the JARVIS AI Agent project. Each page is meticulously crafted to provide in-depth, practical, and comprehensive information for users, developers, and contributors.
+This directory contains the complete GitHub Wiki documentation for the Ironcliw AI Agent project. Each page is meticulously crafted to provide in-depth, practical, and comprehensive information for users, developers, and contributors.
 
 ---
 
@@ -11,7 +11,7 @@ This directory contains the complete GitHub Wiki documentation for the JARVIS AI
 ### 🏠 [Home](./Home.md)
 **Quick Navigation & Overview**
 
-Your starting point for exploring JARVIS. Includes:
+Your starting point for exploring Ironcliw. Includes:
 - System overview and key features
 - Quick navigation to all Wiki pages
 - Technology stack overview
@@ -25,7 +25,7 @@ Your starting point for exploring JARVIS. Includes:
 ### 🏗️ [Architecture & Design](./Architecture-&-Design.md)
 **Complete System Architecture** (34K, Most Comprehensive)
 
-Deep dive into JARVIS's hybrid architecture:
+Deep dive into Ironcliw's hybrid architecture:
 - **Hybrid Infrastructure:** Local Mac (16GB) + GCP Spot VMs (32GB, ~$0.029/hr)
 - **Intelligence Systems:** UAE, SAI, CAI, learning_database
 - **Component Distribution:** 9+ core components with lifecycle management
@@ -42,7 +42,7 @@ Deep dive into JARVIS's hybrid architecture:
 ### ⚙️ [Setup & Installation](./Setup-&-Installation.md)
 **Step-by-Step Installation Guide** (19K)
 
-Complete setup from zero to "Hey JARVIS":
+Complete setup from zero to "Hey Ironcliw":
 - **Quick Start:** 10-minute setup for basic functionality
 - **Prerequisites:** System requirements (macOS 13.0+, 16GB RAM)
 - **Local Environment:** Python, dependencies, permissions
@@ -300,7 +300,7 @@ This Wiki represents **months of development knowledge** distilled into producti
 - **Accessible:** Clear explanations for all experience levels
 - **Maintainable:** Version-controlled with regular updates
 
-The JARVIS AI Agent project is a cutting-edge hybrid AI system featuring:
+The Ironcliw AI Agent project is a cutting-edge hybrid AI system featuring:
 - Production-grade voice processing with biometric authentication
 - Intelligent hybrid architecture (local + cloud)
 - Advanced multi-agent system (60+ specialized agents)
@@ -311,13 +311,13 @@ The JARVIS AI Agent project is a cutting-edge hybrid AI system featuring:
 
 ## 📄 License
 
-This documentation is part of the JARVIS AI Agent project and follows the same license.
+This documentation is part of the Ironcliw AI Agent project and follows the same license.
 
 ---
 
 **Last Updated:** October 30, 2025
 **Current Version:** v17.4.0
-**Documentation Maintainer:** JARVIS Development Team
+**Documentation Maintainer:** Ironcliw Development Team
 **Total Pages:** 9 | **Total Content:** 115.9K
 
 ---

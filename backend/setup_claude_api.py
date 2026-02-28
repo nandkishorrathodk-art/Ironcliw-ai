@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Claude API Setup Helper
 ========================
 
-This script helps you configure the Claude API for JARVIS document writer.
+This script helps you configure the Claude API for Ironcliw document writer.
 """
 
 import os
@@ -138,7 +138,7 @@ def test_api_connection():
 def main():
     """Main setup flow"""
     print("=" * 60)
-    print("JARVIS Claude API Setup")
+    print("Ironcliw Claude API Setup")
     print("=" * 60)
 
     # Check current status
@@ -163,7 +163,7 @@ def main():
     if success:
         print("✅ Setup Complete!")
         print("\nYour document writer will now use the real Claude API.")
-        print("\nTry these commands in JARVIS:")
+        print("\nTry these commands in Ironcliw:")
         print('  • "Write me an essay about climate change"')
         print('  • "Create a 500 word report on AI"')
         print('  • "Draft an MLA format paper on renewable energy"')

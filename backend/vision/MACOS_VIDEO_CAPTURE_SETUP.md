@@ -1,6 +1,6 @@
-# macOS Native Video Capture Setup Guide
+﻿# macOS Native Video Capture Setup Guide
 
-This guide will help you enable native macOS video capture with the purple screen recording indicator for JARVIS Vision System.
+This guide will help you enable native macOS video capture with the purple screen recording indicator for Ironcliw Vision System.
 
 ## 🟣 What is Native Video Capture?
 
@@ -196,4 +196,4 @@ await analyzer.stop_video_streaming()
 4. **System Integration**: Works with macOS security features
 5. **Power Efficient**: Better battery life on MacBooks
 
-With native video capture enabled, JARVIS can analyze your screen in real-time at 30 FPS while showing the standard macOS screen recording indicator!
+With native video capture enabled, Ironcliw can analyze your screen in real-time at 30 FPS while showing the standard macOS screen recording indicator!

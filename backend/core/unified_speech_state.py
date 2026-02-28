@@ -1,16 +1,16 @@
-"""
+﻿"""
 Unified Speech State Manager v1.0
 =================================
 
-CRITICAL COMPONENT: Prevents JARVIS from hearing its own voice.
+CRITICAL COMPONENT: Prevents Ironcliw from hearing its own voice.
 
 The Problem:
-When JARVIS speaks, the microphone picks up the audio. Without proper
-coordination, this creates a feedback loop where JARVIS:
+When Ironcliw speaks, the microphone picks up the audio. Without proper
+coordination, this creates a feedback loop where Ironcliw:
 1. Speaks a response
 2. Microphone picks it up
 3. Transcription treats it as user input
-4. JARVIS tries to process its own speech as a command
+4. Ironcliw tries to process its own speech as a command
 5. Repeat → "hallucinations" and broken workflow
 
 The Solution:
@@ -48,10 +48,10 @@ Usage:
     
     manager = await get_speech_state_manager()
     
-    # When JARVIS starts speaking
+    # When Ironcliw starts speaking
     await manager.start_speaking("Hello, how can I help?", source="tts")
     
-    # When JARVIS stops speaking
+    # When Ironcliw stops speaking
     await manager.stop_speaking()
     
     # Before processing audio
@@ -201,7 +201,7 @@ class SpeechState:
 
 class UnifiedSpeechStateManager:
     """
-    Singleton manager for tracking JARVIS speech state across the system.
+    Singleton manager for tracking Ironcliw speech state across the system.
     
     Thread-safe and async-compatible. Provides:
     - Centralized speaking state tracking
@@ -267,7 +267,7 @@ class UnifiedSpeechStateManager:
         estimated_duration_ms: Optional[float] = None
     ) -> None:
         """
-        Signal that JARVIS has started speaking.
+        Signal that Ironcliw has started speaking.
         
         CRITICAL: Call this BEFORE TTS audio starts playing.
         
@@ -313,7 +313,7 @@ class UnifiedSpeechStateManager:
         actual_duration_ms: Optional[float] = None
     ) -> None:
         """
-        Signal that JARVIS has stopped speaking.
+        Signal that Ironcliw has stopped speaking.
         
         CRITICAL: Call this AFTER TTS audio completes.
         Starts the post-speech cooldown to catch echo/reverb.
@@ -546,7 +546,7 @@ class UnifiedSpeechStateManager:
 
     @property
     def is_speaking(self) -> bool:
-        """Check if JARVIS is currently speaking."""
+        """Check if Ironcliw is currently speaking."""
         with self._state_lock:
             return self._state.is_speaking
     
@@ -674,10 +674,10 @@ async def get_speech_state_manager() -> UnifiedSpeechStateManager:
     Usage:
         manager = await get_speech_state_manager()
         
-        # When JARVIS starts speaking
+        # When Ironcliw starts speaking
         await manager.start_speaking("Hello!", source=SpeechSource.TTS_BACKEND)
         
-        # When JARVIS stops speaking  
+        # When Ironcliw stops speaking  
         await manager.stop_speaking()
         
         # Before processing audio

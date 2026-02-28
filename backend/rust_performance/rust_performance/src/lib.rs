@@ -1,4 +1,4 @@
-//! JARVIS Performance Layer - Rust Implementation
+﻿//! Ironcliw Performance Layer - Rust Implementation
 //! 
 //! This crate provides high-performance implementations of:
 //! - Quantized ML inference (INT8)

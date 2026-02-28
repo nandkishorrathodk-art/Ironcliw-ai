@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enhanced Continuous Screen Analyzer for JARVIS
+Enhanced Continuous Screen Analyzer for Ironcliw
 Memory-optimized real-time screen monitoring with Claude Vision integration
 Optimized for 16GB RAM macOS systems
 """
@@ -144,7 +144,7 @@ class MemoryAwareScreenAnalyzer:
             'capture_retention_seconds': int(os.getenv('VISION_CAPTURE_RETENTION', '300')),  # 5 minutes
             'cache_duration_seconds': float(os.getenv('VISION_CACHE_DURATION', '5.0')),
             # v251.1: Raised from 200→1500MB.  This checks PROCESS RSS (entire
-            # JARVIS monolith), not this component alone.  A normal JARVIS
+            # Ironcliw monolith), not this component alone.  A normal Ironcliw
             # process loading ECAPA-TDNN + 60 neural mesh agents + learning DB
             # easily uses 700MB+.  200MB guaranteed the check always fails.
             'memory_limit_mb': int(os.getenv('VISION_MEMORY_LIMIT_MB', '1500')),
@@ -526,7 +526,7 @@ class MemoryAwareScreenAnalyzer:
             (can_proceed_locally: bool, gcp_endpoint: Optional[str])
         """
         _oom_timeout = float(
-            os.getenv("JARVIS_VISION_OOM_CHECK_TIMEOUT", "2.0")
+            os.getenv("Ironcliw_VISION_OOM_CHECK_TIMEOUT", "2.0")
         )
         try:
             from core.gcp_oom_prevention_bridge import (
@@ -764,7 +764,7 @@ class MemoryAwareScreenAnalyzer:
         Returns:
             Tuple of (can_proceed: bool, gcp_endpoint: Optional[str])
         """
-        _oom_timeout = float(os.getenv("JARVIS_VISION_OOM_CHECK_TIMEOUT", "2.0"))
+        _oom_timeout = float(os.getenv("Ironcliw_VISION_OOM_CHECK_TIMEOUT", "2.0"))
         try:
             from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
             result = await asyncio.wait_for(
@@ -888,7 +888,7 @@ class MemoryAwareScreenAnalyzer:
         consumers see no difference between local and cloud analysis.
         """
         _cloud_timeout = float(
-            os.getenv("JARVIS_VISION_CLOUD_TIMEOUT", "120.0")
+            os.getenv("Ironcliw_VISION_CLOUD_TIMEOUT", "120.0")
         )
         try:
             from backend.core.prime_client import get_prime_client

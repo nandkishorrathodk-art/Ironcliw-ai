@@ -1,6 +1,6 @@
-# JARVIS Rust Extensions for ML Memory Management
+﻿# Ironcliw Rust Extensions for ML Memory Management
 
-High-performance Rust extensions designed to help JARVIS achieve 35% memory usage on 16GB systems.
+High-performance Rust extensions designed to help Ironcliw achieve 35% memory usage on 16GB systems.
 
 ## Overview
 

@@ -1,9 +1,9 @@
-"""
+﻿"""
 Adaptive Resource Governor - Dynamic FPS Throttling Under Load
 ==============================================================
 
 Fixes the "Meltdown" Risk:
-- When JARVIS watches 11 windows at 60 FPS during heavy CPU load,
+- When Ironcliw watches 11 windows at 60 FPS during heavy CPU load,
   the system can become unresponsive as ScreenCaptureKit competes
   for resources.
 
@@ -29,7 +29,7 @@ Throttle Levels:
     Level 3 (HEAVY):       85-95% CPU → Minimal FPS (5)
     Level 4 (CRITICAL):    > 95% CPU → Emergency FPS (1)
 
-Author: JARVIS v27.0 - Resource Governance
+Author: Ironcliw v27.0 - Resource Governance
 """
 
 from __future__ import annotations
@@ -62,68 +62,68 @@ class ResourceGovernorConfig:
 
     # Load thresholds (CPU percentage)
     normal_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_LOAD_NORMAL", "50"))
+        default_factory=lambda: float(os.getenv("Ironcliw_LOAD_NORMAL", "50"))
     )
     light_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_LOAD_LIGHT", "70"))
+        default_factory=lambda: float(os.getenv("Ironcliw_LOAD_LIGHT", "70"))
     )
     moderate_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_LOAD_MODERATE", "85"))
+        default_factory=lambda: float(os.getenv("Ironcliw_LOAD_MODERATE", "85"))
     )
     heavy_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_LOAD_HEAVY", "95"))
+        default_factory=lambda: float(os.getenv("Ironcliw_LOAD_HEAVY", "95"))
     )
 
     # FPS targets for each level
     fps_full: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_FPS_FULL", "60"))
+        default_factory=lambda: int(os.getenv("Ironcliw_FPS_FULL", "60"))
     )
     fps_reduced: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_FPS_REDUCED", "30"))
+        default_factory=lambda: int(os.getenv("Ironcliw_FPS_REDUCED", "30"))
     )
     fps_low: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_FPS_LOW", "15"))
+        default_factory=lambda: int(os.getenv("Ironcliw_FPS_LOW", "15"))
     )
     fps_minimal: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_FPS_MINIMAL", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_FPS_MINIMAL", "5"))
     )
     fps_emergency: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_FPS_EMERGENCY", "1"))
+        default_factory=lambda: int(os.getenv("Ironcliw_FPS_EMERGENCY", "1"))
     )
 
     # Memory thresholds
     memory_warning_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MEM_WARN", "80"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MEM_WARN", "80"))
     )
     memory_critical_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MEM_CRITICAL", "90"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MEM_CRITICAL", "90"))
     )
 
     # Monitoring settings
     sample_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_LOAD_SAMPLE_INTERVAL", "1.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_LOAD_SAMPLE_INTERVAL", "1.0"))
     )
     sample_window: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_LOAD_SAMPLE_WINDOW", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_LOAD_SAMPLE_WINDOW", "5"))
     )
 
     # Hysteresis (prevent rapid oscillation)
     hysteresis_up: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_HYSTERESIS_UP", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_HYSTERESIS_UP", "5.0"))
     )
     hysteresis_down: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_HYSTERESIS_DOWN", "10.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_HYSTERESIS_DOWN", "10.0"))
     )
     cooldown_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_THROTTLE_COOLDOWN", "3.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_THROTTLE_COOLDOWN", "3.0"))
     )
 
     # Priority boost for high-confidence watchers
     priority_boost_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIORITY_BOOST", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIORITY_BOOST", "true").lower() == "true"
     )
     priority_boost_multiplier: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIORITY_MULTIPLIER", "1.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIORITY_MULTIPLIER", "1.5"))
     )
 
 

@@ -1,5 +1,5 @@
-"""
-Advanced Action Executor for JARVIS Autonomous System.
+﻿"""
+Advanced Action Executor for Ironcliw Autonomous System.
 
 This module provides advanced action execution capabilities with multi-strategy
 retry, circuit breaker pattern, rollback management, and comprehensive error recovery.
@@ -13,11 +13,11 @@ Key Features:
     - Comprehensive error recovery
 
 Environment Variables:
-    JARVIS_EXECUTOR_MAX_RETRIES: Maximum retry attempts (default: 3)
-    JARVIS_EXECUTOR_TIMEOUT: Default timeout in seconds (default: 30)
-    JARVIS_EXECUTOR_CIRCUIT_THRESHOLD: Circuit breaker threshold (default: 5)
-    JARVIS_EXECUTOR_CIRCUIT_RESET: Circuit reset time in seconds (default: 60)
-    JARVIS_EXECUTOR_DRY_RUN: Enable dry-run mode (default: false)
+    Ironcliw_EXECUTOR_MAX_RETRIES: Maximum retry attempts (default: 3)
+    Ironcliw_EXECUTOR_TIMEOUT: Default timeout in seconds (default: 30)
+    Ironcliw_EXECUTOR_CIRCUIT_THRESHOLD: Circuit breaker threshold (default: 5)
+    Ironcliw_EXECUTOR_CIRCUIT_RESET: Circuit reset time in seconds (default: 60)
+    Ironcliw_EXECUTOR_DRY_RUN: Enable dry-run mode (default: false)
 """
 
 from __future__ import annotations
@@ -340,15 +340,15 @@ class AdvancedExecutorConfig:
     def from_env(cls) -> "AdvancedExecutorConfig":
         """Create configuration from environment variables."""
         return cls(
-            default_timeout_seconds=float(os.getenv("JARVIS_EXECUTOR_TIMEOUT", "30")),
-            max_retries=int(os.getenv("JARVIS_EXECUTOR_MAX_RETRIES", "3")),
-            circuit_breaker_threshold=int(os.getenv("JARVIS_EXECUTOR_CIRCUIT_THRESHOLD", "5")),
-            circuit_breaker_reset_seconds=float(os.getenv("JARVIS_EXECUTOR_CIRCUIT_RESET", "60")),
-            circuit_breaker_enabled=os.getenv("JARVIS_EXECUTOR_CIRCUIT_ENABLED", "true").lower() == "true",
-            dry_run_mode=os.getenv("JARVIS_EXECUTOR_DRY_RUN", "false").lower() == "true",
-            validation_enabled=os.getenv("JARVIS_EXECUTOR_VALIDATION", "true").lower() == "true",
-            permission_check_enabled=os.getenv("JARVIS_EXECUTOR_PERMISSION_CHECK", "true").lower() == "true",
-            max_concurrent_executions=int(os.getenv("JARVIS_EXECUTOR_MAX_CONCURRENT", "10")),
+            default_timeout_seconds=float(os.getenv("Ironcliw_EXECUTOR_TIMEOUT", "30")),
+            max_retries=int(os.getenv("Ironcliw_EXECUTOR_MAX_RETRIES", "3")),
+            circuit_breaker_threshold=int(os.getenv("Ironcliw_EXECUTOR_CIRCUIT_THRESHOLD", "5")),
+            circuit_breaker_reset_seconds=float(os.getenv("Ironcliw_EXECUTOR_CIRCUIT_RESET", "60")),
+            circuit_breaker_enabled=os.getenv("Ironcliw_EXECUTOR_CIRCUIT_ENABLED", "true").lower() == "true",
+            dry_run_mode=os.getenv("Ironcliw_EXECUTOR_DRY_RUN", "false").lower() == "true",
+            validation_enabled=os.getenv("Ironcliw_EXECUTOR_VALIDATION", "true").lower() == "true",
+            permission_check_enabled=os.getenv("Ironcliw_EXECUTOR_PERMISSION_CHECK", "true").lower() == "true",
+            max_concurrent_executions=int(os.getenv("Ironcliw_EXECUTOR_MAX_CONCURRENT", "10")),
         )
 
 

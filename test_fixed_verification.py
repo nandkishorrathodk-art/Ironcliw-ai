@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test voice verification with fixed audio handling."""
 
 import asyncio
@@ -24,8 +24,8 @@ async def test_fixed_verification():
 
     print(f"\n✅ Service ready with {len(service.speaker_profiles)} profiles")
 
-    # Test 1: With random int16 audio (simulating JARVIS)
-    print("\n1️⃣ Testing with random int16 audio (JARVIS format)...")
+    # Test 1: With random int16 audio (simulating Ironcliw)
+    print("\n1️⃣ Testing with random int16 audio (Ironcliw format)...")
     random_int16 = np.random.randint(-32768, 32767, 16000, dtype=np.int16)
     random_bytes = random_int16.tobytes()
 
@@ -42,7 +42,7 @@ async def test_fixed_verification():
     await asyncio.sleep(1)
     print("   🎤 RECORDING NOW - SPEAK!")
 
-    # Record as int16 (JARVIS format)
+    # Record as int16 (Ironcliw format)
     SAMPLE_RATE = 16000
     CHANNELS = 1
     CHUNK_SIZE = 1024

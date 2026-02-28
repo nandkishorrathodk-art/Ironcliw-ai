@@ -1,5 +1,5 @@
-"""
-Hybrid Weather Provider for JARVIS
+﻿"""
+Hybrid Weather Provider for Ironcliw
 Uses OpenWeatherMap API as primary with vision fallback
 """
 

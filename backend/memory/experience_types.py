@@ -1,18 +1,18 @@
-"""
-Experience Types - Data Models for JARVIS Data Flywheel
+﻿"""
+Experience Types - Data Models for Ironcliw Data Flywheel
 
 This module defines the data structures for capturing user interactions
 for RLHF training. These records form the "Black Box" that reactor-core
-uses to learn and improve JARVIS.
+uses to learn and improve Ironcliw.
 
 Key Concepts:
 - ExperienceRecord: Complete interaction record
 - ToolUsage: Individual tool invocation
 - Outcome: RLHF feedback signal from user
-- ResponseType: How JARVIS responded (voice, action, etc.)
+- ResponseType: How Ironcliw responded (voice, action, etc.)
 - OutcomeSignal: Type of user feedback
 
-Author: JARVIS v5.0 Data Flywheel
+Author: Ironcliw v5.0 Data Flywheel
 Version: 1.0.0
 """
 
@@ -29,7 +29,7 @@ import json
 
 
 class ResponseType(str, Enum):
-    """How JARVIS responded to the user."""
+    """How Ironcliw responded to the user."""
     VOICE = "voice"           # Spoken response only
     ACTION = "action"         # Performed action only
     BOTH = "both"             # Spoke and performed action
@@ -197,7 +197,7 @@ class ExperienceRecord:
     captures everything needed for reactor-core to learn:
 
     - What the user asked (user_prompt)
-    - What JARVIS did (agent_response, tools_used)
+    - What Ironcliw did (agent_response, tools_used)
     - Whether it worked (outcome)
 
     File Format: Written as single-line JSON to JSONL files
@@ -211,8 +211,8 @@ class ExperienceRecord:
         user_prompt: What the user said/typed
         prompt_context: State when request was made
 
-        agent_response: What JARVIS said/did
-        response_type: How JARVIS responded
+        agent_response: What Ironcliw said/did
+        response_type: How Ironcliw responded
         confidence: Agent confidence (0.0-1.0)
 
         tools_used: List of tools invoked
@@ -260,7 +260,7 @@ class ExperienceRecord:
     def __post_init__(self):
         """Ensure model_name is set from environment if not provided."""
         if not self.model_name:
-            self.model_name = os.getenv("JARVIS_MODEL", "unknown")
+            self.model_name = os.getenv("Ironcliw_MODEL", "unknown")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""

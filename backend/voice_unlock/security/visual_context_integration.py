@@ -1,4 +1,4 @@
-"""
+﻿"""
 Visual Context Integration for Voice Biometric Authentication
 =============================================================
 
@@ -23,7 +23,7 @@ Architecture:
            ↓
     [Decision] → Grant/Deny
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.2.0 - Production Visual Security
 """
 

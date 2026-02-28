@@ -1,10 +1,10 @@
-"""
+﻿"""
 Trinity Orchestration Engine v1.0 - The Digital Biology Coordinator
 ====================================================================
 
 This is the "God Process" that orchestrates the Trinity ecosystem:
-- JARVIS (Body) - Interaction, Sensing, Execution
-- JARVIS-Prime (Mind) - Reasoning, Planning, Routing
+- Ironcliw (Body) - Interaction, Sensing, Execution
+- Ironcliw-Prime (Mind) - Reasoning, Planning, Routing
 - Reactor-Core (Nerves) - Reflexes, Training, Self-Healing
 
 Advanced Features:
@@ -39,7 +39,7 @@ Architecture:
     │           ┌────────────────────┼────────────────────┐                    │
     │           ▼                    ▼                    ▼                    │
     │    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐             │
-    │    │    JARVIS    │    │  JARVIS-Prime│    │ Reactor-Core │             │
+    │    │    Ironcliw    │    │  Ironcliw-Prime│    │ Reactor-Core │             │
     │    │   (Body)     │    │   (Mind)     │    │  (Nerves)    │             │
     │    └──────────────┘    └──────────────┘    └──────────────┘             │
     │                                                                          │
@@ -98,8 +98,8 @@ class TrinityConfig:
     """Dynamic configuration for Trinity ecosystem."""
 
     # Repository paths (auto-discovered)
-    JARVIS_PATH = _get_env_path("JARVIS_PATH", "JARVIS-AI-Agent")
-    PRIME_PATH = _get_env_path("JARVIS_PRIME_PATH", "JARVIS-Prime")
+    Ironcliw_PATH = _get_env_path("Ironcliw_PATH", "Ironcliw-AI-Agent")
+    PRIME_PATH = _get_env_path("Ironcliw_PRIME_PATH", "Ironcliw-Prime")
     REACTOR_PATH = _get_env_path("REACTOR_CORE_PATH", "reactor-core")
 
     # IPC directories
@@ -109,7 +109,7 @@ class TrinityConfig:
     HEARTBEAT_DIR = TRINITY_BASE / "heartbeats"
 
     # Ports (dynamic allocation if not specified)
-    JARVIS_PORT = int(os.getenv("JARVIS_PORT", "8765"))
+    Ironcliw_PORT = int(os.getenv("Ironcliw_PORT", "8765"))
     PRIME_PORT = int(os.getenv("PRIME_PORT", "8000"))
     REACTOR_PORT = int(os.getenv("REACTOR_PORT", "8090"))
 
@@ -150,8 +150,8 @@ class ConsensusRole(Enum):
 
 class ComponentType(Enum):
     """Types of Trinity components."""
-    BODY = "jarvis"       # JARVIS - Interaction layer
-    MIND = "prime"        # JARVIS-Prime - Cognition layer
+    BODY = "jarvis"       # Ironcliw - Interaction layer
+    MIND = "prime"        # Ironcliw-Prime - Cognition layer
     NERVES = "reactor"    # Reactor-Core - Training/Evolution layer
 
 
@@ -1379,7 +1379,7 @@ class TrinityOrchestrationEngine:
         self._components = {
             ComponentType.MIND: ComponentInfo(
                 component_type=ComponentType.MIND,
-                name="JARVIS-Prime (Mind)",
+                name="Ironcliw-Prime (Mind)",
                 path=TrinityConfig.PRIME_PATH,
                 entry_point="python3 run_server.py --port 8000 --host 0.0.0.0",
                 port=TrinityConfig.PRIME_PORT,
@@ -1393,10 +1393,10 @@ class TrinityOrchestrationEngine:
             ),
             ComponentType.BODY: ComponentInfo(
                 component_type=ComponentType.BODY,
-                name="JARVIS (Body)",
-                path=TrinityConfig.JARVIS_PATH,
+                name="Ironcliw (Body)",
+                path=TrinityConfig.Ironcliw_PATH,
                 entry_point="python3 run_supervisor.py",
-                port=TrinityConfig.JARVIS_PORT,
+                port=TrinityConfig.Ironcliw_PORT,
             ),
         }
 
@@ -1414,7 +1414,7 @@ class TrinityOrchestrationEngine:
         1. Recover any pending events from WAL
         2. Start Mind (Prime) first - needs to be ready for routing
         3. Start Nerves (Reactor) - watches for events
-        4. Start Body (JARVIS) - user interface
+        4. Start Body (Ironcliw) - user interface
         5. Verify all components healthy
         6. Start background tasks (monitoring, consensus)
         """

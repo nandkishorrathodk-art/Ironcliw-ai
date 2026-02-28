@@ -1,8 +1,8 @@
-"""
-Multi-Monitor Support for JARVIS Vision Intelligence
+﻿"""
+Multi-Monitor Support for Ironcliw Vision Intelligence
 
 This module provides comprehensive multi-monitor detection and management
-capabilities for macOS systems, enabling JARVIS to understand and analyze
+capabilities for macOS systems, enabling Ironcliw to understand and analyze
 content across multiple displays.
 
 Key Features:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Temporarily lower the voice verification threshold for testing."""
 
 import asyncio
@@ -17,7 +17,7 @@ async def lower_threshold():
     print("="*80)
 
     # Update the configuration
-    config_path = "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/config/voice_config.json"
+    config_path = "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/config/voice_config.json"
 
     # Read current config
     if os.path.exists(config_path):
@@ -59,7 +59,7 @@ async def lower_threshold():
 
     print("\n📝 NEXT STEPS:")
     print("-" * 40)
-    print("1. Restart JARVIS:")
+    print("1. Restart Ironcliw:")
     print("   python start_system.py --restart")
     print("\n2. Test voice unlock:")
     print("   Say: 'unlock my screen'")
@@ -71,7 +71,7 @@ async def lower_threshold():
     # Also create the restore script
     restore_script = """#!/usr/bin/env python3
 import json
-config_path = "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/config/voice_config.json"
+config_path = "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/config/voice_config.json"
 with open(config_path, 'r') as f:
     config = json.load(f)
 config['verification_threshold'] = config.get('previous_threshold', 0.45)
@@ -80,10 +80,10 @@ with open(config_path, 'w') as f:
 print(f"✅ Threshold restored to {config['verification_threshold']*100:.0f}%")
 """
 
-    with open("/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/restore_normal_threshold.py", 'w') as f:
+    with open("/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/restore_normal_threshold.py", 'w') as f:
         f.write(restore_script)
 
-    os.chmod("/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/restore_normal_threshold.py", 0o755)
+    os.chmod("/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/restore_normal_threshold.py", 0o755)
 
     print("\n" + "="*80)
     print("READY FOR RESTART")

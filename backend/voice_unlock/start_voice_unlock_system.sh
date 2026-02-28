@@ -1,8 +1,8 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Start Voice Unlock System
 # ========================
 
-echo "🚀 Starting JARVIS Voice Unlock System"
+echo "🚀 Starting Ironcliw Voice Unlock System"
 echo "====================================="
 echo
 
@@ -12,7 +12,7 @@ OBJC_DIR="$SCRIPT_DIR/objc"
 
 # Kill any existing processes
 echo "🔄 Cleaning up existing processes..."
-pkill -f JARVISVoiceUnlockDaemon
+pkill -f IroncliwVoiceUnlockDaemon
 pkill -f websocket_server.py
 sleep 1
 
@@ -38,7 +38,7 @@ echo
 echo "📋 Voice Unlock System Ready!"
 echo "=============================="
 echo
-echo "The system is now ready to accept voice unlock commands through JARVIS:"
+echo "The system is now ready to accept voice unlock commands through Ironcliw:"
 echo "  • 'voice unlock status' - Check system status"
 echo "  • 'enable voice unlock' - Start monitoring"
 echo "  • 'disable voice unlock' - Stop monitoring"
@@ -50,7 +50,7 @@ echo "Press Ctrl+C to stop the system"
 echo
 
 # Keep script running
-trap "echo 'Shutting down...'; kill $WS_PID; pkill -f JARVISVoiceUnlockDaemon; exit 0" INT TERM
+trap "echo 'Shutting down...'; kill $WS_PID; pkill -f IroncliwVoiceUnlockDaemon; exit 0" INT TERM
 
 # Monitor processes
 while true; do

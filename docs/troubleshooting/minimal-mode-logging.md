@@ -1,7 +1,7 @@
-# JARVIS Minimal/Full Mode Logging Guide
+﻿# Ironcliw Minimal/Full Mode Logging Guide
 
 ## Overview
-JARVIS now provides comprehensive logging throughout the minimal-to-full mode transition, making it crystal clear what mode the system is in and when transitions occur.
+Ironcliw now provides comprehensive logging throughout the minimal-to-full mode transition, making it crystal clear what mode the system is in and when transitions occur.
 
 ## 🔄 Minimal Mode Indicators
 
@@ -17,7 +17,7 @@ When starting in minimal mode, you'll see:
   🔄 No action needed - system will auto-upgrade
 ============================================================
 
-🚀 Starting JARVIS Minimal Backend
+🚀 Starting Ironcliw Minimal Backend
 ============================================================
 📌 MODE: MINIMAL - Basic functionality only
 ⏳ This is temporary while full system initializes
@@ -28,7 +28,7 @@ When starting in minimal mode, you'll see:
 
 ### Browser Console
 ```
-🔄 JARVIS Status: Running in MINIMAL MODE
+🔄 Ironcliw Status: Running in MINIMAL MODE
   ⏳ This is temporary while full system initializes
   📊 Available features: {voice: false, vision: false, ...}
   🚀 Upgrade Progress: {monitoring: true, attempts: "0/10"}
@@ -62,15 +62,15 @@ When starting in minimal mode, you'll see:
   • Rust components loaded
 ============================================================
 ⏱️  Upgrade completed in 2 attempts
-🚀 JARVIS is now running at full capacity!
+🚀 Ironcliw is now running at full capacity!
 ============================================================
 ```
 
 ### When Upgrade Succeeds - Browser Console
 ```
-🎉 JARVIS UPGRADED TO FULL MODE! 🎉
+🎉 Ironcliw UPGRADED TO FULL MODE! 🎉
   ✅ All features now available:
-    • Wake word detection ("Hey JARVIS")
+    • Wake word detection ("Hey Ironcliw")
     • ML-powered audio processing
     • Vision system active
     • Memory system online
@@ -80,7 +80,7 @@ When starting in minimal mode, you'll see:
 
 ### When Already in Full Mode
 ```
-✅ JARVIS Status: Running in FULL MODE
+✅ Ironcliw Status: Running in FULL MODE
   🚀 All systems operational
 ```
 
@@ -88,7 +88,7 @@ When starting in minimal mode, you'll see:
 - Green success banner appears: "System Upgraded to Full Mode! 🎉"
 - Lists all available features
 - Banner auto-dismisses after 10 seconds
-- JARVIS voice announcement: "System upgraded. All features are now available, Sir."
+- Ironcliw voice announcement: "System upgraded. All features are now available, Sir."
 - `[MINIMAL MODE]` badge disappears
 
 ## 📊 Key Features

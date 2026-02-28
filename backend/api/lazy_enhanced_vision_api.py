@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Lazy Enhanced Vision API for JARVIS
+Lazy Enhanced Vision API for Ironcliw
 Defers initialization until first use
 """
 

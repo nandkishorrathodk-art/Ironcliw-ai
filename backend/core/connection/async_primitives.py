@@ -1,4 +1,4 @@
-"""
+﻿"""
 Event-Loop-Aware Async Primitives
 ==================================
 
@@ -12,7 +12,7 @@ This is critical for:
 - Applications with worker threads having their own loops
 - Avoiding "attached to a different loop" errors
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

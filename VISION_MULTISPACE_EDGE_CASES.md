@@ -1,4 +1,4 @@
-# JARVIS Vision-Multispace Intelligence: Edge Cases & Scenarios
+﻿# Ironcliw Vision-Multispace Intelligence: Edge Cases & Scenarios
 
 **Version:** 2.0 (Intelligent Edition)
 **Last Updated:** 2025-10-19
@@ -33,7 +33,7 @@
 ✅ "Read space 2"
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 - Capture specified space
 - Extract text via Claude Vision
 - Return OCR results
@@ -51,7 +51,7 @@
 ❓ "What's happening?"
 ```
 
-**JARVIS Strategy:**
+**Ironcliw Strategy:**
 - Assume **current/active space** (from yabai query)
 - Or ask for clarification: `"Which space? (Currently on Space 2)"`
 - Default to Space 1 if active space detection fails
@@ -61,15 +61,15 @@
 **Pronoun References:**
 ```
 User: "What's in space 3?"
-JARVIS: [Returns OCR results]
+Ironcliw: [Returns OCR results]
 User: "What about space 5?"
-JARVIS: [Returns space 5 results]
+Ironcliw: [Returns space 5 results]
 User: "Compare them"
        ^^^^
        Refers to spaces 3 & 5
 ```
 
-**JARVIS Strategy:**
+**Ironcliw Strategy:**
 - Track conversation context (last 2-3 spaces queried)
 - Resolve pronouns ("it", "that", "them") to spaces
 - Maintain session state in memory
@@ -86,7 +86,7 @@ User: "Compare them"
 ❓ "What's different between space 1 and space 2?"
 ```
 
-**JARVIS Strategy:**
+**Ironcliw Strategy:**
 - Capture all specified spaces in parallel
 - Run Claude Vision analysis on each
 - Synthesize comparison results
@@ -127,7 +127,7 @@ Difference: Space 3 has an active error, Space 5 is reference material
 **Example Response:**
 ```
 User: "What patterns have you noticed?"
-JARVIS: "I've detected a pattern: When builds complete in Space 5,
+Ironcliw: "I've detected a pattern: When builds complete in Space 5,
         errors appear in Space 3 within 2 minutes (confidence: 85%).
         This has occurred 5 times in the last hour."
 ```
@@ -157,7 +157,7 @@ JARVIS: "I've detected a pattern: When builds complete in Space 5,
 **Example Response:**
 ```
 User: "Am I making progress?"
-JARVIS: "Yes, 70% progress in last 30 minutes.
+Ironcliw: "Yes, 70% progress in last 30 minutes.
 
         Evidence:
         - 3 successful builds
@@ -180,12 +180,12 @@ JARVIS: "Yes, 70% progress in last 30 minutes.
 ❓ "Run the tests"
 ```
 
-**JARVIS Strategy (v1.0):**
+**Ironcliw Strategy (v1.0):**
 - Vision is **read-only**
 - Return: `"I can see [error], but cannot execute actions yet"`
 - Suggest manual steps
 
-**JARVIS Strategy (v2.0):**
+**Ironcliw Strategy (v2.0):**
 - Integrate with action APIs (yabai, AppleScript)
 - Execute safe commands with user confirmation
 - Autonomous execution for trusted actions
@@ -196,7 +196,7 @@ JARVIS: "Yes, 70% progress in last 30 minutes.
 
 ### 2.1 Space-Related Edge Cases
 
-| Edge Case | Detection | JARVIS Response |
+| Edge Case | Detection | Ironcliw Response |
 |-----------|-----------|-----------------|
 | **Space doesn't exist** | `yabai -m query --spaces` returns no match | `"Space 10 doesn't exist. You have 6 spaces."` |
 | **Empty space** | No windows in space | `"Space 3 is empty (no windows)."` |
@@ -571,7 +571,7 @@ class ChangeDetectionManager:
 **Example Response:**
 ```
 User: "What changed in the last 5 minutes?"
-JARVIS: "3 changes detected:
+Ironcliw: "3 changes detected:
         1. Space 3: Error resolved (TypeError on line 421)
         2. Space 5: Build completed successfully
         3. Space 2: Content changed (new code added)"
@@ -634,12 +634,12 @@ class HybridProactiveMonitoringManager:
 
 **User Experience:**
 ```
-[JARVIS, unprompted]: "Sir, a new TypeError appeared in Space 3, line 422.
+[Ironcliw, unprompted]: "Sir, a new TypeError appeared in Space 3, line 422.
                       This is the 4th occurrence in the last hour (CRITICAL)."
 
-[JARVIS, unprompted]: "Build completed in Space 5. All tests passed."
+[Ironcliw, unprompted]: "Build completed in Space 5. All tests passed."
 
-[JARVIS, unprompted]: "Stuck state detected: Space 2 has been in ERROR_STATE
+[Ironcliw, unprompted]: "Stuck state detected: Space 2 has been in ERROR_STATE
                       for 35 minutes with no changes."
 ```
 
@@ -720,12 +720,12 @@ class StateDetectionPipeline:
 ```
 # Session 1 (Monday)
 User: "What's the error in space 3?"
-JARVIS: "TypeError on line 421: 'NoneType' object has no attribute 'get'"
+Ironcliw: "TypeError on line 421: 'NoneType' object has no attribute 'get'"
 [Pattern learned: TypeError + NoneType → stored in learned_patterns.json]
 
-# Session 2 (Wednesday) - After JARVIS restart
+# Session 2 (Wednesday) - After Ironcliw restart
 User: "What's the error in space 5?"
-JARVIS: "TypeError on line 89: 'NoneType' object has no attribute 'get'
+Ironcliw: "TypeError on line 89: 'NoneType' object has no attribute 'get'
 
         Pattern detected: This matches a known error pattern (confidence: 85%).
         Appeared 5 times across 3 spaces in the last week."
@@ -868,7 +868,7 @@ if not user_consented(space_id):
     preview = capture_space(space_id)
     show_preview(preview)
 
-    consent = ask_user(f"Allow JARVIS to read Space {space_id}?")
+    consent = ask_user(f"Allow Ironcliw to read Space {space_id}?")
     if consent:
         store_consent(space_id)
     else:
@@ -878,11 +878,11 @@ if not user_consented(space_id):
 **3. Local-Only Mode:**
 ```python
 # .env
-JARVIS_VISION_MODE=local  # Never send to Claude API
+Ironcliw_VISION_MODE=local  # Never send to Claude API
 
 # Use local OCR (Tesseract) instead
 def ocr_image(image):
-    if os.getenv('JARVIS_VISION_MODE') == 'local':
+    if os.getenv('Ironcliw_VISION_MODE') == 'local':
         return tesseract.image_to_string(image)
     else:
         return claude_vision_api(image)
@@ -901,7 +901,7 @@ def ocr_image(image):
 - Screenshots cached for 30-60 seconds
 - OCR results cached for 5 minutes
 - Automatic expiration/cleanup
-- Option to disable caching: `JARVIS_VISION_CACHE=false`
+- Option to disable caching: `Ironcliw_VISION_CACHE=false`
 
 ---
 
@@ -995,7 +995,7 @@ logging.info({
 ```
 User: "What changed in space 3?"
 [Cache miss - space 3 not monitored]
-JARVIS: "Capturing fresh snapshot... [2s delay]
+Ironcliw: "Capturing fresh snapshot... [2s delay]
          Space 3: No recent monitoring data, captured new snapshot.
          Would you like me to add Space 3 to monitoring?"
 ```
@@ -1014,7 +1014,7 @@ JARVIS: "Capturing fresh snapshot... [2s delay]
 **Example:**
 ```
 User: "What patterns have you noticed?"
-JARVIS: "Detected 2 patterns:
+Ironcliw: "Detected 2 patterns:
 
         1. Build in Space 5 → Error in Space 3 (85% confidence, 5 occurrences)
         2. Terminal command in Space 2 → Build in Space 5 (60% confidence, 3 occurrences)
@@ -1035,11 +1035,11 @@ JARVIS: "Detected 2 patterns:
 
 **Example:**
 ```
-[JARVIS, unprompted]: "Stuck state detected: Space 3 has been in ERROR_STATE
+[Ironcliw, unprompted]: "Stuck state detected: Space 3 has been in ERROR_STATE
                       for 35 minutes. Would you like suggestions?"
 
 User: "I'm intentionally debugging this slowly"
-JARVIS: "Understood. I'll increase the stuck threshold for Space 3 to 60 minutes."
+Ironcliw: "Understood. I'll increase the stuck threshold for Space 3 to 60 minutes."
 ```
 
 ---
@@ -1056,7 +1056,7 @@ JARVIS: "Understood. I'll increase the stuck threshold for Space 3 to 60 minutes
 **Example:**
 ```
 User: "What state is Space 3 in?"
-JARVIS: "Ambiguous match: Visual signature matches both CODING (72%) and
+Ironcliw: "Ambiguous match: Visual signature matches both CODING (72%) and
         DEBUGGING (68%). Context suggests DEBUGGING based on recent error."
 ```
 
@@ -1074,7 +1074,7 @@ JARVIS: "Ambiguous match: Visual signature matches both CODING (72%) and
 **Example:**
 ```
 User: "Why is Space 7 failing?"
-JARVIS: "Cascading failure detected:
+Ironcliw: "Cascading failure detected:
 
         Root cause: Import error in Space 3 (file_utils.py)
         ↓
@@ -1099,7 +1099,7 @@ JARVIS: "Cascading failure detected:
 **Example:**
 ```
 User: "Will I finish this task soon?"
-JARVIS: "Uncertain (40% confidence).
+Ironcliw: "Uncertain (40% confidence).
 
         Evidence:
         - Positive: 3 successful builds in last 20 minutes
@@ -1122,17 +1122,17 @@ JARVIS: "Uncertain (40% confidence).
 
 **Example:**
 ```
-[JARVIS, unprompted]: "Attempting auto-recovery for TypeError in Space 3..."
+[Ironcliw, unprompted]: "Attempting auto-recovery for TypeError in Space 3..."
 [2 seconds later]: "Recovery failed. Alternative strategy: Add null check.
                    Shall I continue?"
 
 User: "No, I already fixed it"
-JARVIS: "Confirmed. Cancelling recovery. Error resolved by user."
+Ironcliw: "Confirmed. Cancelling recovery. Error resolved by user."
 ```
 
 ---
 
 **Document Maintainer:** Derek Russell
-**JARVIS Version:** 2.0 (Intelligent Edition - multi-monitor-support branch)
+**Ironcliw Version:** 2.0 (Intelligent Edition - multi-monitor-support branch)
 **Last Test Date:** 2025-10-19
 **v2.0 Release Date:** 2025-10-19

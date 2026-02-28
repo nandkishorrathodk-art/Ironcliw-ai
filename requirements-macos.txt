@@ -1,4 +1,4 @@
-# macOS-specific dependencies for JARVIS
+﻿# macOS-specific dependencies for Ironcliw
 # Install with: pip install -r requirements-macos.txt
 
 # CoreML (Apple Neural Engine acceleration)

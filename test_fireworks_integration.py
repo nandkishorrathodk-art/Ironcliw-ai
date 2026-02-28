@@ -1,8 +1,8 @@
-"""
+﻿"""
 Test Fireworks AI Integration
 ==============================
 
-Test script to verify Fireworks AI integration into JARVIS.
+Test script to verify Fireworks AI integration into Ironcliw.
 
 Usage:
     1. Set FIREWORKS_API_KEY in .env file
@@ -17,7 +17,7 @@ os.environ['FIREWORKS_API_KEY'] = os.getenv('FIREWORKS_API_KEY', 'test-key')
 os.environ['FIREWORKS_ENABLED'] = 'true'
 
 print("=" * 70)
-print("JARVIS Fireworks AI Integration Test")
+print("Ironcliw Fireworks AI Integration Test")
 print("=" * 70)
 
 async def test_fireworks_client():
@@ -195,7 +195,7 @@ async def main():
     print("\nTo use Fireworks AI:")
     print("  1. Get API key from: https://fireworks.ai")
     print("  2. Add to .env: FIREWORKS_API_KEY=your-key-here")
-    print("  3. JARVIS will auto-fallback to Fireworks when Prime is unavailable")
+    print("  3. Ironcliw will auto-fallback to Fireworks when Prime is unavailable")
 
 if __name__ == "__main__":
     asyncio.run(main())

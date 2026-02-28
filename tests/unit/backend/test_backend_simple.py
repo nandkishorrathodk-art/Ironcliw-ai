@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple test to debug backend startup issues
 """
@@ -12,8 +12,8 @@ backend_path = os.path.join(os.path.dirname(__file__), "backend")
 sys.path.insert(0, backend_path)
 
 # Set environment
-os.environ["JARVIS_MEMORY_LEVEL"] = "critical"
-os.environ["JARVIS_MODEL_PRECISION"] = "8bit"
+os.environ["Ironcliw_MEMORY_LEVEL"] = "critical"
+os.environ["Ironcliw_MODEL_PRECISION"] = "8bit"
 os.environ["DYLD_LIBRARY_PATH"] = os.path.join(backend_path, "swift_bridge/.build/release")
 
 print("🔍 Testing backend startup directly...")
@@ -31,7 +31,7 @@ cmd = [
 print(f"Running: {' '.join(cmd)}")
 print(f"Working dir: {backend_path}")
 print(f"Python: {sys.executable}")
-print(f"Memory level: {os.environ.get('JARVIS_MEMORY_LEVEL')}")
+print(f"Memory level: {os.environ.get('Ironcliw_MEMORY_LEVEL')}")
 print()
 
 try:

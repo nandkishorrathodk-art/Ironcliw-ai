@@ -1,8 +1,8 @@
-"""
-JARVIS Backend Utilities
+﻿"""
+Ironcliw Backend Utilities
 ========================
 
-This package provides utility modules for the JARVIS backend, including:
+This package provides utility modules for the Ironcliw backend, including:
 - Environment configuration utilities for type-safe env var parsing
 - Async I/O utilities for non-blocking operations (generic wrappers)
 - Async startup utilities for non-blocking startup operations

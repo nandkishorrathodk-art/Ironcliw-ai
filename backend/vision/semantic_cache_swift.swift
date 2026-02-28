@@ -1,6 +1,6 @@
-//
+﻿//
 //  SemanticCacheSwift.swift
-//  JARVIS Vision Semantic Cache
+//  Ironcliw Vision Semantic Cache
 //
 //  Purpose: Native macOS cache integration with Core ML and system caching
 //

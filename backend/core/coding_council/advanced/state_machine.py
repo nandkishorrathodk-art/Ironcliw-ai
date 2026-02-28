@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.1: Evolution State Machine - Gap #57
 =========================================
 
@@ -25,7 +25,7 @@ Features:
     - State history
     - Timeout detection
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations

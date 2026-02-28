@@ -1,7 +1,7 @@
-# Computer Use Cross-Repo Integration
+﻿# Computer Use Cross-Repo Integration
 ## Version 6.1.0 - Clinical-Grade Computer Use
 
-> **Author**: JARVIS AI System
+> **Author**: Ironcliw AI System
 > **Date**: December 25, 2025
 > **Status**: Production Ready ✅
 
@@ -9,14 +9,14 @@
 
 ## 🎯 Overview
 
-This document describes the **cross-repo Computer Use integration** that enables JARVIS, JARVIS Prime, and Reactor Core to share Computer Use capabilities, optimizations, and learning insights.
+This document describes the **cross-repo Computer Use integration** that enables Ironcliw, Ironcliw Prime, and Reactor Core to share Computer Use capabilities, optimizations, and learning insights.
 
 ### Key Features
 
 1. **Action Chaining Optimization** - 5x speedup via batch action processing
 2. **OmniParser Integration** - 60% faster UI parsing, 80% token reduction (optional)
 3. **Cross-Repo Event Sharing** - All repos can monitor and learn from Computer Use activity
-4. **Task Delegation** - JARVIS Prime can delegate Computer Use tasks to main JARVIS
+4. **Task Delegation** - Ironcliw Prime can delegate Computer Use tasks to main Ironcliw
 5. **Unified Metrics Tracking** - Aggregate optimization statistics across all repos
 
 ---
@@ -26,7 +26,7 @@ This document describes the **cross-repo Computer Use integration** that enables
 ### Communication Flow
 
 ```
-JARVIS (Execution)
+Ironcliw (Execution)
     ↓
     ├─ Action Chaining (batch processing)
     ├─ OmniParser (local UI parsing)
@@ -34,7 +34,7 @@ JARVIS (Execution)
         ↓
     ~/.jarvis/cross_repo/  (Shared State Directory)
         ↓
-        ├→ JARVIS Prime (Task Delegation)
+        ├→ Ironcliw Prime (Task Delegation)
         │   └─ Computer Use Delegate
         │       └─ Request → Wait → Receive Result
         │
@@ -49,17 +49,17 @@ All repos communicate via shared state files in `~/.jarvis/cross_repo/`:
 
 | File | Purpose | Updated By | Read By |
 |------|---------|------------|---------|
-| `computer_use_state.json` | Current Computer Use capabilities and stats | JARVIS | All repos |
-| `computer_use_events.json` | Action execution history (last 500 events) | JARVIS | Reactor Core, JARVIS Prime |
-| `computer_use_requests.json` | Task delegation requests | JARVIS Prime | JARVIS |
-| `computer_use_results.json` | Task delegation results | JARVIS | JARVIS Prime |
-| `omniparser_cache/` | Cached OmniParser UI parses | JARVIS | All repos |
+| `computer_use_state.json` | Current Computer Use capabilities and stats | Ironcliw | All repos |
+| `computer_use_events.json` | Action execution history (last 500 events) | Ironcliw | Reactor Core, Ironcliw Prime |
+| `computer_use_requests.json` | Task delegation requests | Ironcliw Prime | Ironcliw |
+| `computer_use_results.json` | Task delegation results | Ironcliw | Ironcliw Prime |
+| `omniparser_cache/` | Cached OmniParser UI parses | Ironcliw | All repos |
 
 ---
 
 ## 📦 Components by Repository
 
-### 1. JARVIS-AI-Agent (Execution Engine)
+### 1. Ironcliw-AI-Agent (Execution Engine)
 
 **Location**: `backend/core/computer_use_bridge.py`
 
@@ -68,7 +68,7 @@ All repos communicate via shared state files in `~/.jarvis/cross_repo/`:
 - Emit action/batch execution events
 - Track optimization metrics (time saved, tokens saved)
 - Provide OmniParser integration
-- Respond to delegation requests from JARVIS Prime
+- Respond to delegation requests from Ironcliw Prime
 
 **Key Classes**:
 - `ComputerUseBridge` - Main bridge coordinator
@@ -108,7 +108,7 @@ await self._computer_use_bridge.emit_batch_event(
 **Location**: `reactor_core/integration/computer_use_connector.py`
 
 **Responsibilities**:
-- Consume Computer Use events from JARVIS
+- Consume Computer Use events from Ironcliw
 - Analyze optimization patterns
 - Track aggregate metrics
 - Generate insights for training data
@@ -152,12 +152,12 @@ await connector.watch_for_events(handle_new_events, interval_seconds=5.0)
 
 ---
 
-### 3. JARVIS Prime (Task Delegation)
+### 3. Ironcliw Prime (Task Delegation)
 
 **Location**: `jarvis_prime/core/computer_use_delegate.py`
 
 **Responsibilities**:
-- Delegate Computer Use tasks to main JARVIS
+- Delegate Computer Use tasks to main Ironcliw
 - Request action chaining optimization
 - Request OmniParser usage
 - Wait for and receive task results
@@ -182,10 +182,10 @@ delegate = get_computer_use_delegate(
     enable_omniparser=True,
 )
 
-# Check if JARVIS is available
+# Check if Ironcliw is available
 available = await delegate.check_jarvis_availability()
 if not available:
-    print("JARVIS Computer Use not available")
+    print("Ironcliw Computer Use not available")
     return
 
 # Check capabilities
@@ -213,7 +213,7 @@ else:
 
 ## 🚀 Getting Started
 
-### Step 1: Enable Cross-Repo Bridge (JARVIS)
+### Step 1: Enable Cross-Repo Bridge (Ironcliw)
 
 The bridge is **enabled by default**, but you can configure it:
 
@@ -228,7 +228,7 @@ export OMNIPARSER_ENABLED=false  # Optional: Enable OmniParser (requires cloning
 For maximum optimization (60% faster, 80% token reduction):
 
 ```bash
-# Navigate to JARVIS vision_engine directory
+# Navigate to Ironcliw vision_engine directory
 cd backend/vision_engine/
 
 # Clone Microsoft OmniParser
@@ -241,19 +241,19 @@ pip install -r requirements.txt
 # Download model weights (follow OmniParser README)
 # ...
 
-# Enable in JARVIS
+# Enable in Ironcliw
 export OMNIPARSER_ENABLED=true
 
-# Restart JARVIS
+# Restart Ironcliw
 # The OmniParser engine will initialize automatically
 ```
 
 ### Step 3: Verify Integration
 
-Start JARVIS and check the logs:
+Start Ironcliw and check the logs:
 
 ```bash
-# Start JARVIS
+# Start Ironcliw
 python3 backend/main.py
 
 # Look for these log messages:
@@ -271,7 +271,7 @@ python3 backend/main.py
 Try a Computer Use task that benefits from batching:
 
 ```python
-# Via JARVIS API
+# Via Ironcliw API
 curl -X POST http://localhost:8000/api/computer-use/execute \
   -H "Content-Type: application/json" \
   -d '{
@@ -356,7 +356,7 @@ For a typical 4-action batch with OmniParser:
 
 ## 🔧 API Reference
 
-### JARVIS Computer Use Bridge
+### Ironcliw Computer Use Bridge
 
 ```python
 from backend.core.computer_use_bridge import get_computer_use_bridge, ExecutionStatus
@@ -427,7 +427,7 @@ omniparser_events = await connector.get_omniparser_events(
 metrics = await connector.get_optimization_metrics()
 ```
 
-### JARVIS Prime Computer Use Delegate
+### Ironcliw Prime Computer Use Delegate
 
 ```python
 from jarvis_prime.core.computer_use_delegate import (
@@ -494,10 +494,10 @@ print(f"Time saved: {metrics['total_time_saved_seconds']}s")
 print(f"Tokens saved: {metrics['total_tokens_saved']}")
 ```
 
-### Test 3: JARVIS Prime Delegation
+### Test 3: Ironcliw Prime Delegation
 
 ```python
-# In JARVIS Prime Python REPL
+# In Ironcliw Prime Python REPL
 from jarvis_prime.core.computer_use_delegate import delegate_computer_use_task
 
 result = await delegate_computer_use_task(
@@ -582,7 +582,7 @@ ls -la ~/.jarvis/cross_repo/
 # If missing, create it
 mkdir -p ~/.jarvis/cross_repo/
 
-# Restart JARVIS
+# Restart Ironcliw
 ```
 
 ### OmniParser Not Working
@@ -601,7 +601,7 @@ grep OMNIPARSER backend/logs/*.log
 ### Events Not Appearing in Reactor Core
 
 ```bash
-# Check if JARVIS is writing events
+# Check if Ironcliw is writing events
 cat ~/.jarvis/cross_repo/computer_use_events.json | jq length
 
 # Check file permissions
@@ -611,7 +611,7 @@ ls -la ~/.jarvis/cross_repo/computer_use_events.json
 cat ~/.jarvis/cross_repo/computer_use_state.json | jq .last_update
 ```
 
-### JARVIS Prime Delegation Timeout
+### Ironcliw Prime Delegation Timeout
 
 ```python
 # Increase timeout
@@ -620,9 +620,9 @@ result = await delegate.execute_task(
     timeout=120.0,  # 2 minutes
 )
 
-# Check if JARVIS is running
+# Check if Ironcliw is running
 available = await delegate.check_jarvis_availability()
-print(f"JARVIS available: {available}")
+print(f"Ironcliw available: {available}")
 
 # Check capabilities
 caps = await delegate.get_jarvis_capabilities()
@@ -679,10 +679,10 @@ metrics = await connector.get_optimization_metrics()
 
 ### 4. Use Delegation for Remote Computer Use
 
-If JARVIS Prime needs to control JARVIS's display:
+If Ironcliw Prime needs to control Ironcliw's display:
 
 ```python
-# From JARVIS Prime
+# From Ironcliw Prime
 from jarvis_prime.core.computer_use_delegate import delegate_computer_use_task
 
 result = await delegate_computer_use_task(
@@ -702,7 +702,7 @@ result = await delegate_computer_use_task(
 
 2. **Event Data**: Events may contain sensitive information (screenshots, coordinates). Review before sharing.
 
-3. **Delegation Requests**: JARVIS Prime requests are executed on JARVIS's display. Validate request sources.
+3. **Delegation Requests**: Ironcliw Prime requests are executed on Ironcliw's display. Validate request sources.
 
 4. **OmniParser Cache**: Contains UI parsing data. Clear periodically:
    ```bash
@@ -713,11 +713,11 @@ result = await delegate_computer_use_task(
 
 ## 📚 Related Documentation
 
-- [JARVIS v6.0.0 README](README.md) - Main JARVIS documentation
+- [Ironcliw v6.0.0 README](README.md) - Main Ironcliw documentation
 - [OmniParser Integration](backend/vision/omniparser_integration.py) - OmniParser framework
 - [Computer Use Bridge](backend/core/computer_use_bridge.py) - Cross-repo bridge
 - [Reactor Core Integration](../reactor-core/reactor_core/integration/) - Learning connectors
-- [JARVIS Prime Cross-Repo Bridge](../jarvis-prime/jarvis_prime/core/cross_repo_bridge.py) - Prime bridge
+- [Ironcliw Prime Cross-Repo Bridge](../jarvis-prime/jarvis_prime/core/cross_repo_bridge.py) - Prime bridge
 
 ---
 
@@ -725,11 +725,11 @@ result = await delegate_computer_use_task(
 
 | Component | Status | Version |
 |-----------|--------|---------|
-| JARVIS Computer Use Bridge | ✅ Production | v6.1.0 |
+| Ironcliw Computer Use Bridge | ✅ Production | v6.1.0 |
 | Action Chaining | ✅ Production | v6.1.0 |
 | OmniParser Integration | ⚠️ Framework Ready | v6.1.0 |
 | Reactor Core Connector | ✅ Production | v10.1.0 |
-| JARVIS Prime Delegate | ✅ Production | v3.1.0 |
+| Ironcliw Prime Delegate | ✅ Production | v3.1.0 |
 
 **Legend**:
 - ✅ Production: Fully implemented and tested
@@ -743,9 +743,9 @@ result = await delegate_computer_use_task(
 - ✨ Initial cross-repo Computer Use integration
 - ✨ Action Chaining optimization (5x speedup)
 - ✨ OmniParser integration framework
-- ✨ JARVIS Computer Use Bridge
+- ✨ Ironcliw Computer Use Bridge
 - ✨ Reactor Core Computer Use Connector
-- ✨ JARVIS Prime Computer Use Delegate
+- ✨ Ironcliw Prime Computer Use Delegate
 - 📊 Unified metrics tracking
 - 📚 Comprehensive documentation
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Text-to-Speech Engine
 Production-grade TTS with multiple provider support and automatic fallback
 
@@ -41,12 +41,12 @@ def _env_flag(name: str, default: str = "false") -> bool:
 
 def _canonical_voice_name() -> str:
     """Resolve canonical voice identity for deterministic TTS."""
-    if _env_flag("JARVIS_FORCE_DANIEL_VOICE", "true"):
+    if _env_flag("Ironcliw_FORCE_DANIEL_VOICE", "true"):
         return "Daniel"
-    canonical = os.getenv("JARVIS_CANONICAL_VOICE_NAME", "").strip()
+    canonical = os.getenv("Ironcliw_CANONICAL_VOICE_NAME", "").strip()
     if canonical:
         return canonical
-    env_voice = os.getenv("JARVIS_VOICE_NAME", "Daniel").strip()
+    env_voice = os.getenv("Ironcliw_VOICE_NAME", "Daniel").strip()
     return env_voice or "Daniel"
 
 
@@ -55,7 +55,7 @@ def _allow_pyttsx3_on_darwin() -> bool:
     pyttsx3 on macOS can load AppKit via PyObjC from worker threads, which is
     unsafe during async startup. Keep it opt-in for Darwin.
     """
-    return _env_flag("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", "false")
+    return _env_flag("Ironcliw_TTS_ALLOW_PYTTSX3_DARWIN", "false")
 
 # =============================================================================
 # SINGLETON ACCESSOR
@@ -509,11 +509,11 @@ class UnifiedTTSEngine:
         self._allow_pyttsx3 = (not self._is_macos) or _allow_pyttsx3_on_darwin()
 
         canonical_voice = _canonical_voice_name()
-        if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+        if _env_flag("Ironcliw_ENFORCE_CANONICAL_VOICE", "true"):
             self.config.voice = canonical_voice
         elif not self.config.voice:
             # Keep voice deterministic when not explicitly configured.
-            self.config.voice = os.getenv("JARVIS_VOICE_NAME", canonical_voice)
+            self.config.voice = os.getenv("Ironcliw_VOICE_NAME", canonical_voice)
 
         if (
             self.preferred_engine == TTSEngine.PYTTSX3
@@ -539,7 +539,7 @@ class UnifiedTTSEngine:
 
         # Feature flag for AudioBus routing
         self._audio_bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
 
         # Caching
@@ -555,29 +555,29 @@ class UnifiedTTSEngine:
         self._audio_output_cooldown_until = 0.0
         self._audio_output_cooldown_base_seconds = max(
             1.0,
-            float(os.getenv("JARVIS_TTS_AUDIO_COOLDOWN_BASE_SECONDS", "5.0")),
+            float(os.getenv("Ironcliw_TTS_AUDIO_COOLDOWN_BASE_SECONDS", "5.0")),
         )
         self._audio_output_cooldown_max_seconds = max(
             self._audio_output_cooldown_base_seconds,
-            float(os.getenv("JARVIS_TTS_AUDIO_COOLDOWN_MAX_SECONDS", "60.0")),
+            float(os.getenv("Ironcliw_TTS_AUDIO_COOLDOWN_MAX_SECONDS", "60.0")),
         )
         self._audio_output_last_cooldown_log_at = 0.0
         self._audio_output_cooldown_log_interval_seconds = max(
             1.0,
-            float(os.getenv("JARVIS_TTS_AUDIO_COOLDOWN_LOG_INTERVAL_SECONDS", "20.0")),
+            float(os.getenv("Ironcliw_TTS_AUDIO_COOLDOWN_LOG_INTERVAL_SECONDS", "20.0")),
         )
 
         # Screen-lock-aware playback suppression (macOS only)
         self._suppress_playback_when_locked = _env_flag(
-            "JARVIS_TTS_SUPPRESS_WHEN_SCREEN_LOCKED", "true"
+            "Ironcliw_TTS_SUPPRESS_WHEN_SCREEN_LOCKED", "true"
         )
         self._screen_lock_cache_seconds = max(
             0.25,
-            float(os.getenv("JARVIS_TTS_SCREEN_LOCK_CACHE_SECONDS", "1.5")),
+            float(os.getenv("Ironcliw_TTS_SCREEN_LOCK_CACHE_SECONDS", "1.5")),
         )
         self._screen_lock_check_timeout_seconds = max(
             0.2,
-            float(os.getenv("JARVIS_TTS_SCREEN_LOCK_CHECK_TIMEOUT_SECONDS", "1.0")),
+            float(os.getenv("Ironcliw_TTS_SCREEN_LOCK_CHECK_TIMEOUT_SECONDS", "1.0")),
         )
         self._screen_lock_last_checked_monotonic = 0.0
         self._screen_lock_last_state = False
@@ -640,7 +640,7 @@ class UnifiedTTSEngine:
         ):
             logger.info(
                 "[TTS] Skipping pyttsx3 engine on macOS "
-                "(set JARVIS_TTS_ALLOW_PYTTSX3_DARWIN=true to enable)"
+                "(set Ironcliw_TTS_ALLOW_PYTTSX3_DARWIN=true to enable)"
             )
             return None
 
@@ -814,7 +814,7 @@ class UnifiedTTSEngine:
         """
         Synthesize and optionally play speech.
 
-        Integrates with UnifiedSpeechStateManager to prevent JARVIS from
+        Integrates with UnifiedSpeechStateManager to prevent Ironcliw from
         hearing its own voice (self-voice suppression).
 
         Args:
@@ -1094,7 +1094,7 @@ class UnifiedTTSEngine:
     async def _notify_speech_start(
         self, text: str, source: Optional[str] = None
     ) -> None:
-        """Notify UnifiedSpeechStateManager that JARVIS started speaking."""
+        """Notify UnifiedSpeechStateManager that Ironcliw started speaking."""
         try:
             from backend.core.unified_speech_state import (
                 SpeechSource,
@@ -1119,7 +1119,7 @@ class UnifiedTTSEngine:
     async def _notify_speech_stop(
         self, duration_ms: Optional[float] = None
     ) -> None:
-        """Notify UnifiedSpeechStateManager that JARVIS stopped speaking."""
+        """Notify UnifiedSpeechStateManager that Ironcliw stopped speaking."""
         try:
             from backend.core.unified_speech_state import get_speech_state_manager
 
@@ -1139,7 +1139,7 @@ class UnifiedTTSEngine:
 
     def set_voice(self, voice: str):
         """Set voice for synthesis"""
-        if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+        if _env_flag("Ironcliw_ENFORCE_CANONICAL_VOICE", "true"):
             self.config.voice = _canonical_voice_name()
             return
         self.config.voice = voice
@@ -1188,7 +1188,7 @@ async def test_tts():
 
     # Test phrases
     phrases = [
-        "Hello! I am JARVIS, your voice assistant.",
+        "Hello! I am Ironcliw, your voice assistant.",
         "The weather today is sunny with a high of 75 degrees.",
         "Would you like me to read your messages?",
     ]

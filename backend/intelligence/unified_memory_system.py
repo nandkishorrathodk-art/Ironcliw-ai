@@ -1,5 +1,5 @@
-"""
-Unified Memory System for JARVIS - MemGPT-Inspired
+﻿"""
+Unified Memory System for Ironcliw - MemGPT-Inspired
 ===================================================
 
 Implements OS-level memory management for AI context, inspired by MemGPT.
@@ -14,9 +14,9 @@ Features:
 - Semantic search for relevant memories
 - Memory summarization for compression
 - Cross-session persistence via ChromaDB
-- Integration with existing JARVIS systems
+- Integration with existing Ironcliw systems
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -60,42 +60,42 @@ class MemorySystemConfig:
     """Configuration for the Unified Memory System."""
     # Core memory limits
     core_memory_char_limit: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CORE_MEMORY_LIMIT", 4000)
+        default_factory=lambda: get_env_int("Ironcliw_CORE_MEMORY_LIMIT", 4000)
     )
     core_memory_blocks: List[str] = field(
-        default_factory=lambda: get_env_str("JARVIS_CORE_MEMORY_BLOCKS", "persona,human,context").split(",")
+        default_factory=lambda: get_env_str("Ironcliw_CORE_MEMORY_BLOCKS", "persona,human,context").split(",")
     )
 
     # Working memory limits (context window management)
     working_memory_max_messages: int = field(
-        default_factory=lambda: get_env_int("JARVIS_WORKING_MEMORY_MESSAGES", 50)
+        default_factory=lambda: get_env_int("Ironcliw_WORKING_MEMORY_MESSAGES", 50)
     )
     working_memory_max_tokens: int = field(
-        default_factory=lambda: get_env_int("JARVIS_WORKING_MEMORY_TOKENS", 16000)
+        default_factory=lambda: get_env_int("Ironcliw_WORKING_MEMORY_TOKENS", 16000)
     )
 
     # Archival memory settings
     archival_memory_enabled: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_ARCHIVAL_MEMORY_ENABLED", True)
+        default_factory=lambda: get_env_bool("Ironcliw_ARCHIVAL_MEMORY_ENABLED", True)
     )
     archival_memory_dir: Path = field(
-        default_factory=lambda: _get_env_path("JARVIS_ARCHIVAL_MEMORY_DIR", "~/.jarvis/archival_memory")
+        default_factory=lambda: _get_env_path("Ironcliw_ARCHIVAL_MEMORY_DIR", "~/.jarvis/archival_memory")
     )
 
     # Paging settings
     page_out_threshold: float = field(
-        default_factory=lambda: get_env_float("JARVIS_MEMORY_PAGE_THRESHOLD", 0.85)
+        default_factory=lambda: get_env_float("Ironcliw_MEMORY_PAGE_THRESHOLD", 0.85)
     )
     summarize_on_page_out: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_SUMMARIZE_ON_PAGE", True)
+        default_factory=lambda: get_env_bool("Ironcliw_SUMMARIZE_ON_PAGE", True)
     )
 
     # ChromaDB integration
     chromadb_enabled: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_CHROMADB_ENABLED", True)
+        default_factory=lambda: get_env_bool("Ironcliw_CHROMADB_ENABLED", True)
     )
     chromadb_collection: str = field(
-        default_factory=lambda: get_env_str("JARVIS_CHROMADB_COLLECTION", "jarvis_archival_memory")
+        default_factory=lambda: get_env_str("Ironcliw_CHROMADB_COLLECTION", "jarvis_archival_memory")
     )
 
 
@@ -113,7 +113,7 @@ class MemoryType(str, Enum):
 
 class MemoryBlockType(str, Enum):
     """Types of core memory blocks."""
-    PERSONA = "persona"     # Who JARVIS is
+    PERSONA = "persona"     # Who Ironcliw is
     HUMAN = "human"         # Who the user is
     CONTEXT = "context"     # Current task context
     GOALS = "goals"         # Current goals
@@ -289,14 +289,14 @@ class CoreMemory:
         defaults = {
             "persona": MemoryBlock(
                 label="persona",
-                description="Information about JARVIS's personality, capabilities, and behavior",
-                value="I am JARVIS, an advanced AI assistant created to help Derek with software engineering, voice authentication, and autonomous task execution.",
+                description="Information about Ironcliw's personality, capabilities, and behavior",
+                value="I am Ironcliw, an advanced AI assistant created to help Derek with software engineering, voice authentication, and autonomous task execution.",
                 limit=self.config.core_memory_char_limit // 4,
             ),
             "human": MemoryBlock(
                 label="human",
                 description="Information about the human user",
-                value="Derek is a software engineer working on the JARVIS AI ecosystem.",
+                value="Derek is a software engineer working on the Ironcliw AI ecosystem.",
                 limit=self.config.core_memory_char_limit // 4,
             ),
             "context": MemoryBlock(

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Memory Fault Guard - SIGBUS/SIGSEGV Defense System
 ===================================================
 
@@ -37,7 +37,7 @@ Usage:
     guard = get_memory_fault_guard()
     guard.register_fault_callback(my_callback)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -76,22 +76,22 @@ class MemoryFaultConfig:
     
     # Emergency reserve size (released during recovery to allow cleanup)
     emergency_reserve_mb: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_EMERGENCY_RESERVE_MB", "50"))
+        default_factory=lambda: int(os.getenv("Ironcliw_EMERGENCY_RESERVE_MB", "50"))
     )
     
     # Minimum available memory before refusing new allocations
     min_available_mb: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIN_AVAILABLE_MB", "500"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIN_AVAILABLE_MB", "500"))
     )
     
     # VM region check threshold (percentage of total VM used)
     vm_region_threshold_percent: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VM_THRESHOLD_PERCENT", "85.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VM_THRESHOLD_PERCENT", "85.0"))
     )
     
     # Enable faulthandler for stack traces on crashes
     enable_faulthandler: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_ENABLE_FAULTHANDLER", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_ENABLE_FAULTHANDLER", "true").lower() == "true"
     )
     
     # Cross-repo signal file path
@@ -385,7 +385,7 @@ class MemoryFaultGuard:
         
         if recovery_success:
             logger.warning("⚠️ Memory fault recovery attempted - system may be unstable")
-            logger.warning("   Consider restarting with cloud offload (JARVIS_PREFER_CLOUD_RUN=true)")
+            logger.warning("   Consider restarting with cloud offload (Ironcliw_PREFER_CLOUD_RUN=true)")
             # Don't exit - let program try to continue
             self._is_recovering = False
             return

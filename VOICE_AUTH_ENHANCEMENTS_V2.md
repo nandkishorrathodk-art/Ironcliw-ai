@@ -1,4 +1,4 @@
-# JARVIS Voice Authentication Enhancements v2.0
+﻿# Ironcliw Voice Authentication Enhancements v2.0
 
 ## 🎯 What We Fixed and Enhanced
 
@@ -31,8 +31,8 @@ await self._registry.register(
 
 ---
 
-#### 2. JARVIS Prime Port Cleanup (PID 78912)
-**Issue:** Port 8002 stuck in use by PID 78912, preventing JARVIS Prime from starting
+#### 2. Ironcliw Prime Port Cleanup (PID 78912)
+**Issue:** Port 8002 stuck in use by PID 78912, preventing Ironcliw Prime from starting
 
 **Root Cause:** Zombie/defunct processes not being properly reaped, plus insufficient wait time for stubborn processes.
 
@@ -370,27 +370,27 @@ Configuration:
 
 ## 🔗 Cross-Repo Integration
 
-### JARVIS ↔ JARVIS Prime Integration
+### Ironcliw ↔ Ironcliw Prime Integration
 
 **File:** `backend/core/supervisor/jarvis_supervisor.py`
 
 ```python
 from voice_unlock.orchestration.voice_auth_enhancements import get_voice_auth_enhancements
 
-class JARVISSupervisor:
+class IroncliwSupervisor:
     async def _initialize_voice_auth(self):
         """Initialize enhanced voice authentication."""
-        # Get enhancements (shared across JARVIS and JARVIS Prime)
+        # Get enhancements (shared across Ironcliw and Ironcliw Prime)
         self.voice_enhancements = await get_voice_auth_enhancements()
 
-        # Share with JARVIS Prime via RPC or shared state
+        # Share with Ironcliw Prime via RPC or shared state
         if self.jarvis_prime_client:
             await self.jarvis_prime_client.set_voice_enhancements(
                 self.voice_enhancements
             )
 ```
 
-### JARVIS ↔ Reactor Core Integration
+### Ironcliw ↔ Reactor Core Integration
 
 **File:** `backend/neural_mesh/neural_mesh_coordinator.py`
 
@@ -421,7 +421,7 @@ Share voice patterns and audit logs via Neural Mesh messaging:
 ```python
 # In Reactor Core
 async def sync_voice_patterns_to_jarvis(self):
-    """Sync learned voice patterns back to JARVIS."""
+    """Sync learned voice patterns back to Ironcliw."""
     patterns = await self.get_recent_voice_patterns(limit=10)
 
     await neural_mesh.send_message(
@@ -525,11 +525,11 @@ export VOICE_AUTH_CACHE_MAX=200
 
 ### Immediate (This Week):
 1. ✅ Fix Neural Mesh registration (**DONE**)
-2. ✅ Fix JARVIS Prime port cleanup (**DONE**)
+2. ✅ Fix Ironcliw Prime port cleanup (**DONE**)
 3. ✅ Fix CloudSQL throttling (**DONE**)
 4. ✅ Create voice auth enhancements module (**DONE**)
 5. ⏳ Integrate enhancements with existing orchestrator (**IN PROGRESS**)
-6. ⏳ Test across JARVIS, JARVIS Prime, Reactor Core
+6. ⏳ Test across Ironcliw, Ironcliw Prime, Reactor Core
 
 ### Short-Term (Next 2 Weeks):
 1. Add remote authentication support (multi-device)

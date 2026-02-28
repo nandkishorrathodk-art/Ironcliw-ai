@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Both Unlock Modes
 ======================
 
-Tests that JARVIS can handle both:
+Tests that Ironcliw can handle both:
 1. Manual "unlock my screen" command
 2. Context-aware unlock when screen is locked
 """
@@ -46,7 +46,7 @@ async def test_manual_unlock():
                         continue
                         
                     if data.get('text'):
-                        print(f"JARVIS: {data['text']}")
+                        print(f"Ironcliw: {data['text']}")
                         responses.append(data)
                         
                     # Don't break on intermediate responses
@@ -101,7 +101,7 @@ async def test_context_aware_unlock():
                         continue
                         
                     if data.get('text'):
-                        print(f"JARVIS: {data['text']}")
+                        print(f"Ironcliw: {data['text']}")
                         responses.append(data)
                         
                         # Check for context-aware message
@@ -130,7 +130,7 @@ async def main():
     """Run both tests"""
     print("🧪 Testing Both Unlock Modes")
     print("="*60)
-    print("This test verifies JARVIS can handle:")
+    print("This test verifies Ironcliw can handle:")
     print("1. Direct 'unlock my screen' commands")
     print("2. Context-aware unlock when needed")
     

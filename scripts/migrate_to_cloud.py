@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Database Migration Script
+Ironcliw Database Migration Script
 Migrates local SQLite databases to GCP Cloud SQL (PostgreSQL)
 """
 import asyncio
@@ -47,7 +47,7 @@ class DatabaseMigrator:
     async def migrate(self):
         """Run full migration"""
         print("=" * 80)
-        print("🚀 JARVIS Database Migration: Local SQLite → Cloud SQL")
+        print("🚀 Ironcliw Database Migration: Local SQLite → Cloud SQL")
         print("=" * 80)
         print()
 
@@ -119,8 +119,8 @@ class DatabaseMigrator:
             print("=" * 80)
             print()
             print("📊 Next steps:")
-            print("1. Set environment variable: export JARVIS_DB_TYPE=cloudsql")
-            print("2. Start JARVIS and verify it connects to Cloud SQL")
+            print("1. Set environment variable: export Ironcliw_DB_TYPE=cloudsql")
+            print("2. Start Ironcliw and verify it connects to Cloud SQL")
             print("3. Check data: psql -h <ip> -U jarvis -d jarvis_learning")
             print()
 

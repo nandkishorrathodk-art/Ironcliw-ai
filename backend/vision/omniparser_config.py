@@ -1,8 +1,8 @@
-"""
+﻿"""
 OmniParser Unified Configuration System
 ========================================
 
-Centralized configuration for OmniParser across JARVIS, JARVIS Prime, and Reactor Core.
+Centralized configuration for OmniParser across Ironcliw, Ironcliw Prime, and Reactor Core.
 
 Features:
 - Single source of truth for OmniParser settings
@@ -11,7 +11,7 @@ Features:
 - Environment variable overrides
 - Intelligent defaults
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.2.0
 """
 

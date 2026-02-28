@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the integrated proactive vision system in ClaudeVisionAnalyzer
 """
@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Add backend to path
-sys.path.append('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.append('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 # Configure logging
 logging.basicConfig(

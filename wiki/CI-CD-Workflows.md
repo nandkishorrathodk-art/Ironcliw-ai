@@ -1,12 +1,12 @@
-# CI/CD Workflows
+﻿# CI/CD Workflows
 
-Complete GitHub Actions automation documentation for JARVIS AI Agent.
+Complete GitHub Actions automation documentation for Ironcliw AI Agent.
 
 ---
 
 ## Overview
 
-JARVIS features **20+ GitHub Actions workflows** providing comprehensive CI/CD automation including testing, deployment, security scanning, and code quality enforcement.
+Ironcliw features **20+ GitHub Actions workflows** providing comprehensive CI/CD automation including testing, deployment, security scanning, and code quality enforcement.
 
 **Time Savings:** ~20-28 hours/month across all workflows
 
@@ -364,7 +364,7 @@ gh workflow run deployment.yml \
 
 **Full Documentation:**
 - [.github/workflows/README.md](../.github/workflows/README.md) - Complete workflow guide
-- [GitHub Actions](https://github.com/derekjrussell/JARVIS-AI-Agent/actions) - View runs
+- [GitHub Actions](https://github.com/derekjrussell/Ironcliw-AI-Agent/actions) - View runs
 
 ---
 

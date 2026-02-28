@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Goal Inference + Autonomous Decision Engine + UAE Integration
 ==============================================================
@@ -610,7 +610,7 @@ async def test_integration():
         'content': {
             'type': 'code',
             'language': 'python',
-            'project': 'JARVIS',
+            'project': 'Ironcliw',
             'focused_task': 'Implementing display connection automation'
         },
         'workspace_state': MockWorkspaceState(),

@@ -1,4 +1,4 @@
-//! High-performance Quadtree spatial operations for JARVIS Vision
+﻿//! High-performance Quadtree spatial operations for Ironcliw Vision
 //! Optimized with SIMD for fast region processing
 
 use super::{ImageData, CaptureRegion};

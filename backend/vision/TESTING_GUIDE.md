@@ -1,4 +1,4 @@
-# Claude Vision Analyzer Testing Guide
+﻿# Claude Vision Analyzer Testing Guide
 
 ## Overview
 
@@ -165,7 +165,7 @@ async def emergency_cleanup():
     analyzer.config.max_concurrent_requests = 5
 ```
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
 ### Recommended Setup
 1. **Initialize with safety**:
@@ -184,7 +184,7 @@ async def emergency_cleanup():
 
 2. **Health checks**:
    ```python
-   # In JARVIS startup
+   # In Ironcliw startup
    health = await analyzer.check_memory_health()
    if not health['healthy']:
        logger.error("Vision analyzer not healthy at startup")

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Proactive Monitoring Handler for JARVIS
+Proactive Monitoring Handler for Ironcliw
 Enables real-time monitoring and reporting of workspace changes
 """
 
@@ -216,7 +216,7 @@ The purple indicator confirms I'm actively watching. What specific changes are m
         return changes
 
     async def _report_changes(self, changes: List[Dict[str, Any]]):
-        """Report changes through JARVIS voice"""
+        """Report changes through Ironcliw voice"""
         for change in changes:
             message = self._format_change_message(change)
             if message and self.vision_handler.jarvis_api:

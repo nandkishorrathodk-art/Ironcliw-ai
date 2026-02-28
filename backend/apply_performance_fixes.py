@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Apply Performance Fixes for JARVIS
+Apply Performance Fixes for Ironcliw
 Fixes the high CPU usage issue and optimizes memory usage
 """
 
@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 
 async def apply_performance_fixes():
     """Apply all performance optimizations"""
-    logger.info("🚀 JARVIS Performance Optimization Script")
+    logger.info("🚀 Ironcliw Performance Optimization Script")
     logger.info("=" * 60)
     
     # Step 1: Kill any existing high-CPU processes
-    logger.info("🛑 Step 1: Stopping existing JARVIS processes...")
+    logger.info("🛑 Step 1: Stopping existing Ironcliw processes...")
     try:
         subprocess.run(["pkill", "-f", "smart_startup_manager"], check=False)
         subprocess.run(["pkill", "-f", "jarvis"], check=False)
@@ -69,8 +69,8 @@ async def apply_performance_fixes():
         except FileNotFoundError:
             logger.warning("⚠️ Cargo not found - install Rust from https://rustup.rs/")
     
-    # Step 4: Start optimized JARVIS
-    logger.info("\n🎯 Step 4: Starting optimized JARVIS...")
+    # Step 4: Start optimized Ironcliw
+    logger.info("\n🎯 Step 4: Starting optimized Ironcliw...")
     
     # Import the optimized startup manager
     from smart_startup_manager import smart_startup
@@ -86,7 +86,7 @@ async def apply_performance_fixes():
 def print_summary():
     """Print optimization summary"""
     print("\n" + "=" * 60)
-    print("🎉 JARVIS Performance Optimizations Applied!")
+    print("🎉 Ironcliw Performance Optimizations Applied!")
     print("=" * 60)
     print("\n✅ Key improvements:")
     print("  • CPU usage reduced from 87.4% → <25%")

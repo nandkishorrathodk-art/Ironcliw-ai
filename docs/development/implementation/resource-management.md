@@ -1,14 +1,14 @@
-# JARVIS Resource Management System
+﻿# Ironcliw Resource Management System
 
 ## 🎯 Overview
 
-The Resource Management System ensures JARVIS runs efficiently on 16GB MacBook systems by enforcing strict memory and CPU limits. The system targets **70% maximum memory usage** (11.2GB on 16GB systems), leaving 4.8GB free for other applications.
+The Resource Management System ensures Ironcliw runs efficiently on 16GB MacBook systems by enforcing strict memory and CPU limits. The system targets **70% maximum memory usage** (11.2GB on 16GB systems), leaving 4.8GB free for other applications.
 
 ## 🔑 Key Features
 
 ### 1. **Strict Memory Control**
 - **Target**: Keep total system memory ≤ 70%
-- **JARVIS Limit**: 2GB maximum for all JARVIS processes
+- **Ironcliw Limit**: 2GB maximum for all Ironcliw processes
 - **ML Model Limit**: 400MB for machine learning models
 - **One Model Rule**: Only ONE ML model loaded at a time
 
@@ -24,7 +24,7 @@ The Resource Management System ensures JARVIS runs efficiently on 16GB MacBook s
 
 ### 4. **Emergency Measures**
 - At 85% memory: Force unload all models
-- At 90% memory: Recommend JARVIS restart
+- At 90% memory: Recommend Ironcliw restart
 - Automatic garbage collection
 
 ## 📊 Memory Budget (16GB System)
@@ -32,7 +32,7 @@ The Resource Management System ensures JARVIS runs efficiently on 16GB MacBook s
 | Component | Memory | Purpose |
 |-----------|--------|---------|
 | System (70%) | 11.2GB | Total allowed |
-| JARVIS Core | 2.0GB | Main processes |
+| Ironcliw Core | 2.0GB | Main processes |
 | ML Models | 400MB | One model at a time |
 | Voice Cache | 150MB | Audio processing |
 | Other Services | 450MB | Vision, cleanup, etc |
@@ -61,7 +61,7 @@ The Resource Management System ensures JARVIS runs efficiently on 16GB MacBook s
 
 ## 🛠️ Integration
 
-The resource manager is automatically activated when JARVIS starts:
+The resource manager is automatically activated when Ironcliw starts:
 
 ```python
 # In backend/__init__.py
@@ -88,7 +88,7 @@ print(f"Throttle: {status['resources']['throttle_level']}")
 ### High Memory Usage
 - Resource manager will automatically unload models
 - Check which services are active
-- Consider restarting JARVIS if >90%
+- Consider restarting Ironcliw if >90%
 
 ### ML Model Denied
 - System memory is above 65%
@@ -114,7 +114,7 @@ Default limits in `resource_manager.py`:
 
 ```python
 MAX_MEMORY_PERCENT = 70.0    # System target
-MAX_JARVIS_MEMORY_MB = 2048  # 2GB for JARVIS
+MAX_Ironcliw_MEMORY_MB = 2048  # 2GB for Ironcliw
 MAX_ML_MEMORY_MB = 400       # 400MB for ML
 MAX_CPU_PERCENT = 50.0       # CPU throttle threshold
 ```
@@ -122,12 +122,12 @@ MAX_CPU_PERCENT = 50.0       # CPU throttle threshold
 ## 📝 Example Output
 
 ```
-🤖 JARVIS Resource Manager Active
+🤖 Ironcliw Resource Manager Active
   Memory: 68.5% (within target ✅)
   CPU: 35.2%
   Throttle: Level 0 (none)
   ML Model: voice_auth_1
-  JARVIS Memory: 856MB
+  Ironcliw Memory: 856MB
 
 ⚠️ Memory pressure detected at 75.2%
   → Unloading model: voice_auth_1
@@ -137,11 +137,11 @@ MAX_CPU_PERCENT = 50.0       # CPU throttle threshold
 
 ## 🎯 Goal Achievement
 
-With this system, JARVIS on your 16GB MacBook will:
+With this system, Ironcliw on your 16GB MacBook will:
 - ✅ Stay under 70% memory usage
 - ✅ Load only one ML model at a time
 - ✅ Throttle operations during high CPU
 - ✅ Predict and optimize model loading
 - ✅ Prevent system crashes from memory exhaustion
 
-The resource manager ensures JARVIS is a good citizen on your system, using resources efficiently while maintaining performance!
+The resource manager ensures Ironcliw is a good citizen on your system, using resources efficiently while maintaining performance!

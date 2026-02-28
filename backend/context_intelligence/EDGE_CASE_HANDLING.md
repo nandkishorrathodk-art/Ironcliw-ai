@@ -1,4 +1,4 @@
-# Edge Case Handling System - Complete Documentation
+﻿# Edge Case Handling System - Complete Documentation
 
 **Version:** 1.3
 **Last Updated:** 2025-10-19
@@ -25,7 +25,7 @@
 
 ## Overview
 
-The Edge Case Handling System provides comprehensive, robust handling for all macOS space, window capture, system state, and API/network edge cases. It ensures JARVIS can gracefully handle failures, provide helpful error messages, and automatically retry or fallback when needed.
+The Edge Case Handling System provides comprehensive, robust handling for all macOS space, window capture, system state, and API/network edge cases. It ensures Ironcliw can gracefully handle failures, provide helpful error messages, and automatically retry or fallback when needed.
 
 ### Key Features
 
@@ -73,7 +73,7 @@ Handles all space-related validation and edge cases before operations.
 
 ### Supported Edge Cases
 
-| Edge Case | Detection | JARVIS Response |
+| Edge Case | Detection | Ironcliw Response |
 |-----------|-----------|-----------------|
 | **Space doesn't exist** | `yabai -m query --spaces` returns no match | `"Space 10 doesn't exist. You have 6 spaces."` |
 | **Empty space** | No windows in space | `"Space 3 is empty (no windows)."` |
@@ -2745,7 +2745,7 @@ class NetworkState(Enum):
 1. Open System Settings
 2. Go to Privacy & Security > Screen Recording
 3. Enable screen recording for Python/Terminal/your app
-4. Restart JARVIS
+4. Restart Ironcliw
 
 **Check permissions:**
 ```python

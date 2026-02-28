@@ -1,11 +1,11 @@
-"""
+﻿"""
 Neural Mesh Resilience Integration v1.0
 =======================================
 
 Bridges the Unified Resilience Engine with the Neural Mesh for cross-repo
 fault tolerance. Ensures reliable communication between:
-- JARVIS (Body)
-- JARVIS Prime (Mind)
+- Ironcliw (Body)
+- Ironcliw Prime (Mind)
 - Reactor Core (Learning)
 
 Features:
@@ -37,7 +37,7 @@ Architecture:
     │                                                                          │
     │                      CROSS-REPO COMMUNICATION                            │
     │    ┌───────────┐        ┌───────────┐        ┌───────────┐             │
-    │    │  JARVIS   │◀══════▶│  JARVIS   │◀══════▶│  REACTOR  │             │
+    │    │  Ironcliw   │◀══════▶│  Ironcliw   │◀══════▶│  REACTOR  │             │
     │    │  (Body)   │  WS/   │  PRIME    │  HTTP/ │  CORE     │             │
     │    │  Port 8010│  HTTP  │  Port 8000│  File  │  Port 8020│             │
     │    └───────────┘        └───────────┘        └───────────┘             │
@@ -102,7 +102,7 @@ class MeshResilienceConfig:
 
     @staticmethod
     def get_bulkhead_pool_jarvis() -> str:
-        return os.getenv("MESH_BULKHEAD_JARVIS", "jarvis_mesh")
+        return os.getenv("MESH_BULKHEAD_Ironcliw", "jarvis_mesh")
 
     @staticmethod
     def get_bulkhead_pool_prime() -> str:
@@ -135,7 +135,7 @@ class MeshResilienceConfig:
 
 class MeshTarget(str, Enum):
     """Target nodes in the neural mesh."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     PRIME = "prime"
     REACTOR = "reactor"
     BROADCAST = "broadcast"
@@ -321,7 +321,7 @@ class NeuralMeshResilienceBridge:
     def _get_bulkhead_pool(self, target: MeshTarget) -> str:
         """Get the bulkhead pool name for a target."""
         pools = {
-            MeshTarget.JARVIS: MeshResilienceConfig.get_bulkhead_pool_jarvis(),
+            MeshTarget.Ironcliw: MeshResilienceConfig.get_bulkhead_pool_jarvis(),
             MeshTarget.PRIME: MeshResilienceConfig.get_bulkhead_pool_prime(),
             MeshTarget.REACTOR: MeshResilienceConfig.get_bulkhead_pool_reactor(),
         }
@@ -362,7 +362,7 @@ class NeuralMeshResilienceBridge:
         5. DLQ on final failure
 
         Args:
-            target: Target node (JARVIS, PRIME, REACTOR)
+            target: Target node (Ironcliw, PRIME, REACTOR)
             operation: Type of operation
             func: Async function to call
             *args: Function arguments
@@ -536,7 +536,7 @@ class NeuralMeshResilienceBridge:
         operation: MeshOperation = MeshOperation.REQUEST,
         timeout: Optional[float] = None,
     ) -> MeshCallResult:
-        """Send a resilient request to JARVIS Prime."""
+        """Send a resilient request to Ironcliw Prime."""
         if not self._neural_mesh:
             return MeshCallResult(
                 success=False,
@@ -609,7 +609,7 @@ class NeuralMeshResilienceBridge:
         goal: str,
         context: Optional[str] = None,
     ) -> MeshCallResult:
-        """Request code improvement from JARVIS Prime with full resilience."""
+        """Request code improvement from Ironcliw Prime with full resilience."""
         payload = {
             "target_file": target_file,
             "goal": goal,
@@ -651,7 +651,7 @@ class NeuralMeshResilienceBridge:
         snapshot = MeshHealthSnapshot()
 
         # Get circuit breaker states
-        for target in [MeshTarget.JARVIS, MeshTarget.PRIME, MeshTarget.REACTOR]:
+        for target in [MeshTarget.Ironcliw, MeshTarget.PRIME, MeshTarget.REACTOR]:
             tier = target.value
             health = self._circuit_breaker.get_tier_health(tier)
 
@@ -667,7 +667,7 @@ class NeuralMeshResilienceBridge:
             else:
                 service_health = ServiceHealth.UNHEALTHY
 
-            if target == MeshTarget.JARVIS:
+            if target == MeshTarget.Ironcliw:
                 snapshot.jarvis_health = service_health
             elif target == MeshTarget.PRIME:
                 snapshot.prime_health = service_health

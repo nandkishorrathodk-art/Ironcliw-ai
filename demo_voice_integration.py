@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Voice Integration Demo for JARVIS
+Voice Integration Demo for Ironcliw
 Demonstrates the comprehensive voice capabilities
 """
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceIntegrationDemo:
-    """Demonstration of JARVIS Voice Integration capabilities"""
+    """Demonstration of Ironcliw Voice Integration capabilities"""
     
     def __init__(self):
         self.voice_system = None
@@ -31,7 +31,7 @@ class VoiceIntegrationDemo:
     async def run_demo(self):
         """Run the complete voice integration demonstration"""
         print("\n" + "="*80)
-        print("🎯 JARVIS Voice Integration System - Comprehensive Demo")
+        print("🎯 Ironcliw Voice Integration System - Comprehensive Demo")
         print("="*80)
         
         try:
@@ -69,7 +69,7 @@ class VoiceIntegrationDemo:
             
     async def _initialize_system(self):
         """Initialize the voice integration system"""
-        print("\n🚀 Initializing JARVIS Voice Integration System...")
+        print("\n🚀 Initializing Ironcliw Voice Integration System...")
         
         # Check for API key
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -172,7 +172,7 @@ class VoiceIntegrationDemo:
                 confidence=cmd["confidence"]
             )
             
-            print(f"      JARVIS: \"{response}\"")
+            print(f"      Ironcliw: \"{response}\"")
             print()
             await asyncio.sleep(2)
             
@@ -301,7 +301,7 @@ class VoiceIntegrationDemo:
             {
                 "scenario": "Early morning (low energy)",
                 "commands": [
-                    "Good morning JARVIS",
+                    "Good morning Ironcliw",
                     "How should I start my day?"
                 ],
                 "context_description": "User just started their day"
@@ -336,7 +336,7 @@ class VoiceIntegrationDemo:
                     confidence=0.9
                 )
                 
-                print(f"      JARVIS: \"{response}\"")
+                print(f"      Ironcliw: \"{response}\"")
                 await asyncio.sleep(2)
                 
             print()

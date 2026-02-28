@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the new POST audio endpoint with base64
 """
@@ -10,7 +10,7 @@ from io import BytesIO
 
 # Test the POST endpoint
 url = "http://localhost:8000/audio/speak"
-data = {"text": "Hello, this is JARVIS speaking with improved audio."}
+data = {"text": "Hello, this is Ironcliw speaking with improved audio."}
 
 print(f"Testing POST audio endpoint: {url}")
 

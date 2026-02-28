@@ -1,8 +1,8 @@
-"""
+﻿"""
 Supervisor Resilience Integration v1.0
 ======================================
 
-Integrates the Unified Resilience Engine with the JARVIS Supervisor.
+Integrates the Unified Resilience Engine with the Ironcliw Supervisor.
 This module is the single entry point for initializing all resilience
 components when running `python3 run_supervisor.py`.
 
@@ -27,7 +27,7 @@ Architecture:
     │   ┌─────────────────────────────────────────────────────────────┐       │
     │   │                    TRINITY ECOSYSTEM                          │       │
     │   │  ┌───────────┐    ┌───────────┐    ┌───────────┐            │       │
-    │   │  │  JARVIS   │◀══▶│  JARVIS   │◀══▶│  REACTOR  │            │       │
+    │   │  │  Ironcliw   │◀══▶│  Ironcliw   │◀══▶│  REACTOR  │            │       │
     │   │  │  (Body)   │    │  PRIME    │    │  CORE     │            │       │
     │   │  └───────────┘    └───────────┘    └───────────┘            │       │
     │   └─────────────────────────────────────────────────────────────┘       │
@@ -98,12 +98,12 @@ class SupervisorResilienceConfig:
 
     @staticmethod
     def is_resilience_enabled() -> bool:
-        return os.getenv("JARVIS_RESILIENCE_ENABLED", "true").lower() == "true"
+        return os.getenv("Ironcliw_RESILIENCE_ENABLED", "true").lower() == "true"
 
     @staticmethod
     def is_chaos_allowed() -> bool:
         """Chaos engineering should only be enabled in non-production environments."""
-        env = os.getenv("JARVIS_ENVIRONMENT", "development")
+        env = os.getenv("Ironcliw_ENVIRONMENT", "development")
         explicitly_enabled = os.getenv("RESILIENCE_CHAOS_ENABLED", "false").lower() == "true"
         return env != "production" or explicitly_enabled
 
@@ -169,10 +169,10 @@ class ResilienceHealthReport:
 
 class SupervisorResilienceCoordinator:
     """
-    Coordinates all resilience components for the JARVIS Supervisor.
+    Coordinates all resilience components for the Ironcliw Supervisor.
 
     This is the main entry point for initializing and managing resilience
-    across the entire JARVIS ecosystem.
+    across the entire Ironcliw ecosystem.
     """
 
     _instance: Optional["SupervisorResilienceCoordinator"] = None
@@ -227,7 +227,7 @@ class SupervisorResilienceCoordinator:
 
         # Check if resilience is enabled
         if not SupervisorResilienceConfig.is_resilience_enabled():
-            result.warnings.append("Resilience is disabled via JARVIS_RESILIENCE_ENABLED=false")
+            result.warnings.append("Resilience is disabled via Ironcliw_RESILIENCE_ENABLED=false")
             result.success = True
             self.logger.warning("Resilience is DISABLED - skipping initialization")
             return result

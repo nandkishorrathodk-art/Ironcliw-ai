@@ -1,7 +1,7 @@
-"""
+﻿"""
 System State Monitor - Tracks system-wide state for context-aware operations
 
-This module provides system state monitoring capabilities for JARVIS,
+This module provides system state monitoring capabilities for Ironcliw,
 enabling context-aware decision making based on current system conditions.
 """
 

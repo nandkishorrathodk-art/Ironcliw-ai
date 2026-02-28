@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for the advanced JARVIS launcher
+Test script for the advanced Ironcliw launcher
 """
 
 import asyncio
@@ -16,7 +16,7 @@ if backend_path.exists():
 async def test_advanced_features():
     """Test the advanced launcher features"""
     
-    print("🧪 Testing Advanced JARVIS Launcher Features\n")
+    print("🧪 Testing Advanced Ironcliw Launcher Features\n")
     
     # Test 1: Check if advanced launcher exists
     adv_launcher = Path("start_system_advanced.py")
@@ -28,8 +28,8 @@ async def test_advanced_features():
         
     # Test 2: Import and check features
     try:
-        from start_system_advanced import AdvancedJARVISManager
-        manager = AdvancedJARVISManager()
+        from start_system_advanced import AdvancedIroncliwManager
+        manager = AdvancedIroncliwManager()
         
         print("\n📋 Advanced Features Available:")
         print(f"  • System diagnostics: ✓")
@@ -77,7 +77,7 @@ async def test_advanced_features():
 def main():
     """Main entry point"""
     print("=" * 60)
-    print("JARVIS Advanced Launcher Test Suite")
+    print("Ironcliw Advanced Launcher Test Suite")
     print("=" * 60)
     
     # Check Python version

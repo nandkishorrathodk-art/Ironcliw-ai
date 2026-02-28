@@ -1,4 +1,4 @@
-"""
+﻿"""
 Async Safety Utilities v100.0
 ==============================
 
@@ -36,7 +36,7 @@ Architecture:
     │                    └─────────────────┘                          │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -1916,20 +1916,20 @@ _cancel_logger = logging.getLogger(f"{__name__}.CancellationToken")
 
 # Environment-driven configuration for cancellation tokens
 _CANCEL_TOKEN_IPC_PATH: Final[str] = os.getenv(
-    "JARVIS_CANCEL_TOKEN_PATH",
+    "Ironcliw_CANCEL_TOKEN_PATH",
     os.path.expanduser("~/.jarvis/trinity/cancel_token.json"),
 )
 _CANCEL_TOKEN_IPC_CHECK_INTERVAL: Final[float] = _env_float(
-    "JARVIS_CANCEL_IPC_CHECK_INTERVAL", 1.0
+    "Ironcliw_CANCEL_IPC_CHECK_INTERVAL", 1.0
 )
 _CANCEL_TOKEN_IPC_STALE_SECONDS: Final[float] = _env_float(
-    "JARVIS_CANCEL_IPC_STALE_SECONDS", 300.0
+    "Ironcliw_CANCEL_IPC_STALE_SECONDS", 300.0
 )
 _CANCEL_TOKEN_CALLBACK_TIMEOUT: Final[float] = _env_float(
-    "JARVIS_CANCEL_CALLBACK_TIMEOUT", 5.0
+    "Ironcliw_CANCEL_CALLBACK_TIMEOUT", 5.0
 )
 _CANCEL_TOKEN_MAX_CHILDREN: Final[int] = _env_int(
-    "JARVIS_CANCEL_MAX_CHILDREN", 1000
+    "Ironcliw_CANCEL_MAX_CHILDREN", 1000
 )
 
 
@@ -2003,7 +2003,7 @@ class CancellationToken:
             reason: Human-readable reason (set on cancel, or pre-set here).
             timeout: Auto-cancel after this many seconds. ``None`` = no timeout.
             ipc_path: Override the IPC file path for cross-process propagation.
-                      Defaults to ``JARVIS_CANCEL_TOKEN_PATH`` env var.
+                      Defaults to ``Ironcliw_CANCEL_TOKEN_PATH`` env var.
             propagate_ipc: If ``True``, cancelling this token writes the IPC file.
         """
         self._id: str = uuid.uuid4().hex[:12]
@@ -2648,7 +2648,7 @@ def check_ipc_cancellation() -> bool:
 
     Reads the IPC cancel file at the configured path. Returns ``True`` if
     the file exists, contains ``"cancelled": true``, and is not stale
-    (i.e., written within ``JARVIS_CANCEL_IPC_STALE_SECONDS``).
+    (i.e., written within ``Ironcliw_CANCEL_IPC_STALE_SECONDS``).
 
     This function never raises; on any I/O error it returns ``False``.
 

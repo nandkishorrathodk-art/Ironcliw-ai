@@ -1,4 +1,4 @@
-# PAVA & VIBA Integration Analysis: Understanding the 0% Confidence Issue
+﻿# PAVA & VIBA Integration Analysis: Understanding the 0% Confidence Issue
 
 ## Executive Summary
 
@@ -263,7 +263,7 @@ print(status)  # Shows which source failed and why
 **Fix:**
 - Download ECAPA model: `python -m speechbrain.pretrained download ECAPA-TDNN`
 - Check memory: Ensure >2GB free RAM
-- Enable cloud fallback: `JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED=true`
+- Enable cloud fallback: `Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED=true`
 
 ### Scenario 2: Voice Profile Missing
 

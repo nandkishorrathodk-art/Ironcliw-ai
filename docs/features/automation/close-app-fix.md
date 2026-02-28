@@ -1,7 +1,7 @@
-# Fix for "Close WhatsApp" Command
+﻿# Fix for "Close WhatsApp" Command
 
 ## Problem
-JARVIS was detecting "close whatsapp" as a vision/analysis command instead of an action command, causing it to describe what was on screen rather than actually closing the app.
+Ironcliw was detecting "close whatsapp" as a vision/analysis command instead of an action command, causing it to describe what was on screen rather than actually closing the app.
 
 ## Solution
 Fixed the command routing logic in `jarvis_agent_voice.py` to:

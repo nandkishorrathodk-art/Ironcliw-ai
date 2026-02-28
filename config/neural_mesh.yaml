@@ -1,8 +1,8 @@
-# JARVIS Neural Mesh Configuration
+﻿# Ironcliw Neural Mesh Configuration
 # Version 2.0.0
 #
 # This file configures the Neural Mesh multi-agent intelligence framework.
-# All paths are relative to JARVIS_HOME (~/.jarvis by default).
+# All paths are relative to Ironcliw_HOME (~/.jarvis by default).
 
 # Global settings
 data_directory: ""  # Empty = ~/.jarvis/neural_mesh

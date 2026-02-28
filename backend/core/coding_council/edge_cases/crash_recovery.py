@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Crash Recovery - Gap #38
 ================================
 
@@ -9,7 +9,7 @@ Crash recovery and state checkpointing:
 - Automatic state restoration
 - Integrity verification
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

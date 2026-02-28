@@ -1,4 +1,4 @@
-# Display Voice Command Integration - Scenario 1 Complete ✅
+﻿# Display Voice Command Integration - Scenario 1 Complete ✅
 
 ## Summary
 
@@ -174,7 +174,7 @@ All requirements met:
 
 **User**: "Living Room TV"
 
-**JARVIS**:
+**Ironcliw**:
 1. Receives voice command
 2. Resolves: "Living Room TV" → connect to Living Room TV
 3. Opens Control Center
@@ -209,19 +209,19 @@ yabai -m query --displays
 
 ### Scenario 2: Connection with Mode Selection
 - User: "Extend to Living Room TV"
-- JARVIS: Changes to extended display mode
+- Ironcliw: Changes to extended display mode
 
 ### Scenario 3: Implicit Reference Resolution
 - User: "Connect to the TV" *(after detection)*
-- JARVIS: Uses context to resolve "the TV" → Living Room TV
+- Ironcliw: Uses context to resolve "the TV" → Living Room TV
 
 ### Scenario 4: Disconnection
 - User: "Disconnect from that display"
-- JARVIS: Uses context to find which display
+- Ironcliw: Uses context to find which display
 
 ### Scenario 5: Multi-Display Handling
 - User: "Living Room TV" *(with multiple displays available)*
-- JARVIS: "I see multiple displays: Living Room TV, Bedroom TV. Which one?"
+- Ironcliw: "I see multiple displays: Living Room TV, Bedroom TV. Which one?"
 
 ## Files Modified
 
@@ -249,7 +249,7 @@ The implicit resolver provides:
 - ✅ Temporal relevance (recent things are more likely)
 - ✅ Multi-modal context (vision + conversation + workspace)
 
-This means JARVIS understands:
+This means Ironcliw understands:
 - "Connect to the TV" → which TV? *(uses recent detection)*
 - "Disconnect from that display" → which display? *(uses conversation context)*
 - "Switch to extended mode" → on which display? *(uses current connection state)*
@@ -258,7 +258,7 @@ This means JARVIS understands:
 
 ### Run the test:
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python test_display_reference_simple.py
 ```
 
@@ -286,4 +286,4 @@ The integration successfully:
 
 *Generated: 2025-10-19*
 *Author: Derek Russell*
-*System: JARVIS AI Assistant v14.1.0*
+*System: Ironcliw AI Assistant v14.1.0*

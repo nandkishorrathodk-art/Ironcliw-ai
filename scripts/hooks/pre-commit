@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Pre-Commit Hook - File Integrity Guardian
+Ironcliw Pre-Commit Hook - File Integrity Guardian
 =================================================
 
 This hook runs before every commit to:
@@ -314,7 +314,7 @@ def validate_file(file_path: str) -> Dict:
 
 def main() -> int:
     """Main pre-commit hook logic."""
-    print(color("\n🔍 JARVIS File Integrity Pre-Commit Hook", Colors.CYAN, Colors.BOLD))
+    print(color("\n🔍 Ironcliw File Integrity Pre-Commit Hook", Colors.CYAN, Colors.BOLD))
     print(color("=" * 50, Colors.CYAN))
     
     # Get staged Python files

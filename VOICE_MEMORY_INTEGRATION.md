@@ -1,17 +1,17 @@
-# 🧠🎤 Voice Memory Agent + CloudSQL Monitoring - Complete Integration Guide
+﻿# 🧠🎤 Voice Memory Agent + CloudSQL Monitoring - Complete Integration Guide
 
 ## Overview
 
-JARVIS now has **persistent voice memory** with **real-time CloudSQL monitoring** - a self-aware AI agent that ensures your voice is never forgotten across restarts, maintaining high recognition accuracy through intelligent memory management and preventing unlock failures with autonomous database connection management.
+Ironcliw now has **persistent voice memory** with **real-time CloudSQL monitoring** - a self-aware AI agent that ensures your voice is never forgotten across restarts, maintaining high recognition accuracy through intelligent memory management and preventing unlock failures with autonomous database connection management.
 
 ---
 
 ## 🎯 What Problems Does This Solve?
 
 ### Voice Recognition Issues:
-**Before**: Voice recognition confidence would degrade over time as samples got old, and JARVIS had no memory of your voice patterns across sessions.
+**Before**: Voice recognition confidence would degrade over time as samples got old, and Ironcliw had no memory of your voice patterns across sessions.
 
-**After**: JARVIS maintains a persistent memory of your voice, automatically checking freshness on startup, and continuously learning from every interaction.
+**After**: Ironcliw maintains a persistent memory of your voice, automatically checking freshness on startup, and continuously learning from every interaction.
 
 ### Database Connection Issues:
 **Before**: CloudSQL connections would timeout after 10 minutes of inactivity, causing "unlock my screen" commands to fail with database errors.
@@ -40,7 +40,7 @@ When you run `python start_system.py` or `python start_system.py --restart`:
 
 ### 3. **Persistent Memory Across Restarts**
 - Voice characteristics stored in `~/.jarvis/voice_memory.json`
-- Loads on startup - JARVIS "remembers" you
+- Loads on startup - Ironcliw "remembers" you
 - Tracks interaction counts and patterns
 - Maintains freshness scores
 
@@ -51,7 +51,7 @@ When you run `python start_system.py` or `python start_system.py --restart`:
 - Adapts to voice changes over time
 
 ### 5. **Memory-Aware Voice Recognition**
-- Integrates with `JARVISLearningDatabase`
+- Integrates with `IroncliwLearningDatabase`
 - Syncs with speaker verification service
 - Real-time confidence tracking
 - Pattern recognition and recall
@@ -102,7 +102,7 @@ When you run `python start_system.py` or `python start_system.py --restart`:
          │                  │
          ▼                  ▼
 ┌────────────────────┐  ┌──────────────────────────────┐
-│ JARVISLearning     │  │ Speaker Verification         │
+│ IroncliwLearning     │  │ Speaker Verification         │
 │ Database           │  │ Service                      │
 │ - Voice samples    │  │ - Real-time verification     │
 │ - Embeddings       │  │ - Continuous learning        │
@@ -485,7 +485,7 @@ Provides intelligent recommendations on:
 7. **No Unlock Failures** 🔥 **NEW!** - CloudSQL monitoring prevents database timeout failures
 8. **Real-Time Visibility** 🔥 **NEW!** - See confidence progression and database health every 30s
 
-### For JARVIS:
+### For Ironcliw:
 1. **Memory-Aware** - "Remembers" your voice characteristics
 2. **Self-Healing** 🤖 - Automatically repairs data integrity issues
 3. **Autonomous** 🤖 - Makes intelligent corrections independently
@@ -528,7 +528,7 @@ The Voice Memory Agent now operates in **fully autonomous mode** with intelligen
 
 ### 5-Phase Startup Diagnostics
 
-Every time JARVIS starts, the Voice Memory Agent performs a comprehensive 5-phase check:
+Every time Ironcliw starts, the Voice Memory Agent performs a comprehensive 5-phase check:
 
 #### **PHASE 1: Pre-Check Diagnostics**
 ```python
@@ -804,7 +804,7 @@ Time: ~15 minutes
 Expected improvement: 60% → 90%
 
 **Option 3: Automatic Continuous Learning**
-- Just keep using JARVIS normally
+- Just keep using Ironcliw normally
 - After 20-30 regular uses
 - System will automatically improve
 - No manual intervention needed
@@ -856,7 +856,7 @@ Expected improvement: 60% → 90%
 
 ### Result:
 
-**JARVIS now has a fully autonomous voice memory system that:**
+**Ironcliw now has a fully autonomous voice memory system that:**
 - 🤖 **Heals itself** - Automatically repairs data integrity issues
 - 🤖 **Thinks ahead** - Predicts and prevents degradation
 - 🤖 **Adapts intelligently** - Handles edge cases autonomously
@@ -866,7 +866,7 @@ Expected improvement: 60% → 90%
 - 🎯 **Maintains accuracy** - Proactive freshness management
 - 🔄 **Adapts to changes** - Adjusts to voice variations over time
 
-**Your voice recognition will improve from 17% → 85%+ as you use JARVIS - fully automatically with zero maintenance!** 🚀
+**Your voice recognition will improve from 17% → 85%+ as you use Ironcliw - fully automatically with zero maintenance!** 🚀
 
 ---
 
@@ -958,4 +958,4 @@ Collected every 30 seconds:
 ✅ **Zero Manual Intervention** - Entire system runs autonomously
 
 ### **Result:**
-**JARVIS is now equipped with enterprise-grade monitoring and self-healing for both voice recognition and database connectivity. Your "unlock my screen" commands will work reliably, and you'll see your confidence improve in real-time!** 🚀🔐
+**Ironcliw is now equipped with enterprise-grade monitoring and self-healing for both voice recognition and database connectivity. Your "unlock my screen" commands will work reliably, and you'll see your confidence improve in real-time!** 🚀🔐

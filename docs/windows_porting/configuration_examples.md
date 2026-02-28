@@ -1,4 +1,4 @@
-# JARVIS Windows Configuration Examples
+﻿# Ironcliw Windows Configuration Examples
 
 ## Overview
 
@@ -31,11 +31,11 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 OPENAI_API_KEY=sk-proj-your-key-here
 
 # Platform
-JARVIS_PLATFORM=windows
+Ironcliw_PLATFORM=windows
 
 # Basic Settings
-JARVIS_BACKEND_PORT=8010
-JARVIS_FRONTEND_PORT=3000
+Ironcliw_BACKEND_PORT=8010
+Ironcliw_FRONTEND_PORT=3000
 LOG_LEVEL=INFO
 ```
 
@@ -55,64 +55,64 @@ OPENAI_API_KEY=sk-proj-your-dev-key
 # =============================================================================
 # PLATFORM
 # =============================================================================
-JARVIS_PLATFORM=windows
-JARVIS_IS_WINDOWS=true
+Ironcliw_PLATFORM=windows
+Ironcliw_IS_WINDOWS=true
 
 # =============================================================================
 # PORTS
 # =============================================================================
-JARVIS_BACKEND_PORT=8010
-JARVIS_FRONTEND_PORT=3000
-JARVIS_PRIME_PORT=8000
-JARVIS_REACTOR_PORT=8090
+Ironcliw_BACKEND_PORT=8010
+Ironcliw_FRONTEND_PORT=3000
+Ironcliw_PRIME_PORT=8000
+Ironcliw_REACTOR_PORT=8090
 
 # =============================================================================
 # DEVELOPMENT MODE
 # =============================================================================
-JARVIS_DEV_MODE=true
-JARVIS_HOT_RELOAD_ENABLED=true
-JARVIS_RELOAD_CHECK_INTERVAL=10
-JARVIS_RELOAD_GRACE_PERIOD=120
+Ironcliw_DEV_MODE=true
+Ironcliw_HOT_RELOAD_ENABLED=true
+Ironcliw_RELOAD_CHECK_INTERVAL=10
+Ironcliw_RELOAD_GRACE_PERIOD=120
 
 # Fast startup (skip heavy initialization)
 FAST_START=true
-JARVIS_SKIP_HEAVY_INIT=false
+Ironcliw_SKIP_HEAVY_INIT=false
 
 # =============================================================================
 # LOGGING
 # =============================================================================
 LOG_LEVEL=DEBUG
-JARVIS_VERBOSE=true
+Ironcliw_VERBOSE=true
 PYTHONIOENCODING=utf-8  # UTF-8 for emoji support
 
 # =============================================================================
 # AUTHENTICATION (Bypass for Development)
 # =============================================================================
-JARVIS_AUTH_BYPASS=true
-JARVIS_AUTH_MODE=bypass
+Ironcliw_AUTH_BYPASS=true
+Ironcliw_AUTH_MODE=bypass
 
 # =============================================================================
 # FEATURES (Enable all for testing)
 # =============================================================================
-JARVIS_VISION_ENABLED=true
-JARVIS_VISION_FPS=15
-JARVIS_AUDIO_ENABLED=true
-JARVIS_SYSTEM_CONTROL_ENABLED=true
+Ironcliw_VISION_ENABLED=true
+Ironcliw_VISION_FPS=15
+Ironcliw_AUDIO_ENABLED=true
+Ironcliw_SYSTEM_CONTROL_ENABLED=true
 
 # =============================================================================
 # DEBUGGING
 # =============================================================================
 WINDOWS_NATIVE_DEBUG=true
-JARVIS_DEBUG_PLATFORM=true
-JARVIS_DEBUG_IMPORTS=true
+Ironcliw_DEBUG_PLATFORM=true
+Ironcliw_DEBUG_IMPORTS=true
 
 # =============================================================================
 # PATHS (Windows-specific)
 # =============================================================================
-JARVIS_HOME=%USERPROFILE%\.jarvis
-JARVIS_DATA_DIR=%USERPROFILE%\.jarvis\data
-JARVIS_LOG_DIR=%USERPROFILE%\.jarvis\logs
-JARVIS_CACHE_DIR=%USERPROFILE%\.jarvis\cache
+Ironcliw_HOME=%USERPROFILE%\.jarvis
+Ironcliw_DATA_DIR=%USERPROFILE%\.jarvis\data
+Ironcliw_LOG_DIR=%USERPROFILE%\.jarvis\logs
+Ironcliw_CACHE_DIR=%USERPROFILE%\.jarvis\cache
 
 # =============================================================================
 # PYTHON PATHS
@@ -137,61 +137,61 @@ OPENAI_API_KEY=sk-proj-your-prod-key
 # =============================================================================
 # PLATFORM
 # =============================================================================
-JARVIS_PLATFORM=windows
+Ironcliw_PLATFORM=windows
 
 # =============================================================================
 # PORTS
 # =============================================================================
-JARVIS_BACKEND_PORT=8010
-JARVIS_FRONTEND_PORT=80
+Ironcliw_BACKEND_PORT=8010
+Ironcliw_FRONTEND_PORT=80
 
 # =============================================================================
 # PRODUCTION MODE
 # =============================================================================
-JARVIS_DEV_MODE=false
-JARVIS_HOT_RELOAD_ENABLED=false
+Ironcliw_DEV_MODE=false
+Ironcliw_HOT_RELOAD_ENABLED=false
 FAST_START=false
 
 # =============================================================================
 # LOGGING
 # =============================================================================
 LOG_LEVEL=INFO
-JARVIS_VERBOSE=false
+Ironcliw_VERBOSE=false
 
 # =============================================================================
 # AUTHENTICATION
 # =============================================================================
-JARVIS_AUTH_BYPASS=false  # Enable when voice auth supported
-JARVIS_AUTH_MODE=windows_hello
+Ironcliw_AUTH_BYPASS=false  # Enable when voice auth supported
+Ironcliw_AUTH_MODE=windows_hello
 
 # =============================================================================
 # PERFORMANCE
 # =============================================================================
-JARVIS_MEMORY_MODE=efficient
-JARVIS_MAX_WORKERS=4
-JARVIS_VISION_FPS=10
+Ironcliw_MEMORY_MODE=efficient
+Ironcliw_MAX_WORKERS=4
+Ironcliw_VISION_FPS=10
 
 # =============================================================================
 # SECURITY
 # =============================================================================
-JARVIS_HTTPS_ENABLED=true
-JARVIS_REQUIRE_AUTH=true
-JARVIS_CORS_ENABLED=false  # Disable in production
-JARVIS_API_KEY_REQUIRED=true
+Ironcliw_HTTPS_ENABLED=true
+Ironcliw_REQUIRE_AUTH=true
+Ironcliw_CORS_ENABLED=false  # Disable in production
+Ironcliw_API_KEY_REQUIRED=true
 
 # =============================================================================
 # CLOUD OFFLOAD
 # =============================================================================
-JARVIS_USE_CLOUD_ML=true
-JARVIS_LOCAL_ML_ENABLED=false  # Save RAM
-JARVIS_GCP_ENABLED=true
+Ironcliw_USE_CLOUD_ML=true
+Ironcliw_LOCAL_ML_ENABLED=false  # Save RAM
+Ironcliw_GCP_ENABLED=true
 
 # =============================================================================
 # MONITORING
 # =============================================================================
-JARVIS_METRICS_ENABLED=true
-JARVIS_HEALTH_CHECK_INTERVAL=60
-JARVIS_CRASH_REPORTING=true
+Ironcliw_METRICS_ENABLED=true
+Ironcliw_HEALTH_CHECK_INTERVAL=60
+Ironcliw_CRASH_REPORTING=true
 ```
 
 ---
@@ -207,7 +207,7 @@ JARVIS_CRASH_REPORTING=true
 # GENERAL
 # =============================================================================
 jarvis:
-  name: "JARVIS"
+  name: "Ironcliw"
   version: "1.0.0-windows"
   platform: "windows"
 
@@ -432,7 +432,7 @@ uac:
 # =============================================================================
 task_scheduler:
   enabled: true
-  task_name: "JARVIS\\Supervisor"
+  task_name: "Ironcliw\\Supervisor"
   run_on_boot: true
   restart_on_failure: true
   restart_delay_minutes: 1
@@ -464,7 +464,7 @@ windows_defender:
   exclusion_recommendations:
     paths:
       - "%USERPROFILE%\\.jarvis"
-      - "C:\\path\\to\\JARVIS"
+      - "C:\\path\\to\\Ironcliw"
     processes:
       - "python.exe"
       - "pythonw.exe"
@@ -582,10 +582,10 @@ ml:
 ```yaml
 # jarvis_config_dev.yaml - Development Overrides
 
-# Load this with: JARVIS_CONFIG=jarvis_config_dev.yaml
+# Load this with: Ironcliw_CONFIG=jarvis_config_dev.yaml
 
 jarvis:
-  name: "JARVIS-DEV"
+  name: "Ironcliw-DEV"
 
 logging:
   level: "DEBUG"
@@ -616,7 +616,7 @@ frontend:
 # jarvis_config_prod.yaml - Production Overrides
 
 jarvis:
-  name: "JARVIS-PROD"
+  name: "Ironcliw-PROD"
 
 logging:
   level: "WARNING"
@@ -652,16 +652,16 @@ health:
 # .env - Shared System (Multiple Users)
 
 # System-wide installation
-JARVIS_INSTALL_DIR=C:\Program Files\JARVIS
-JARVIS_SHARED_DATA=C:\ProgramData\JARVIS
+Ironcliw_INSTALL_DIR=C:\Program Files\Ironcliw
+Ironcliw_SHARED_DATA=C:\ProgramData\Ironcliw
 
 # User-specific data
-JARVIS_HOME=%USERPROFILE%\.jarvis
-JARVIS_USER_CONFIG=%USERPROFILE%\.jarvis\config
+Ironcliw_HOME=%USERPROFILE%\.jarvis
+Ironcliw_USER_CONFIG=%USERPROFILE%\.jarvis\config
 
 # Ports (avoid conflicts)
-JARVIS_BACKEND_PORT=8010
-JARVIS_FRONTEND_PORT=3000
+Ironcliw_BACKEND_PORT=8010
+Ironcliw_FRONTEND_PORT=3000
 ```
 
 ```yaml
@@ -669,8 +669,8 @@ JARVIS_FRONTEND_PORT=3000
 
 paths:
   # Shared (read-only)
-  shared_models: "C:\\ProgramData\\JARVIS\\models"
-  shared_cache: "C:\\ProgramData\\JARVIS\\cache"
+  shared_models: "C:\\ProgramData\\Ironcliw\\models"
+  shared_cache: "C:\\ProgramData\\Ironcliw\\cache"
   
   # User-specific (read-write)
   user_data: "%USERPROFILE%\\.jarvis\\data"
@@ -816,15 +816,15 @@ ml:
 
 ```powershell
 # Load development config
-$env:JARVIS_CONFIG="jarvis_config_dev.yaml"
+$env:Ironcliw_CONFIG="jarvis_config_dev.yaml"
 python unified_supervisor.py
 
 # Load production config
-$env:JARVIS_CONFIG="jarvis_config_prod.yaml"
+$env:Ironcliw_CONFIG="jarvis_config_prod.yaml"
 python unified_supervisor.py
 
 # Load custom config
-$env:JARVIS_CONFIG="C:\path\to\custom_config.yaml"
+$env:Ironcliw_CONFIG="C:\path\to\custom_config.yaml"
 python unified_supervisor.py
 ```
 

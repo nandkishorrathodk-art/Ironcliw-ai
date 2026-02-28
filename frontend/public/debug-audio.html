@@ -1,7 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
-    <title>JARVIS Audio Debug</title>
+    <title>Ironcliw Audio Debug</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -73,8 +73,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 JARVIS Audio Debug Console</h1>
-        <p>This page tests audio playback and identifies issues with JARVIS voice output.</p>
+        <h1>🎵 Ironcliw Audio Debug Console</h1>
+        <p>This page tests audio playback and identifies issues with Ironcliw voice output.</p>
         
         <div class="test-section">
             <h2>1. Direct Backend Audio Test</h2>
@@ -131,7 +131,7 @@
             log('Testing direct audio playback with GET method...', 'info');
             
             try {
-                const text = "Hello Sir, this is JARVIS speaking with Daniel's British voice.";
+                const text = "Hello Sir, this is Ironcliw speaking with Daniel's British voice.";
                 const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
                 
                 log(`URL: ${audioUrl}`, 'info');
@@ -176,7 +176,7 @@
             log('Testing direct audio playback with POST method...', 'info');
             
             try {
-                const text = "Testing POST method. Sir, this is JARVIS with a longer message to ensure Daniel's voice is working properly through the POST endpoint.";
+                const text = "Testing POST method. Sir, this is Ironcliw with a longer message to ensure Daniel's voice is working properly through the POST endpoint.";
                 
                 const response = await fetch(`${API_URL}/audio/speak`, {
                     method: 'POST',
@@ -454,7 +454,7 @@
         });
         
         // Initial message
-        log('JARVIS Audio Debug Console Ready', 'success');
+        log('Ironcliw Audio Debug Console Ready', 'success');
         log('Click any button above to test audio functionality', 'info');
     </script>
 </body>

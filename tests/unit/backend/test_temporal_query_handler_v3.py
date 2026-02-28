@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit Tests for TemporalQueryHandler v3.0
 
 Tests the new v3.0 features:
@@ -22,7 +22,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 # Import the TemporalQueryHandler
 import sys
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from context_intelligence.handlers.temporal_query_handler import (
     TemporalQueryHandler,

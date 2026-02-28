@@ -1,8 +1,8 @@
-# Video Multi-Space Intelligence (VMSI) Architecture v10.6
+﻿# Video Multi-Space Intelligence (VMSI) Architecture v10.6
 
 ## Overview
 
-**Video Multi-Space Intelligence** is JARVIS's "second pair of eyes" - a background visual monitoring system that watches specific windows across macOS Spaces while you work on other tasks.
+**Video Multi-Space Intelligence** is Ironcliw's "second pair of eyes" - a background visual monitoring system that watches specific windows across macOS Spaces while you work on other tasks.
 
 **Relationship to Multi-Space Visual Intelligence (MSVI):**
 - **MSVI (The Map)** = SpatialAwarenessAgent - Knows *where* things are
@@ -148,7 +148,7 @@ async def watch_and_alert(
 - Uses SpatialAwarenessAgent to locate windows
 - Uses VideoWatcherManager for background streaming
 - Uses VisualEventDetector for OCR/element detection
-- Sends voice alerts via JARVIS Voice API
+- Sends voice alerts via Ironcliw Voice API
 
 ### 3. VisualEventDetector (vision/visual_event_detector.py)
 
@@ -295,7 +295,7 @@ Window 992 (Background) → AVFoundation Capture → Frame Buffer (5 FPS)
       "started_at": "2025-12-27T23:00:00Z",
       "status": "watching",
       "frames_processed": 1523,
-      "repo": "JARVIS-AI-Agent"
+      "repo": "Ironcliw-AI-Agent"
     }
   ],
   "recent_detections": [
@@ -306,7 +306,7 @@ Window 992 (Background) → AVFoundation Capture → Frame Buffer (5 FPS)
       "detected_at": "2025-12-27T23:15:32Z",
       "confidence": 0.94,
       "frame_number": 2301,
-      "repo": "JARVIS-AI-Agent"
+      "repo": "Ironcliw-AI-Agent"
     }
   ],
   "stats": {
@@ -318,16 +318,16 @@ Window 992 (Background) → AVFoundation Capture → Frame Buffer (5 FPS)
 }
 ```
 
-### JARVIS ↔ JARVIS Prime Integration
+### Ironcliw ↔ Ironcliw Prime Integration
 
-**JARVIS (Main System):**
+**Ironcliw (Main System):**
 - Runs VisualMonitorAgent
 - Spawns watchers
 - Writes state to `~/.jarvis/cross_repo/vmsi_state.json`
 
-**JARVIS Prime (Reasoning System):**
+**Ironcliw Prime (Reasoning System):**
 - Reads watcher state
-- Can query: "What is JARVIS currently watching?"
+- Can query: "What is Ironcliw currently watching?"
 - Can reason: "Build monitor has been running 15 min, check progress"
 - Can suggest: "Consider adding error watcher too"
 
@@ -343,7 +343,7 @@ Window 992 (Background) → AVFoundation Capture → Frame Buffer (5 FPS)
 {
   "event_type": "visual_event_detected",
   "timestamp": "2025-12-27T23:15:32Z",
-  "source_repo": "JARVIS-AI-Agent",
+  "source_repo": "Ironcliw-AI-Agent",
   "window_id": 992,
   "app_name": "Terminal",
   "trigger_text": "Build Successful",
@@ -361,23 +361,23 @@ Window 992 (Background) → AVFoundation Capture → Frame Buffer (5 FPS)
 
 ```bash
 # Video Watcher Configuration
-export JARVIS_WATCHER_DEFAULT_FPS=5         # Default FPS for watchers
-export JARVIS_WATCHER_MIN_FPS=1             # Minimum allowed FPS
-export JARVIS_WATCHER_MAX_FPS=10            # Maximum allowed FPS
-export JARVIS_WATCHER_MAX_PARALLEL=3        # Max parallel watchers
-export JARVIS_WATCHER_PRIORITY="low"        # Thread priority
-export JARVIS_WATCHER_TIMEOUT=300           # Default timeout (5 min)
+export Ironcliw_WATCHER_DEFAULT_FPS=5         # Default FPS for watchers
+export Ironcliw_WATCHER_MIN_FPS=1             # Minimum allowed FPS
+export Ironcliw_WATCHER_MAX_FPS=10            # Maximum allowed FPS
+export Ironcliw_WATCHER_MAX_PARALLEL=3        # Max parallel watchers
+export Ironcliw_WATCHER_PRIORITY="low"        # Thread priority
+export Ironcliw_WATCHER_TIMEOUT=300           # Default timeout (5 min)
 
 # Visual Detection Configuration
-export JARVIS_OCR_ENGINE="pytesseract"      # OCR engine
-export JARVIS_OCR_LANG="eng"                # OCR language
-export JARVIS_DETECTION_CONFIDENCE=0.75     # Min confidence threshold
-export JARVIS_FUZZY_MATCH_RATIO=0.85        # Fuzzy string match threshold
+export Ironcliw_OCR_ENGINE="pytesseract"      # OCR engine
+export Ironcliw_OCR_LANG="eng"                # OCR language
+export Ironcliw_DETECTION_CONFIDENCE=0.75     # Min confidence threshold
+export Ironcliw_FUZZY_MATCH_RATIO=0.85        # Fuzzy string match threshold
 
 # Cross-Repo Integration
-export JARVIS_CROSS_REPO_DIR="~/.jarvis/cross_repo"
-export JARVIS_VMSI_STATE_FILE="vmsi_state.json"
-export JARVIS_VMSI_SYNC_INTERVAL=5          # Sync interval (seconds)
+export Ironcliw_CROSS_REPO_DIR="~/.jarvis/cross_repo"
+export Ironcliw_VMSI_STATE_FILE="vmsi_state.json"
+export Ironcliw_VMSI_SYNC_INTERVAL=5          # Sync interval (seconds)
 ```
 
 ---
@@ -406,7 +406,7 @@ export JARVIS_VMSI_SYNC_INTERVAL=5          # Sync interval (seconds)
 ### Phase 4: Cross-Repo Integration ✅ (Next)
 - Create shared state structure
 - Add event broadcasting
-- Integrate with JARVIS Prime
+- Integrate with Ironcliw Prime
 - Integrate with Reactor Core
 
 ### Phase 5: Voice Integration ✅ (Next)
@@ -420,10 +420,10 @@ export JARVIS_VMSI_SYNC_INTERVAL=5          # Sync interval (seconds)
 
 ### Test 1: Single Window Monitor
 ```bash
-# Start JARVIS
+# Start Ironcliw
 python3 backend/main.py
 
-# In JARVIS voice interface:
+# In Ironcliw voice interface:
 "Watch the Terminal for 'Build Successful'"
 
 # In Terminal:
@@ -445,8 +445,8 @@ echo "Error occurred" (in Terminal)
 
 ### Test 3: Cross-Repo State
 ```bash
-# JARVIS watching Terminal
-# Check state from JARVIS Prime:
+# Ironcliw watching Terminal
+# Check state from Ironcliw Prime:
 cat ~/.jarvis/cross_repo/vmsi_state.json
 
 # Expected: See active watcher details
@@ -498,4 +498,4 @@ cat ~/.jarvis/cross_repo/vmsi_state.json
 - OS scheduler deprioritizes automatically
 - Smooth user experience
 
-This is "God Mode" - JARVIS watches multiple things simultaneously while you focus on what matters. 🚀
+This is "God Mode" - Ironcliw watches multiple things simultaneously while you focus on what matters. 🚀

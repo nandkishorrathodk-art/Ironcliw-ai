@@ -1,8 +1,8 @@
-"""
+﻿"""
 MultiModalPerceptionFusion v100.0 - Vision + Voice + Text Integration
 =====================================================================
 
-Advanced multi-modal perception system that enables JARVIS to:
+Advanced multi-modal perception system that enables Ironcliw to:
 1. Fuse information from multiple modalities (vision, voice, text)
 2. Create joint embeddings across modalities
 3. Perform cross-modal attention and consistency checking
@@ -46,7 +46,7 @@ Architecture:
     │  └────────────────────────────────────────────────────────────┘ │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations

@@ -1,5 +1,5 @@
-"""
-Advanced Async Backend Client for JARVIS Hybrid Architecture
+﻿"""
+Advanced Async Backend Client for Ironcliw Hybrid Architecture
 Features:
 - Zero hardcoding, fully configuration-driven
 - Async/await throughout with connection pooling
@@ -448,20 +448,20 @@ class HybridBackendClient:
         v219.0: Check if hollow client mode is active and return the cloud URL.
         
         When Invincible Node is ready, the unified_supervisor sets
-        JARVIS_HOLLOW_CLIENT_ACTIVE=true and JARVIS_PRIME_URL to the cloud VM.
+        Ironcliw_HOLLOW_CLIENT_ACTIVE=true and Ironcliw_PRIME_URL to the cloud VM.
         This method checks those env vars to support dynamic URL updates.
         
         Returns:
             Cloud URL if hollow client is active, None otherwise
         """
-        hollow_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "").lower() == "true"
+        hollow_active = os.environ.get("Ironcliw_HOLLOW_CLIENT_ACTIVE", "").lower() == "true"
         if hollow_active:
-            invincible_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
-            invincible_port = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "8000")
+            invincible_ip = os.environ.get("Ironcliw_INVINCIBLE_NODE_IP", "")
+            invincible_port = os.environ.get("Ironcliw_INVINCIBLE_NODE_PORT", "8000")
             if invincible_ip:
                 return f"http://{invincible_ip}:{invincible_port}"
-            # Fallback to JARVIS_PRIME_URL
-            return os.environ.get("JARVIS_PRIME_URL", "")
+            # Fallback to Ironcliw_PRIME_URL
+            return os.environ.get("Ironcliw_PRIME_URL", "")
         return None
 
     def _select_backend(self, capability: Optional[str] = None, **kwargs) -> Optional[Backend]:

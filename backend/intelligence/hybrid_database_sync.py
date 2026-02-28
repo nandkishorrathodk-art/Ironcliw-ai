@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Hybrid Database Synchronization System for JARVIS Voice Biometrics
+Advanced Hybrid Database Synchronization System for Ironcliw Voice Biometrics
 ===========================================================================
 
 Self-optimizing, cache-first, connection-intelligent hybrid persistence architecture.
@@ -21,7 +21,7 @@ Tech Stack:
 - asyncio: Concurrent task orchestration
 - Threading: Parallel batch processing
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0 (Advanced)
 """
 
@@ -1855,7 +1855,7 @@ class HybridDatabaseSync:
                     # covers cold CloudSQL (pool acquire + 2 queries = 2-7s) with 3s buffer,
                     # and leaves 5s gap before the 15s outer timeout.
                     _staleness_timeout = float(os.environ.get(
-                        "JARVIS_CLOUDSQL_STALENESS_TIMEOUT", "10.0"
+                        "Ironcliw_CLOUDSQL_STALENESS_TIMEOUT", "10.0"
                     ))
                     mismatch, latest_update = await asyncio.wait_for(
                         check_cloud_sql_ops(), timeout=_staleness_timeout

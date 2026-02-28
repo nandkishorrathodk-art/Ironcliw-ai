@@ -1,5 +1,5 @@
-"""
-JARVIS Unified Startup Progress Hub v1.0.0
+﻿"""
+Ironcliw Unified Startup Progress Hub v1.0.0
 ==========================================
 
 Single source of truth for ALL startup progress tracking.
@@ -659,7 +659,7 @@ class UnifiedStartupProgressHub:
                 self._progress = 100.0
                 self._max_progress = 100.0
                 self._is_ready = True
-                self._message = message or "JARVIS Online"
+                self._message = message or "Ironcliw Online"
             else:
                 self._phase = StartupPhase.FAILED
                 self._is_ready = False

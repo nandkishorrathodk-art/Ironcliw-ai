@@ -1,9 +1,9 @@
-"""
+﻿"""
 Configuration Supervisor Integration v1.0
 ==========================================
 
 Provides integration between the Configuration System and the
-JARVIS Supervisor for centralized startup/shutdown management.
+Ironcliw Supervisor for centralized startup/shutdown management.
 
 Features:
 - Single-command initialization
@@ -132,7 +132,7 @@ class ConfigHealthReport:
 
 class ConfigSupervisorCoordinator:
     """
-    Coordinates configuration with the JARVIS supervisor.
+    Coordinates configuration with the Ironcliw supervisor.
 
     Responsibilities:
     - Initialize all configuration components
@@ -356,7 +356,7 @@ class ConfigSupervisorCoordinator:
             self._config_engine = await get_configuration_engine()
 
             # Load environment variables
-            await self._config_engine.load_environment("JARVIS_")
+            await self._config_engine.load_environment("Ironcliw_")
 
             self._components["UnifiedConfigurationEngine"].state = ConfigComponentState.RUNNING
             self._components["UnifiedConfigurationEngine"].healthy = True

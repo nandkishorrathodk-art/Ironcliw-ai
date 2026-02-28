@@ -1,8 +1,8 @@
-# JARVIS Vision Integrated Intelligence System
+﻿# Ironcliw Vision Integrated Intelligence System
 
 ## Overview
 
-The JARVIS Vision Integrated Intelligence System combines three powerful components to create a proactive, learning assistant that understands user behavior and provides timely help:
+The Ironcliw Vision Integrated Intelligence System combines three powerful components to create a proactive, learning assistant that understands user behavior and provides timely help:
 
 1. **Workflow Pattern Engine** - Learns and optimizes user work patterns
 2. **Anomaly Detection Framework** - Identifies unusual situations requiring attention
@@ -265,7 +265,7 @@ print(f"Cooldown active: {stats.get('cooldown_active')}")
 
 ## Conclusion
 
-The Integrated Intelligence System transforms JARVIS from a reactive tool to a proactive assistant that:
+The Integrated Intelligence System transforms Ironcliw from a reactive tool to a proactive assistant that:
 - Learns from user behavior
 - Detects problems early
 - Offers help at the right moment

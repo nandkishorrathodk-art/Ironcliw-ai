@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
-# Build script for JARVIS Native C++ Extensions
+# Build script for Ironcliw Native C++ Extensions
 # Builds both Fast Capture and Vision ML Router modules
 # Usage: ./build.sh [options]
 #   Options:
@@ -19,7 +19,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}🚀 JARVIS Native Extensions Build Script${NC}"
+echo -e "${GREEN}🚀 Ironcliw Native Extensions Build Script${NC}"
 echo "=================================="
 
 # Parse command line arguments

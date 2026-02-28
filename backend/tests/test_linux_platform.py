@@ -1,4 +1,4 @@
-"""
+﻿"""
 Linux Platform-Specific Tests
 ==============================
 
@@ -325,7 +325,7 @@ class TestLinuxClipboard:
             import pyperclip
             
             # Test write and read
-            test_text = "JARVIS Linux Test"
+            test_text = "Ironcliw Linux Test"
             
             pyperclip.copy(test_text)
             result = pyperclip.paste()

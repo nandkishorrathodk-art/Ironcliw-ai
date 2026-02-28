@@ -1,8 +1,8 @@
-# RAG + RLHF Intelligence Learning System
+﻿# RAG + RLHF Intelligence Learning System
 
 ## Overview
 
-JARVIS v5.0 introduces an advanced **Intelligence Learning Coordinator** that integrates **RAG (Retrieval-Augmented Generation)** and **RLHF (Reinforcement Learning from Human Feedback)** with multi-factor authentication intelligence for continuous improvement and context-aware decision making.
+Ironcliw v5.0 introduces an advanced **Intelligence Learning Coordinator** that integrates **RAG (Retrieval-Augmented Generation)** and **RLHF (Reinforcement Learning from Human Feedback)** with multi-factor authentication intelligence for continuous improvement and context-aware decision making.
 
 ### Architecture
 
@@ -192,27 +192,27 @@ Enhanced Decision: 92% → ✅ AUTHENTICATE (High Confidence)
 
 ```bash
 # Learning Coordinator
-JARVIS_LEARNING_ENABLE_RAG=true
-JARVIS_LEARNING_ENABLE_RLHF=true
-JARVIS_LEARNING_ENABLE_PREDICTION=true
-JARVIS_LEARNING_ADAPTIVE_THRESHOLDS=true
+Ironcliw_LEARNING_ENABLE_RAG=true
+Ironcliw_LEARNING_ENABLE_RLHF=true
+Ironcliw_LEARNING_ENABLE_PREDICTION=true
+Ironcliw_LEARNING_ADAPTIVE_THRESHOLDS=true
 
 # RAG Configuration
-JARVIS_RAG_K_NEIGHBORS=5                 # Top-K similar contexts
-JARVIS_RAG_SIMILARITY_THRESHOLD=0.75     # Minimum similarity
+Ironcliw_RAG_K_NEIGHBORS=5                 # Top-K similar contexts
+Ironcliw_RAG_SIMILARITY_THRESHOLD=0.75     # Minimum similarity
 
 # RLHF Configuration
-JARVIS_RLHF_LEARNING_RATE=0.1
-JARVIS_RLHF_MIN_SAMPLES=10               # Min samples before learning
+Ironcliw_RLHF_LEARNING_RATE=0.1
+Ironcliw_RLHF_MIN_SAMPLES=10               # Min samples before learning
 
 # Prediction Configuration
-JARVIS_PREDICTION_WINDOW_DAYS=30
-JARVIS_PREDICTION_MIN_SAMPLES=20
+Ironcliw_PREDICTION_WINDOW_DAYS=30
+Ironcliw_PREDICTION_MIN_SAMPLES=20
 
 # Adaptive Thresholds
-JARVIS_ADAPTIVE_WINDOW_DAYS=7
-JARVIS_TARGET_FALSE_POSITIVE_RATE=0.01   # 1% FPR target
-JARVIS_TARGET_FALSE_NEGATIVE_RATE=0.05   # 5% FNR target
+Ironcliw_ADAPTIVE_WINDOW_DAYS=7
+Ironcliw_TARGET_FALSE_POSITIVE_RATE=0.01   # 1% FPR target
+Ironcliw_TARGET_FALSE_NEGATIVE_RATE=0.05   # 5% FNR target
 ```
 
 ## Usage Examples
@@ -450,7 +450,7 @@ Auto-adjust every 7 days
 
 **Solutions:**
 1. Need more historical data (wait 3-7 days)
-2. Lower similarity threshold: `JARVIS_RAG_SIMILARITY_THRESHOLD=0.65`
+2. Lower similarity threshold: `Ironcliw_RAG_SIMILARITY_THRESHOLD=0.65`
 3. Check that authentication is being recorded
 
 ### Issue: RLHF not improving accuracy
@@ -478,9 +478,9 @@ Auto-adjust every 7 days
 **Symptoms**: Threshold changes every week
 
 **Solutions:**
-1. Increase adaptive window: `JARVIS_ADAPTIVE_WINDOW_DAYS=14`
-2. Relax targets: `JARVIS_TARGET_FALSE_POSITIVE_RATE=0.02`
-3. Increase min samples: `JARVIS_RLHF_MIN_SAMPLES=20`
+1. Increase adaptive window: `Ironcliw_ADAPTIVE_WINDOW_DAYS=14`
+2. Relax targets: `Ironcliw_TARGET_FALSE_POSITIVE_RATE=0.02`
+3. Increase min samples: `Ironcliw_RLHF_MIN_SAMPLES=20`
 
 ## Security Considerations
 
@@ -568,7 +568,7 @@ for factor, contribution in explanation.factors.items():
 
 ```
 ╔══════════════════════════════════════════════════════════════╗
-║  JARVIS Learning Intelligence Dashboard                      ║
+║  Ironcliw Learning Intelligence Dashboard                      ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
 ║  Authentication Performance:                                 ║
@@ -593,7 +593,7 @@ for factor, contribution in explanation.factors.items():
 
 ## Summary
 
-The **RAG + RLHF Intelligence Learning System** transforms JARVIS voice authentication from a static system into an **adaptive, self-improving intelligence** that:
+The **RAG + RLHF Intelligence Learning System** transforms Ironcliw voice authentication from a static system into an **adaptive, self-improving intelligence** that:
 
 ✅ Learns from every authentication
 ✅ Retrieves relevant historical context
@@ -607,6 +607,6 @@ The **RAG + RLHF Intelligence Learning System** transforms JARVIS voice authenti
 
 ---
 
-**JARVIS Intelligence Learning Coordinator v5.0**
+**Ironcliw Intelligence Learning Coordinator v5.0**
 *RAG + RLHF + Multi-Factor Intelligence*
 *Adaptive • Intelligent • Self-Improving*

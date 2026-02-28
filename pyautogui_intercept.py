@@ -1,10 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 PyAutoGUI Intercept - Monkey-patch to log ALL coordinate operations
 This will help us find where coordinates are getting doubled
 """
 
+import os
 import pyautogui
+import tempfile
 import traceback
 
 # Save originals
@@ -12,7 +14,7 @@ _original_moveTo = pyautogui.moveTo
 _original_dragTo = pyautogui.dragTo
 _original_click = pyautogui.click
 
-LOG_FILE = "/tmp/pyautogui_intercept.log"
+LOG_FILE = os.path.join(tempfile.gettempdir(), 'pyautogui_intercept.log')
 
 def log_call(func_name, args, kwargs, stack_depth=10):
     """Log a function call with its stack trace"""
@@ -25,7 +27,7 @@ def log_call(func_name, args, kwargs, stack_depth=10):
 
         stack = traceback.extract_stack()
         for frame in stack[-(stack_depth+1):-1]:  # Skip the log_call frame itself
-            if 'backend' in frame.filename or 'JARVIS' in frame.filename:
+            if 'backend' in frame.filename or 'Ironcliw' in frame.filename:
                 f.write(f"  {frame.filename}:{frame.lineno} in {frame.name}\n")
                 f.write(f"    {frame.line}\n")
         f.write(f"\n")

@@ -1,13 +1,13 @@
-"""
-v84.0: JARVIS Prime Local LLM Engine for Unified Coding Council
+﻿"""
+v84.0: Ironcliw Prime Local LLM Engine for Unified Coding Council
 ================================================================
 
-Production-grade adapter for routing coding and reasoning tasks to JARVIS Prime's
+Production-grade adapter for routing coding and reasoning tasks to Ironcliw Prime's
 local LLM inference engine. Supports CodeLlama, DeepSeek Coder, Qwen, and other
 GGUF models with intelligent task-based model selection.
 
 FEATURES:
-    - OpenAI-compatible API integration with JARVIS Prime
+    - OpenAI-compatible API integration with Ironcliw Prime
     - Intelligent model routing (coding → CodeLlama, reasoning → Qwen)
     - Aider-style code editing with git awareness
     - Multi-agent planning simulation (MetaGPT-style)
@@ -35,7 +35,7 @@ USAGE:
         context={"requirements": "..."},
     )
 
-Author: JARVIS v84.0
+Author: Ironcliw v84.0
 """
 
 from __future__ import annotations
@@ -177,10 +177,10 @@ class ModelFallbackConfig:
 
 @dataclass
 class JPrimeConfig:
-    """Configuration for JARVIS Prime engine."""
+    """Configuration for Ironcliw Prime engine."""
     # Connection
     base_url: str = field(
-        default_factory=lambda: _get_env("JARVIS_PRIME_URL", "http://localhost:8000")
+        default_factory=lambda: _get_env("Ironcliw_PRIME_URL", "http://localhost:8000")
     )
     heartbeat_file: Path = field(
         default_factory=lambda: Path.home() / ".jarvis" / "trinity" / "components" / "jarvis_prime.json"
@@ -871,12 +871,12 @@ class TaskClassifier:
 
 
 # =============================================================================
-# JARVIS Prime Client
+# Ironcliw Prime Client
 # =============================================================================
 
 class JPrimeClient:
     """
-    v118.0: Async HTTP client for JARVIS Prime OpenAI-compatible API.
+    v118.0: Async HTTP client for Ironcliw Prime OpenAI-compatible API.
 
     Features:
     - Connection pooling
@@ -936,7 +936,7 @@ class JPrimeClient:
 
     async def check_health(self) -> bool:
         """
-        v118.0: Check if JARVIS Prime is healthy with intelligent status tracking.
+        v118.0: Check if Ironcliw Prime is healthy with intelligent status tracking.
 
         Returns True if:
         - J-Prime is fully healthy, OR
@@ -1147,7 +1147,7 @@ class JPrimeClient:
 
     async def _check_degradation_mode(self) -> bool:
         """
-        v132.0: Check if JARVIS is running in degradation mode due to memory constraints.
+        v132.0: Check if Ironcliw is running in degradation mode due to memory constraints.
 
         Reads cross-repo OOM prevention signal to determine if degradation is active.
 
@@ -1157,7 +1157,7 @@ class JPrimeClient:
         try:
             # Check cross-repo signal file
             signal_dir = Path(os.getenv(
-                "JARVIS_SIGNAL_DIR",
+                "Ironcliw_SIGNAL_DIR",
                 str(Path.home() / ".jarvis" / "signals")
             ))
             signal_file = signal_dir / "oom_prevention.json"
@@ -1245,7 +1245,7 @@ class JPrimeClient:
                 success=False,
                 content="",
                 model_used=model or "unknown",
-                error="Circuit breaker open - JARVIS Prime unavailable",
+                error="Circuit breaker open - Ironcliw Prime unavailable",
             )
 
         url = f"{self.config.base_url}/v1/chat/completions"
@@ -1340,12 +1340,12 @@ class JPrimeClient:
 
 
 # =============================================================================
-# JARVIS Prime Unified Engine
+# Ironcliw Prime Unified Engine
 # =============================================================================
 
 class JPrimeUnifiedEngine:
     """
-    v118.0: Unified engine for JARVIS Prime local LLM inference.
+    v118.0: Unified engine for Ironcliw Prime local LLM inference.
 
     Provides:
     - Aider-style code editing
@@ -1418,7 +1418,7 @@ class JPrimeUnifiedEngine:
 
     async def is_available(self) -> bool:
         """
-        v118.0: Check if JARVIS Prime is available.
+        v118.0: Check if Ironcliw Prime is available.
 
         Returns True if:
         - Engine is initialized AND
@@ -1884,7 +1884,7 @@ Only output file blocks and brief explanations. Do not include the original file
         self,
         messages: List[Dict[str, str]],
     ) -> InferenceResult:
-        """Fallback to Claude API when JARVIS Prime fails."""
+        """Fallback to Claude API when Ironcliw Prime fails."""
         try:
             # Import Anthropic client
             from anthropic import AsyncAnthropic

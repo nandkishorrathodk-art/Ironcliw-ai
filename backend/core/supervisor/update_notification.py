@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Update Notification Orchestrator v2.0
+Ironcliw Update Notification Orchestrator v2.0
 ==============================================
 
 Intelligent, multi-modal update notification system that provides:
@@ -19,7 +19,7 @@ Intelligent, multi-modal update notification system that provides:
 This orchestrator ensures users receive timely, non-intrusive notifications
 through multiple channels while maintaining a cohesive experience.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -70,7 +70,7 @@ class NotificationPriority(str, Enum):
 
 class UserActivityState(str, Enum):
     """User activity detection states."""
-    ACTIVE = "active"         # User is actively using JARVIS
+    ACTIVE = "active"         # User is actively using Ironcliw
     IDLE = "idle"             # User hasn't interacted recently
     AWAY = "away"             # User is away (long idle period)
     UNKNOWN = "unknown"       # Cannot determine activity

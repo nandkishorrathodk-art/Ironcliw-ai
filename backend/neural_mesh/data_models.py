@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Core Data Models
+﻿"""
+Ironcliw Neural Mesh - Core Data Models
 
 This module defines all data structures used throughout the Neural Mesh system.
 All models are designed for:

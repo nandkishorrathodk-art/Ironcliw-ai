@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Unlock Bypass Handler
 ============================
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class AuthBypassHandler:
     """
-    Handle authentication bypass logic for JARVIS voice unlock system.
+    Handle authentication bypass logic for Ironcliw voice unlock system.
     
     This handler provides a fallback authentication mechanism for platforms
     where voice biometrics are unavailable or when running in development mode.
@@ -83,7 +83,7 @@ class AuthBypassHandler:
                 "confidence": 0.0,
                 "method": "voice_biometric",
                 "message": "Voice biometric authentication required (bypass disabled)",
-                "error": "Authentication bypass not enabled. Set JARVIS_BYPASS_AUTH=true or JARVIS_DEV_MODE=true",
+                "error": "Authentication bypass not enabled. Set Ironcliw_BYPASS_AUTH=true or Ironcliw_DEV_MODE=true",
                 "timestamp": timestamp,
             }
         
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     import asyncio
     
     print("=" * 60)
-    print("JARVIS Voice Unlock Bypass Handler - Test")
+    print("Ironcliw Voice Unlock Bypass Handler - Test")
     print("=" * 60)
     
     handler = AuthBypassHandler()

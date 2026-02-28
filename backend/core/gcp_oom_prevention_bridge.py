@@ -1,4 +1,4 @@
-"""
+﻿"""
 GCP OOM Prevention Bridge v2.0.0
 =================================
 
@@ -8,7 +8,7 @@ Intelligent, adaptive bridge that prevents Out-Of-Memory crashes by:
 3. Dynamic auto-enable of GCP when critical (no manual GCP_ENABLED required)
 4. Multi-tier graceful degradation fallback chain
 5. Adaptive memory estimation based on historical usage
-6. Cross-repo coordination for JARVIS Prime and Reactor Core
+6. Cross-repo coordination for Ironcliw Prime and Reactor Core
 
 v2.0.0 IMPROVEMENTS:
 - AUTO-ENABLE GCP: Dynamically enables GCP when OOM is critical, even if
@@ -63,7 +63,7 @@ Usage:
         # Only reach here if ALL strategies exhausted
         raise MemoryInsufficientError(result.reason)
 
-Author: JARVIS Trinity v132.0 - Intelligent OOM Prevention
+Author: Ironcliw Trinity v132.0 - Intelligent OOM Prevention
 """
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ FALLBACK_STRATEGIES = {
         description="Minimal mode - core functionality only, no ML models",
         actions=[
             "Skip ML model loading (voice, vision, etc.)",
-            "Disable JARVIS Prime neural features",
+            "Disable Ironcliw Prime neural features",
             "API-only mode for AI capabilities",
             "Core routing and health monitoring only",
         ],
@@ -241,10 +241,10 @@ class MemoryCheckResult:
 # Base memory estimates for heavy components (in MB)
 # These are CONSERVATIVE defaults - the system learns actual usage over time
 HEAVY_COMPONENT_MEMORY_ESTIMATES = {
-    # Core JARVIS components
+    # Core Ironcliw components
     "agi_hub": 4000,           # AGI Hub with ML models
     "neural_mesh": 2000,       # Neural mesh system
-    "jarvis_prime": 6000,      # Full JARVIS Prime (GGUF model)
+    "jarvis_prime": 6000,      # Full Ironcliw Prime (GGUF model)
     "reactor_core": 3000,      # v132.3: Reactor Core ML/autonomy (increased from 1000)
     "vision_system": 1500,     # Computer vision components
     "startup_initialization": 3000,  # Total startup initialization
@@ -268,23 +268,23 @@ HEAVY_COMPONENT_MEMORY_ESTIMATES = {
 # These are loaded from environment, but can be dynamically adjusted
 OOM_PREVENTION_THRESHOLDS = {
     # RAM thresholds
-    "min_free_ram_gb": float(os.getenv("JARVIS_MIN_FREE_RAM_GB", "2.0")),
-    "cloud_trigger_ram_gb": float(os.getenv("JARVIS_CLOUD_TRIGGER_RAM_GB", "4.0")),
-    "critical_ram_gb": float(os.getenv("JARVIS_CRITICAL_RAM_GB", "1.5")),
+    "min_free_ram_gb": float(os.getenv("Ironcliw_MIN_FREE_RAM_GB", "2.0")),
+    "cloud_trigger_ram_gb": float(os.getenv("Ironcliw_CLOUD_TRIGGER_RAM_GB", "4.0")),
+    "critical_ram_gb": float(os.getenv("Ironcliw_CRITICAL_RAM_GB", "1.5")),
 
     # Memory pressure thresholds
-    "memory_pressure_cloud_trigger": float(os.getenv("JARVIS_PRESSURE_CLOUD_TRIGGER", "75.0")),
-    "memory_pressure_critical": float(os.getenv("JARVIS_PRESSURE_CRITICAL", "90.0")),
+    "memory_pressure_cloud_trigger": float(os.getenv("Ironcliw_PRESSURE_CLOUD_TRIGGER", "75.0")),
+    "memory_pressure_critical": float(os.getenv("Ironcliw_PRESSURE_CRITICAL", "90.0")),
 
     # v2.0.0: New intelligent thresholds
-    "auto_enable_gcp_pressure": float(os.getenv("JARVIS_AUTO_GCP_PRESSURE", "85.0")),
-    "estimation_safety_factor": float(os.getenv("JARVIS_ESTIMATION_SAFETY", "1.2")),  # 20% safety margin
-    "adaptive_learning_rate": float(os.getenv("JARVIS_ADAPTIVE_RATE", "0.3")),  # How fast to adapt estimates
+    "auto_enable_gcp_pressure": float(os.getenv("Ironcliw_AUTO_GCP_PRESSURE", "85.0")),
+    "estimation_safety_factor": float(os.getenv("Ironcliw_ESTIMATION_SAFETY", "1.2")),  # 20% safety margin
+    "adaptive_learning_rate": float(os.getenv("Ironcliw_ADAPTIVE_RATE", "0.3")),  # How fast to adapt estimates
 
     # Fallback behavior
-    "enable_graceful_degradation": os.getenv("JARVIS_GRACEFUL_DEGRADATION", "true").lower() == "true",
-    "auto_enable_gcp_on_critical": os.getenv("JARVIS_AUTO_ENABLE_GCP", "true").lower() == "true",
-    "skip_gcp_if_credentials_missing": os.getenv("JARVIS_SKIP_GCP_NO_CREDS", "true").lower() == "true",
+    "enable_graceful_degradation": os.getenv("Ironcliw_GRACEFUL_DEGRADATION", "true").lower() == "true",
+    "auto_enable_gcp_on_critical": os.getenv("Ironcliw_AUTO_ENABLE_GCP", "true").lower() == "true",
+    "skip_gcp_if_credentials_missing": os.getenv("Ironcliw_SKIP_GCP_NO_CREDS", "true").lower() == "true",
 }
 
 
@@ -299,7 +299,7 @@ class AdaptiveMemoryEstimator:
 
     def __init__(self, history_file: Optional[Path] = None):
         self._history_file = history_file or Path(
-            os.getenv("JARVIS_MEMORY_HISTORY",
+            os.getenv("Ironcliw_MEMORY_HISTORY",
                       str(Path.home() / ".jarvis" / "memory_history.json"))
         )
         self._learned_estimates: Dict[str, int] = {}
@@ -431,7 +431,7 @@ def get_adaptive_estimator() -> AdaptiveMemoryEstimator:
 
 class GCPOOMPreventionBridge:
     """
-    v2.0.0: Intelligent bridge that coordinates OOM prevention across JARVIS components.
+    v2.0.0: Intelligent bridge that coordinates OOM prevention across Ironcliw components.
 
     Features:
     - Pre-flight memory checks before heavy initialization
@@ -443,7 +443,7 @@ class GCPOOMPreventionBridge:
 
     v2.0.0 ENHANCEMENTS:
     - AUTO-ENABLE GCP: Dynamically enables GCP when memory is critical,
-      even if GCP_ENABLED=false (respects JARVIS_AUTO_ENABLE_GCP setting)
+      even if GCP_ENABLED=false (respects Ironcliw_AUTO_ENABLE_GCP setting)
     - GRACEFUL DEGRADATION: Multi-tier fallback chain:
       Tier 1: GCP Cloud (32GB RAM Spot VM)
       Tier 2: Aggressive Memory Optimization
@@ -473,7 +473,7 @@ class GCPOOMPreventionBridge:
 
         # Cross-repo signal file for coordination
         self._signal_dir = Path(os.getenv(
-            "JARVIS_SIGNAL_DIR",
+            "Ironcliw_SIGNAL_DIR",
             str(Path.home() / ".jarvis" / "signals")
         ))
         self._signal_dir.mkdir(parents=True, exist_ok=True)
@@ -546,7 +546,7 @@ class GCPOOMPreventionBridge:
         # v258.3 (GCP-5): Use ResourceOrchestrator's measured snapshot if available.
         # This avoids a race condition where two psutil calls seconds apart see
         # different memory states (e.g., between ResourceOrchestrator and OOM bridge).
-        _shared_gb = os.environ.get("JARVIS_MEASURED_AVAILABLE_GB")
+        _shared_gb = os.environ.get("Ironcliw_MEASURED_AVAILABLE_GB")
         if _shared_gb:
             try:
                 _avail = float(_shared_gb)
@@ -697,7 +697,7 @@ class GCPOOMPreventionBridge:
                     if decision == MemoryDecision.CLOUD_REQUIRED:
                         decision = MemoryDecision.ABORT
                         recommendations.append("❌ Cannot proceed: GCP VM unavailable and local RAM insufficient")
-                        recommendations.append("💡 Tip: Enable JARVIS_GRACEFUL_DEGRADATION=true for fallback options")
+                        recommendations.append("💡 Tip: Enable Ironcliw_GRACEFUL_DEGRADATION=true for fallback options")
                     else:
                         decision = MemoryDecision.LOCAL
                         can_proceed_locally = True
@@ -862,7 +862,7 @@ class GCPOOMPreventionBridge:
         if available_after_optimization > minimal_requirement_gb + OOM_PREVENTION_THRESHOLDS["critical_ram_gb"]:
             recommendations.append(f"⚠️ Tier 4: Minimal mode for {component} - core only")
             recommendations.append("ML models disabled, API routing available")
-            recommendations.append("Use JARVIS_MINIMAL_MODE=false to require full functionality")
+            recommendations.append("Use Ironcliw_MINIMAL_MODE=false to require full functionality")
             return MemoryDecision.DEGRADED, True, DegradationTier.TIER_4_MINIMAL_MODE, strategy
 
         # Tier 5: All strategies exhausted - ABORT as last resort
@@ -974,7 +974,7 @@ class GCPOOMPreventionBridge:
         v2.0.0: Attempt to auto-enable GCP for critical memory situations.
 
         This checks if GCP credentials are available and if so, dynamically
-        enables GCP. This allows JARVIS to use GCP when truly needed without
+        enables GCP. This allows Ironcliw to use GCP when truly needed without
         requiring GCP_ENABLED=true in normal operation.
 
         Returns:
@@ -1144,7 +1144,7 @@ class GCPOOMPreventionBridge:
         """
         v2.0.0: Write comprehensive OOM signal file for cross-repo coordination.
 
-        This allows JARVIS Prime and Reactor Core to know about memory
+        This allows Ironcliw Prime and Reactor Core to know about memory
         decisions and adjust their behavior accordingly. The signal includes:
         - Decision type (local, cloud, degraded, abort)
         - Degradation tier and fallback strategy
@@ -1260,7 +1260,7 @@ class GCPOOMPreventionBridge:
             logger.info("[OOMBridge] Cleaning up GCP VMs...")
             try:
                 await self._gcp_vm_manager.cleanup_all_vms(
-                    reason="JARVIS shutdown - OOM prevention bridge cleanup"
+                    reason="Ironcliw shutdown - OOM prevention bridge cleanup"
                 )
             except Exception as e:
                 logger.warning(f"[OOMBridge] Cleanup warning: {e}")

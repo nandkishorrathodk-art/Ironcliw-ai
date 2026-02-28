@@ -1,4 +1,4 @@
-"""
+﻿"""
 Connection Services Registration
 =================================
 
@@ -15,7 +15,7 @@ These services provide:
 - Atomic circuit breaker with CAS pattern (prevents thundering herd)
 - Cross-repo connection coordination support
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -48,8 +48,8 @@ def register_connection_services(
         Dict mapping service name to registration success
 
     Environment Variables:
-        JARVIS_PROACTIVE_PROXY_ENABLED: Enable proxy detection (default: true)
-        JARVIS_CIRCUIT_BREAKER_ENABLED: Enable circuit breaker (default: true)
+        Ironcliw_PROACTIVE_PROXY_ENABLED: Enable proxy detection (default: true)
+        Ironcliw_CIRCUIT_BREAKER_ENABLED: Enable circuit breaker (default: true)
         CLOUD_SQL_PROXY_HOST: Proxy host (default: 127.0.0.1)
         CLOUD_SQL_PROXY_PORT: Proxy port (default: 5432)
         CIRCUIT_FAILURE_THRESHOLD: Failures before opening (default: 5)
@@ -63,7 +63,7 @@ def register_connection_services(
     # =========================================================================
     # PROACTIVE PROXY DETECTOR
     # =========================================================================
-    if os.getenv("JARVIS_PROACTIVE_PROXY_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_PROACTIVE_PROXY_ENABLED", "true").lower() == "true":
         try:
             from backend.core.connection import (
                 ProactiveProxyDetector,
@@ -100,7 +100,7 @@ def register_connection_services(
     # =========================================================================
     # ATOMIC CIRCUIT BREAKER
     # =========================================================================
-    if os.getenv("JARVIS_CIRCUIT_BREAKER_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_CIRCUIT_BREAKER_ENABLED", "true").lower() == "true":
         try:
             from backend.core.connection import (
                 AtomicCircuitBreaker,

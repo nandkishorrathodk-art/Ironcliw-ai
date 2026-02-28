@@ -1,4 +1,4 @@
-# CodeQL Security Hardening Design
+﻿# CodeQL Security Hardening Design
 
 **Date:** 2026-02-17
 **Scope:** Resolve 5,117 open CodeQL code scanning alerts via surgical security hardening
@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-5,117 open CodeQL alerts on the JARVIS repo (`drussell23/JARVIS`). Breakdown:
+5,117 open CodeQL alerts on the Ironcliw repo (`drussell23/Ironcliw`). Breakdown:
 
 | Severity | Count | Composition |
 |----------|-------|-------------|

@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Agent Communication Bus
+﻿"""
+Ironcliw Neural Mesh - Agent Communication Bus
 
 Ultra-fast async message passing between agents with:
 - Priority queues (CRITICAL < 1ms, HIGH < 5ms, NORMAL < 10ms, LOW < 50ms)

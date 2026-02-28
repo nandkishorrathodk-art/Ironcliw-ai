@@ -1,4 +1,4 @@
-//! High-Performance Integration Pipeline for JARVIS Vision
+﻿//! High-Performance Integration Pipeline for Ironcliw Vision
 //! Provides memory-efficient processing and component coordination
 
 use std::sync::Arc;

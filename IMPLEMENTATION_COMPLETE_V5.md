@@ -1,4 +1,4 @@
-# ✅ Intelligence System Implementation - COMPLETE
+﻿# ✅ Intelligence System Implementation - COMPLETE
 
 **Version:** 5.0.0
 **Date:** 2024-12-22
@@ -8,7 +8,7 @@
 
 ## What Was Built
 
-A **robust, async, parallel, intelligent, and dynamic** intelligence system with **zero hardcoding** that integrates seamlessly with the JARVIS Supervisor.
+A **robust, async, parallel, intelligent, and dynamic** intelligence system with **zero hardcoding** that integrates seamlessly with the Ironcliw Supervisor.
 
 ---
 
@@ -69,7 +69,7 @@ A **robust, async, parallel, intelligent, and dynamic** intelligence system with
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                    JARVIS Supervisor                           │
+│                    Ironcliw Supervisor                           │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │        Intelligence Component Manager (NEW v5.0)         │ │
@@ -264,7 +264,7 @@ export INTELLIGENCE_ENABLED=true
 rm -rf ~/.jarvis/intelligence/*.db
 ```
 
-### Step 3: Restart JARVIS
+### Step 3: Restart Ironcliw
 ```bash
 python3 run_supervisor.py
 ```
@@ -307,7 +307,7 @@ curl http://localhost:8010/api/intelligence/health
 brew install grafana
 brew services start grafana
 
-# Add JARVIS intelligence as data source
+# Add Ironcliw intelligence as data source
 # URL: http://localhost:8010/api/intelligence/metrics
 ```
 
@@ -381,7 +381,7 @@ curl -X POST http://localhost:8010/api/intelligence/components/network_context/r
 
 ### Getting Help
 - **Logs:** `~/.jarvis/logs/intelligence.log`
-- **Debug Mode:** `export JARVIS_LOG_LEVEL=DEBUG`
+- **Debug Mode:** `export Ironcliw_LOG_LEVEL=DEBUG`
 - **Health Check:** `curl localhost:8010/api/intelligence/health`
 
 ---
@@ -389,7 +389,7 @@ curl -X POST http://localhost:8010/api/intelligence/components/network_context/r
 ## Security Notes
 
 ### Data Storage
-- All intelligence data: `$JARVIS_DATA_DIR/intelligence/`
+- All intelligence data: `$Ironcliw_DATA_DIR/intelligence/`
 - Databases contain: network SSIDs, unlock times, device states
 - **Recommendation:** Use encrypted volume for production
 

@@ -1,9 +1,9 @@
-# Screen Lock/Unlock System - Implementation Summary
+﻿# Screen Lock/Unlock System - Implementation Summary
 
 ## 🎯 Problems Solved
 
-### Problem 1: JARVIS Getting Stuck When Screen is Locked
-**Issue**: When the screen was locked and a command like "open safari and search for dogs" was given, JARVIS would get stuck processing indefinitely.
+### Problem 1: Ironcliw Getting Stuck When Screen is Locked
+**Issue**: When the screen was locked and a command like "open safari and search for dogs" was given, Ironcliw would get stuck processing indefinitely.
 
 **Root Cause**: Commands were attempting to execute system operations (like opening applications) while the screen was locked, causing them to hang.
 
@@ -105,7 +105,7 @@ Each method now checks lock status BEFORE attempting to execute, preventing the 
 
 3. **System evaluates**: `_handle_locked_screen_command('open_application')` → Returns `(False, message)`
 
-4. **JARVIS responds**: "Your screen is locked, Sir. I cannot execute open_application commands while locked. Would you like me to unlock your screen first?"
+4. **Ironcliw responds**: "Your screen is locked, Sir. I cannot execute open_application commands while locked. Would you like me to unlock your screen first?"
 
 5. **No hanging**: Command exits gracefully without attempting execution
 
@@ -118,7 +118,7 @@ Each method now checks lock status BEFORE attempting to execute, preventing the 
    - Method 2: AppleScript → Keyboard shortcut (Cmd+Ctrl+Q)
    - Method 3: ScreenSaver → Start screensaver
 
-3. **JARVIS responds**: Dynamic response like "Securing your system now, Sir."
+3. **Ironcliw responds**: Dynamic response like "Securing your system now, Sir."
 
 ### Unlock Screen Flow (Without Daemon):
 
@@ -128,7 +128,7 @@ Each method now checks lock status BEFORE attempting to execute, preventing the 
 
 3. **Handler checks**: Is screen already unlocked?
 
-4. **JARVIS responds**: Clear instructions with setup command
+4. **Ironcliw responds**: Clear instructions with setup command
 
 ---
 
@@ -184,7 +184,7 @@ Expected results:
 
 ## 🎉 Success Metrics
 
-1. ✅ JARVIS no longer gets stuck when screen is locked
+1. ✅ Ironcliw no longer gets stuck when screen is locked
 2. ✅ Lock screen commands work reliably with multiple methods
 3. ✅ All system commands are protected with lock detection
 4. ✅ Clear, helpful error messages guide users

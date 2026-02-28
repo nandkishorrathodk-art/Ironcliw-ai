@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Validate environment variable usage across the codebase.
 
@@ -71,11 +71,11 @@ def check_required_env_vars_documented(repo_root: Path) -> list:
 
     # Known required env vars
     required_vars = [
-        "JARVIS_DB_TYPE",
-        "JARVIS_DB_CONNECTION_NAME",
-        "JARVIS_DB_HOST",
-        "JARVIS_DB_PORT",
-        "JARVIS_DB_PASSWORD",
+        "Ironcliw_DB_TYPE",
+        "Ironcliw_DB_CONNECTION_NAME",
+        "Ironcliw_DB_HOST",
+        "Ironcliw_DB_PORT",
+        "Ironcliw_DB_PASSWORD",
         "GOOGLE_APPLICATION_CREDENTIALS",
         "GCP_PROJECT_ID",
         "GCP_VM_ENABLED",

@@ -1,5 +1,5 @@
-"""
-Contextual Message Generator for JARVIS
+﻿"""
+Contextual Message Generator for Ironcliw
 Generates natural, context-aware responses for various system states
 
 Uses LLM to create conversational messages that explain:
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class ContextualMessageGenerator:
     """
-    Generates contextual messages for JARVIS responses
+    Generates contextual messages for Ironcliw responses
 
     Uses LLM for natural language generation
     """
@@ -93,7 +93,7 @@ class ContextualMessageGenerator:
 
         if self.llm_client and hasattr(self.llm_client, "generate_text"):
             try:
-                prompt = f"""Generate a brief, natural JARVIS response for this situation:
+                prompt = f"""Generate a brief, natural Ironcliw response for this situation:
 - Speaker: {speaker_name} (device owner: {is_owner})
 - Current state: Screen is locked
 - User command: "{original_command}"
@@ -104,7 +104,7 @@ Requirements:
 - Acknowledge the locked screen
 - Explain what you'll do
 - Keep it conversational and brief (1-2 sentences)
-- Sound like JARVIS from Iron Man
+- Sound like Ironcliw from Iron Man
 
 Response:"""
 
@@ -206,7 +206,7 @@ Response:"""
 
         if self.llm_client and hasattr(self.llm_client, "generate_text"):
             try:
-                prompt = f"""Generate a brief JARVIS greeting with verification status:
+                prompt = f"""Generate a brief Ironcliw greeting with verification status:
 - Speaker: {speaker_name}
 - Verification confidence: {verification_confidence:.0%}
 - Action requested: {action_description}
@@ -245,7 +245,7 @@ Response:"""
 
         status = action_map.get(action_type, "performing an action")
 
-        prompt = f"""Generate a brief, natural JARVIS response:
+        prompt = f"""Generate a brief, natural Ironcliw response:
 - Speaker: {context['speaker_name']}
 - Status: {status}
 - Action: {context['action']}
@@ -259,7 +259,7 @@ Response:"""
 
         prompt += """
 Requirements:
-- Sound like JARVIS from Iron Man
+- Sound like Ironcliw from Iron Man
 - Be helpful and professional
 - Keep it brief (1-2 sentences)
 - Address user appropriately

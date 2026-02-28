@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Wake Word Service for Frontend
  * ==============================
  * 
@@ -172,7 +172,7 @@ class WakeWordService {
           });
         }
         
-        // Notify that JARVIS is listening for command
+        // Notify that Ironcliw is listening for command
         this.websocket.send(JSON.stringify({
           type: 'command_received'
         }));

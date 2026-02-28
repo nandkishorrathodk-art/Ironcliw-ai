@@ -1,9 +1,9 @@
-# JARVIS Voice Unlock System - Complete Guide
+﻿# Ironcliw Voice Unlock System - Complete Guide
 ============================================
 
 ## Overview
 
-The JARVIS Voice Unlock system allows you to unlock your Mac using voice commands when the screen is locked. It integrates with JARVIS AI to provide natural language voice unlock capabilities.
+The Ironcliw Voice Unlock system allows you to unlock your Mac using voice commands when the screen is locked. It integrates with Ironcliw AI to provide natural language voice unlock capabilities.
 
 ## Current Status
 
@@ -16,8 +16,8 @@ The JARVIS Voice Unlock system allows you to unlock your Mac using voice command
 5. **WebSocket Bridge** - Communication between components
 6. **Permission Manager** - Handles macOS permissions
 7. **Python Bridge** - Voice processing and ML capabilities
-8. **WebSocket Server** - API for JARVIS integration
-9. **JARVIS Integration** - Voice commands through JARVIS
+8. **WebSocket Server** - API for Ironcliw integration
+9. **Ironcliw Integration** - Voice commands through Ironcliw
 
 ### 🔧 Setup Instructions
 
@@ -33,13 +33,13 @@ The JARVIS Voice Unlock system allows you to unlock your Mac using voice command
    ./start_voice_unlock_system.sh
    ```
 
-3. **Test with JARVIS:**
-   - Say: "Hey JARVIS, enable voice unlock"
-   - Say: "Hey JARVIS, voice unlock status"
+3. **Test with Ironcliw:**
+   - Say: "Hey Ironcliw, enable voice unlock"
+   - Say: "Hey Ironcliw, voice unlock status"
 
 ## Voice Commands
 
-When talking to JARVIS, you can use these commands:
+When talking to Ironcliw, you can use these commands:
 
 - **"enable voice unlock"** - Start voice monitoring
 - **"disable voice unlock"** - Stop voice monitoring  
@@ -48,15 +48,15 @@ When talking to JARVIS, you can use these commands:
 
 When your screen is locked and voice monitoring is enabled:
 
-- **"Hello JARVIS, unlock my Mac"**
-- **"JARVIS, this is Derek"**
-- **"Open sesame, JARVIS"**
+- **"Hello Ironcliw, unlock my Mac"**
+- **"Ironcliw, this is Derek"**
+- **"Open sesame, Ironcliw"**
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   JARVIS API    │────▶│ WebSocket Server │────▶│  Objective-C    │
+│   Ironcliw API    │────▶│ WebSocket Server │────▶│  Objective-C    │
 │ (Python/FastAPI)│     │   (Port 8765)    │     │    Daemon       │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
                                                            │
@@ -157,7 +157,7 @@ make daemon
 
 ### Voice commands not recognized
 1. Check WebSocket server is running
-2. Verify JARVIS is connected
+2. Verify Ironcliw is connected
 3. Check daemon logs: `/tmp/voice_unlock_ws.log`
 
 ## Security Notes
@@ -173,7 +173,7 @@ To modify the system:
 
 1. **Objective-C code**: Edit files in `backend/voice_unlock/objc/`
 2. **Python bridge**: Edit `backend/voice_unlock/objc/server/websocket_server.py`
-3. **JARVIS integration**: Edit `backend/api/voice_unlock_handler.py`
+3. **Ironcliw integration**: Edit `backend/api/voice_unlock_handler.py`
 
 After changes, rebuild with:
 ```bash
@@ -186,4 +186,4 @@ make clean && make daemon
 For issues or questions, check the logs:
 - Daemon log: `/tmp/daemon.log`
 - WebSocket log: `/tmp/voice_unlock_ws.log`
-- JARVIS log: Check JARVIS console output
+- Ironcliw log: Check Ironcliw console output

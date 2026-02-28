@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS vision system integration
-Simulates how JARVIS would handle vision commands
+Test Ironcliw vision system integration
+Simulates how Ironcliw would handle vision commands
 """
 
 import asyncio
@@ -14,8 +14,8 @@ from api.unified_vision_handler import UnifiedVisionHandler
 from vision.vision_system_v2 import VisionSystemV2
 
 async def test_vision_handler():
-    """Test the unified vision handler as JARVIS would use it"""
-    print("🤖 Testing JARVIS Vision Integration")
+    """Test the unified vision handler as Ironcliw would use it"""
+    print("🤖 Testing Ironcliw Vision Integration")
     print("=" * 50)
     
     # Initialize handler
@@ -87,7 +87,7 @@ async def test_websocket_simulation():
     """Simulate WebSocket message handling"""
     print("\n\n4️⃣ Simulating WebSocket message flow...")
     
-    # This simulates what happens when JARVIS receives a vision command
+    # This simulates what happens when Ironcliw receives a vision command
     from api.unified_vision_handler import handle_websocket_message
     
     ws_message = {
@@ -115,7 +115,7 @@ async def main():
     await test_websocket_simulation()
     
     print("\n\n✨ Vision integration test complete!")
-    print("\nIf all tests passed, JARVIS should be able to:")
+    print("\nIf all tests passed, Ironcliw should be able to:")
     print("  • See your screen")
     print("  • Analyze what's visible")
     print("  • Answer questions about what it sees")

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test browser automation capabilities
 """
@@ -14,7 +14,7 @@ from api.unified_command_processor import get_unified_processor
 async def test_browser_automation():
     processor = get_unified_processor()
     
-    print("JARVIS Browser Automation Demo")
+    print("Ironcliw Browser Automation Demo")
     print("=" * 50)
     
     # Simulate a conversation flow
@@ -29,7 +29,7 @@ async def test_browser_automation():
     for command, delay in commands:
         print(f"\nYou: {command}")
         result = await processor.process_command(command)
-        print(f"JARVIS: {result.get('response')}")
+        print(f"Ironcliw: {result.get('response')}")
         print(f"Debug - Command type: {result.get('command_type')}")
         
         if not result.get('success'):

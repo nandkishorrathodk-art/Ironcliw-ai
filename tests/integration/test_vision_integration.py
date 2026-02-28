@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Integration Testing Suite for JARVIS Multi-Window Intelligence
+Integration Testing Suite for Ironcliw Multi-Window Intelligence
 Tests integration with APIs, macOS, and end-to-end workflows
 """
 
@@ -15,7 +15,7 @@ import Quartz
 # Add the backend directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 from backend.vision.workspace_analyzer import WorkspaceAnalyzer
 from backend.vision.window_detector import WindowDetector, WindowInfo
 from backend.vision.privacy_controls import PrivacyControlSystem
@@ -27,10 +27,10 @@ from test_utils import (
 
 
 class IntegrationTestSuite:
-    """Integration testing for JARVIS workspace intelligence"""
+    """Integration testing for Ironcliw workspace intelligence"""
     
     def __init__(self):
-        self.jarvis = JARVISWorkspaceIntelligence()
+        self.jarvis = IroncliwWorkspaceIntelligence()
         self.results: List[TestResult] = []
         
     async def run_all_tests(self) -> List[TestResult]:

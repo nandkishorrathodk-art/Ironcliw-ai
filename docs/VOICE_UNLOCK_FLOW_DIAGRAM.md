@@ -1,8 +1,8 @@
-# Voice Biometric Authentication Flow Documentation
+﻿# Voice Biometric Authentication Flow Documentation
 
 ## Complete Flow Diagram: "Unlock My Screen"
 
-This document provides a comprehensive trace of what happens when you say "unlock my screen" to JARVIS, with special focus on diagnosing the **"Voice verification failed (confidence: 0.0%)"** error.
+This document provides a comprehensive trace of what happens when you say "unlock my screen" to Ironcliw, with special focus on diagnosing the **"Voice verification failed (confidence: 0.0%)"** error.
 
 ---
 
@@ -389,9 +389,9 @@ EOF
 ### Scenario 1: Registry Never Created
 
 **Symptom:** 0.0% confidence on every unlock attempt
-**Diagnosis:** Check JARVIS startup logs for "ML Engine Registry was NOT created"
+**Diagnosis:** Check Ironcliw startup logs for "ML Engine Registry was NOT created"
 **Fix:** The fix in main.py:1279-1436 adds 3 fallback strategies
-**Verify:** Restart JARVIS and check for "Registry created via..."
+**Verify:** Restart Ironcliw and check for "Registry created via..."
 
 ### Scenario 2: ECAPA Never Loads
 
@@ -404,7 +404,7 @@ EOF
 
 **Symptom:** 0.0% with "enrollment_required" in logs
 **Diagnosis:** Check diagnostic command #4 above
-**Fix:** Say "JARVIS, learn my voice" to enroll voiceprint
+**Fix:** Say "Ironcliw, learn my voice" to enroll voiceprint
 
 ### Scenario 4: Corrupted Profile
 

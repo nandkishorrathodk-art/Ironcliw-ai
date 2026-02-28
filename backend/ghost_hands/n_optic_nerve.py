@@ -1,8 +1,8 @@
-"""
+﻿"""
 N-Optic Nerve: Multi-Window Parallel Vision System
 ===================================================
 
-The "eyes" of JARVIS Ghost Hands - provides N-stream parallel video monitoring
+The "eyes" of Ironcliw Ghost Hands - provides N-stream parallel video monitoring
 across all macOS Spaces without requiring focus.
 
 Features:
@@ -26,7 +26,7 @@ Architecture:
     │   └── State change triggers (window changes)
     └── VisionEventQueue (async event bus)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Ghost Hands Edition
 """
 
@@ -70,37 +70,37 @@ class NOpticConfig:
 
     # Capture settings
     target_fps: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_OPTIC_FPS", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_OPTIC_FPS", "10"))
     )
     max_concurrent_watchers: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_OPTIC_MAX_WATCHERS", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_OPTIC_MAX_WATCHERS", "10"))
     )
     capture_quality: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_OPTIC_QUALITY", "0.8"))
+        default_factory=lambda: float(os.getenv("Ironcliw_OPTIC_QUALITY", "0.8"))
     )
 
     # OCR settings
     ocr_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_OPTIC_OCR_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_OPTIC_OCR_ENABLED", "true").lower() == "true"
     )
     ocr_interval_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_OPTIC_OCR_INTERVAL_MS", "500"))
+        default_factory=lambda: int(os.getenv("Ironcliw_OPTIC_OCR_INTERVAL_MS", "500"))
     )
     ocr_language: str = field(
-        default_factory=lambda: os.getenv("JARVIS_OPTIC_OCR_LANG", "eng")
+        default_factory=lambda: os.getenv("Ironcliw_OPTIC_OCR_LANG", "eng")
     )
 
     # Event detection
     event_debounce_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_OPTIC_DEBOUNCE_MS", "1000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_OPTIC_DEBOUNCE_MS", "1000"))
     )
     event_queue_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_OPTIC_QUEUE_SIZE", "100"))
+        default_factory=lambda: int(os.getenv("Ironcliw_OPTIC_QUEUE_SIZE", "100"))
     )
 
     # Performance
     low_power_mode: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_OPTIC_LOW_POWER", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_OPTIC_LOW_POWER", "false").lower() == "true"
     )
 
     @property
@@ -273,7 +273,7 @@ class OCREngine:
                 lambda: self._pytesseract.image_to_string(
                     image,
                     lang=self.language,
-                    config=f"--psm {os.getenv('JARVIS_OPTIC_OCR_PSM', '6')}"
+                    config=f"--psm {os.getenv('Ironcliw_OPTIC_OCR_PSM', '6')}"
                 )
             )
             return text.strip()

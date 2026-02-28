@@ -1,5 +1,5 @@
-"""
-JARVIS AGI OS - Voice Approval Manager
+﻿"""
+Ironcliw AGI OS - Voice Approval Manager
 
 Handles voice-based user approval workflows for autonomous actions.
 Integrates voice recognition with the permission system to create
@@ -73,7 +73,7 @@ class ApprovalRequest:
     action_type: str              # Type of action (fix_error, send_message, etc.)
     target: str                   # Target of action (file, app, etc.)
     confidence: float             # AI confidence in this action (0-1)
-    reasoning: str                # Why JARVIS wants to do this
+    reasoning: str                # Why Ironcliw wants to do this
     urgency: ApprovalUrgency = ApprovalUrgency.NORMAL
     context: Dict[str, Any] = field(default_factory=dict)
     request_id: str = field(default="")

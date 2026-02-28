@@ -1,4 +1,4 @@
-# Design: OOMBridge Fallback Hardening
+﻿# Design: OOMBridge Fallback Hardening
 
 **Date:** 2026-02-23
 **Status:** Approved
@@ -53,7 +53,7 @@ except Exception as _oom_err:
     )
     # OOMBridge is broken — cloud modes can't execute without it.
     # Unconditionally degrade to local fallback.
-    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _guard_mode
+    os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _guard_mode
 ```
 
 With 2.6GB: `_guard_mode = "sequential"` (because `predicted_post_load = 2.6 - 4.6 = 0.0 < critical(2.0)`). Mode becomes `sequential`. Correct.
@@ -108,10 +108,10 @@ Two env vars, two purposes:
 
 | Var | Purpose | Set when | Read by |
 |---|---|---|---|
-| `JARVIS_STARTUP_DESIRED_MODE` | Operator intent / policy | Once, at initial mode decision | GCP probe eligibility, post-startup recovery |
-| `JARVIS_STARTUP_MEMORY_MODE` | Runtime safety mode (effective) | Monotonically degraded during startup | Phase gates, parallel_initializer, subprocess admission |
+| `Ironcliw_STARTUP_DESIRED_MODE` | Operator intent / policy | Once, at initial mode decision | GCP probe eligibility, post-startup recovery |
+| `Ironcliw_STARTUP_MEMORY_MODE` | Runtime safety mode (effective) | Monotonically degraded during startup | Phase gates, parallel_initializer, subprocess admission |
 
-`JARVIS_STARTUP_DESIRED_MODE` is set at two locations:
+`Ironcliw_STARTUP_DESIRED_MODE` is set at two locations:
 - Line 63728: `_startup_mem_mode` from IntelligentResourceOrchestrator
 - Line 63702: fallback when ResourceOrchestrator fails
 
@@ -121,16 +121,16 @@ Never modified after initial set.
 
 **Location:** `unified_supervisor.py:64203` (GCP Availability Probe)
 
-Change the probe eligibility check from `JARVIS_STARTUP_MEMORY_MODE` to `JARVIS_STARTUP_DESIRED_MODE`:
+Change the probe eligibility check from `Ironcliw_STARTUP_MEMORY_MODE` to `Ironcliw_STARTUP_DESIRED_MODE`:
 
 ```python
 # Before:
-_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
 if _mode in ("cloud_first", "cloud_only"):
     # probe GCP
 
 # After:
-_desired = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full")
+_desired = os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "local_full")
 if _desired in ("cloud_first", "cloud_only"):
     # probe GCP — based on operator intent, not runtime degradation
 ```

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Scenario 1: Basic Connection to Known Display
 ===================================================
@@ -232,7 +232,7 @@ async def test_scenario_1_with_unified_processor():
 
 
 if __name__ == "__main__":
-    print("\n🚀 JARVIS Display Connection - Scenario 1 Test Suite")
+    print("\n🚀 Ironcliw Display Connection - Scenario 1 Test Suite")
     print("=" * 80)
 
     # Run basic test

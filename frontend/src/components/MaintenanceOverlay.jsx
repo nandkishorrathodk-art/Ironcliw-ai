@@ -1,15 +1,15 @@
-/**
+﻿/**
  * MaintenanceOverlay Component v3.0 - Zero-Touch Edition
  * =======================================================
  * 
- * Displays a premium overlay when JARVIS is in maintenance mode
+ * Displays a premium overlay when Ironcliw is in maintenance mode
  * (updating, restarting, rolling back, or Zero-Touch autonomous update).
  * 
  * Features:
  * - Matrix rain effect (canvas-based)
  * - Falling particles animation
  * - Arc reactor spinner
- * - Matches JARVIS green theme (#00ff41)
+ * - Matches Ironcliw green theme (#00ff41)
  * - Zero-Touch autonomous update progress (v3.0)
  * - Dead Man's Switch monitoring display (v3.0)
  * - Update validation progress (v3.0)
@@ -182,7 +182,7 @@ const MaintenanceOverlay = () => {
         }
         switch (maintenanceReason) {
             case 'updating':
-                return 'Updating JARVIS';
+                return 'Updating Ironcliw';
             case 'restarting':
                 return 'Restarting';
             case 'rollback':

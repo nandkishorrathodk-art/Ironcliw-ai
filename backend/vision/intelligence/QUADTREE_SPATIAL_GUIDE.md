@@ -1,8 +1,8 @@
-# Quadtree-Based Spatial Intelligence Guide
+﻿# Quadtree-Based Spatial Intelligence Guide
 
 ## Overview
 
-The Quadtree-Based Spatial Intelligence system minimizes data processing and API calls through intelligent spatial division. It adaptively subdivides screen regions based on visual complexity and importance, allowing JARVIS to focus computational resources on the most relevant areas.
+The Quadtree-Based Spatial Intelligence system minimizes data processing and API calls through intelligent spatial division. It adaptively subdivides screen regions based on visual complexity and importance, allowing Ironcliw to focus computational resources on the most relevant areas.
 
 ## Architecture
 

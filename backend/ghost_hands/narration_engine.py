@@ -1,8 +1,8 @@
-"""
+﻿"""
 Ghost Hands Narration Engine
 ==============================
 
-The "voice" of JARVIS Ghost Hands - provides real-time humanistic narration
+The "voice" of Ironcliw Ghost Hands - provides real-time humanistic narration
 following the "Working Out Loud" philosophy.
 
 Narration Philosophy:
@@ -35,7 +35,7 @@ Architecture:
     │   └── Debouncing & deduplication
     └── EventSubscriber (event listeners)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Ghost Hands Edition
 """
 
@@ -105,61 +105,61 @@ class NarrationConfig:
     # Verbosity
     verbosity: VerbosityLevel = field(
         default_factory=lambda: VerbosityLevel[
-            os.getenv("JARVIS_NARRATION_VERBOSITY", "NORMAL").upper()
+            os.getenv("Ironcliw_NARRATION_VERBOSITY", "NORMAL").upper()
         ]
     )
 
     # Tone
     tone: NarrationTone = field(
         default_factory=lambda: NarrationTone(
-            os.getenv("JARVIS_NARRATION_TONE", "friendly")
+            os.getenv("Ironcliw_NARRATION_TONE", "friendly")
         )
     )
 
     # TTS settings
     tts_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_NARRATION_TTS", "true"
+            "Ironcliw_NARRATION_TTS", "true"
         ).lower() == "true"
     )
     tts_use_trinity: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_NARRATION_USE_TRINITY", "true"
+            "Ironcliw_NARRATION_USE_TRINITY", "true"
         ).lower() == "true"
     )
     tts_voice: Optional[str] = field(
         default_factory=lambda: (
-            os.getenv("JARVIS_NARRATION_VOICE")
-            or os.getenv("JARVIS_NARRATOR_VOICE_NAME")
-            or os.getenv("JARVIS_VOICE_NAME")
+            os.getenv("Ironcliw_NARRATION_VOICE")
+            or os.getenv("Ironcliw_NARRATOR_VOICE_NAME")
+            or os.getenv("Ironcliw_VOICE_NAME")
             or "Daniel"
         )
     )
     tts_speed: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_NARRATION_SPEED", "1.1"))
+        default_factory=lambda: float(os.getenv("Ironcliw_NARRATION_SPEED", "1.1"))
     )
 
     # Debouncing
     debounce_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_NARRATION_DEBOUNCE_MS", "1500"))
+        default_factory=lambda: int(os.getenv("Ironcliw_NARRATION_DEBOUNCE_MS", "1500"))
     )
     max_queue_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_NARRATION_QUEUE_SIZE", "20"))
+        default_factory=lambda: int(os.getenv("Ironcliw_NARRATION_QUEUE_SIZE", "20"))
     )
 
     # Event filtering
     skip_repetitive: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_NARRATION_SKIP_REPETITIVE", "true"
+            "Ironcliw_NARRATION_SKIP_REPETITIVE", "true"
         ).lower() == "true"
     )
     repetitive_window_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_NARRATION_REPETITIVE_MS", "5000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_NARRATION_REPETITIVE_MS", "5000"))
     )
 
     # User name for personalization
     user_name: str = field(
-        default_factory=lambda: os.getenv("JARVIS_USER_NAME", "")
+        default_factory=lambda: os.getenv("Ironcliw_USER_NAME", "")
     )
 
 
@@ -169,9 +169,9 @@ class NarrationConfig:
 
 class NarrationType(Enum):
     """Types of narration."""
-    PERCEPTION = auto()     # What JARVIS sees
-    INTENT = auto()         # What JARVIS plans to do
-    ACTION = auto()         # What JARVIS is doing
+    PERCEPTION = auto()     # What Ironcliw sees
+    INTENT = auto()         # What Ironcliw plans to do
+    ACTION = auto()         # What Ironcliw is doing
     CONFIRMATION = auto()   # Result of an action
     STATUS = auto()         # System status
     WARNING = auto()        # Warnings
@@ -544,24 +544,24 @@ class TTSBridge:
         return self._tts_engine
 
     def _resolve_voice_name(self) -> str:
-        """Resolve canonical narration voice with JARVIS fallback chain."""
+        """Resolve canonical narration voice with Ironcliw fallback chain."""
         return (
             self.config.tts_voice
-            or os.getenv("JARVIS_NARRATOR_VOICE_NAME")
-            or os.getenv("JARVIS_VOICE_NAME")
+            or os.getenv("Ironcliw_NARRATOR_VOICE_NAME")
+            or os.getenv("Ironcliw_VOICE_NAME")
             or "Daniel"
         )
 
     def _resolve_rate_wpm(self) -> int:
         """Resolve narration speech rate (words per minute)."""
-        narrator_rate = os.getenv("JARVIS_NARRATOR_VOICE_RATE")
+        narrator_rate = os.getenv("Ironcliw_NARRATOR_VOICE_RATE")
         if narrator_rate:
             try:
                 return max(120, min(260, int(narrator_rate)))
             except ValueError:
                 pass
 
-        legacy_rate = os.getenv("JARVIS_VOICE_RATE_WPM")
+        legacy_rate = os.getenv("Ironcliw_VOICE_RATE_WPM")
         if legacy_rate:
             try:
                 return max(120, min(260, int(legacy_rate)))
@@ -584,8 +584,8 @@ class TTSBridge:
         self._say_rate_wpm = self._resolve_rate_wpm()
 
         # Ensure narrator profile defaults are present before coordinator bootstrap.
-        os.environ.setdefault("JARVIS_NARRATOR_VOICE_NAME", self._say_voice)
-        os.environ.setdefault("JARVIS_NARRATOR_VOICE_RATE", str(self._say_rate_wpm))
+        os.environ.setdefault("Ironcliw_NARRATOR_VOICE_NAME", self._say_voice)
+        os.environ.setdefault("Ironcliw_NARRATOR_VOICE_RATE", str(self._say_rate_wpm))
 
         # 1) Preferred path: Trinity Voice Coordinator (shared control plane).
         if self.config.tts_use_trinity:
@@ -868,7 +868,7 @@ class NarrationEngine:
         location: str = "",
         priority: NarrationPriority = NarrationPriority.NORMAL,
     ) -> None:
-        """Narrate a perception (what JARVIS sees)."""
+        """Narrate a perception (what Ironcliw sees)."""
         if self.config.verbosity.value < VerbosityLevel.NORMAL.value:
             return
 
@@ -885,7 +885,7 @@ class NarrationEngine:
         action: str,
         priority: NarrationPriority = NarrationPriority.NORMAL,
     ) -> None:
-        """Narrate an intent (what JARVIS plans to do)."""
+        """Narrate an intent (what Ironcliw plans to do)."""
         if self.config.verbosity.value < VerbosityLevel.NORMAL.value:
             return
 

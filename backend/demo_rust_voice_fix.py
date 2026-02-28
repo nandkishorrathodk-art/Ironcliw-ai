@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Demo: Rust Voice Integration Fix for 503 Errors
 Shows how Rust acceleration eliminates the 503 Service Unavailable errors
@@ -48,8 +48,8 @@ async def demo_rust_benefits():
     print("  5. Automatic CPU throttling")
     
     print("\n" + "=" * 60)
-    print(f"{Fore.GREEN}✅ Your JARVIS voice system is now production-ready!{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}✅ No more 503 errors when saying 'Hey JARVIS'{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✅ Your Ironcliw voice system is now production-ready!{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✅ No more 503 errors when saying 'Hey Ironcliw'{Style.RESET_ALL}")
     print("=" * 60)
 
 async def show_code_changes():
@@ -99,7 +99,7 @@ async def show_usage():
     print("   Select option 1 (Full System)")
     
     print("\n2. Your web interface will now work without 503 errors:")
-    print(f"{Fore.GRAY}   - Say 'Hey JARVIS' → Works immediately")
+    print(f"{Fore.GRAY}   - Say 'Hey Ironcliw' → Works immediately")
     print(f"   - No more 'Service Unavailable'")
     print(f"   - Smooth, responsive interaction{Style.RESET_ALL}")
     
@@ -122,7 +122,7 @@ async def main():
     # Show usage
     await show_usage()
     
-    print(f"\n{Fore.GREEN}🎉 Your JARVIS system is now using Rust acceleration!{Style.RESET_ALL}")
+    print(f"\n{Fore.GREEN}🎉 Your Ironcliw system is now using Rust acceleration!{Style.RESET_ALL}")
     print(f"{Fore.GREEN}🎉 503 errors are eliminated permanently!{Style.RESET_ALL}\n")
 
 if __name__ == "__main__":

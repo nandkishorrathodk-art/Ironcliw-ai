@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Security Scanner - Gap #20
 ==================================
 
@@ -12,7 +12,7 @@ Advanced security vulnerability scanning with:
 - Secrets detection (API keys, passwords)
 - Dependency vulnerability checking
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

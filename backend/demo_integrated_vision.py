@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Demo of JARVIS Integrated Vision System
+Demo of Ironcliw Integrated Vision System
 Shows how vision and control work together seamlessly
 """
 
 print("""
-🤖 JARVIS Integrated Vision & Control System Demo
+🤖 Ironcliw Integrated Vision & Control System Demo
 ================================================
 
 This system integrates:
@@ -18,7 +18,7 @@ This system integrates:
 Key Features:
 
 1. PROACTIVE SCREEN DESCRIPTION:
-   When you ask "What's on my screen?", JARVIS will:
+   When you ask "What's on my screen?", Ironcliw will:
    - Describe what you're currently looking at
    - Mention other open windows/applications
    - Alert you to any notifications
@@ -26,7 +26,7 @@ Key Features:
 
 2. NOTIFICATION HANDLING:
    When WhatsApp (or any app) shows a notification:
-   - JARVIS verbally announces: "Sir, you have a message from WhatsApp"
+   - Ironcliw verbally announces: "Sir, you have a message from WhatsApp"
    - Offers to read the message
    - Provides contextual reply options based on:
      • Time of day
@@ -34,7 +34,7 @@ Key Features:
      • Past interaction patterns
    
 3. INTELLIGENT REPLIES:
-   Based on context, JARVIS suggests replies like:
+   Based on context, Ironcliw suggests replies like:
    - During work: "In a meeting, will respond soon"
    - Evening: "Will look at this tomorrow"
    - Coding: "Deep in code, will check in a bit"
@@ -49,7 +49,7 @@ Example Interaction:
 
 User: "What can you see on my screen?"
 
-JARVIS: "You're working in Cursor on dynamic_vision_engine.py — JARVIS-AI-Agent.
+Ironcliw: "You're working in Cursor on dynamic_vision_engine.py — Ironcliw-AI-Agent.
 
 I also notice you have Terminal, Chrome, and WhatsApp running.
 
@@ -61,14 +61,14 @@ Just let me know what you'd like to focus on."
 
 User: "Read the WhatsApp message"
 
-JARVIS: "The message from WhatsApp says:
+Ironcliw: "The message from WhatsApp says:
 'Hey, are you free for a quick call?'
 
 Would you like to reply?"
 
 User: "Yes, help me reply"
 
-JARVIS: "I can help you reply to WhatsApp.
+Ironcliw: "I can help you reply to WhatsApp.
 Based on your past interactions, here are some suggestions:
 1. Give me 5 minutes
 2. In a meeting, will call you back

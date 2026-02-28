@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test Hybrid Weather Provider"""
 
 import asyncio
@@ -81,7 +81,7 @@ async def test_hybrid_weather():
         
         # Test weather query processing
         response = await bridge.process_weather_query("What's the weather for today?")
-        print(f"✅ JARVIS Response: {response}")
+        print(f"✅ Ironcliw Response: {response}")
         
     except Exception as e:
         print(f"❌ Bridge test failed: {e}")
@@ -93,5 +93,5 @@ async def test_hybrid_weather():
     print("\n" + "="*60)
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_hybrid_weather())

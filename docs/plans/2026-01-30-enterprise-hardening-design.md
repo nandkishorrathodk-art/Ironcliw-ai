@@ -1,4 +1,4 @@
-# Enterprise-Grade System Unification & Hardening
+﻿# Enterprise-Grade System Unification & Hardening
 
 **Date:** 2026-01-30
 **Status:** Approved for Implementation
@@ -8,13 +8,13 @@
 
 ## Executive Summary
 
-This design elevates the JARVIS ecosystem into an enterprise-grade, production-ready architecture. The core innovation is a **ComponentRegistry** that serves as the single source of truth for all components, their criticality, dependencies, and runtime status. This enables automatic log severity derivation, deterministic startup ordering, capability-based routing, and graceful degradation.
+This design elevates the Ironcliw ecosystem into an enterprise-grade, production-ready architecture. The core innovation is a **ComponentRegistry** that serves as the single source of truth for all components, their criticality, dependencies, and runtime status. This enables automatic log severity derivation, deterministic startup ordering, capability-based routing, and graceful degradation.
 
 ### Key Outcomes
 
 1. **Log noise reduction** - Optional component failures log at INFO, not ERROR
 2. **Deterministic startup** - DAG-based ordering replaces implicit timing
-3. **Cross-repo coordination** - Unified lifecycle management for JARVIS, Prime, Reactor
+3. **Cross-repo coordination** - Unified lifecycle management for Ironcliw, Prime, Reactor
 4. **Graceful degradation** - Capability fallbacks, conservative startup after crashes
 5. **Observable startup** - Single summary showing what started, what didn't, why
 
@@ -395,18 +395,18 @@ CROSS_REPO_COMPONENTS = [
         name="jarvis-prime",
         criticality=Criticality.DEGRADED_OK,
         process_type=ProcessType.SUBPROCESS,
-        repo_path="${JARVIS_PRIME_PATH}",
+        repo_path="${Ironcliw_PRIME_PATH}",
         provides_capabilities=["local-inference", "llm", "embeddings"],
         dependencies=[
             "jarvis-core",
             Dependency("gcp-prewarm", soft=True),  # Soft dependency
         ],
         health_check_type=HealthCheckType.HTTP,
-        health_endpoint="http://localhost:${JARVIS_PRIME_PORT}/health",
+        health_endpoint="http://localhost:${Ironcliw_PRIME_PORT}/health",
         startup_timeout=120.0,
         fallback_strategy=FallbackStrategy.RETRY_THEN_CONTINUE,
         fallback_for_capabilities={"inference": "claude-api", "embeddings": "openai-api"},
-        disable_env_var="JARVIS_PRIME_ENABLED",
+        disable_env_var="Ironcliw_PRIME_ENABLED",
         conservative_skip_priority=80,
     ),
     ComponentDefinition(
@@ -551,7 +551,7 @@ class StartupCompletionCriteria:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JARVIS Startup Summary (v148.0)
+Ironcliw Startup Summary (v148.0)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ jarvis-core         HEALTHY    [required]     1.2s
@@ -683,7 +683,7 @@ class StartupContext:
                 "timestamp": datetime.utcnow().isoformat(),
                 "exit_code": exit_code,
                 "exit_reason": exit_reason,
-                "version": JARVIS_VERSION,
+                "version": Ironcliw_VERSION,
             }))
         except Exception:
             pass
@@ -793,7 +793,7 @@ class StartupLock:
 class StatePaths:
     """Phased migration from old to new state paths."""
 
-    MIGRATION_PHASE = int(os.environ.get("JARVIS_STATE_MIGRATION_PHASE", "1"))
+    MIGRATION_PHASE = int(os.environ.get("Ironcliw_STATE_MIGRATION_PHASE", "1"))
 
     OLD_PATHS = {
         "last_exit_code": Path("~/.jarvis/trinity/last_exit_code"),

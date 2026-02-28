@@ -1,6 +1,6 @@
-# Cross-Repository Contract
+﻿# Cross-Repository Contract
 
-This document defines the contract between JARVIS, JARVIS-Prime, and Reactor-Core.
+This document defines the contract between Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
 ## Environment Variables
 
@@ -8,16 +8,16 @@ All three repositories MUST respect these environment variables:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `JARVIS_PRIME_PATH` | Path to JARVIS-Prime repository | Auto-discovered |
+| `Ironcliw_PRIME_PATH` | Path to Ironcliw-Prime repository | Auto-discovered |
 | `REACTOR_CORE_PATH` | Path to Reactor-Core repository | Auto-discovered |
-| `JARVIS_PRIME_PORT` | Port for JARVIS-Prime | 8000 |
+| `Ironcliw_PRIME_PORT` | Port for Ironcliw-Prime | 8000 |
 | `REACTOR_CORE_PORT` | Port for Reactor-Core | 8090 |
 
 ## Path Discovery
 
-JARVIS uses `IntelligentRepoDiscovery` to find repositories:
+Ironcliw uses `IntelligentRepoDiscovery` to find repositories:
 
-1. **Environment variable** (highest priority): `JARVIS_PRIME_PATH`, `REACTOR_CORE_PATH`
+1. **Environment variable** (highest priority): `Ironcliw_PRIME_PATH`, `REACTOR_CORE_PATH`
 2. **Sibling directory**: `../jarvis-prime`, `../reactor-core`
 3. **Standard locations**: `~/Documents/repos/`, `~/repos/`
 4. **Git-based search**: Find by .git presence
@@ -54,12 +54,12 @@ Each repository SHOULD write heartbeat files to:
 Components are classified as:
 
 ### Critical (must be healthy for FULLY_READY)
-- `backend` - JARVIS backend API server
+- `backend` - Ironcliw backend API server
 - `loading_server` - Static file server for loading page
 - `preflight` - Startup preflight checks
 
 ### Optional (can be skipped/unavailable)
-- `jarvis_prime` - JARVIS-Prime AI components
+- `jarvis_prime` - Ironcliw-Prime AI components
 - `reactor_core` - Reactor-Core event processing
 - `enterprise` - Enterprise features
 - `agi_os` - AGI OS integration
@@ -97,10 +97,10 @@ Readiness behavior can be configured via environment variables:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `JARVIS_VERIFICATION_TIMEOUT` | 60.0 | Seconds to wait for service verification |
-| `JARVIS_UNHEALTHY_THRESHOLD_FAILURES` | 3 | Consecutive failures before unhealthy |
-| `JARVIS_UNHEALTHY_THRESHOLD_SECONDS` | 30.0 | Seconds unhealthy before revocation |
-| `JARVIS_REVOCATION_COOLDOWN_SECONDS` | 5.0 | Seconds between revocation events |
+| `Ironcliw_VERIFICATION_TIMEOUT` | 60.0 | Seconds to wait for service verification |
+| `Ironcliw_UNHEALTHY_THRESHOLD_FAILURES` | 3 | Consecutive failures before unhealthy |
+| `Ironcliw_UNHEALTHY_THRESHOLD_SECONDS` | 30.0 | Seconds unhealthy before revocation |
+| `Ironcliw_REVOCATION_COOLDOWN_SECONDS` | 5.0 | Seconds between revocation events |
 
 ## Related Files
 

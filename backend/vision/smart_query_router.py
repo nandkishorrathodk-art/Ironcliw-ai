@@ -1,5 +1,5 @@
-"""
-Smart Query Router for JARVIS Vision System
+﻿"""
+Smart Query Router for Ironcliw Vision System
 Routes queries to optimal processing pipeline based on classification.
 
 Three routing paths:

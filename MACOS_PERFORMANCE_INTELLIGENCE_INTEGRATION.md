@@ -1,4 +1,4 @@
-# macOS Performance Intelligence Integration - COMPLETE ✅
+﻿# macOS Performance Intelligence Integration - COMPLETE ✅
 
 ## Overview
 
@@ -8,7 +8,7 @@ Both `memory_quantizer.py` and `swift_system_monitor.py` are **fully integrated*
 - **SAI (Situational Awareness Intelligence)** - Environment-aware monitoring
 - **macOS-Specific Logic** - Accurate memory pressure calculation
 
-JARVIS now **learns and adapts** to macOS-specific memory behavior patterns over time!
+Ironcliw now **learns and adapts** to macOS-specific memory behavior patterns over time!
 
 ---
 
@@ -16,7 +16,7 @@ JARVIS now **learns and adapts** to macOS-specific memory behavior patterns over
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    JARVIS Intelligence Stack                         │
+│                    Ironcliw Intelligence Stack                         │
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────────┐ │
 │  │         Learning Database (Persistent Cross-Session)           │ │
@@ -230,7 +230,7 @@ true_pressure = (wired + active + compressed) / total  # 28.8% - ACCURATE!
 **Your Current M1 Mac (as tested):**
 ```
 psutil: 82% "used"     → Linux: PANIC!
-macOS: 29% true used   → JARVIS: All good! ✅
+macOS: 29% true used   → Ironcliw: All good! ✅
 Tier: abundant
 Kernel: normal pressure
 ```
@@ -422,7 +422,7 @@ Both `memory_quantizer.py` and `swift_system_monitor.py` are **production-ready*
 ✅ **Adaptive learning** - Gets smarter over time
 ✅ **Zero hardcoding** - All thresholds learned dynamically
 
-**JARVIS now has true intelligence for macOS memory management!** 🎯
+**Ironcliw now has true intelligence for macOS memory management!** 🎯
 
 The system will:
 - Learn your usage patterns

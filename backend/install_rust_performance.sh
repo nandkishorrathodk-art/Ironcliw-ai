@@ -1,7 +1,7 @@
-#!/bin/bash
-# JARVIS Rust Performance Layer Installation Script
+﻿#!/bin/bash
+# Ironcliw Rust Performance Layer Installation Script
 
-echo "🚀 JARVIS Rust Performance Layer Setup"
+echo "🚀 Ironcliw Rust Performance Layer Setup"
 echo "======================================"
 
 # Check if Rust is installed
@@ -77,7 +77,7 @@ echo "📂 Creating Rust module files..."
 
 # Main lib.rs
 cat > src/lib.rs << 'EOF'
-//! JARVIS Performance Layer - Rust Implementation
+//! Ironcliw Performance Layer - Rust Implementation
 //! 
 //! This crate provides high-performance implementations of:
 //! - Quantized ML inference (INT8)
@@ -524,7 +524,7 @@ build-backend = "maturin"
 [project]
 name = "jarvis_performance"
 version = "0.1.0"
-description = "High-performance Rust layer for JARVIS AI"
+description = "High-performance Rust layer for Ironcliw AI"
 requires-python = ">=3.8"
 
 [tool.maturin]

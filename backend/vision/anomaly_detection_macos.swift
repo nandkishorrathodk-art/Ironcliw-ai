@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 import Cocoa
 import Vision
 import CoreML
@@ -451,7 +451,7 @@ class MacOSAnomalyDetector {
     private func notifyAnomalyDetected(_ anomaly: AnomalyEvent) {
         // Post notification for other components
         NotificationCenter.default.post(
-            name: Notification.Name("JARVISAnomalyDetected"),
+            name: Notification.Name("IroncliwAnomalyDetected"),
             object: self,
             userInfo: [
                 "anomaly": anomaly,

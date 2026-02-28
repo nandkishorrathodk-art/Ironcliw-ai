@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Integration Orchestrator - Core Processing Pipeline for JARVIS Vision
+Integration Orchestrator - Core Processing Pipeline for Ironcliw Vision
 Brings Intelligence and Efficiency Together with Dynamic Resource Management
 Total Memory Budget: 1.2GB (dynamically allocated)
 """

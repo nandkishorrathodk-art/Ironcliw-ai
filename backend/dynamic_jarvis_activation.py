@@ -1,5 +1,5 @@
-"""
-Dynamic JARVIS Activation System
+﻿"""
+Dynamic Ironcliw Activation System
 Zero hardcoding - all behavior learned through ML
 Automatically initializes missing components and handles failures gracefully
 """
@@ -72,9 +72,9 @@ class MLServiceOrchestrator(nn.Module):
     def forward(self, x):
         return self.strategy_network(x).reshape(-1, 3)  # Actions per service
 
-class DynamicJARVISActivation:
+class DynamicIroncliwActivation:
     """
-    Fully dynamic JARVIS activation system
+    Fully dynamic Ironcliw activation system
     No hardcoding - learns optimal initialization strategies
     """
     
@@ -96,7 +96,7 @@ class DynamicJARVISActivation:
         # ML models for decision making
         self._init_ml_models()
         
-        logger.info("Dynamic JARVIS Activation System initialized")
+        logger.info("Dynamic Ironcliw Activation System initialized")
     
     def _init_ml_models(self):
         """Initialize ML models for dynamic decisions"""
@@ -122,7 +122,7 @@ class DynamicJARVISActivation:
     
     async def activate_jarvis(self, request_context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Dynamically activate JARVIS with ML-driven decisions
+        Dynamically activate Ironcliw with ML-driven decisions
         Never returns limited mode - always finds a solution
         """
         start_time = time.time()
@@ -151,7 +151,7 @@ class DynamicJARVISActivation:
         
         return {
             "status": "activated",
-            "message": "JARVIS fully activated with dynamic optimization",
+            "message": "Ironcliw fully activated with dynamic optimization",
             "mode": "full",  # Never limited!
             "capabilities": final_capabilities,
             "services": {name: service.state.value for name, service in initialized_services.items()},
@@ -406,7 +406,7 @@ class DynamicJARVISActivation:
                     health.health_score = 0.6
                     
             elif service_name == 'jarvis_core':
-                # Core JARVIS functionality
+                # Core Ironcliw functionality
                 health.capabilities = ['command_processing', 'response_generation', 'context_management']
                 health.health_score = 0.95
                 
@@ -527,17 +527,17 @@ class DynamicJARVISActivation:
 # Global instance
 _dynamic_activation = None
 
-def get_dynamic_activation() -> DynamicJARVISActivation:
+def get_dynamic_activation() -> DynamicIroncliwActivation:
     """Get or create dynamic activation instance"""
     global _dynamic_activation
     if _dynamic_activation is None:
-        _dynamic_activation = DynamicJARVISActivation()
+        _dynamic_activation = DynamicIroncliwActivation()
     return _dynamic_activation
 
-# Integration with existing JARVIS API
+# Integration with existing Ironcliw API
 async def activate_jarvis_dynamic(request_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Drop-in replacement for JARVIS activation
+    Drop-in replacement for Ironcliw activation
     Always returns full activation, never limited mode
     """
     activation = get_dynamic_activation()
@@ -557,8 +557,8 @@ async def activate_jarvis_dynamic(request_context: Optional[Dict[str, Any]] = No
 
 # Demo function
 async def demo_dynamic_activation():
-    """Demonstrate dynamic JARVIS activation"""
-    logger.info("Starting Dynamic JARVIS Activation Demo...")
+    """Demonstrate dynamic Ironcliw activation"""
+    logger.info("Starting Dynamic Ironcliw Activation Demo...")
     logger.info("=" * 60)
     
     # Test different scenarios
@@ -595,7 +595,7 @@ async def demo_dynamic_activation():
             logger.info(f"  ... and {len(result['capabilities']) - 5} more")
     
     logger.info("\n" + "=" * 60)
-    logger.info("Dynamic activation ensures JARVIS is ALWAYS fully functional!")
+    logger.info("Dynamic activation ensures Ironcliw is ALWAYS fully functional!")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

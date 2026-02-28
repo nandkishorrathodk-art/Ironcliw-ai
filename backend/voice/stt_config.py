@@ -1,4 +1,4 @@
-"""
+﻿"""
 Dynamic Speech-to-Text Configuration System
 Zero hardcoding - all values loaded from environment/config
 """
@@ -113,30 +113,30 @@ class STTConfig:
     def _load_from_environment(self):
         """Load config from environment variables"""
         # Routing strategy
-        strategy = os.getenv("JARVIS_STT_STRATEGY", "balanced")
+        strategy = os.getenv("Ironcliw_STT_STRATEGY", "balanced")
         try:
             self.default_strategy = RoutingStrategy(strategy)
         except ValueError:
             pass
 
         # RAM thresholds
-        self.min_ram_for_wav2vec = float(os.getenv("JARVIS_MIN_RAM_WAV2VEC", "2.0"))
-        self.min_ram_for_whisper_small = float(os.getenv("JARVIS_MIN_RAM_WHISPER_SMALL", "3.0"))
+        self.min_ram_for_wav2vec = float(os.getenv("Ironcliw_MIN_RAM_WAV2VEC", "2.0"))
+        self.min_ram_for_whisper_small = float(os.getenv("Ironcliw_MIN_RAM_WHISPER_SMALL", "3.0"))
 
         # Confidence thresholds
-        self.min_confidence_local = float(os.getenv("JARVIS_MIN_CONFIDENCE_LOCAL", "0.75"))
+        self.min_confidence_local = float(os.getenv("Ironcliw_MIN_CONFIDENCE_LOCAL", "0.75"))
         self.min_confidence_acceptable = float(
-            os.getenv("JARVIS_MIN_CONFIDENCE_ACCEPTABLE", "0.60")
+            os.getenv("Ironcliw_MIN_CONFIDENCE_ACCEPTABLE", "0.60")
         )
 
         # GCP config
         self.gcp_project_id = os.getenv("GCP_PROJECT_ID")
         self.gcp_region = os.getenv("GCP_REGION", "us-central1")
-        self.gcp_vm_enabled = os.getenv("JARVIS_GCP_STT_ENABLED", "true").lower() == "true"
+        self.gcp_vm_enabled = os.getenv("Ironcliw_GCP_STT_ENABLED", "true").lower() == "true"
 
         # Learning
-        self.enable_learning = os.getenv("JARVIS_STT_LEARNING", "true").lower() == "true"
-        self.auto_fine_tune = os.getenv("JARVIS_AUTO_FINE_TUNE", "true").lower() == "true"
+        self.enable_learning = os.getenv("Ironcliw_STT_LEARNING", "true").lower() == "true"
+        self.auto_fine_tune = os.getenv("Ironcliw_AUTO_FINE_TUNE", "true").lower() == "true"
 
     def _initialize_model_configs(self):
         """Initialize model configurations with best practices"""

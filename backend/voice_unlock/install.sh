@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
-# JARVIS Voice Unlock Installation Script
+# Ironcliw Voice Unlock Installation Script
 # ======================================
 #
 
@@ -10,7 +10,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 USER_NAME=$(whoami)
 
-echo "🚀 JARVIS Voice Unlock Installation"
+echo "🚀 Ironcliw Voice Unlock Installation"
 echo "==================================="
 echo
 
@@ -76,7 +76,7 @@ sudo chmod +x /usr/local/bin/jarvis-voice-unlock
 # Set up permissions
 echo "Setting up permissions..."
 # Request microphone access
-osascript -e 'tell application "System Events" to display dialog "JARVIS Voice Unlock needs microphone access. Please grant permission in System Preferences > Security & Privacy > Privacy > Microphone" buttons {"OK"} default button 1'
+osascript -e 'tell application "System Events" to display dialog "Ironcliw Voice Unlock needs microphone access. Please grant permission in System Preferences > Security & Privacy > Privacy > Microphone" buttons {"OK"} default button 1'
 
 # Test installation
 echo

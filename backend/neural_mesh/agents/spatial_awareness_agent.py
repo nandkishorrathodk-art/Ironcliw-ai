@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Spatial Awareness Agent
+﻿"""
+Ironcliw Neural Mesh - Spatial Awareness Agent
 =============================================
 
 The "Body" of the Grand Unification - provides 3D OS Awareness (Proprioception)
@@ -20,7 +20,7 @@ Other agents (like GoogleWorkspaceAgent) can request these services:
 This enables true multi-agent workflows where the "Chief of Staff"
 (Google Agent) can ask the "Body" (Spatial Agent) to navigate to apps.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Grand Unification
 """
 
@@ -413,7 +413,7 @@ def get_space_lock() -> SpaceLock:
 
 class SpatialAwarenessAgent(BaseNeuralMeshAgent):
     """
-    Spatial Awareness Agent - The "Body" of JARVIS.
+    Spatial Awareness Agent - The "Body" of Ironcliw.
 
     Provides 3D OS Awareness (Proprioception) to all Neural Mesh agents:
     - Knows which macOS Space is active (1-16)

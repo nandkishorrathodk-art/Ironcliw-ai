@@ -1,10 +1,10 @@
-"""
+﻿"""
 Trinity Heartbeat Publisher v81.0 - Symmetric Heartbeat System
 =============================================================
 
 Provides symmetric heartbeat publishing for all Trinity components:
-- JARVIS Body (must publish, not just read)
-- JARVIS Prime (publishes via subprocess)
+- Ironcliw Body (must publish, not just read)
+- Ironcliw Prime (publishes via subprocess)
 - Reactor Core (publishes via subprocess)
 
 FEATURES:
@@ -19,7 +19,7 @@ ZERO HARDCODING - All configuration via environment variables:
     TRINITY_HEARTBEAT_WARMUP        - Warmup period before "ready" (default: 3.0s)
     TRINITY_HEARTBEAT_TIMEOUT       - Max age for valid heartbeat (default: 15.0s)
 
-Author: JARVIS v81.0
+Author: Ironcliw v81.0
 """
 
 from __future__ import annotations
@@ -175,12 +175,12 @@ class HeartbeatPublisher:
     """
     Publishes heartbeats for a Trinity component.
 
-    Must be started by JARVIS Body, J-Prime, AND Reactor-Core to enable
+    Must be started by Ironcliw Body, J-Prime, AND Reactor-Core to enable
     symmetric health monitoring.
 
     Usage:
         publisher = HeartbeatPublisher(
-            component_type=ComponentType.JARVIS_BODY,
+            component_type=ComponentType.Ironcliw_BODY,
         )
 
         # Start publishing
@@ -419,7 +419,7 @@ class HeartbeatSubscriber:
 
         # Register callback for status changes
         subscriber.on_status_change(
-            ComponentType.JARVIS_PRIME,
+            ComponentType.Ironcliw_PRIME,
             lambda status: print(f"J-Prime is now {status}")
         )
 
@@ -427,7 +427,7 @@ class HeartbeatSubscriber:
         await subscriber.start()
 
         # Check status
-        status = await subscriber.get_status(ComponentType.JARVIS_PRIME)
+        status = await subscriber.get_status(ComponentType.Ironcliw_PRIME)
     """
 
     def __init__(
@@ -522,14 +522,14 @@ class HeartbeatSubscriber:
         Compute aggregate health score (0.0 - 1.0).
 
         Weights:
-        - JARVIS_BODY: 1.0 (critical)
-        - JARVIS_PRIME: 0.7 (important)
+        - Ironcliw_BODY: 1.0 (critical)
+        - Ironcliw_PRIME: 0.7 (important)
         - REACTOR_CORE: 0.7 (important)
         - CODING_COUNCIL: 0.3 (optional)
         """
         weights = {
-            ComponentType.JARVIS_BODY: 1.0,
-            ComponentType.JARVIS_PRIME: 0.7,
+            ComponentType.Ironcliw_BODY: 1.0,
+            ComponentType.Ironcliw_PRIME: 0.7,
             ComponentType.REACTOR_CORE: 0.7,
             ComponentType.CODING_COUNCIL: 0.3,
         }

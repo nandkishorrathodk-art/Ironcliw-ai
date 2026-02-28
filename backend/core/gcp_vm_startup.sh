@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
-# JARVIS GCP Spot VM Startup Script v197.0
+# Ironcliw GCP Spot VM Startup Script v197.0
 # =========================================
 #
 # v197.0 ARCHITECTURE: "Adaptive Progress-Aware Readiness System (APARS)"
@@ -48,7 +48,7 @@
 # Log everything to console (serial port) for debugging
 exec 2>&1
 
-echo "🚀 JARVIS GCP VM Startup Script v155.0"
+echo "🚀 Ironcliw GCP VM Startup Script v155.0"
 echo "======================================="
 echo "Starting at: $(date)"
 echo "Instance: $(hostname)"
@@ -56,12 +56,12 @@ echo "Kernel: $(uname -r)"
 echo "Python: $(python3 --version 2>&1 || echo 'not found')"
 
 # Get metadata with timeout
-JARVIS_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port 2>/dev/null || echo "8000")
-JARVIS_COMPONENTS=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-components 2>/dev/null || echo "inference")
-JARVIS_REPO_URL=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-repo-url 2>/dev/null || echo "")
+Ironcliw_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port 2>/dev/null || echo "8000")
+Ironcliw_COMPONENTS=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-components 2>/dev/null || echo "inference")
+Ironcliw_REPO_URL=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-repo-url 2>/dev/null || echo "")
 
-echo "📦 Port: ${JARVIS_PORT}"
-echo "📦 Components: ${JARVIS_COMPONENTS}"
+echo "📦 Port: ${Ironcliw_PORT}"
+echo "📦 Components: ${Ironcliw_COMPONENTS}"
 echo "📦 Network interfaces:"
 ip addr show 2>/dev/null | grep 'inet ' || echo "  (could not get network info)"
 
@@ -267,23 +267,23 @@ PROGRESS_EOF
 }
 
 # Start ultra-fast health server IMMEDIATELY (background)
-PORT=${JARVIS_PORT} python3 /opt/jarvis-ultra/health.py > /var/log/jarvis-ultra.log 2>&1 &
+PORT=${Ironcliw_PORT} python3 /opt/jarvis-ultra/health.py > /var/log/jarvis-ultra.log 2>&1 &
 ULTRA_PID=$!
-echo "   Ultra-fast health server started (PID: $ULTRA_PID) on port ${JARVIS_PORT}"
+echo "   Ultra-fast health server started (PID: $ULTRA_PID) on port ${Ironcliw_PORT}"
 
 # Report Phase 0 progress
 update_progress 0 50 3 "ultra_stub_starting"
 
 # Verify it's running (with quick timeout)
 sleep 2
-if timeout 3 curl -s http://localhost:${JARVIS_PORT}/health > /dev/null 2>&1; then
+if timeout 3 curl -s http://localhost:${Ironcliw_PORT}/health > /dev/null 2>&1; then
     echo "✅ PHASE 0 COMPLETE: Ultra-fast health endpoint ready in <5 seconds!"
-    echo "   URL: http://localhost:${JARVIS_PORT}/health"
+    echo "   URL: http://localhost:${Ironcliw_PORT}/health"
     update_progress 0 100 5 "ultra_stub_ready"
 else
     echo "⚠️  Ultra-fast health check failed, trying to diagnose..."
     echo "    Process status: $(ps aux | grep health.py | grep -v grep || echo 'not running')"
-    echo "    Port status: $(ss -tlnp | grep ${JARVIS_PORT} || echo 'not listening')"
+    echo "    Port status: $(ss -tlnp | grep ${Ironcliw_PORT} || echo 'not listening')"
     echo "    Log: $(tail -5 /var/log/jarvis-ultra.log 2>/dev/null || echo 'no log')"
     update_progress 0 50 3 "ultra_stub_failed" false false '"health_check_failed"'
 fi
@@ -316,7 +316,7 @@ update_progress 1 80 12 "pip_install_complete"
 mkdir -p /opt/jarvis-stub
 cat > /opt/jarvis-stub/health_stub.py << 'STUBEOF'
 """
-JARVIS GCP Health Stub Server v197.0 (APARS)
+Ironcliw GCP Health Stub Server v197.0 (APARS)
 =============================================
 Minimal server that responds to health checks while full setup runs.
 Will be replaced by the real inference server once ready.
@@ -329,7 +329,7 @@ import os
 import time
 import json
 
-app = FastAPI(title="JARVIS GCP Stub")
+app = FastAPI(title="Ironcliw GCP Stub")
 start_time = time.time()
 
 PROGRESS_FILE = "/tmp/jarvis_progress.json"
@@ -428,7 +428,7 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"status": "JARVIS GCP VM initializing...", "version": "v197.0"}
+    return {"status": "Ironcliw GCP VM initializing...", "version": "v197.0"}
 
 @app.get("/health/ready")
 async def ready():
@@ -458,15 +458,15 @@ if __name__ == "__main__":
 STUBEOF
 
 # Start stub server in background
-PORT=${JARVIS_PORT} nohup python3 /opt/jarvis-stub/health_stub.py > /var/log/jarvis-stub.log 2>&1 &
+PORT=${Ironcliw_PORT} nohup python3 /opt/jarvis-stub/health_stub.py > /var/log/jarvis-stub.log 2>&1 &
 STUB_PID=$!
-echo "   Stub server started (PID: $STUB_PID) on port ${JARVIS_PORT}"
+echo "   Stub server started (PID: $STUB_PID) on port ${Ironcliw_PORT}"
 
 # Quick health check to verify stub is running
 sleep 3
-if curl -s http://localhost:${JARVIS_PORT}/health > /dev/null; then
+if curl -s http://localhost:${Ironcliw_PORT}/health > /dev/null; then
     echo "✅ PHASE 1 COMPLETE: Health endpoint ready in <10 seconds!"
-    echo "   URL: http://localhost:${JARVIS_PORT}/health"
+    echo "   URL: http://localhost:${Ironcliw_PORT}/health"
 else
     echo "⚠️  Stub health check failed, continuing anyway..."
 fi
@@ -485,10 +485,10 @@ update_progress 2 0 16 "full_setup_starting"
 # v226.2: Export shell variables so the child bash process inherits them.
 # The nohup bash -c '...' block runs in a new bash process that does NOT
 # inherit non-exported variables from the parent shell. Previously,
-# JARVIS_PORT was only assigned (line 59) but never exported, causing all
-# ${JARVIS_PORT} references inside Phases 2-6 to expand to empty string.
+# Ironcliw_PORT was only assigned (line 59) but never exported, causing all
+# ${Ironcliw_PORT} references inside Phases 2-6 to expand to empty string.
 # This broke Phase 5 server handoff and Phase 6 health verification.
-export JARVIS_PORT JARVIS_COMPONENTS JARVIS_REPO_URL
+export Ironcliw_PORT Ironcliw_COMPONENTS Ironcliw_REPO_URL
 
 # Run full setup in background so startup script can exit
 nohup bash -c '
@@ -520,7 +520,7 @@ PROGRESS_EOF
     echo "[APARS] Phase ${phase}: ${checkpoint} (${total_progress}%)"
 }
 
-echo "=== JARVIS Full Setup Started at $(date) ==="
+echo "=== Ironcliw Full Setup Started at $(date) ==="
 echo "=== APARS v197.0: Progress tracking enabled ==="
 
 # =============================================================================
@@ -530,8 +530,8 @@ echo "=== APARS v197.0: Progress tracking enabled ==="
 # (either via Docker pre-baked image or persistent disk cache)
 #
 # Detection methods:
-#   1. JARVIS_DEPS_PREBAKED=true env var (set by Docker image)
-#   2. JARVIS_SKIP_ML_DEPS_INSTALL=true env var (manual override)
+#   1. Ironcliw_DEPS_PREBAKED=true env var (set by Docker image)
+#   2. Ironcliw_SKIP_ML_DEPS_INSTALL=true env var (manual override)
 #   3. /.dockerenv file exists (running in Docker container)
 #   4. torch and transformers packages already installed
 #
@@ -562,15 +562,15 @@ SKIP_ML_DEPS=false
 SKIP_REASON=""
 
 # Method 1: Explicit environment variable from Docker image
-if [ "${JARVIS_DEPS_PREBAKED:-false}" = "true" ]; then
+if [ "${Ironcliw_DEPS_PREBAKED:-false}" = "true" ]; then
     SKIP_ML_DEPS=true
-    SKIP_REASON="JARVIS_DEPS_PREBAKED=true (Docker pre-baked image)"
+    SKIP_REASON="Ironcliw_DEPS_PREBAKED=true (Docker pre-baked image)"
 fi
 
 # Method 2: Manual skip override
-if [ "${JARVIS_SKIP_ML_DEPS_INSTALL:-false}" = "true" ]; then
+if [ "${Ironcliw_SKIP_ML_DEPS_INSTALL:-false}" = "true" ]; then
     SKIP_ML_DEPS=true
-    SKIP_REASON="JARVIS_SKIP_ML_DEPS_INSTALL=true (manual override)"
+    SKIP_REASON="Ironcliw_SKIP_ML_DEPS_INSTALL=true (manual override)"
 fi
 
 # Method 3: Docker container detection + package verification
@@ -818,16 +818,16 @@ echo "📥 Cloning jarvis-prime repository..."
 cd /opt
 
 # v228.0: Dynamic repo URL discovery (no hardcoded usernames)
-# Priority: 1) JARVIS_REPO_URL from GCP metadata  2) JARVIS_PRIME_REPO_URL env  3) Auto-detect default
-REPO_URL="${JARVIS_REPO_URL:-}"
+# Priority: 1) Ironcliw_REPO_URL from GCP metadata  2) Ironcliw_PRIME_REPO_URL env  3) Auto-detect default
+REPO_URL="${Ironcliw_REPO_URL:-}"
 if [ -z "$REPO_URL" ]; then
-    REPO_URL="${JARVIS_PRIME_REPO_URL:-}"
+    REPO_URL="${Ironcliw_PRIME_REPO_URL:-}"
 fi
 if [ -z "$REPO_URL" ]; then
     # Derive from GCP project metadata or use well-known default
     REPO_URL="https://github.com/drussell23/jarvis-prime.git"
     echo "[REPO-DISCOVERY] Using default repo URL: $REPO_URL"
-    echo "[REPO-DISCOVERY] Override with: JARVIS_REPO_URL or JARVIS_PRIME_REPO_URL env var"
+    echo "[REPO-DISCOVERY] Override with: Ironcliw_REPO_URL or Ironcliw_PRIME_REPO_URL env var"
 fi
 echo "[REPO-DISCOVERY] Repository URL: $REPO_URL"
 
@@ -840,7 +840,7 @@ git clone "$REPO_URL" jarvis-prime 2>/dev/null || {
     # Create minimal inference server with APARS support
     cat > jarvis-prime/server.py << "INFEREOF"
 """
-JARVIS Prime GCP Inference Server v197.0 (APARS)
+Ironcliw Prime GCP Inference Server v197.0 (APARS)
 =================================================
 Handles inference requests for heavy models.
 Reports ready_for_inference=true when fully loaded.
@@ -851,7 +851,7 @@ import os
 import time
 import json
 
-app = FastAPI(title="JARVIS Prime GCP")
+app = FastAPI(title="Ironcliw Prime GCP")
 start_time = time.time()
 
 PROGRESS_FILE = "/tmp/jarvis_progress.json"
@@ -924,7 +924,7 @@ async def inference(request: dict = {}):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", os.environ.get("JARVIS_PORT", "8000")))
+    port = int(os.environ.get("PORT", os.environ.get("Ironcliw_PORT", "8000")))
     uvicorn.run(app, host="0.0.0.0", port=port)
 INFEREOF
 }
@@ -968,11 +968,11 @@ sleep 2
 update_progress 5 50 87 "starting_real_server"
 
 # Start real inference server
-# v226.2: JARVIS_PORT is inherited from the exported parent environment.
+# v226.2: Ironcliw_PORT is inherited from the exported parent environment.
 # Removed the quoted prefix that broke the enclosing bash -c block
 # quoting structure (inner quotes ended the outer quoted region).
 cd /opt/jarvis-prime
-JARVIS_PORT=${JARVIS_PORT} nohup python3 server.py > /var/log/jarvis-inference.log 2>&1 &
+Ironcliw_PORT=${Ironcliw_PORT} nohup python3 server.py > /var/log/jarvis-inference.log 2>&1 &
 REAL_PID=$!
 echo "   Real inference server started (PID: $REAL_PID)"
 
@@ -983,7 +983,7 @@ HANDOFF_SUCCESS=false
 for i in 1 2 3 4 5; do
     sleep 2
     update_progress 5 $((70 + i*5)) $((90 + i)) "verifying_handoff_attempt_${i}"
-    if curl -s http://localhost:${JARVIS_PORT}/health | grep -q "inference"; then
+    if curl -s http://localhost:${Ironcliw_PORT}/health | grep -q "inference"; then
         HANDOFF_SUCCESS=true
         break
     fi
@@ -994,7 +994,7 @@ if [ "$HANDOFF_SUCCESS" = true ]; then
     update_progress 5 100 95 "handoff_complete" true false
 else
     echo "⚠️  Handoff may have failed, checking..."
-    curl -s http://localhost:${JARVIS_PORT}/health || echo "Health check failed"
+    curl -s http://localhost:${Ironcliw_PORT}/health || echo "Health check failed"
     update_progress 5 100 95 "handoff_partial" false false '"handoff_verification_failed"'
 fi
 
@@ -1009,7 +1009,7 @@ sleep 3
 update_progress 6 50 97 "warmup_inference_test" true false
 
 # Optional: Run a warmup inference request
-curl -s -X POST http://localhost:${JARVIS_PORT}/v1/chat/completions \
+curl -s -X POST http://localhost:${Ironcliw_PORT}/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '"{"messages":[{"role":"user","content":"warmup"}]}"' > /dev/null 2>&1 || true
 
@@ -1019,14 +1019,14 @@ echo ""
 echo "═══════════════════════════════════════════════════════════════════════"
 echo "✅ APARS v197.0: ALL PHASES COMPLETE - VM READY FOR INFERENCE"
 echo "═══════════════════════════════════════════════════════════════════════"
-echo "=== JARVIS Full Setup Complete at $(date) ==="
+echo "=== Ironcliw Full Setup Complete at $(date) ==="
 ' &
 
 echo ""
 echo "═══════════════════════════════════════════════════════════════════════"
 echo "✅ STARTUP SCRIPT COMPLETE"
 echo "═══════════════════════════════════════════════════════════════════════"
-echo "   Health endpoint: http://localhost:${JARVIS_PORT}/health (READY NOW)"
+echo "   Health endpoint: http://localhost:${Ironcliw_PORT}/health (READY NOW)"
 echo "   Full setup: Running in background (see /var/log/jarvis-full-setup.log)"
 echo "   Stub logs: /var/log/jarvis-stub.log"
 echo "   Inference logs: /var/log/jarvis-inference.log (after handoff)"

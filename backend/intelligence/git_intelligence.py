@@ -1,4 +1,4 @@
-"""
+﻿"""
 Git Intelligence v1.0 - Version Control Awareness System
 ========================================================
 
@@ -41,7 +41,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -99,7 +99,7 @@ class GitIntelligenceConfig:
     CROSS_REPO_ENABLED: bool = get_env_bool("GIT_CROSS_REPO", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    Ironcliw_REPO: Path = Path(get_env_str("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
     PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
     REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
@@ -1175,12 +1175,12 @@ class CrossRepoGitIntelligence:
     """
     Git intelligence across multiple repositories.
 
-    Correlates changes across JARVIS, JARVIS-Prime, and Reactor-Core.
+    Correlates changes across Ironcliw, Ironcliw-Prime, and Reactor-Core.
     """
 
     def __init__(self):
         self._repos: Dict[str, Path] = {
-            "jarvis": GitIntelligenceConfig.JARVIS_REPO,
+            "jarvis": GitIntelligenceConfig.Ironcliw_REPO,
             "prime": GitIntelligenceConfig.PRIME_REPO,
             "reactor": GitIntelligenceConfig.REACTOR_REPO,
         }
@@ -1273,7 +1273,7 @@ _cross_repo_git: Optional[CrossRepoGitIntelligence] = None
 def get_git_intelligence(repo_path: Optional[Path] = None) -> GitIntelligenceEngine:
     """Get the singleton git intelligence engine."""
     global _git_intelligence
-    repo_path = repo_path or GitIntelligenceConfig.JARVIS_REPO
+    repo_path = repo_path or GitIntelligenceConfig.Ironcliw_REPO
     if _git_intelligence is None or _git_intelligence.repo_path != repo_path:
         _git_intelligence = GitIntelligenceEngine(repo_path)
     return _git_intelligence

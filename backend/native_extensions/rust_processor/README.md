@@ -1,4 +1,4 @@
-# Rust Processor for JARVIS
+﻿# Rust Processor for Ironcliw
 
 High-performance vision and audio processing using Rust extensions to reduce CPU usage and improve performance.
 
@@ -215,7 +215,7 @@ Initializes the processor and checks Rust availability.
 
 ## 📄 License
 
-This project is part of JARVIS AI Agent and follows the same licensing terms.
+This project is part of Ironcliw AI Agent and follows the same licensing terms.
 
 ## 🆘 Support
 
@@ -227,4 +227,4 @@ For issues and questions:
 
 ---
 
-**Built with ❤️ for JARVIS AI Agent**
+**Built with ❤️ for Ironcliw AI Agent**

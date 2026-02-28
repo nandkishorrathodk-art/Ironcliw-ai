@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Integration Tests for JARVIS Vision System
+Integration Tests for Ironcliw Vision System
 Tests actual window detection and visual analysis with real apps
 """
 
@@ -349,7 +349,7 @@ async def run_async_integration_tests():
     return True
 
 if __name__ == "__main__":
-    print("🧪 Running JARVIS Vision Integration Tests")
+    print("🧪 Running Ironcliw Vision Integration Tests")
     print("=" * 50)
     
     # Run sync tests

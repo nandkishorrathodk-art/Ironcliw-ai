@@ -1,8 +1,8 @@
-"""
+﻿"""
 Unified Resilience Engine v1.0 - Enterprise-Grade Fault Tolerance
 ==================================================================
 
-The central nervous system for fault tolerance across JARVIS, JARVIS Prime,
+The central nervous system for fault tolerance across Ironcliw, Ironcliw Prime,
 and Reactor Core. Implements all 12 resilience patterns:
 
 1. Circuit Breakers (enhanced) - Adaptive thresholds with ML-based prediction
@@ -45,7 +45,7 @@ Architecture:
     │                                                                          │
     │                    CROSS-REPO INTEGRATION                                │
     │  ┌───────────────────────────────────────────────────────────────────┐  │
-    │  │  JARVIS (Body) ◀══════▶ JARVIS Prime (Mind) ◀══════▶ Reactor     │  │
+    │  │  Ironcliw (Body) ◀══════▶ Ironcliw Prime (Mind) ◀══════▶ Reactor     │  │
     │  │       ▲                        ▲                        ▲         │  │
     │  │       └────────────────────────┼────────────────────────┘         │  │
     │  │                     Neural Mesh Integration                        │  │
@@ -244,11 +244,11 @@ class ResilienceConfig:
     # Cross-Repo Configuration
     @staticmethod
     def get_jarvis_url() -> str:
-        return os.getenv("JARVIS_API_URL", "http://localhost:8010")
+        return os.getenv("Ironcliw_API_URL", "http://localhost:8010")
 
     @staticmethod
     def get_prime_url() -> str:
-        return os.getenv("JARVIS_PRIME_API_URL", "http://localhost:8000")
+        return os.getenv("Ironcliw_PRIME_API_URL", "http://localhost:8000")
 
     @staticmethod
     def get_reactor_url() -> str:
@@ -2031,7 +2031,7 @@ class UnifiedResilienceEngine:
     - Adaptive timeouts
     - Decorrelated jitter retry
 
-    This is the main entry point for resilience in the JARVIS ecosystem.
+    This is the main entry point for resilience in the Ironcliw ecosystem.
     """
 
     _instance: Optional["UnifiedResilienceEngine"] = None
@@ -2128,14 +2128,14 @@ class UnifiedResilienceEngine:
             strategy=RoutingStrategy.ADAPTIVE,
         )
 
-        # Add JARVIS endpoints
+        # Add Ironcliw endpoints
         await trinity_router.add_endpoint(
             "jarvis_body",
             ResilienceConfig.get_jarvis_url(),
             weight=1.0,
         )
 
-        # Add JARVIS Prime endpoints
+        # Add Ironcliw Prime endpoints
         await trinity_router.add_endpoint(
             "jarvis_prime",
             ResilienceConfig.get_prime_url(),
@@ -2155,7 +2155,7 @@ class UnifiedResilienceEngine:
         # Setup failover orchestrator
         failover = FailoverOrchestrator("prime_llm")
 
-        # Primary: Local JARVIS Prime
+        # Primary: Local Ironcliw Prime
         primary = ServiceEndpoint(
             name="local_prime",
             url=ResilienceConfig.get_prime_url(),

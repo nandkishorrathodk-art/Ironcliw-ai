@@ -1,8 +1,8 @@
-# JARVIS AI Agent - System Control Guide
+﻿# Ironcliw AI Agent - System Control Guide
 
 ## 🚀 Overview
 
-JARVIS has evolved from a voice assistant into a full AI agent capable of controlling your macOS environment through natural language commands. This system leverages Anthropic's Claude API for intelligent command interpretation and safe execution of system-level tasks.
+Ironcliw has evolved from a voice assistant into a full AI agent capable of controlling your macOS environment through natural language commands. This system leverages Anthropic's Claude API for intelligent command interpretation and safe execution of system-level tasks.
 
 ## 🎯 Key Features
 
@@ -102,38 +102,38 @@ python test_jarvis_agent.py
 
 ### Basic Commands
 ```
-User: "Hey JARVIS, open Chrome"
-JARVIS: "I've opened Google Chrome for you, sir."
+User: "Hey Ironcliw, open Chrome"
+Ironcliw: "I've opened Google Chrome for you, sir."
 
 User: "Set volume to 30 percent"
-JARVIS: "Volume adjusted to 30%, sir."
+Ironcliw: "Volume adjusted to 30%, sir."
 
 User: "Take a screenshot"
-JARVIS: "Screenshot captured and saved, sir."
+Ironcliw: "Screenshot captured and saved, sir."
 ```
 
 ### Complex Commands
 ```
 User: "Open Visual Studio Code and search for Python tutorials"
-JARVIS: "Opening Visual Studio Code... Searching Google for Python tutorials..."
+Ironcliw: "Opening Visual Studio Code... Searching Google for Python tutorials..."
 
 User: "Start my morning routine"
-JARVIS: "Initiating morning routine, sir. Opening your email... Checking your calendar... 
+Ironcliw: "Initiating morning routine, sir. Opening your email... Checking your calendar... 
          Getting today's weather... Morning routine complete, sir."
 ```
 
 ### Safety Confirmations
 ```
 User: "Delete test.txt from my desktop"
-JARVIS: "This action requires your confirmation, sir. Say 'confirm' to proceed or 'cancel' to abort."
+Ironcliw: "This action requires your confirmation, sir. Say 'confirm' to proceed or 'cancel' to abort."
 User: "Confirm"
-JARVIS: "Task completed successfully, sir. Deleted file: test.txt"
+Ironcliw: "Task completed successfully, sir. Deleted file: test.txt"
 ```
 
 ## 🎛️ Command Modes
 
 ### 1. Conversation Mode (Default)
-- Normal JARVIS interactions
+- Normal Ironcliw interactions
 - System commands detected automatically
 - Mixed conversation and control
 
@@ -250,7 +250,7 @@ Customize responses in `agent_responses`:
 ## 📚 Architecture
 
 ```
-JARVIS Agent Voice System
+Ironcliw Agent Voice System
 ├── Natural Language Layer (Claude API)
 │   ├── Intent Recognition
 │   ├── Entity Extraction
@@ -284,7 +284,7 @@ JARVIS Agent Voice System
 To add new system control features:
 1. Add methods to `MacOSController`
 2. Update command patterns in `ClaudeCommandInterpreter`
-3. Add voice responses to `JARVISAgentVoice`
+3. Add voice responses to `IroncliwAgentVoice`
 4. Include safety checks and confirmations
 5. Update this documentation
 

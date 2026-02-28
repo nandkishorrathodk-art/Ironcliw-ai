@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Live test of speaker verification system
 """
@@ -57,8 +57,8 @@ async def test_verification():
     # Test 5: Check database
     print(f"\n5️⃣  Checking voice database...")
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
-        db = JARVISLearningDatabase()
+        from intelligence.learning_database import IroncliwLearningDatabase
+        db = IroncliwLearningDatabase()
         await db.initialize()
 
         if db.hybrid_sync:

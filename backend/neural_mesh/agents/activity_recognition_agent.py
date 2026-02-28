@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Activity Recognition Agent (v2.7)
+﻿"""
+Ironcliw Neural Mesh - Activity Recognition Agent (v2.7)
 
 Advanced user activity recognition and context understanding system.
 Monitors user behavior patterns, application usage, and work context

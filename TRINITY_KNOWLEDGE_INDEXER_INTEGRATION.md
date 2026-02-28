@@ -1,19 +1,19 @@
-# Trinity Knowledge Indexer v88.0 - Complete Integration
+﻿# Trinity Knowledge Indexer v88.0 - Complete Integration
 
 **Version:** 88.0
 **Status:** ✅ FULLY INTEGRATED
 **Date:** 2026-01-10
-**Integration Level:** JARVIS Body + JARVIS-Prime + Reactor-Core
+**Integration Level:** Ironcliw Body + Ironcliw-Prime + Reactor-Core
 
 ---
 
 ## 🎯 Mission Accomplished
 
-**The "Missing Link" is now complete!** Web scraping is now fully connected to JARVIS's brain and training pipeline.
+**The "Missing Link" is now complete!** Web scraping is now fully connected to Ironcliw's brain and training pipeline.
 
 ### Problem Solved
 Previously, scraped web content was stored in SQLite but **never indexed** for RAG retrieval or training. This meant:
-- ❌ JARVIS couldn't answer questions using scraped knowledge
+- ❌ Ironcliw couldn't answer questions using scraped knowledge
 - ❌ Scraped content never reached Reactor Core for training
 - ❌ No vector embeddings = no semantic search
 
@@ -145,8 +145,8 @@ if self._trinity_knowledge_indexer:
 export TRINITY_INDEXER_ENABLED=true
 
 # Database paths
-export JARVIS_TRAINING_DB_PATH="~/.jarvis/data/training_db/jarvis_training.db"
-export JARVIS_VECTOR_DB_PATH="~/.jarvis/data/vector_db"
+export Ironcliw_TRAINING_DB_PATH="~/.jarvis/data/training_db/jarvis_training.db"
+export Ironcliw_VECTOR_DB_PATH="~/.jarvis/data/vector_db"
 
 # Embedding model (sentence-transformers)
 export TRINITY_EMBEDDING_MODEL="all-MiniLM-L6-v2"  # Fast, good quality
@@ -584,7 +584,7 @@ export TRINITY_EMBEDDING_MODEL="all-MiniLM-L6-v2"
 ## 🚀 Next Steps
 
 ### Immediate (Ready to use)
-1. ✅ **Start JARVIS:** `python3 run_supervisor.py`
+1. ✅ **Start Ironcliw:** `python3 run_supervisor.py`
 2. ✅ **Scrape content:** SafeScout will populate scraped_content table
 3. ✅ **Auto-indexing:** Runs every 5 minutes in background
 4. ✅ **Auto-export:** Training data exported every 1 hour
@@ -664,11 +664,11 @@ export TRINITY_EMBEDDING_MODEL="all-MiniLM-L6-v2"
 5. ✅ **Scales efficiently** with parallel batch processing
 6. ✅ **Degrades gracefully** when dependencies unavailable
 7. ✅ **Configures dynamically** with 48+ environment variables
-8. ✅ **Integrates seamlessly** with existing JARVIS infrastructure
+8. ✅ **Integrates seamlessly** with existing Ironcliw infrastructure
 
 **The knowledge flywheel is now complete:**
 
-Web Scraping → Knowledge Indexing → RAG Retrieval → Training Export → Model Fine-tuning → Improved JARVIS → Better Responses → More Knowledge → (repeat)
+Web Scraping → Knowledge Indexing → RAG Retrieval → Training Export → Model Fine-tuning → Improved Ironcliw → Better Responses → More Knowledge → (repeat)
 
 ---
 

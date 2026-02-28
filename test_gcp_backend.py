@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for GCP JARVIS Backend
+Test script for GCP Ironcliw Backend
 Tests the cloud backend with 32GB RAM
 """
 import requests
@@ -16,7 +16,7 @@ def test_health():
     return response.status_code == 200
 
 def test_command(command):
-    """Send a command to JARVIS"""
+    """Send a command to Ironcliw"""
     print(f"\n💬 Testing command: '{command}'")
     response = requests.post(
         f"{GCP_BACKEND_URL}/api/command",
@@ -28,7 +28,7 @@ def test_command(command):
     return result
 
 if __name__ == "__main__":
-    print("🚀 Testing JARVIS GCP Backend (32GB RAM)")
+    print("🚀 Testing Ironcliw GCP Backend (32GB RAM)")
     print(f"🌐 URL: {GCP_BACKEND_URL}\n")
 
     # Test 1: Health check
@@ -37,10 +37,10 @@ if __name__ == "__main__":
         exit(1)
 
     # Test 2: Simple query
-    test_command("Hello JARVIS!")
+    test_command("Hello Ironcliw!")
 
     # Test 3: Another query
     test_command("What can you do?")
 
     print("\n✅ All tests passed! Your GCP backend is working!")
-    print(f"\n💡 You now have 32GB RAM available for JARVIS!")
+    print(f"\n💡 You now have 32GB RAM available for Ironcliw!")

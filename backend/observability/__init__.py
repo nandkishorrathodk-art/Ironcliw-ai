@@ -1,8 +1,8 @@
-"""
-JARVIS Observability Package
+﻿"""
+Ironcliw Observability Package
 =============================
 
-Unified observability for the JARVIS AI system.
+Unified observability for the Ironcliw AI system.
 
 Components:
 - UnifiedObservabilityHub: Central hub for all observability

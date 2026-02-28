@@ -1,8 +1,8 @@
-# Multi-Monitor Support Documentation
+﻿# Multi-Monitor Support Documentation
 
 ## Overview
 
-JARVIS Multi-Monitor Support enables comprehensive display detection, space mapping, and screenshot capture across multiple monitors on macOS systems. This feature extends JARVIS's vision intelligence to understand and analyze content across all connected displays.
+Ironcliw Multi-Monitor Support enables comprehensive display detection, space mapping, and screenshot capture across multiple monitors on macOS systems. This feature extends Ironcliw's vision intelligence to understand and analyze content across all connected displays.
 
 ## Features
 

@@ -1,4 +1,4 @@
-# Terminal Follow-Up Deep Analysis Feature
+﻿# Terminal Follow-Up Deep Analysis Feature
 
 **Date:** October 9th, 2025
 **Status:** ✅ FULLY IMPLEMENTED
@@ -13,20 +13,20 @@ Enables natural, multi-turn conversations about terminals and windows in other d
 **Before (Limited):**
 ```
 You: "can you see my terminal in the other window?"
-JARVIS: "Yes, I can see Terminal on Desktop 2..."
+Ironcliw: "Yes, I can see Terminal on Desktop 2..."
 [END - no way to ask more]
 ```
 
 **After (Intelligent Follow-Up):**
 ```
 You: "can you see my terminal in the other window?"
-JARVIS: "Yes, I can see Terminal on Desktop 2, while we're currently viewing
+Ironcliw: "Yes, I can see Terminal on Desktop 2, while we're currently viewing
          the J.A.R.V.I.S. Interface on Desktop 1."
 
-[JARVIS automatically tracks this as a follow-up opportunity]
+[Ironcliw automatically tracks this as a follow-up opportunity]
 
 You: "what does it say?"  or "are there any errors?"  or "tell me more"
-JARVIS: **Terminal Analysis:**
+Ironcliw: **Terminal Analysis:**
 
         I found these issues:
         • ModuleNotFoundError: No module named 'requests'
@@ -45,18 +45,18 @@ JARVIS: **Terminal Analysis:**
 
 ### 1. **Automatic Opportunity Detection**
 
-When you ask JARVIS about terminals/windows, the system intelligently detects if this is a "discovery" question:
+When you ask Ironcliw about terminals/windows, the system intelligently detects if this is a "discovery" question:
 
 **Detection Triggers:**
 - User asks: `"can you see"`, `"do you see"`, `"what do you see"`, `"show me"`, `"what's on"`, `"what's in"`
-- JARVIS mentions: `terminal`, `browser`, `code`, `window`, `desktop`
+- Ironcliw mentions: `terminal`, `browser`, `code`, `window`, `desktop`
 - Response is brief (< 50 words = surface-level observation)
 
 **Example:**
 ```python
 # In pure_vision_intelligence.py
 User: "can you see my terminal?"
-JARVIS: "Yes, I can see Terminal on Desktop 2..."  # 11 words = brief
+Ironcliw: "Yes, I can see Terminal on Desktop 2..."  # 11 words = brief
 
 # System automatically tracks:
 - Window type: "terminal"
@@ -75,7 +75,7 @@ The system stores:
   "window_id": "terminal_2",
   "space_id": "2",
   "snapshot_id": "snap_xyz",
-  "summary": "User asked 'can you see my terminal', JARVIS responded 'Yes, I can see Terminal on Desktop 2...'",
+  "summary": "User asked 'can you see my terminal', Ironcliw responded 'Yes, I can see Terminal on Desktop 2...'",
   "ttl_seconds": 180,
   "created_at": "2025-10-09T15:30:00"
 }
@@ -188,12 +188,12 @@ else:
 ```
 You: can you see my terminal in the other window?
 
-JARVIS: Yes, I can see Terminal open on Desktop 2, while we're currently
+Ironcliw: Yes, I can see Terminal open on Desktop 2, while we're currently
         viewing the J.A.R.V.I.S. Interface on Desktop 1.
 
 You: what does it say?
 
-JARVIS: **Terminal Analysis:**
+Ironcliw: **Terminal Analysis:**
 
         I found these issues:
         • ModuleNotFoundError: No module named 'requests' at line 5
@@ -205,7 +205,7 @@ JARVIS: **Terminal Analysis:**
 
 You: yes
 
-JARVIS: I'll help you install the requests module. You can run:
+Ironcliw: I'll help you install the requests module. You can run:
 
         ```bash
         pip install requests
@@ -219,11 +219,11 @@ JARVIS: I'll help you install the requests module. You can run:
 ```
 You: can you see my terminal?
 
-JARVIS: Yes, I can see Terminal on Desktop 3, Sir.
+Ironcliw: Yes, I can see Terminal on Desktop 3, Sir.
 
 You: are there any errors?
 
-JARVIS: Your Terminal shows recent command output:
+Ironcliw: Your Terminal shows recent command output:
 
         ```
         $ npm install
@@ -243,11 +243,11 @@ JARVIS: Your Terminal shows recent command output:
 ```
 You: what's in my terminal?
 
-JARVIS: I can see Terminal running on Desktop 2.
+Ironcliw: I can see Terminal running on Desktop 2.
 
 You: tell me more
 
-JARVIS: I can see code execution in progress. The output looks normal
+Ironcliw: I can see code execution in progress. The output looks normal
         with no errors. The last few lines show:
 
         ```
@@ -288,17 +288,17 @@ FOLLOW_UP_MIN_CONFIDENCE=0.75  # Intent detection threshold
 **Text Input (Web Interface):**
 ```
 You type: "can you see my terminal?"
-JARVIS: "Yes, I can see Terminal on Desktop 2..."
+Ironcliw: "Yes, I can see Terminal on Desktop 2..."
 You type: "what does it say?"
-JARVIS: [Performs deep analysis]
+Ironcliw: [Performs deep analysis]
 ```
 
 **Voice Input:**
 ```
-You say: "Hey JARVIS, can you see my terminal?"
-JARVIS: "Yes, I can see Terminal on Desktop 2..."
+You say: "Hey Ironcliw, can you see my terminal?"
+Ironcliw: "Yes, I can see Terminal on Desktop 2..."
 You say: "what does it say?"
-JARVIS: [Performs deep analysis and speaks the result]
+Ironcliw: [Performs deep analysis and speaks the result]
 ```
 
 Both inputs go through the same pipeline:
@@ -377,7 +377,7 @@ errors = extract_errors(ocr_text)
 ## 🎯 Benefits
 
 1. **Natural Conversations** - Ask follow-up questions like talking to a person
-2. **Context Awareness** - JARVIS remembers what you just asked about
+2. **Context Awareness** - Ironcliw remembers what you just asked about
 3. **Deep Analysis** - Actually reads terminal content, not just sees it exists
 4. **Error Detection** - 30+ error patterns across multiple languages
 5. **Actionable Fixes** - Suggests specific commands to resolve issues
@@ -390,9 +390,9 @@ errors = extract_errors(ocr_text)
 
 **Manual Test:**
 1. Open terminal on Desktop 2 with an error
-2. Switch to Desktop 1 (JARVIS interface)
+2. Switch to Desktop 1 (Ironcliw interface)
 3. Type or say: "can you see my terminal?"
-4. Wait for JARVIS response
+4. Wait for Ironcliw response
 5. Type or say: "what does it say?"
 6. Verify deep analysis with error detection
 
@@ -411,7 +411,7 @@ errors = extract_errors(ocr_text)
 ## 📝 Summary
 
 **What was implemented:**
-- ✅ Automatic opportunity detection when JARVIS mentions terminals/windows
+- ✅ Automatic opportunity detection when Ironcliw mentions terminals/windows
 - ✅ 180-second context tracking for follow-up questions
 - ✅ Multi-space screenshot capture for deep analysis
 - ✅ OCR text extraction from terminals

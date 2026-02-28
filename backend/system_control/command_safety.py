@@ -1,4 +1,4 @@
-"""
+﻿"""
 Command Safety Tier Classification System
 Classifies shell commands by risk level and determines execution requirements.
 
@@ -16,7 +16,7 @@ Safety Tiers:
 
 Cross-Repo Integration (v10.3):
 - Emits safety events to Reactor Core for training
-- Writes classification state to shared file for JARVIS Prime
+- Writes classification state to shared file for Ironcliw Prime
 - Supports async classification with event emission
 """
 from __future__ import annotations
@@ -113,7 +113,7 @@ class CommandClassification:
         }
 
     def to_prime_context(self) -> str:
-        """Generate context for JARVIS Prime routing (v10.3)."""
+        """Generate context for Ironcliw Prime routing (v10.3)."""
         if self.tier == SafetyTier.GREEN:
             return ""  # No context needed for safe commands
 
@@ -138,7 +138,7 @@ class CommandSafetyClassifier:
 
     Cross-Repo Integration (v10.3):
     - Emits classification events to Reactor Core for training
-    - Writes state to shared files for JARVIS Prime
+    - Writes state to shared files for Ironcliw Prime
     - Tracks classification statistics per session
     """
 
@@ -600,7 +600,7 @@ class CommandSafetyClassifier:
             logger.warning(f"[COMMAND-SAFETY] Failed to init cross-repo state: {e}")
 
     def _write_classification_state(self) -> None:
-        """Write classification state to disk for JARVIS Prime."""
+        """Write classification state to disk for Ironcliw Prime."""
         if not self.enable_cross_repo:
             return
 
@@ -754,7 +754,7 @@ class CommandSafetyClassifier:
 
     def get_classification_summary_for_prime(self) -> str:
         """
-        Get classification summary for JARVIS Prime context (v10.3).
+        Get classification summary for Ironcliw Prime context (v10.3).
 
         Returns:
             Formatted string for prompt injection

@@ -1,4 +1,4 @@
-# Direct Claude Vision Solution for Control Center Detection
+﻿# Direct Claude Vision Solution for Control Center Detection
 
 ## 🎯 Overview
 
@@ -56,7 +56,7 @@ Implemented a **robust, advanced, async, and dynamic** solution that uses Claude
 
 ## 📁 Files Modified
 
-### `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/display/vision_ui_navigator.py`
+### `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/display/vision_ui_navigator.py`
 
 #### **Changes:**
 

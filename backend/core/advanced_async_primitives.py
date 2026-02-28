@@ -1,10 +1,10 @@
-"""
+﻿"""
 Advanced Async Primitives v1.0
 ==============================
 
 Production-grade async patterns for the Trinity Ecosystem.
 These primitives prevent deadlocks, manage backpressure, isolate failures,
-and provide intelligent resource management across JARVIS, J-Prime, and Reactor-Core.
+and provide intelligent resource management across Ironcliw, J-Prime, and Reactor-Core.
 
 COMPONENTS:
     1. TimeoutProtectedLock      - Deadlock-proof async lock with timeout and tracking
@@ -23,7 +23,7 @@ DESIGN PRINCIPLES:
     - Non-blocking: All operations have timeouts
     - Self-healing: Automatic recovery from failures
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -3249,7 +3249,7 @@ class GracefulShutdownCoordinator:
     2. Wait for in-flight commands to complete with timeout (WAITING_INFLIGHT)
     3. Stop Reactor-Core first (downstream)
     4. Stop J-Prime (middle tier)
-    5. Stop JARVIS-AI-Agent (upstream/coordinator)
+    5. Stop Ironcliw-AI-Agent (upstream/coordinator)
     6. Flush DLQ to persistent storage
     7. Clean up resources
 
@@ -3285,7 +3285,7 @@ class GracefulShutdownCoordinator:
         elif env_dir:
             self._signal_dir = Path(env_dir)
         else:
-            jarvis_base = os.getenv("JARVIS_BASE_DIR", os.path.expanduser("~/.jarvis"))
+            jarvis_base = os.getenv("Ironcliw_BASE_DIR", os.path.expanduser("~/.jarvis"))
             self._signal_dir = Path(jarvis_base) / "trinity" / "shutdown"
 
         self._signal_dir.mkdir(parents=True, exist_ok=True)
@@ -3940,7 +3940,7 @@ class GuaranteedEventDelivery:
         elif env_dir:
             self._store_path = Path(env_dir) / "events.db"
         else:
-            jarvis_base = os.getenv("JARVIS_BASE_DIR", os.path.expanduser("~/.jarvis"))
+            jarvis_base = os.getenv("Ironcliw_BASE_DIR", os.path.expanduser("~/.jarvis"))
             self._store_path = Path(jarvis_base) / "trinity" / "events.db"
 
         self._store_path.parent.mkdir(parents=True, exist_ok=True)

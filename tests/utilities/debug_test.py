@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Debug test runner"""
 
 import asyncio
@@ -8,13 +8,13 @@ import os
 # Add the backend directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 from test_utils import WindowFixtures
 
 async def test_basic():
     """Test basic functionality"""
-    print("Creating JARVIS instance...")
-    jarvis = JARVISWorkspaceIntelligence()
+    print("Creating Ironcliw instance...")
+    jarvis = IroncliwWorkspaceIntelligence()
     
     print("Setting up mock windows...")
     jarvis.window_detector.get_all_windows = lambda: WindowFixtures.single_window()

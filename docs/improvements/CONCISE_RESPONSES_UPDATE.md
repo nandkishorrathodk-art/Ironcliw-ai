@@ -1,7 +1,7 @@
-# JARVIS Multi-Window Concise Response Improvements
+﻿# Ironcliw Multi-Window Concise Response Improvements
 
 ## Overview
-Implemented improvements to make JARVIS responses more concise and focused when using the Multi-Window Awareness system.
+Implemented improvements to make Ironcliw responses more concise and focused when using the Multi-Window Awareness system.
 
 ## Problem
 User testing showed responses were too verbose with unnecessary preambles like:
@@ -35,14 +35,14 @@ User testing showed responses were too verbose with unnecessary preambles like:
 ### Before:
 ```
 "Based on the information provided in the multi-window workspace, 
-I can see that you're working on start_system.py in the JARVIS-AI-Agent 
+I can see that you're working on start_system.py in the Ironcliw-AI-Agent 
 project. You have several supporting windows open including Chrome 
 with documentation..."
 ```
 
 ### After:
 ```
-"Sir, you're working on start_system.py in the JARVIS-AI-Agent project."
+"Sir, you're working on start_system.py in the Ironcliw-AI-Agent project."
 ```
 
 ## Testing

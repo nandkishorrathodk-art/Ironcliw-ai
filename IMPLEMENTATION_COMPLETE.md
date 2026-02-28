@@ -1,4 +1,4 @@
-# 🎉 Implementation Complete - Advanced Training System v2.0
+﻿# 🎉 Implementation Complete - Advanced Training System v2.0
 
 **Status**: ✅ **PRODUCTION READY**
 **Date**: January 14, 2026
@@ -75,12 +75,12 @@ You can now run: python3 run_supervisor.py
 ### Single Command Startup
 
 ```bash
-cd ~/Documents/repos/JARVIS-AI-Agent
+cd ~/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
 This automatically:
-- ✅ Starts JARVIS Core  
+- ✅ Starts Ironcliw Core  
 - ✅ Launches J-Prime (if not running)
 - ✅ Launches Reactor Core (if not running)
 - ✅ Connects all 3 repos
@@ -93,7 +93,7 @@ This automatically:
 tail -f logs/jarvis*.log | grep -E "Training|Coordinator"
 
 # Check all repos health
-curl http://localhost:5001/health      # JARVIS
+curl http://localhost:5001/health      # Ironcliw
 curl http://localhost:8002/health      # J-Prime  
 curl http://localhost:8090/health       # Reactor Core
 ```
@@ -158,12 +158,12 @@ See `QUICK_START_TRAINING.md` for complete reference.
 ```
 python3 run_supervisor.py
    ↓
-JARVIS Core starts
+Ironcliw Core starts
    ↓
-JARVIS Prime initialization
+Ironcliw Prime initialization
    ↓
 Cross-Repo Orchestration (NEW)
-   ├─ Phase 1: JARVIS Core (running)
+   ├─ Phase 1: Ironcliw Core (running)
    ├─ Phase 2: Probe & launch J-Prime + Reactor-Core
    └─ Phase 3: Verify integration
    ↓
@@ -179,7 +179,7 @@ System ready for training
 
 ## ⚠️ Next Step: Reactor Core Implementation
 
-JARVIS is **100% complete**. Reactor Core must implement API endpoints.
+Ironcliw is **100% complete**. Reactor Core must implement API endpoints.
 
 See `REACTOR_CORE_API_SPECIFICATION.md` for:
 - [ ] POST /api/training/start

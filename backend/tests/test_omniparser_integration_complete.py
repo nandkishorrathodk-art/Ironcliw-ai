@@ -1,15 +1,15 @@
-"""
+﻿"""
 Complete OmniParser Integration Test
 =====================================
 
 Tests the full OmniParser integration across:
 1. Production-grade OmniParser core with intelligent fallback
 2. Unified configuration system
-3. Cross-repo integration (JARVIS, JARVIS Prime, Reactor Core)
+3. Cross-repo integration (Ironcliw, Ironcliw Prime, Reactor Core)
 4. Async parallel processing
 5. Caching and optimization
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.2.0
 """
 
@@ -303,7 +303,7 @@ async def test_4_integration_with_computer_use():
 
 
 async def test_5_cross_repo_integration():
-    """Test 5: Cross-Repo Integration (Reactor Core, JARVIS Prime)"""
+    """Test 5: Cross-Repo Integration (Reactor Core, Ironcliw Prime)"""
     print("\n" + "="*70)
     print("TEST 5: Cross-Repo Integration")
     print("="*70)
@@ -335,8 +335,8 @@ async def test_5_cross_repo_integration():
         except ImportError as e:
             print(f"⚠️  Reactor Core import failed: {e}")
 
-        # Test JARVIS Prime integration
-        print(f"\n🔍 Testing JARVIS Prime integration...")
+        # Test Ironcliw Prime integration
+        print(f"\n🔍 Testing Ironcliw Prime integration...")
 
         try:
             prime_path = Path.home() / "Documents" / "repos" / "jarvis-prime"
@@ -351,14 +351,14 @@ async def test_5_cross_repo_integration():
                     enable_omniparser=True,
                 )
 
-                print(f"✅ JARVIS Prime integration working")
+                print(f"✅ Ironcliw Prime integration working")
                 print(f"   OmniParser enabled: {delegate.enable_omniparser}")
 
             else:
-                print(f"⚠️  JARVIS Prime not found, skipping")
+                print(f"⚠️  Ironcliw Prime not found, skipping")
 
         except ImportError as e:
-            print(f"⚠️  JARVIS Prime import failed: {e}")
+            print(f"⚠️  Ironcliw Prime import failed: {e}")
 
         print(f"\n✅ TEST 5 PASSED: Cross-repo integration verified!")
         return True

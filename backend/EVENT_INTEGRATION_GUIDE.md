@@ -1,8 +1,8 @@
-# JARVIS Event-Driven Integration Guide
+﻿# Ironcliw Event-Driven Integration Guide
 
 ## Quick Start
 
-### 1. Run JARVIS with Event-Driven Architecture
+### 1. Run Ironcliw with Event-Driven Architecture
 
 ```bash
 cd backend
@@ -51,7 +51,7 @@ Open http://localhost:8888 in your browser to see:
 ### Event Flow Example
 
 ```
-User: "Hey JARVIS, what's on my screen?"
+User: "Hey Ironcliw, what's on my screen?"
 
 1. Voice System → VOICE_WAKE_WORD_DETECTED event
 2. Coordinator → Prepares systems for interaction
@@ -119,9 +119,9 @@ User: "Hey JARVIS, what's on my screen?"
 ### Environment Variables
 
 - `ANTHROPIC_API_KEY`: Required for Claude integration
-- `JARVIS_USER`: User name (default: "Sir")
-- `JARVIS_DEBUG`: Enable debug mode
-- `JARVIS_WEB_UI`: Enable web interface
+- `Ironcliw_USER`: User name (default: "Sir")
+- `Ironcliw_DEBUG`: Enable debug mode
+- `Ironcliw_WEB_UI`: Enable web interface
 
 ## Monitoring
 
@@ -181,4 +181,4 @@ replayer.start_replay(session_id)
 3. **Add Filters**: Implement custom filters for events
 4. **Monitor Performance**: Use metrics to optimize
 
-The event-driven architecture makes JARVIS more modular, testable, and scalable while maintaining efficiency on your 16GB MacBook Pro!
+The event-driven architecture makes Ironcliw more modular, testable, and scalable while maintaining efficiency on your 16GB MacBook Pro!

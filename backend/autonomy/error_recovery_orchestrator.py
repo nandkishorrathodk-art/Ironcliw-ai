@@ -1,4 +1,4 @@
-"""
+﻿"""
 Error Recovery Orchestrator
 ===========================
 
@@ -10,7 +10,7 @@ Provides systematic error handling for autonomous tasks:
 
 v1.0: Initial implementation with error classification and recovery strategies.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -33,35 +33,35 @@ class ErrorRecoveryConfig:
 
     # Retry settings
     max_retries: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_ERROR_MAX_RETRIES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_ERROR_MAX_RETRIES", "3"))
     )
     initial_backoff: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_ERROR_INITIAL_BACKOFF", "1.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_ERROR_INITIAL_BACKOFF", "1.0"))
     )
     max_backoff: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_ERROR_MAX_BACKOFF", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_ERROR_MAX_BACKOFF", "60.0"))
     )
     backoff_multiplier: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_ERROR_BACKOFF_MULTIPLIER", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_ERROR_BACKOFF_MULTIPLIER", "2.0"))
     )
 
     # Degradation settings
     graceful_degradation_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GRACEFUL_DEGRADATION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GRACEFUL_DEGRADATION", "true").lower() == "true"
     )
     degradation_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_DEGRADATION_THRESHOLD", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_DEGRADATION_THRESHOLD", "5"))
     )
 
     # Circuit breaker settings
     circuit_breaker_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_CIRCUIT_BREAKER", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_CIRCUIT_BREAKER", "true").lower() == "true"
     )
     circuit_breaker_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_CIRCUIT_THRESHOLD", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_CIRCUIT_THRESHOLD", "5"))
     )
     circuit_breaker_reset_time: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_CIRCUIT_RESET_TIME", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_CIRCUIT_RESET_TIME", "60.0"))
     )
 
 

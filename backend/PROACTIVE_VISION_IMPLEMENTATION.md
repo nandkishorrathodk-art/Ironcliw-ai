@@ -1,8 +1,8 @@
-# Proactive Vision Intelligence Implementation
+﻿# Proactive Vision Intelligence Implementation
 
 ## Overview
 
-This implementation transforms JARVIS from a reactive screen reader into a **proactive visual intelligence system** that continuously monitors the user's screen and intelligently communicates important changes - all through pure Claude Vision API without any hardcoded detection rules.
+This implementation transforms Ironcliw from a reactive screen reader into a **proactive visual intelligence system** that continuously monitors the user's screen and intelligently communicates important changes - all through pure Claude Vision API without any hardcoded detection rules.
 
 ## Architecture
 
@@ -99,7 +99,7 @@ await proactive_system.start_proactive_monitoring({
     'focus_level': 0.7
 })
 
-# JARVIS now proactively monitors and notifies!
+# Ironcliw now proactively monitors and notifies!
 ```
 
 ## Example Interactions
@@ -108,24 +108,24 @@ await proactive_system.start_proactive_monitoring({
 ```
 [Cursor shows "New update available" in status bar]
 
-JARVIS: "I notice Cursor has a new update available."
+Ironcliw: "I notice Cursor has a new update available."
 
 User: "What's in the update?"
 
-JARVIS: "Looking at the update notification... It mentions improved performance 
+Ironcliw: "Looking at the update notification... It mentions improved performance 
 and bug fixes for TypeScript. Should I remind you to update later, or would 
 you like to update now?"
 
 User: "Remind me when I'm done coding"
 
-JARVIS: "I'll remind you once your coding session seems complete."
+Ironcliw: "I'll remind you once your coding session seems complete."
 ```
 
 ### Error Detection
 ```
 [Error appears in terminal while user is in browser]
 
-JARVIS: "I see an error just appeared in your terminal - 'ImportError: 
+Ironcliw: "I see an error just appeared in your terminal - 'ImportError: 
 No module named pandas'. Your script seems to have stopped. Would you 
 like me to help resolve this?"
 ```
@@ -205,7 +205,7 @@ The system learns from:
 
 ## Summary
 
-This implementation delivers on the PRD vision of transforming JARVIS into a proactive, intelligent visual assistant that:
+This implementation delivers on the PRD vision of transforming Ironcliw into a proactive, intelligent visual assistant that:
 - ✅ Continuously monitors without user prompting
 - ✅ Uses pure Claude Vision (zero hardcoding)
 - ✅ Intelligently filters to prevent spam

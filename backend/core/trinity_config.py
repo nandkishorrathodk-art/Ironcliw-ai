@@ -1,11 +1,11 @@
-"""
+﻿"""
 Trinity Unified Configuration System v79.0
 ==========================================
 
 ZERO-HARDCODING: All configuration values are sourced from environment variables
 with intelligent defaults. This module is shared across all three Trinity repos:
-- JARVIS (Body)
-- JARVIS-Prime (Mind)
+- Ironcliw (Body)
+- Ironcliw-Prime (Mind)
 - Reactor-Core (Nerves)
 
 FEATURES:
@@ -39,10 +39,10 @@ ENVIRONMENT VARIABLES:
     TRINITY_DLQ_MAX_RETRIES         - DLQ max retry attempts
     TRINITY_JITTER_FACTOR           - Jitter factor for polling (0.0-1.0)
 
-    JARVIS_HOST                     - JARVIS API host
-    JARVIS_PORT                     - JARVIS API port
-    JARVIS_PRIME_HOST               - JARVIS Prime API host
-    JARVIS_PRIME_PORT               - JARVIS Prime API port
+    Ironcliw_HOST                     - Ironcliw API host
+    Ironcliw_PORT                     - Ironcliw API port
+    Ironcliw_PRIME_HOST               - Ironcliw Prime API host
+    Ironcliw_PRIME_PORT               - Ironcliw Prime API port
     REACTOR_CORE_HOST               - Reactor Core API host
     REACTOR_CORE_PORT               - Reactor Core API port
 
@@ -134,8 +134,8 @@ def _env_list(key: str, default: List[str], separator: str = ",") -> List[str]:
 
 class ComponentType(Enum):
     """Types of Trinity components."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
 
 
@@ -276,17 +276,17 @@ class TrinityConfig:
 
     # Service endpoints
     jarvis_endpoint: ServiceEndpoint = field(default_factory=lambda: ServiceEndpoint(
-        host=_env_str("JARVIS_HOST", "localhost"),
-        port=_env_int("JARVIS_PORT", 8010),
-        health_path=_env_str("JARVIS_HEALTH_PATH", "/health/ping"),
+        host=_env_str("Ironcliw_HOST", "localhost"),
+        port=_env_int("Ironcliw_PORT", 8010),
+        health_path=_env_str("Ironcliw_HEALTH_PATH", "/health/ping"),
     ))
 
     jarvis_prime_endpoint: ServiceEndpoint = field(default_factory=lambda: ServiceEndpoint(
-        host=_env_str("JARVIS_PRIME_HOST", "localhost"),
+        host=_env_str("Ironcliw_PRIME_HOST", "localhost"),
         # v192.2: Changed from 8000 to 8001 - port 8000 can conflict with unified_supervisor
         # jarvis-prime needs its own dedicated port to avoid fallback issues
-        port=_env_int("JARVIS_PRIME_PORT", 8001),
-        health_path=_env_str("JARVIS_PRIME_HEALTH_PATH", "/health"),
+        port=_env_int("Ironcliw_PRIME_PORT", 8001),
+        health_path=_env_str("Ironcliw_PRIME_HEALTH_PATH", "/health"),
     ))
 
     reactor_core_endpoint: ServiceEndpoint = field(default_factory=lambda: ServiceEndpoint(
@@ -304,13 +304,13 @@ class TrinityConfig:
 
     # Process patterns for cleanup (configurable)
     process_patterns: List[str] = field(default_factory=lambda: _env_list(
-        "JARVIS_PROCESS_PATTERNS",
+        "Ironcliw_PROCESS_PATTERNS",
         ["start_system.py", "main.py", "jarvis", "run_supervisor.py"]
     ))
 
     # PID file locations (configurable)
     pid_dir: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_PID_DIR",
+        "Ironcliw_PID_DIR",
         Path(os.getenv("XDG_RUNTIME_DIR", "/tmp"))
     ))
 
@@ -360,8 +360,8 @@ class TrinityConfig:
     def get_endpoint(self, component: ComponentType) -> ServiceEndpoint:
         """Get endpoint configuration for a component."""
         endpoints = {
-            ComponentType.JARVIS_BODY: self.jarvis_endpoint,
-            ComponentType.JARVIS_PRIME: self.jarvis_prime_endpoint,
+            ComponentType.Ironcliw_BODY: self.jarvis_endpoint,
+            ComponentType.Ironcliw_PRIME: self.jarvis_prime_endpoint,
             ComponentType.REACTOR_CORE: self.reactor_core_endpoint,
         }
         return endpoints[component]
@@ -540,12 +540,12 @@ def export_config_to_env(config: Optional[TrinityConfig] = None) -> Dict[str, st
         "TRINITY_ENABLED": str(config.enabled).lower(),
         "TRINITY_DEBUG": str(config.debug_mode).lower(),
 
-        "JARVIS_HOST": config.jarvis_endpoint.host,
-        "JARVIS_PORT": str(config.jarvis_endpoint.port),
-        "JARVIS_HEALTH_PATH": config.jarvis_endpoint.health_path,
-        "JARVIS_PRIME_HOST": config.jarvis_prime_endpoint.host,
-        "JARVIS_PRIME_PORT": str(config.jarvis_prime_endpoint.port),
-        "JARVIS_PRIME_HEALTH_PATH": config.jarvis_prime_endpoint.health_path,
+        "Ironcliw_HOST": config.jarvis_endpoint.host,
+        "Ironcliw_PORT": str(config.jarvis_endpoint.port),
+        "Ironcliw_HEALTH_PATH": config.jarvis_endpoint.health_path,
+        "Ironcliw_PRIME_HOST": config.jarvis_prime_endpoint.host,
+        "Ironcliw_PRIME_PORT": str(config.jarvis_prime_endpoint.port),
+        "Ironcliw_PRIME_HEALTH_PATH": config.jarvis_prime_endpoint.health_path,
         "REACTOR_CORE_HOST": config.reactor_core_endpoint.host,
         "REACTOR_CORE_PORT": str(config.reactor_core_endpoint.port),
         "REACTOR_CORE_HEALTH_PATH": config.reactor_core_endpoint.health_path,

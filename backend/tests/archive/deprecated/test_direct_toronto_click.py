@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Direct test - click exactly on Toronto in Weather sidebar"""
 
 import asyncio
@@ -87,5 +87,5 @@ async def test_direct_toronto():
                         break
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_direct_toronto())

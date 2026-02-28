@@ -1,8 +1,8 @@
-# Video Streaming Integration Guide for JARVIS Vision System
+﻿# Video Streaming Integration Guide for Ironcliw Vision System
 
 ## Overview
 
-The video streaming integration enables JARVIS to capture and analyze continuous video streams instead of just taking screenshots. This provides real-time understanding of screen content with intelligent memory management for 16GB macOS systems.
+The video streaming integration enables Ironcliw to capture and analyze continuous video streams instead of just taking screenshots. This provides real-time understanding of screen content with intelligent memory management for 16GB macOS systems.
 
 ## Key Benefits
 
@@ -14,7 +14,7 @@ The video streaming integration enables JARVIS to capture and analyze continuous
 
 ### 2. macOS Screen Recording Indicator
 - **Purple indicator** appears when video streaming is active
-- **Privacy-aware** - users know when JARVIS is viewing
+- **Privacy-aware** - users know when Ironcliw is viewing
 - **System-level integration** using AVFoundation
 
 ### 3. Memory-Safe Video Processing
@@ -149,15 +149,15 @@ Total: ~3.6GB maximum
 When integrated with voice activation:
 
 ```python
-# JARVIS can now respond to real-time queries
+# Ironcliw can now respond to real-time queries
 User: "What am I looking at?"
-JARVIS: *analyzes current video frame* "You're viewing VS Code with..."
+Ironcliw: *analyzes current video frame* "You're viewing VS Code with..."
 
 User: "What just happened on screen?"
-JARVIS: *checks recent frame analyses* "A notification just appeared..."
+Ironcliw: *checks recent frame analyses* "A notification just appeared..."
 
 User: "Tell me when something changes"
-JARVIS: *monitors motion detection* "I'll watch for changes..."
+Ironcliw: *monitors motion detection* "I'll watch for changes..."
 ```
 
 ## Platform Support
@@ -270,4 +270,4 @@ async def main():
 4. **Voice Integration**: More responsive to queries
 5. **Efficiency**: Analyze only when needed (motion/interval)
 
-The video streaming mode transforms JARVIS from a periodic observer to a continuous, aware assistant that truly understands what's happening on your screen in real-time.
+The video streaming mode transforms Ironcliw from a periodic observer to a continuous, aware assistant that truly understands what's happening on your screen in real-time.

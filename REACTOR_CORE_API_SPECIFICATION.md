@@ -1,18 +1,18 @@
-# Reactor Core API Specification v2.0
+﻿# Reactor Core API Specification v2.0
 
 **Status:** Production-Grade Contract
 **Last Updated:** January 14, 2026
 **Version:** 2.0.0
 
-This document defines the complete API contract between JARVIS and Reactor Core for training coordination, experience ingestion, and model deployment.
+This document defines the complete API contract between Ironcliw and Reactor Core for training coordination, experience ingestion, and model deployment.
 
 ---
 
 ## 🎯 Overview
 
 Reactor Core is a separate repository that handles:
-1. **Experience ingestion** from JARVIS via file system
-2. **Training execution** triggered by JARVIS API calls
+1. **Experience ingestion** from Ironcliw via file system
+2. **Training execution** triggered by Ironcliw API calls
 3. **Model deployment** with version management
 4. **Status streaming** via Server-Sent Events (SSE)
 
@@ -389,7 +389,7 @@ Reactor Core must update `~/.jarvis/cross_repo/reactor_state.json`:
 
 ## 📦 Implementation Checklist
 
-### JARVIS (This Repo) - ✅ Complete
+### Ironcliw (This Repo) - ✅ Complete
 - [x] Advanced Training Coordinator
 - [x] Reactor Core API Client
 - [x] Resource Manager (OOM prevention)
@@ -427,21 +427,21 @@ Reactor Core must update `~/.jarvis/cross_repo/reactor_state.json`:
 ## 🚀 Example End-to-End Flow
 
 ```
-1. User interacts with JARVIS
+1. User interacts with Ironcliw
    ↓
-2. JARVIS collects experience
+2. Ironcliw collects experience
    ↓
-3. JARVIS forwards experience → ~/.jarvis/trinity/events/experiences_voice_123.json
+3. Ironcliw forwards experience → ~/.jarvis/trinity/events/experiences_voice_123.json
    ↓
 4. Reactor Core FileWatcher detects new file
    ↓
 5. Reactor Core reads file, adds experiences to buffer
    ↓
-6. JARVIS auto-trigger checks buffer (every 5 min)
+6. Ironcliw auto-trigger checks buffer (every 5 min)
    ↓
 7. Buffer >= 100 experiences → Create TrainingJob
    ↓
-8. JARVIS calls Advanced Training Coordinator
+8. Ironcliw calls Advanced Training Coordinator
    ↓
 9. Coordinator negotiates resources (waits for J-Prime idle)
    ↓
@@ -451,30 +451,30 @@ Reactor Core must update `~/.jarvis/cross_repo/reactor_state.json`:
    ↓
 12. Reactor Core starts training, streams status via SSE
    ↓
-13. JARVIS streams status updates (epoch progress, loss)
+13. Ironcliw streams status updates (epoch progress, loss)
    ↓
 14. Training completes → Reactor Core publishes MODEL_READY event
    ↓
-15. Trinity Bridge forwards MODEL_READY to JARVIS
+15. Trinity Bridge forwards MODEL_READY to Ironcliw
    ↓
-16. JARVIS deploys new model (hot-swap)
+16. Ironcliw deploys new model (hot-swap)
    ↓
-17. JARVIS updates UnifiedModelServing with new version
+17. Ironcliw updates UnifiedModelServing with new version
 ```
 
 ---
 
 ## 📝 Testing
 
-### Manual Test (JARVIS → Reactor Core)
+### Manual Test (Ironcliw → Reactor Core)
 
 ```bash
 # Terminal 1: Start Reactor Core
 cd ~/Documents/repos/reactor-core
 python3 main.py
 
-# Terminal 2: Start JARVIS
-cd ~/Documents/repos/JARVIS-AI-Agent
+# Terminal 2: Start Ironcliw
+cd ~/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 
 # Terminal 3: Trigger training
@@ -497,7 +497,7 @@ curl -N http://localhost:8090/api/training/stream/test-123
 
 ### Training doesn't start
 - **Check:** Reactor Core health: `curl http://localhost:8090/health`
-- **Check:** JARVIS can reach Reactor Core: `curl http://localhost:8090/health`
+- **Check:** Ironcliw can reach Reactor Core: `curl http://localhost:8090/health`
 - **Check:** Experience files in `~/.jarvis/trinity/events/`
 - **Check:** Reactor Core logs for errors
 
@@ -509,7 +509,7 @@ curl -N http://localhost:8090/api/training/stream/test-123
 ### Model not deployed after training
 - **Check:** Reactor Core published MODEL_READY event
 - **Check:** Trinity Bridge is running
-- **Check:** JARVIS subscribed to model deployment events
+- **Check:** Ironcliw subscribed to model deployment events
 
 ---
 

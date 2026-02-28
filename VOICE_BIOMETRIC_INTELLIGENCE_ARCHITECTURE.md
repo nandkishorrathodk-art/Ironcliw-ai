@@ -1,4 +1,4 @@
-# 🔐 Voice Biometric Intelligence (VBI) Architecture Documentation
+﻿# 🔐 Voice Biometric Intelligence (VBI) Architecture Documentation
 
 > 📊 Document Rendering Guide
 >   
@@ -6,7 +6,7 @@
 >     🔢 Mathematics: All equations use LaTeX notation with GitHub's native math rendering. Math will display properly when viewed on GitHub or in viewers that support LaTeX math blocks.
 >     💡 For best viewing experience, open this document on GitHub where both Mermaid diagrams and LaTeX equations render natively.
 
-## Advanced Voice Authentication System for JARVIS AI Agent
+## Advanced Voice Authentication System for Ironcliw AI Agent
 
 **Version:** 4.0.0  
 **Last Updated:** December 11, 2025  
@@ -40,7 +40,7 @@
 
 ## Executive Summary
 
-The **Voice Biometric Intelligence (VBI)** system is JARVIS's advanced voice authentication engine that provides secure, transparent, and intelligent voice-based identity verification. The system combines multiple cutting-edge technologies:
+The **Voice Biometric Intelligence (VBI)** system is Ironcliw's advanced voice authentication engine that provides secure, transparent, and intelligent voice-based identity verification. The system combines multiple cutting-edge technologies:
 
 - **ECAPA-TDNN** (Emphasized Channel Attention, Propagation and Aggregation - Time Delay Neural Network) for speaker embeddings
 - **Physics-Aware Voice Authentication (PAVA)** for anti-spoofing
@@ -149,7 +149,7 @@ sequenceDiagram
     participant DB as 💾 Database
     participant TTS as 🔊 TTS Engine
 
-    User->>Frontend: "Hey JARVIS, unlock my screen"
+    User->>Frontend: "Hey Ironcliw, unlock my screen"
     Frontend->>WS: Send audio + command
     WS->>API: WebSocket message
 
@@ -897,7 +897,7 @@ interface VoiceUnlockMessage {
 flowchart TB
     subgraph "Docker ECAPA Architecture"
 subgraph "Host Machine"
-JARVIS[JARVIS Backend<br/>FastAPI]
+Ironcliw[Ironcliw Backend<br/>FastAPI]
 DOCKER[Docker <br/>Daemon]
 end
 
@@ -907,7 +907,7 @@ ECAPA_MODEL[ECAPA-TDNN<br/>Model]
 TORCH[PyTorch<br/>Runtime]
 end
 
-JARVIS -->|HTTP POST /extract| ECAPA_API
+Ironcliw -->|HTTP POST /extract| ECAPA_API
 ECAPA_API --> ECAPA_MODEL
 ECAPA_MODEL --> TORCH
 
@@ -950,7 +950,7 @@ memory: 512M
 
 ```mermaid
 flowchart TD
-    START[JARVIS <br/>Startup] --> PROBE[Probe Available <br/>Backends]
+    START[Ironcliw <br/>Startup] --> PROBE[Probe Available <br/>Backends]
 
     PROBE --> DOCKER_CHECK{Docker<br/>Available?}
     PROBE --> CLOUD_CHECK{Cloud Run<br/>Available?}
@@ -984,7 +984,7 @@ flowchart TD
     PRIORITY -->|2| USE_CLOUD[Use Cloud Run<br/>Reliable]
     PRIORITY -->|3| USE_LOCAL[Use Local<br/>Fallback]
 
-    USE_DOCKER --> CONFIG[Configure<br/>JARVIS_ECAPA_BACKEND]
+    USE_DOCKER --> CONFIG[Configure<br/>Ironcliw_ECAPA_BACKEND]
     USE_CLOUD --> CONFIG
     USE_LOCAL --> CONFIG
     CONFIG --> READY[Ready for<br/>Voice Auth]
@@ -1100,7 +1100,7 @@ pie title "Verification Latency Breakdown (Cached Path)"
 
 #### 1.1 Audio Digitization
 
-When Derek says "Hey JARVIS, unlock my screen," the analog sound wave is digitized:
+When Derek says "Hey Ironcliw, unlock my screen," the analog sound wave is digitized:
 
 📐 Sampling Theorem (Nyquist-Shannon)
 
@@ -1412,7 +1412,7 @@ $$e = [\mu; \sigma] \in \mathbb{R}^{192}$$
 Unlike simple average pooling, attention learns to focus on speaker-discriminative frames (typically vowels) and ignore silence/noise:
 
 ```
-"Hey JARVIS unlock my screen"
+"Hey Ironcliw unlock my screen"
      ↓ Attention weights
 [0.02, 0.15, 0.08, 0.25, 0.12, 0.18, 0.10, 0.10]
 ↑high        ↑high        ↑high
@@ -1897,7 +1897,7 @@ $$= 0.183 + 0.184 + 0.20 + 0.20 + 0.15 = 0.917$$
 
 ### 10. Real-World Example: "Unlock My Screen"
 
-Let's trace through the **complete VBI pipeline** when Derek says "Hey JARVIS, unlock my screen."
+Let's trace through the **complete VBI pipeline** when Derek says "Hey Ironcliw, unlock my screen."
 
 #### Stage 1: Audio Capture (0-3200ms)
 
@@ -2220,7 +2220,7 @@ success = not screen_locked
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    COMPLETE VBI TIMELINE                                 │
-│                    "Hey JARVIS, unlock my screen"                        │
+│                    "Hey Ironcliw, unlock my screen"                        │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  0ms      ████████████████████████████████████  3200ms                  │
@@ -2367,6 +2367,6 @@ Even with component failures, security is maintained:
 
 ---
 
-**Author:** JARVIS AI System  
-**Contact:** [GitHub Issues](https://github.com/user/JARVIS-AI-Agent/issues)  
+**Author:** Ironcliw AI System  
+**Contact:** [GitHub Issues](https://github.com/user/Ironcliw-AI-Agent/issues)  
 **License:** MIT

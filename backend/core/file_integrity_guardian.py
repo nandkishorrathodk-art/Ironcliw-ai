@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 File Integrity Guardian v1.0 - ML-Powered Truncation Prevention System
 ======================================================================
@@ -36,7 +36,7 @@ Architecture:
 │  └────────────────┘  └────────────────┘  └────────────────┘                 │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -371,12 +371,12 @@ class BackupManager:
     
     def __init__(self, backup_dir: Optional[str] = None):
         self.backup_dir = Path(backup_dir or os.environ.get(
-            "JARVIS_BACKUP_DIR",
+            "Ironcliw_BACKUP_DIR",
             os.path.expanduser("~/.jarvis/file_backups")
         ))
         self.backup_dir.mkdir(parents=True, exist_ok=True)
-        self.max_backups_per_file = _env_int("JARVIS_MAX_BACKUPS_PER_FILE", 5)
-        self.backup_retention_days = _env_int("JARVIS_BACKUP_RETENTION_DAYS", 7)
+        self.max_backups_per_file = _env_int("Ironcliw_MAX_BACKUPS_PER_FILE", 5)
+        self.backup_retention_days = _env_int("Ironcliw_BACKUP_RETENTION_DAYS", 7)
         self._lock = threading.Lock()
     
     def create_backup(self, file_path: str, reason: str = "auto") -> Optional[str]:
@@ -522,9 +522,9 @@ class FileIntegrityGuardian:
         self.backup_manager = BackupManager()
         
         # Configuration
-        self.min_file_size = _env_int("JARVIS_MIN_FILE_SIZE", 50)  # bytes
-        self.parallel_workers = _env_int("JARVIS_INTEGRITY_WORKERS", 4)
-        self.auto_backup = _env_bool("JARVIS_AUTO_BACKUP", True)
+        self.min_file_size = _env_int("Ironcliw_MIN_FILE_SIZE", 50)  # bytes
+        self.parallel_workers = _env_int("Ironcliw_INTEGRITY_WORKERS", 4)
+        self.auto_backup = _env_bool("Ironcliw_AUTO_BACKUP", True)
         
         # Statistics
         self.stats = {

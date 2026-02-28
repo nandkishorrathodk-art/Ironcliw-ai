@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test v198.0: Port Conflict Resolution Fix
 
 This test verifies that the trinity startup correctly handles port conflicts by:
 1. Detecting occupied ports before launching components
-2. Killing stale JARVIS processes on the port
+2. Killing stale Ironcliw processes on the port
 3. Falling back to alternative ports when needed
 
 Run with: python3 tests/test_port_conflict_fix.py

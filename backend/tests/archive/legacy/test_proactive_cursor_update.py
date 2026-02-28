@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Proactive Vision System - Cursor Update Detection
-Demonstrates how JARVIS proactively notifies about Cursor updates
+Demonstrates how Ironcliw proactively notifies about Cursor updates
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 
 # Add backend to path
-sys.path.append('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.append('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 # Configure logging
 logging.basicConfig(
@@ -64,7 +64,7 @@ async def test_cursor_update_detection():
         })
         
         logger.info("")
-        logger.info("✅ Monitoring active. JARVIS is now watching for changes.")
+        logger.info("✅ Monitoring active. Ironcliw is now watching for changes.")
         logger.info("")
         
         # Test Cursor update scenario
@@ -111,7 +111,7 @@ async def demonstrate_real_monitoring():
         from vision.proactive_vision_integration import create_proactive_vision_system
         
         logger.info("=== REAL PROACTIVE MONITORING DEMO ===")
-        logger.info("JARVIS will monitor your screen and proactively notify you of:")
+        logger.info("Ironcliw will monitor your screen and proactively notify you of:")
         logger.info("- Application updates")
         logger.info("- Error messages")
         logger.info("- Important notifications")

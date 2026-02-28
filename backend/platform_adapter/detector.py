@@ -1,5 +1,5 @@
-"""
-JARVIS Platform Detection System
+﻿"""
+Ironcliw Platform Detection System
 ═══════════════════════════════════════════════════════════════════════════════
 
 Runtime platform detection with comprehensive fallback and caching.
@@ -15,7 +15,7 @@ Detection Strategy:
     3. Detect hardware features (GPU, NPU, etc.)
     4. Cache result for performance
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations
@@ -91,7 +91,7 @@ class PlatformDetector:
         else:
             raise RuntimeError(
                 f"Unsupported platform: {system}. "
-                f"JARVIS supports macOS, Windows, and Linux only."
+                f"Ironcliw supports macOS, Windows, and Linux only."
             )
         
         return PlatformDetector._cached_platform
@@ -169,7 +169,7 @@ class PlatformDetector:
         elif PlatformDetector.is_windows():
             appdata = os.getenv('APPDATA')
             if appdata:
-                return Path(appdata) / 'JARVIS'
+                return Path(appdata) / 'Ironcliw'
             return home / '.jarvis'
         else:  # Linux
             xdg_config = os.getenv('XDG_CONFIG_HOME')
@@ -183,11 +183,11 @@ class PlatformDetector:
         home = Path.home()
         
         if PlatformDetector.is_macos():
-            return home / 'Library' / 'Application Support' / 'JARVIS'
+            return home / 'Library' / 'Application Support' / 'Ironcliw'
         elif PlatformDetector.is_windows():
             appdata = os.getenv('LOCALAPPDATA')
             if appdata:
-                return Path(appdata) / 'JARVIS'
+                return Path(appdata) / 'Ironcliw'
             return home / '.jarvis' / 'data'
         else:  # Linux
             xdg_data = os.getenv('XDG_DATA_HOME')
@@ -201,11 +201,11 @@ class PlatformDetector:
         home = Path.home()
         
         if PlatformDetector.is_macos():
-            return home / 'Library' / 'Caches' / 'JARVIS'
+            return home / 'Library' / 'Caches' / 'Ironcliw'
         elif PlatformDetector.is_windows():
             temp = os.getenv('TEMP') or os.getenv('TMP')
             if temp:
-                return Path(temp) / 'JARVIS'
+                return Path(temp) / 'Ironcliw'
             return home / '.jarvis' / 'cache'
         else:  # Linux
             xdg_cache = os.getenv('XDG_CACHE_HOME')
@@ -368,7 +368,7 @@ def is_linux() -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    print("JARVIS Platform Detection")
+    print("Ironcliw Platform Detection")
     print("=" * 80)
     
     info = get_platform_info()

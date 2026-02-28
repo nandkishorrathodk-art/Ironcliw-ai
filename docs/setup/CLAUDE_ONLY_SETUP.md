@@ -1,7 +1,7 @@
-# 🤖 JARVIS - Claude AI Powered Assistant
+﻿# 🤖 Ironcliw - Claude AI Powered Assistant
 
 ## Overview
-JARVIS is now a Claude-exclusive AI assistant system, providing superior language understanding, accurate calculations, and cloud-based processing. Perfect for M1 Macs and systems with limited memory.
+Ironcliw is now a Claude-exclusive AI assistant system, providing superior language understanding, accurate calculations, and cloud-based processing. Perfect for M1 Macs and systems with limited memory.
 
 ## Why Claude-Only?
 - **Accurate Calculations**: Claude handles math and order of operations correctly (no more 2+2*2=8 errors!)
@@ -32,7 +32,7 @@ CLAUDE_TEMPERATURE=0.7                 # Optional: adjust creativity (0-1)
 pip install anthropic python-dotenv fastapi uvicorn pydantic psutil
 ```
 
-## Starting JARVIS
+## Starting Ironcliw
 
 ### Quick Start
 ```bash
@@ -42,7 +42,7 @@ python3 start_system.py
 This will:
 1. Check Claude API configuration
 2. Start the backend API
-3. Start the JARVIS React interface
+3. Start the Ironcliw React interface
 4. Open your browser to the Iron Man UI
 
 ### Command Line Options
@@ -51,7 +51,7 @@ This will:
 - `--no-browser`: Don't auto-open browser
 
 ## Available Interfaces
-- **JARVIS UI**: http://localhost:3000/ - Iron Man-inspired chat interface
+- **Ironcliw UI**: http://localhost:3000/ - Iron Man-inspired chat interface
 - **API Docs**: http://localhost:8000/docs - Interactive API documentation
 - **Basic Chat**: http://localhost:8000/ - Simple chat interface
 
@@ -111,4 +111,4 @@ This simplification means:
 - No model loading delays
 - Always accurate responses
 
-Enjoy your Claude-powered JARVIS assistant! 🚀
+Enjoy your Claude-powered Ironcliw assistant! 🚀

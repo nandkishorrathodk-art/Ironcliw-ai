@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Multi-Monitor CLI
+Ironcliw Multi-Monitor CLI
 
 Command-line interface for multi-monitor support functionality.
 Provides easy access to display detection, space mapping, and capture operations.
@@ -37,7 +37,7 @@ from vision.multi_monitor_detector import (
 
 def print_banner():
     """Print CLI banner"""
-    print("🖥️  JARVIS Multi-Monitor Support CLI")
+    print("🖥️  Ironcliw Multi-Monitor Support CLI")
     print("=" * 50)
 
 
@@ -277,7 +277,7 @@ async def cmd_test(args):
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
-        description="JARVIS Multi-Monitor Support CLI",
+        description="Ironcliw Multi-Monitor Support CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

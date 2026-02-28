@@ -1,7 +1,7 @@
-# JARVIS WebSocket Connection Fix
+﻿# Ironcliw WebSocket Connection Fix
 
 ## The Problem
-JARVIS was not responding to "Hey JARVIS" wake words despite:
+Ironcliw was not responding to "Hey Ironcliw" wake words despite:
 - Wake words being detected in the frontend console
 - Backend API being available
 - Voice status endpoint working
@@ -37,11 +37,11 @@ async def websocket_endpoint(websocket: WebSocket):
 ## Testing
 You can test the WebSocket connection is working by:
 1. Opening the browser console
-2. Saying "Hey JARVIS"
+2. Saying "Hey Ironcliw"
 3. You should see:
    - "Wake word detected: hey jarvis" in console
    - WebSocket sends activate command
-   - JARVIS responds with "Yes, sir?"
+   - Ironcliw responds with "Yes, sir?"
 
 ## Result
 - Wake word detection now triggers immediate response

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Complete Voice Flow with JARVIS Running
+Test Complete Voice Flow with Ironcliw Running
 ============================================
 
 Tests the voice feedback when screen is locked
@@ -14,8 +14,8 @@ import time
 import aiohttp
 
 async def test_jarvis_connection():
-    """Test that JARVIS is running and accessible"""
-    print("1️⃣ Testing JARVIS connection...")
+    """Test that Ironcliw is running and accessible"""
+    print("1️⃣ Testing Ironcliw connection...")
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -23,17 +23,17 @@ async def test_jarvis_connection():
             async with session.get('http://localhost:8000/voice/jarvis/status') as response:
                 if response.status == 200:
                     data = await response.json()
-                    print(f"   ✅ JARVIS status: {data.get('status', 'Unknown')}")
+                    print(f"   ✅ Ironcliw status: {data.get('status', 'Unknown')}")
                     return True
                 else:
-                    print(f"   ❌ JARVIS returned status: {response.status}")
+                    print(f"   ❌ Ironcliw returned status: {response.status}")
                     return False
     except Exception as e:
-        print(f"   ❌ Could not connect to JARVIS: {e}")
+        print(f"   ❌ Could not connect to Ironcliw: {e}")
         return False
 
 async def test_websocket_connection():
-    """Test WebSocket connection to JARVIS"""
+    """Test WebSocket connection to Ironcliw"""
     print("\n2️⃣ Testing WebSocket connection...")
     
     try:
@@ -52,12 +52,12 @@ async def test_voice_feedback():
     """Test the complete voice feedback flow"""
     print("\n3️⃣ Testing voice feedback flow...")
     
-    # Connect to JARVIS WebSocket
+    # Connect to Ironcliw WebSocket
     uri = "ws://localhost:8000/ws/jarvis"
     
     try:
         async with websockets.connect(uri) as websocket:
-            print("   ✅ Connected to JARVIS WebSocket")
+            print("   ✅ Connected to Ironcliw WebSocket")
             
             # Receive connection message
             connect_msg = await websocket.recv()
@@ -81,7 +81,7 @@ async def test_voice_feedback():
             }))
             
             # Listen for responses
-            print("\n6️⃣ Listening for JARVIS responses...")
+            print("\n6️⃣ Listening for Ironcliw responses...")
             
             responses = []
             voice_messages = []
@@ -100,7 +100,7 @@ async def test_voice_feedback():
                         
                         if data.get('speak') and text:
                             voice_messages.append(text)
-                            print(f"\n   🔊 JARVIS says: '{text}'")
+                            print(f"\n   🔊 Ironcliw says: '{text}'")
                             
                             # Check if it's the lock detection message
                             if "screen is locked" in text.lower() and "unlock" in text.lower():
@@ -161,7 +161,7 @@ async def test_tts_directly():
     """Test TTS endpoint directly"""
     print("\n7️⃣ Testing Text-to-Speech directly...")
     
-    test_message = "Testing JARVIS voice feedback system"
+    test_message = "Testing Ironcliw voice feedback system"
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -180,14 +180,14 @@ async def test_tts_directly():
 
 async def main():
     """Run all tests"""
-    print("🚀 JARVIS Voice Feedback Test Suite")
+    print("🚀 Ironcliw Voice Feedback Test Suite")
     print("="*60)
     
     # Test connections
     jarvis_ok = await test_jarvis_connection()
     
     if not jarvis_ok:
-        print("\n❌ JARVIS is not running!")
+        print("\n❌ Ironcliw is not running!")
         print("   Start it with: python main.py")
         return
     
@@ -206,7 +206,7 @@ async def main():
     print("\nThis will:")
     print("  1. Lock your screen")
     print("  2. Send 'open Safari and search for dogs'")
-    print("  3. Listen for JARVIS to speak the feedback")
+    print("  3. Listen for Ironcliw to speak the feedback")
     
     print("\n⏳ Starting in 3 seconds...")
     for i in range(3, 0, -1):

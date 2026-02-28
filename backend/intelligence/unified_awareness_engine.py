@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Unified Awareness Engine (UAE)
 ===============================
@@ -65,14 +65,14 @@ except ModuleNotFoundError:
 # Import Learning Database
 try:
     from backend.intelligence.learning_database import (
-        JARVISLearningDatabase,
+        IroncliwLearningDatabase,
         get_learning_database,
         PatternType
     )
 except ModuleNotFoundError:
     # Try relative import
     from intelligence.learning_database import (
-        JARVISLearningDatabase,
+        IroncliwLearningDatabase,
         get_learning_database,
         PatternType
     )
@@ -207,7 +207,7 @@ class ContextIntelligenceLayer:
     Uses Learning Database for persistent storage and semantic search
     """
 
-    def __init__(self, knowledge_base_path: Optional[Path] = None, learning_db: Optional[JARVISLearningDatabase] = None):
+    def __init__(self, knowledge_base_path: Optional[Path] = None, learning_db: Optional[IroncliwLearningDatabase] = None):
         self.knowledge_base_path = knowledge_base_path or (
             Path.home() / ".jarvis" / "uae_context.json"
         )
@@ -281,7 +281,7 @@ class ContextIntelligenceLayer:
         except Exception as e:
             logger.error(f"[UAE-CI] Error saving knowledge base: {e}")
 
-    async def initialize_db(self, learning_db: JARVISLearningDatabase):
+    async def initialize_db(self, learning_db: IroncliwLearningDatabase):
         """Initialize Learning Database connection"""
         self.learning_db = learning_db
         self.db_initialized = True
@@ -1018,7 +1018,7 @@ class UnifiedAwarenessEngine:
         self,
         sai_engine: Optional[SituationalAwarenessEngine] = None,
         vision_analyzer=None,
-        learning_db: Optional[JARVISLearningDatabase] = None,
+        learning_db: Optional[IroncliwLearningDatabase] = None,
         multi_space_handler=None
     ):
         """
@@ -1583,7 +1583,7 @@ _uae_instance: Optional[UnifiedAwarenessEngine] = None
 def get_uae_engine(
     sai_engine: Optional[SituationalAwarenessEngine] = None,
     vision_analyzer=None,
-    learning_db: Optional[JARVISLearningDatabase] = None,
+    learning_db: Optional[IroncliwLearningDatabase] = None,
     multi_space_handler=None
 ) -> UnifiedAwarenessEngine:
     """

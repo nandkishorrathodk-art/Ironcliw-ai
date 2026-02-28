@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Async Process Detection System
-Dynamically discovers and terminates JARVIS processes with zero hardcoding.
+Dynamically discovers and terminates Ironcliw processes with zero hardcoding.
 Supports multiple detection strategies, async operations, and comprehensive edge case handling.
 """
 
@@ -80,7 +80,7 @@ class DetectionConfig:
     # Port ranges to scan (dynamically loaded from config)
     ports: List[int] = field(default_factory=list)
 
-    # File patterns for JARVIS-related files
+    # File patterns for Ironcliw-related files
     file_patterns: List[str] = field(default_factory=list)
 
     # Command line patterns
@@ -138,7 +138,7 @@ class DetectionConfig:
                 except (ValueError, TypeError):
                     continue
 
-        # Add default JARVIS ports (fallback if none discovered)
+        # Add default Ironcliw ports (fallback if none discovered)
         default_ports = [8010, 8000, 3000, 5000, 8080]
         config.ports = sorted(list(discovered_ports)) or default_ports
 
@@ -334,7 +334,7 @@ class AdvancedProcessDetector:
         # Sort by priority (CRITICAL first)
         sorted_processes = sorted(filtered, key=lambda p: p.priority.value)
 
-        logger.info(f"Detected {len(sorted_processes)} JARVIS processes (after filtering)")
+        logger.info(f"Detected {len(sorted_processes)} Ironcliw processes (after filtering)")
         return sorted_processes
 
     async def _run_strategy_with_timeout(
@@ -387,31 +387,31 @@ class AdvancedProcessDetector:
                     cmdline_str = ' '.join(cmdline).lower()
                     cwd = info.get('cwd', '').lower() if info.get('cwd') else ''
 
-                    # ENHANCED: Must match pattern AND be in JARVIS directory
+                    # ENHANCED: Must match pattern AND be in Ironcliw directory
                     # This prevents false positives from other Python processes
                     matches_pattern = any(
                         pattern.lower() in name or pattern.lower() in cmdline_str
                         for pattern in self.config.process_patterns
                     )
 
-                    # Check if running from JARVIS directory or mentions jarvis in path
+                    # Check if running from Ironcliw directory or mentions jarvis in path
                     in_jarvis_dir = 'jarvis' in cwd or 'jarvis' in cmdline_str
 
-                    # For main.py and start_system.py, require JARVIS context
+                    # For main.py and start_system.py, require Ironcliw context
                     is_main_py = 'main.py' in cmdline_str
                     is_start_system = 'start_system.py' in cmdline_str
 
                     if is_main_py or is_start_system:
-                        # These files must be in JARVIS directory
+                        # These files must be in Ironcliw directory
                         if not in_jarvis_dir:
                             continue
 
-                    # For other patterns, also require JARVIS context
+                    # For other patterns, also require Ironcliw context
                     if matches_pattern and not (is_main_py or is_start_system):
                         if not in_jarvis_dir:
                             continue
 
-                    # If we got here, it's a valid JARVIS process
+                    # If we got here, it's a valid Ironcliw process
                     if matches_pattern or is_main_py or is_start_system:
                         process_info = ProcessInfo(
                             pid=info['pid'],
@@ -437,7 +437,7 @@ class AdvancedProcessDetector:
         processes = []
 
         try:
-            # More precise: look for JARVIS-specific processes
+            # More precise: look for Ironcliw-specific processes
             cmd = "ps aux | grep -E '(start_system\\.py|backend/main\\.py|backend.*main\\.py)' | grep -i jarvis | grep -v grep"
 
             result = await asyncio.create_subprocess_shell(
@@ -518,7 +518,7 @@ class AdvancedProcessDetector:
                             cmdline_str = ' '.join(cmdline).lower()
                             cwd = proc.cwd().lower() if hasattr(proc, 'cwd') else ''
 
-                            # ENHANCED: Verify process is JARVIS-related
+                            # ENHANCED: Verify process is Ironcliw-related
                             # Don't blindly trust port detection - verify it's our process
                             is_jarvis = (
                                 'jarvis' in cmdline_str or
@@ -529,7 +529,7 @@ class AdvancedProcessDetector:
                             )
 
                             if not is_jarvis:
-                                logger.debug(f"Port {port} process {pid} is not JARVIS-related, skipping")
+                                logger.debug(f"Port {port} process {pid} is not Ironcliw-related, skipping")
                                 continue
 
                             process_info = ProcessInfo(
@@ -566,7 +566,7 @@ class AdvancedProcessDetector:
                                 cmdline_str = ' '.join(cmdline).lower()
                                 cwd = proc.cwd().lower() if hasattr(proc, 'cwd') else ''
 
-                                # ENHANCED: Verify it's JARVIS-related
+                                # ENHANCED: Verify it's Ironcliw-related
                                 is_jarvis = (
                                     'jarvis' in cmdline_str or
                                     'jarvis' in cwd or
@@ -684,18 +684,18 @@ class AdvancedProcessDetector:
 
                     # Check if matches any pattern
                     if any(pattern.search(cmdline_str) for pattern in patterns):
-                        # ENHANCED: Verify it's actually JARVIS-related
-                        # Don't blindly trust pattern match - verify JARVIS context
+                        # ENHANCED: Verify it's actually Ironcliw-related
+                        # Don't blindly trust pattern match - verify Ironcliw context
                         is_jarvis = (
                             'jarvis' in cmdline_str or
                             'jarvis' in cwd or
-                            # For main.py and start_system, require JARVIS directory
+                            # For main.py and start_system, require Ironcliw directory
                             ('main.py' in cmdline_str and 'jarvis' in cwd) or
                             ('start_system' in cmdline_str and 'jarvis' in cwd)
                         )
 
                         if not is_jarvis:
-                            logger.debug(f"Pattern matched PID {info['pid']} but not JARVIS-related, skipping")
+                            logger.debug(f"Pattern matched PID {info['pid']} but not Ironcliw-related, skipping")
                             continue
 
                         process_info = ProcessInfo(
@@ -819,7 +819,7 @@ async def detect_and_kill_jarvis_processes(
     dry_run: bool = False
 ) -> Dict:
     """
-    Detect and kill JARVIS processes using advanced detection.
+    Detect and kill Ironcliw processes using advanced detection.
 
     Args:
         config: Optional DetectionConfig, uses auto-discovery if None

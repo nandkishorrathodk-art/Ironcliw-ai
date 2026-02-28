@@ -1,5 +1,5 @@
-"""
-JARVIS Agentic Watchdog - Supervisor Safety System v1.0
+﻿"""
+Ironcliw Agentic Watchdog - Supervisor Safety System v1.0
 ========================================================
 
 The critical safety layer that monitors agentic (Computer Use) execution
@@ -29,10 +29,10 @@ Safety Features:
 - Circuit breaker for repeated failures
 
 Two-Tier Security Model:
-- Tier 1 (JARVIS): Safe APIs, read-only, low VBIA threshold
-- Tier 2 (JARVIS ACCESS/EXECUTE): Full Computer Use, strict VBIA, watchdog active
+- Tier 1 (Ironcliw): Safe APIs, read-only, low VBIA threshold
+- Tier 2 (Ironcliw ACCESS/EXECUTE): Full Computer Use, strict VBIA, watchdog active
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -62,39 +62,39 @@ class WatchdogConfig:
 
     # Heartbeat settings
     heartbeat_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WATCHDOG_HEARTBEAT_TIMEOUT", "10.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WATCHDOG_HEARTBEAT_TIMEOUT", "10.0"))
     )
     heartbeat_grace_period: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WATCHDOG_GRACE_PERIOD", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WATCHDOG_GRACE_PERIOD", "30.0"))
     )
 
     # Activity rate limiting
     max_clicks_per_second: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WATCHDOG_MAX_CLICKS_PER_SEC", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WATCHDOG_MAX_CLICKS_PER_SEC", "5.0"))
     )
     max_keystrokes_per_second: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WATCHDOG_MAX_KEYS_PER_SEC", "20.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WATCHDOG_MAX_KEYS_PER_SEC", "20.0"))
     )
     activity_window_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WATCHDOG_ACTIVITY_WINDOW", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WATCHDOG_ACTIVITY_WINDOW", "2.0"))
     )
 
     # Kill switch settings
     max_consecutive_failures: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_WATCHDOG_MAX_FAILURES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_WATCHDOG_MAX_FAILURES", "3"))
     )
     cooldown_after_kill: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WATCHDOG_COOLDOWN", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WATCHDOG_COOLDOWN", "30.0"))
     )
 
     # Voice feedback
     voice_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_WATCHDOG_VOICE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_WATCHDOG_VOICE", "true").lower() == "true"
     )
 
     # Audit logging
     audit_log_path: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_WATCHDOG_AUDIT_LOG", None)
+        default_factory=lambda: os.getenv("Ironcliw_WATCHDOG_AUDIT_LOG", None)
     )
 
 
@@ -104,7 +104,7 @@ class WatchdogConfig:
 
 class AgenticMode(str, Enum):
     """Operating modes for the agentic system."""
-    PASSIVE = "passive"           # Standard JARVIS - safe APIs only
+    PASSIVE = "passive"           # Standard Ironcliw - safe APIs only
     SUPERVISED = "supervised"     # Computer Use with human confirmation
     AUTONOMOUS = "autonomous"     # Full autonomous Computer Use
     KILLED = "killed"             # Emergency shutdown - no agentic allowed

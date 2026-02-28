@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test WebSocket vision command processing"""
 
 import asyncio
@@ -11,7 +11,7 @@ async def test_vision_websocket():
     
     try:
         async with websockets.connect(uri) as websocket:
-            print("Connected to JARVIS WebSocket")
+            print("Connected to Ironcliw WebSocket")
             
             # Wait for connection message
             response = await websocket.recv()

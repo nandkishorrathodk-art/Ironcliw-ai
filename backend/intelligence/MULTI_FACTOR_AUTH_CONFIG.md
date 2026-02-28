@@ -1,8 +1,8 @@
-# Multi-Factor Authentication Configuration Guide
+﻿# Multi-Factor Authentication Configuration Guide
 
 ## Overview
 
-JARVIS v5.0 introduces advanced Multi-Factor Authentication Intelligence that combines multiple contextual signals for enhanced security and reliability:
+Ironcliw v5.0 introduces advanced Multi-Factor Authentication Intelligence that combines multiple contextual signals for enhanced security and reliability:
 
 1. **Voice Biometric Intelligence** - ECAPA-TDNN speaker verification
 2. **Network Context Provider** - WiFi/location awareness
@@ -107,7 +107,7 @@ NETWORK_STABILITY_WINDOW_SECONDS=300     # Window for stability check
 NETWORK_CHECK_INTERVAL_SECONDS=30        # Interval for stability monitoring
 
 # Storage
-JARVIS_DATA_DIR=/path/to/jarvis/data     # Base data directory
+Ironcliw_DATA_DIR=/path/to/jarvis/data     # Base data directory
 NETWORK_HISTORY_FILE=network_history.json
 NETWORK_MAX_HISTORY=1000                 # Max history events
 ```
@@ -551,5 +551,5 @@ For issues, questions, or feature requests related to multi-factor authenticatio
 
 ---
 
-**JARVIS Multi-Factor Authentication v5.0**
+**Ironcliw Multi-Factor Authentication v5.0**
 *Intelligent, adaptive, context-aware voice authentication*

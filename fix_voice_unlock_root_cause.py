@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Unlock Root Cause Fix
 ===========================
@@ -221,9 +221,9 @@ async def diagnose_voice_profiles():
     issues = []
     
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
+        from intelligence.learning_database import IroncliwLearningDatabase
         
-        db = JARVISLearningDatabase()
+        db = IroncliwLearningDatabase()
         await db.initialize()
         
         profiles = await db.get_all_speaker_profiles()
@@ -231,7 +231,7 @@ async def diagnose_voice_profiles():
         if not profiles:
             print_error("No voice profiles found!")
             print_info("Voice unlock requires enrolled voice profiles")
-            print_info("Say 'JARVIS, enroll my voice' to create one")
+            print_info("Say 'Ironcliw, enroll my voice' to create one")
             issues.append("No voice profiles enrolled")
             return issues
         
@@ -313,7 +313,7 @@ async def test_embedding_extraction(ecapa):
 
 
 async def main():
-    print_header("JARVIS Voice Unlock Root Cause Fix")
+    print_header("Ironcliw Voice Unlock Root Cause Fix")
     print()
     print("This script diagnoses and fixes why voice unlock isn't working.")
     print("It goes beyond resetting circuit breakers to fix the underlying issues.")
@@ -364,7 +364,7 @@ async def main():
         print("Recommended Actions:")
         
         if any("No voice profiles" in i for i in all_issues):
-            print("  1. Enroll your voice: Say 'JARVIS, enroll my voice'")
+            print("  1. Enroll your voice: Say 'Ironcliw, enroll my voice'")
         
         if any("no embedding" in i.lower() for i in all_issues):
             print("  2. Re-enroll speakers with missing embeddings")
@@ -384,8 +384,8 @@ async def main():
     print()
     print_header("NEXT STEPS")
     print()
-    print("  1. Restart JARVIS backend:  ./start_jarvis.sh")
-    print("  2. Test voice unlock:       Say 'JARVIS, lock my screen'")
+    print("  1. Restart Ironcliw backend:  ./start_jarvis.sh")
+    print("  2. Test voice unlock:       Say 'Ironcliw, lock my screen'")
     print("  3. Check logs for errors:   tail -f logs/jarvis.log")
     print()
     

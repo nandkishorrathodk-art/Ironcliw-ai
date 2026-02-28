@@ -1,10 +1,10 @@
-# Claude API Setup for JARVIS Document Writer
+﻿# Claude API Setup for Ironcliw Document Writer
 
 ## Current Status
 The document writer feature is working but currently running in **DEMO mode** because the Claude API key is invalid or not configured.
 
 ## What's Happening
-When you ask JARVIS to write an essay or document:
+When you ask Ironcliw to write an essay or document:
 1. ✅ The command is recognized correctly
 2. ✅ The document writer module is triggered
 3. ⚠️ The Claude API authentication fails (invalid key)
@@ -53,8 +53,8 @@ After setting up your API key:
    python test_claude_api.py
    ```
 
-2. **Test in JARVIS:**
-   - Start JARVIS
+2. **Test in Ironcliw:**
+   - Start Ironcliw
    - Say: "Write me an essay about climate change"
    - You should see real AI-generated content instead of generic demo text
 

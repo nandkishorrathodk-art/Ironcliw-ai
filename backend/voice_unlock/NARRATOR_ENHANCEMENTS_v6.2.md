@@ -1,4 +1,4 @@
-# JARVIS Narrator Enhancements v6.2 - Visual Security Voice Announcements
+﻿# Ironcliw Narrator Enhancements v6.2 - Visual Security Voice Announcements
 
 **Version**: 6.2.0
 **Date**: 2025-12-26
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visual Security and Cross-Repo Integration features. JARVIS will now speak during startup to inform you about security initialization, visual threat detection capabilities, and multi-system connections.
+Enhanced Ironcliw narrator with intelligent voice announcements for the v6.2 Visual Security and Cross-Repo Integration features. Ironcliw will now speak during startup to inform you about security initialization, visual threat detection capabilities, and multi-system connections.
 
 ---
 
@@ -18,11 +18,11 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 
 **When**: At 82% startup progress
 
-**JARVIS says**:
+**Ironcliw says**:
 > "Initializing two-tier security architecture."
 
 **What's happening**:
-- JARVIS is preparing the dual-mode security system
+- Ironcliw is preparing the dual-mode security system
 - Tier 1 (safe commands) and Tier 2 (agentic commands) are being set up
 
 ---
@@ -31,7 +31,7 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 
 **When**: After watchdog initialization (83% progress)
 
-**JARVIS says**:
+**Ironcliw says**:
 > "Agentic watchdog armed. Kill switch ready."
 
 **What's happening**:
@@ -50,7 +50,7 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 
 **When**: After VBIA adapter initialization (85% progress)
 
-**JARVIS says** (if visual security enabled):
+**Ironcliw says** (if visual security enabled):
 > "Voice biometric authentication ready. Visual threat detection enabled."
 
 **OR** (if visual security disabled):
@@ -62,7 +62,7 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 - Multi-factor authentication active (voice + liveness + visual)
 
 **What this means**:
-- ✅ JARVIS can now verify your voice
+- ✅ Ironcliw can now verify your voice
 - ✅ Visual threat detection watching for ransomware/fake screens
 - ✅ Tiered thresholds: 70% for basic, 85% for advanced commands
 
@@ -72,16 +72,16 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 
 **When**: After cross-repo state initialization (86% progress)
 
-**JARVIS says**:
+**Ironcliw says**:
 > "Cross-repository integration complete. Intelligence shared across all platforms."
 
 **What's happening**:
-- JARVIS, JARVIS Prime, and Reactor Core are now connected
+- Ironcliw, Ironcliw Prime, and Reactor Core are now connected
 - Real-time event sharing enabled via `~/.jarvis/cross_repo/`
 - Visual security events flowing to all systems
 
 **What this enables**:
-- ✅ JARVIS Prime can delegate voice auth tasks to main JARVIS
+- ✅ Ironcliw Prime can delegate voice auth tasks to main Ironcliw
 - ✅ Reactor Core monitors threats and analyzes patterns
 - ✅ All three systems working together in harmony
 
@@ -91,7 +91,7 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 
 **When**: After two-tier router initialization (89% progress)
 
-**JARVIS says** (if visual security enabled):
+**Ironcliw says** (if visual security enabled):
 > "Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection."
 
 **OR** (if visual security disabled):
@@ -111,28 +111,28 @@ Enhanced JARVIS narrator with intelligent voice announcements for the v6.2 Visua
 
 ## Example Full Startup Sequence
 
-Here's what you'll hear during a typical JARVIS startup:
+Here's what you'll hear during a typical Ironcliw startup:
 
 ```
 [... earlier startup announcements ...]
 
-JARVIS: "Initializing two-tier security architecture."
+Ironcliw: "Initializing two-tier security architecture."
 [3 seconds pass]
 
-JARVIS: "Agentic watchdog armed. Kill switch ready."
+Ironcliw: "Agentic watchdog armed. Kill switch ready."
 [2 seconds pass]
 
-JARVIS: "Voice biometric authentication ready. Visual threat detection enabled."
+Ironcliw: "Voice biometric authentication ready. Visual threat detection enabled."
 [1 second pass]
 
-JARVIS: "Cross-repository integration complete. Intelligence shared across all platforms."
+Ironcliw: "Cross-repository integration complete. Intelligence shared across all platforms."
 [2 seconds pass]
 
-JARVIS: "Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection."
+Ironcliw: "Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection."
 
 [... startup continues ...]
 
-JARVIS: "JARVIS online. All systems operational."
+Ironcliw: "Ironcliw online. All systems operational."
 ```
 
 **Total security announcement time**: ~10-15 seconds
@@ -172,9 +172,9 @@ Each phase has multiple voice templates for variety:
 
 #### CROSS_REPO_INIT
 - "Establishing cross-repository connections."
-- "Connecting to JARVIS Prime and Reactor Core."
+- "Connecting to Ironcliw Prime and Reactor Core."
 - *Complete*: "Cross-repository integration complete. All systems connected."
-- *Complete*: "JARVIS, JARVIS Prime, and Reactor Core now operating in harmony."
+- *Complete*: "Ironcliw, Ironcliw Prime, and Reactor Core now operating in harmony."
 
 #### TWO_TIER_SECURITY
 - "Initializing two-tier security architecture."
@@ -226,10 +226,10 @@ export STARTUP_NARRATOR_RATE=190
 
 ```bash
 # Enable/disable visual security (affects announcements)
-export JARVIS_VISUAL_SECURITY_ENABLED=true
+export Ironcliw_VISUAL_SECURITY_ENABLED=true
 
 # Visual security mode (affects which analyzer is mentioned)
-export JARVIS_VISUAL_SECURITY_MODE=auto  # auto, omniparser, claude_vision
+export Ironcliw_VISUAL_SECURITY_MODE=auto  # auto, omniparser, claude_vision
 ```
 
 ---
@@ -292,7 +292,7 @@ if self.config.voice_enabled:
 
 # 3. After VBIA initialization (dynamic based on visual security)
 if self.config.voice_enabled:
-    visual_enabled = os.getenv("JARVIS_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
+    visual_enabled = os.getenv("Ironcliw_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
     if visual_enabled:
         await self.narrator.speak(
             "Voice biometric authentication ready. Visual threat detection enabled.",
@@ -313,7 +313,7 @@ if self.config.voice_enabled:
 
 # 5. Final two-tier announcement (dynamic based on visual security)
 if self.config.voice_enabled:
-    visual_enabled = os.getenv("JARVIS_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
+    visual_enabled = os.getenv("Ironcliw_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
     if visual_enabled:
         await self.narrator.speak(
             "Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection.",
@@ -333,13 +333,13 @@ if self.config.voice_enabled:
 ### Manual Test
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 
 # Enable voice narrator
 export STARTUP_NARRATOR_VOICE=true
-export JARVIS_VISUAL_SECURITY_ENABLED=true
+export Ironcliw_VISUAL_SECURITY_ENABLED=true
 
-# Start JARVIS and listen for announcements
+# Start Ironcliw and listen for announcements
 python3 run_supervisor.py
 ```
 
@@ -353,7 +353,7 @@ python3 run_supervisor.py
 ### Test Without Visual Security
 
 ```bash
-export JARVIS_VISUAL_SECURITY_ENABLED=false
+export Ironcliw_VISUAL_SECURITY_ENABLED=false
 python3 run_supervisor.py
 ```
 
@@ -393,7 +393,7 @@ export STARTUP_NARRATOR_VOICE=true
 # Test 'say' command
 say "Testing voice output"
 
-# Restart JARVIS
+# Restart Ironcliw
 ```
 
 ### Issue: Announcements too fast/slow
@@ -416,10 +416,10 @@ export STARTUP_NARRATOR_RATE=210  # Faster
 **Check**:
 ```bash
 # Verify visual security setting
-echo $JARVIS_VISUAL_SECURITY_ENABLED
+echo $Ironcliw_VISUAL_SECURITY_ENABLED
 
 # Should be "true" for visual security announcements
-export JARVIS_VISUAL_SECURITY_ENABLED=true
+export Ironcliw_VISUAL_SECURITY_ENABLED=true
 ```
 
 ---
@@ -432,7 +432,7 @@ export JARVIS_VISUAL_SECURITY_ENABLED=true
    - "Ransomware pattern identified. Blocking unlock."
 
 2. **Cross-Repo Event Announcements**
-   - "JARVIS Prime has connected."
+   - "Ironcliw Prime has connected."
    - "Reactor Core analytics online."
    - "Threat analysis complete. Risk level: low."
 

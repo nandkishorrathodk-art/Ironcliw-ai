@@ -1,4 +1,4 @@
-# GCP VM Auto-Create and Shutdown Flow
+﻿# GCP VM Auto-Create and Shutdown Flow
 
 ## Your Questions Answered ✅
 
@@ -63,7 +63,7 @@
 │                                                                   │
 │  2. VM Starts → gcp_vm_startup.sh runs automatically:            │
 │     • apt-get install python3, git, etc.                         │
-│     • Clone JARVIS repo                                          │
+│     • Clone Ironcliw repo                                          │
 │     • pip install dependencies                                   │
 │     • Start Cloud SQL Proxy                                      │
 │     • python3 main.py --port 8010                                │
@@ -104,7 +104,7 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                 GRACEFUL SHUTDOWN (main.py lifespan)              │
 │                                                                   │
-│  🛑 Shutting down JARVIS backend...                              │
+│  🛑 Shutting down Ironcliw backend...                              │
 │                                                                   │
 │  1. Broadcast shutdown to WebSocket clients                      │
 │                                                                   │
@@ -136,7 +136,7 @@
 │                                                                   │
 │  4. Stop other components...                                     │
 │                                                                   │
-│  ✅ JARVIS stopped gracefully                                    │
+│  ✅ Ironcliw stopped gracefully                                    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -315,7 +315,7 @@ if vm.uptime_hours >= max_vm_lifetime_hours:
 ```bash
 $ python main.py
 
-🚀 Starting optimized JARVIS backend...
+🚀 Starting optimized Ironcliw backend...
 ☁️  GCP VM auto-creation enabled
 ✅ Memory pressure callback registered
 ✅ Dynamic component loading enabled
@@ -334,7 +334,7 @@ $ python main.py
 
 ^C  # User presses CTRL+C
 
-🛑 Shutting down JARVIS backend...
+🛑 Shutting down Ironcliw backend...
 🧹 Cleaning up GCP VMs...
 🧹 Cleaning up all VMs: Manager shutdown
 
@@ -355,7 +355,7 @@ $ python main.py
 
 ✅ GCP VM Manager cleanup complete
 ✅ Cost Tracking System shutdown complete
-✅ JARVIS stopped gracefully
+✅ Ironcliw stopped gracefully
 ```
 
 ---

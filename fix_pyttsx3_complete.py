@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Complete fix for pyttsx3 macOS driver issue
 """
@@ -170,7 +170,7 @@ try:
     import pyttsx3
     engine = pyttsx3.init()
     print("✅ pyttsx3 is now working!")
-    engine.say("JARVIS voice system initialized")
+    engine.say("Ironcliw voice system initialized")
     engine.runAndWait()
 except Exception as e:
     print(f"❌ Still having issues: {e}")

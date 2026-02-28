@@ -1,7 +1,7 @@
-"""
-JARVIS Neural Mesh - Voice System Adapter
+﻿"""
+Ironcliw Neural Mesh - Voice System Adapter
 
-Adapts the JARVIS Voice components (VoiceMemoryAgent, SpeakerVerificationService,
+Adapts the Ironcliw Voice components (VoiceMemoryAgent, SpeakerVerificationService,
 VoiceUnlockIntegration, StreamingProcessor) for Neural Mesh integration.
 
 This adapter enables:
@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceComponentType(str, Enum):
-    """Types of voice components in JARVIS."""
+    """Types of voice components in Ironcliw."""
     MEMORY = "memory"  # VoiceMemoryAgent
     VERIFICATION = "verification"  # SpeakerVerificationService
     UNLOCK = "unlock"  # VoiceUnlockIntegration
@@ -138,7 +138,7 @@ COMPONENT_CAPABILITIES: Dict[VoiceComponentType, VoiceCapabilities] = {
 
 class VoiceSystemAdapter(BaseNeuralMeshAgent):
     """
-    Adapter for JARVIS Voice components to work with Neural Mesh.
+    Adapter for Ironcliw Voice components to work with Neural Mesh.
 
     This adapter wraps VoiceMemoryAgent, SpeakerVerificationService,
     VoiceUnlockIntegration, and other voice components.

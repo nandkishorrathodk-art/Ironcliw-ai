@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for the Integrated Pure Intelligence System
 Verifies that the pure intelligence integration is working correctly
@@ -27,7 +27,7 @@ async def test_integrated_system():
         from api.pure_vision_intelligence import PureVisionIntelligence
         from api.vision_command_handler import vision_command_handler
         from api.unified_command_processor_pure import get_pure_unified_processor
-        from api.jarvis_voice_api import JARVISVoiceAPI
+        from api.jarvis_voice_api import IroncliwVoiceAPI
         from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
         print("   ✅ All integrated modules imported successfully\n")
     except ImportError as e:

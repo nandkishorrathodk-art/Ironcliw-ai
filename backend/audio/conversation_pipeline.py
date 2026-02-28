@@ -1,4 +1,4 @@
-"""
+﻿"""
 Conversation Pipeline Orchestrator (Layer 5)
 =============================================
 
@@ -7,7 +7,7 @@ Wires all audio layers into a complete voice conversation loop:
     Mic → AEC → VAD → TurnDetector → StreamingSTT → LLM → SentenceSplitter
                                                            → StreamingTTS → AudioBus
 
-Supports barge-in (user interrupts JARVIS) and maintains a sliding-window
+Supports barge-in (user interrupts Ironcliw) and maintains a sliding-window
 conversation transcript for LLM context.
 
 Architecture:
@@ -39,11 +39,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Configuration
-_MAX_CONTEXT_TURNS = int(os.getenv("JARVIS_CONV_MAX_TURNS", "20"))
-_SESSION_TIMEOUT_S = float(os.getenv("JARVIS_CONV_SESSION_TIMEOUT", "300"))
+_MAX_CONTEXT_TURNS = int(os.getenv("Ironcliw_CONV_MAX_TURNS", "20"))
+_SESSION_TIMEOUT_S = float(os.getenv("Ironcliw_CONV_SESSION_TIMEOUT", "300"))
 _SENTENCE_DELIMITERS = re.compile(r'(?<=[.!?])\s+')
 _EXECUTE_INTENT_CONFIDENCE = float(
-    os.getenv("JARVIS_CONV_EXECUTE_INTENT_CONFIDENCE", "0.62")
+    os.getenv("Ironcliw_CONV_EXECUTE_INTENT_CONFIDENCE", "0.62")
 )
 _AUTHENTICATE_PATTERN = re.compile(
     r"\b(?:authenticate|biometric|voice\s+unlock|unlock\s+(?:my\s+)?screen)\b",
@@ -282,8 +282,8 @@ class ConversationPipeline:
 
         # System prompt for conversation mode
         self._system_prompt = os.getenv(
-            "JARVIS_CONV_SYSTEM_PROMPT",
-            "You are JARVIS, a helpful AI assistant engaged in a voice "
+            "Ironcliw_CONV_SYSTEM_PROMPT",
+            "You are Ironcliw, a helpful AI assistant engaged in a voice "
             "conversation. Keep responses concise and natural for speech. "
             "Use short sentences. Avoid markdown, code blocks, or lists "
             "unless specifically asked."
@@ -415,8 +415,8 @@ class ConversationPipeline:
                     continue
 
                 # 2. Self-voice echo filter — last line of defense.
-                # If AEC didn't fully cancel JARVIS's voice, Whisper may
-                # transcribe fragments of what JARVIS just said. Check
+                # If AEC didn't fully cancel Ironcliw's voice, Whisper may
+                # transcribe fragments of what Ironcliw just said. Check
                 # against recent speech via the unified speech state manager.
                 if await self._is_self_voice_echo(user_text):
                     logger.info(
@@ -610,7 +610,7 @@ class ConversationPipeline:
         if full_response:
             self._session.add_turn("assistant", full_response)
             logger.info(
-                f"[ConvPipeline] JARVIS: {full_response[:80]}"
+                f"[ConvPipeline] Ironcliw: {full_response[:80]}"
                 f"{'...' if len(full_response) > 80 else ''}"
             )
 
@@ -671,8 +671,8 @@ class ConversationPipeline:
                 system_prompt=system_prompt,
                 task_type=request_task_type,
                 stream=True,
-                temperature=float(os.getenv("JARVIS_CONV_TEMPERATURE", "0.7")),
-                max_tokens=int(os.getenv("JARVIS_CONV_MAX_TOKENS", "512")),
+                temperature=float(os.getenv("Ironcliw_CONV_TEMPERATURE", "0.7")),
+                max_tokens=int(os.getenv("Ironcliw_CONV_MAX_TOKENS", "512")),
                 context=request_context,
             )
 
@@ -725,7 +725,7 @@ class ConversationPipeline:
             }
 
         # v242.1 CAI rollback gate: if explicitly enabled, use ML classification
-        if os.environ.get("JARVIS_CONV_PIPELINE_USE_CAI", "").lower() in (
+        if os.environ.get("Ironcliw_CONV_PIPELINE_USE_CAI", "").lower() in (
             "true",
             "1",
             "yes",
@@ -764,10 +764,10 @@ class ConversationPipeline:
     async def _predict_intent(self, user_text: str) -> Dict[str, Any]:
         """Predict intent using CAI when available; fall back safely when unavailable.
 
-        v242.1: Gated behind JARVIS_CONV_PIPELINE_USE_CAI=true (default: false).
+        v242.1: Gated behind Ironcliw_CONV_PIPELINE_USE_CAI=true (default: false).
         CAI classification is redundant with J-Prime's Phi classifier.
         """
-        if not os.environ.get("JARVIS_CONV_PIPELINE_USE_CAI", "").lower() in (
+        if not os.environ.get("Ironcliw_CONV_PIPELINE_USE_CAI", "").lower() in (
             "true",
             "1",
             "yes",
@@ -965,7 +965,7 @@ class ConversationPipeline:
                 # Wait for the biometric task to finish (it runs as a
                 # background task in the dispatcher). Poll with timeout.
                 auth_timeout = float(
-                    os.getenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "25")
+                    os.getenv("Ironcliw_BIOMETRIC_AUTH_TIMEOUT", "25")
                 )
                 biometric_task = getattr(dispatcher, "_biometric_task", None)
                 if biometric_task is not None:
@@ -1252,13 +1252,13 @@ class ConversationPipeline:
 
     async def _is_self_voice_echo(self, text: str) -> bool:
         """
-        Check if transcribed text is an echo of JARVIS's own recent speech.
+        Check if transcribed text is an echo of Ironcliw's own recent speech.
 
         Uses the UnifiedSpeechStateManager's similarity check as a safety net
         against imperfect AEC. In conversation mode, cooldown is already
         disabled (AEC handles echo at the signal level), so only the
         semantic similarity check fires — detecting partial transcriptions
-        of JARVIS's own words that leaked through AEC.
+        of Ironcliw's own words that leaked through AEC.
 
         Also checks against the most recent assistant turn in the session
         for a direct text match (catches cases where the speech state
@@ -1279,7 +1279,7 @@ class ConversationPipeline:
             for turn in reversed(self._session.turns):
                 if turn.role != "assistant":
                     break
-                # If the user's text is a substring of what JARVIS just said
+                # If the user's text is a substring of what Ironcliw just said
                 # (or vice versa), it's likely a partial echo
                 text_lower = text.lower().strip()
                 turn_lower = turn.text.lower().strip()
@@ -1293,7 +1293,7 @@ class ConversationPipeline:
                         overlap = len(user_words & jarvis_words)
                         ratio = overlap / max(len(user_words), 1)
                         if ratio > float(os.getenv(
-                            "JARVIS_ECHO_WORD_OVERLAP_THRESHOLD", "0.7"
+                            "Ironcliw_ECHO_WORD_OVERLAP_THRESHOLD", "0.7"
                         )):
                             return True
 

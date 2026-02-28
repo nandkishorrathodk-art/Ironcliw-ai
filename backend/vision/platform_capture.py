@@ -1,5 +1,5 @@
-"""
-JARVIS Platform-Aware Vision Capture System
+﻿"""
+Ironcliw Platform-Aware Vision Capture System
 ═══════════════════════════════════════════════════════════════════════════════
 
 Unified vision capture router that detects platform and routes to Windows/macOS
@@ -22,7 +22,7 @@ Architecture:
     │   Windows  │   macOS    │   Linux    │
     └────────────┴────────────┴────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 7)
 """
 from __future__ import annotations

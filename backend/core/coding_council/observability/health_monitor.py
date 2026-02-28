@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Health Monitor - Gap #31
 ================================
 
@@ -9,7 +9,7 @@ Health monitoring and alerting:
 - Health aggregation
 - Readiness/liveness probes
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

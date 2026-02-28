@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Profile Startup Service v1.0
 ===================================
 
 Production-grade, fully async, parallel voice profile loading and synchronization
-system for JARVIS voice biometric authentication.
+system for Ironcliw voice biometric authentication.
 
 This service ensures your voice profile is:
 1. Loaded from CloudSQL on startup (if available)
@@ -40,7 +40,7 @@ Features:
 - Zero hardcoding - fully dynamic configuration
 - Graceful degradation when CloudSQL unavailable
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -194,7 +194,7 @@ class VoiceProfileConfig:
         self.health_check_interval = _get_env_float('VOICE_PROFILE_HEALTH_INTERVAL', 60.0)
         
         # Paths (dynamic, no hardcoding)
-        jarvis_dir = os.path.expanduser(_get_env_str('JARVIS_DATA_DIR', '~/.jarvis'))
+        jarvis_dir = os.path.expanduser(_get_env_str('Ironcliw_DATA_DIR', '~/.jarvis'))
         self.learning_db_path = os.path.join(jarvis_dir, 'learning', 'jarvis_learning.db')
         self.metrics_db_path = os.path.join(jarvis_dir, 'voice_unlock_metrics.db')
         

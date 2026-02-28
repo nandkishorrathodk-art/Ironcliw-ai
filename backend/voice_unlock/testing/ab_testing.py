@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Authentication A/B Testing Framework.
 ============================================
 
@@ -23,7 +23,7 @@ Architecture:
     │  └── StatisticalAnalyzer (analyzes results for significance)        │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v81.0 - Unified Learning Loop
+Author: Ironcliw Trinity v81.0 - Unified Learning Loop
 """
 
 from __future__ import annotations

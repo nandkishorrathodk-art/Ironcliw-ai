@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Workspace Name Detector
 Detects actual workspace names from current system state
@@ -12,13 +12,13 @@ from typing import Dict, List, Optional
 # v262.0: Gate PyObjC imports behind headless detection (prevents SIGABRT).
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC."""
-    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    _cached = os.environ.get("_Ironcliw_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
     import sys as _sys
     result = False
     if _sys.platform == "darwin":
-        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("Ironcliw_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
             pass
@@ -32,7 +32,7 @@ def _is_gui_session() -> bool:
                 result = cg.CGSessionCopyCurrentDictionary() is not None
             except Exception:
                 pass
-    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    os.environ["_Ironcliw_GUI_SESSION"] = "1" if result else "0"
     return result
 
 Quartz = None  # type: ignore[assignment]
@@ -100,9 +100,9 @@ class WorkspaceNameDetector:
                 if is_visible:
                     visible_apps.add(app_name)
 
-                # Check for JARVIS
+                # Check for Ironcliw
                 if 'jarvis' in window_name.lower() or 'j.a.r.v.i.s' in window_name.lower():
-                    # JARVIS is likely on space 1 if visible
+                    # Ironcliw is likely on space 1 if visible
                     if is_visible:
                         workspace_names[1] = 'J.A.R.V.I.S. interface'
                         continue
@@ -112,7 +112,7 @@ class WorkspaceNameDetector:
 
         # Common workspace patterns based on your screenshot
         if 'Google Chrome' in visible_apps:
-            # Chrome with JARVIS is usually space 1
+            # Chrome with Ironcliw is usually space 1
             if 1 not in workspace_names:
                 workspace_names[1] = 'J.A.R.V.I.S. interface'
 
@@ -213,14 +213,14 @@ class WorkspaceNameDetector:
         if not app_name or app_name == 'Unknown':
             return "Desktop"
 
-        # Check for JARVIS first
+        # Check for Ironcliw first
         if 'jarvis' in app_name.lower() or 'j.a.r.v.i.s' in app_name.lower():
             return 'J.A.R.V.I.S. interface'
 
-        # Check for Chrome with JARVIS
+        # Check for Chrome with Ironcliw
         if 'chrome' in app_name.lower():
-            # This might be the JARVIS interface
-            return 'J.A.R.V.I.S. interface'  # Assume Chrome with JARVIS
+            # This might be the Ironcliw interface
+            return 'J.A.R.V.I.S. interface'  # Assume Chrome with Ironcliw
 
         # Map common apps to clean names
         app_mappings = {
@@ -259,7 +259,7 @@ class WorkspaceNameDetector:
                 window_name = window.get('kCGWindowName', '').lower()
                 owner_name = window.get('kCGWindowOwnerName', '')
 
-                # Check for JARVIS
+                # Check for Ironcliw
                 if 'jarvis' in window_name or 'j.a.r.v.i.s' in window_name:
                     return 'J.A.R.V.I.S. interface'
 
@@ -276,7 +276,7 @@ class WorkspaceNameDetector:
         if not apps:
             return "Desktop"
 
-        # Check for JARVIS first
+        # Check for Ironcliw first
         for app in apps:
             if 'jarvis' in app.lower():
                 return 'J.A.R.V.I.S. interface'

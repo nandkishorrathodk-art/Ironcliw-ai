@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Resource Management Engine v1.0
 ========================================
 
-Enterprise-grade resource management for the JARVIS Trinity ecosystem.
-Provides centralized resource coordination across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade resource management for the Ironcliw Trinity ecosystem.
+Provides centralized resource coordination across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 6 critical resource management patterns:
@@ -80,8 +80,8 @@ class ResourceState(Enum):
 
 class ComponentType(Enum):
     """Components in the Trinity ecosystem."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     SYSTEM = "system"
     EXTERNAL = "external"
@@ -162,7 +162,7 @@ class ResourceAllocation:
     """A resource allocation."""
     allocation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     resource_type: ResourceType = ResourceType.PORT
-    component: ComponentType = ComponentType.JARVIS_BODY
+    component: ComponentType = ComponentType.Ironcliw_BODY
     amount: float = 0.0
     unit: str = ""
     allocated_at: datetime = field(default_factory=datetime.utcnow)
@@ -430,17 +430,17 @@ class MemoryBudgetManager:
         """Initialize default memory budgets."""
         total_mb = self._get_total_memory_mb()
 
-        # Default allocation: JARVIS 40%, Prime 35%, Reactor 20%, System 5%
+        # Default allocation: Ironcliw 40%, Prime 35%, Reactor 20%, System 5%
         self._budgets = {
-            ComponentType.JARVIS_BODY: MemoryBudget(
-                component=ComponentType.JARVIS_BODY,
+            ComponentType.Ironcliw_BODY: MemoryBudget(
+                component=ComponentType.Ironcliw_BODY,
                 budget_mb=int(total_mb * 0.40),
                 soft_limit_mb=int(total_mb * 0.35),
                 hard_limit_mb=int(total_mb * 0.40),
                 priority=2,
             ),
-            ComponentType.JARVIS_PRIME: MemoryBudget(
-                component=ComponentType.JARVIS_PRIME,
+            ComponentType.Ironcliw_PRIME: MemoryBudget(
+                component=ComponentType.Ironcliw_PRIME,
                 budget_mb=int(total_mb * 0.35),
                 soft_limit_mb=int(total_mb * 0.30),
                 hard_limit_mb=int(total_mb * 0.35),
@@ -707,8 +707,8 @@ class CPUAffinityManager:
         """Calculate fair share of cores for a component."""
         # Allocation weights
         weights = {
-            ComponentType.JARVIS_BODY: 0.35,
-            ComponentType.JARVIS_PRIME: 0.40,
+            ComponentType.Ironcliw_BODY: 0.35,
+            ComponentType.Ironcliw_PRIME: 0.40,
             ComponentType.REACTOR_CORE: 0.20,
             ComponentType.SYSTEM: 0.05,
         }
@@ -916,8 +916,8 @@ class NetworkBandwidthManager:
 
         # Fair share allocation
         weights = {
-            ComponentType.JARVIS_BODY: 0.35,
-            ComponentType.JARVIS_PRIME: 0.40,
+            ComponentType.Ironcliw_BODY: 0.35,
+            ComponentType.Ironcliw_PRIME: 0.40,
             ComponentType.REACTOR_CORE: 0.20,
             ComponentType.SYSTEM: 0.05,
         }
@@ -1223,8 +1223,8 @@ class UnifiedResourceCoordinator:
 
             # Get memory by process name patterns
             patterns = {
-                ComponentType.JARVIS_BODY: ["jarvis", "python.*jarvis"],
-                ComponentType.JARVIS_PRIME: ["prime", "jarvis-prime"],
+                ComponentType.Ironcliw_BODY: ["jarvis", "python.*jarvis"],
+                ComponentType.Ironcliw_PRIME: ["prime", "jarvis-prime"],
                 ComponentType.REACTOR_CORE: ["reactor", "training"],
             }
 

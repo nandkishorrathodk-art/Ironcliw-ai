@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Simple Context Handler for JARVIS
+Simple Context Handler for Ironcliw
 =================================
 
 A simplified context handler that focuses on the screen lock/unlock scenario

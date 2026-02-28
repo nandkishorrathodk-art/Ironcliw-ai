@@ -1,4 +1,4 @@
-# ❓ **"Do I Need Apple Watch?" - EXPLAINED**
+﻿# ❓ **"Do I Need Apple Watch?" - EXPLAINED**
 
 ## 🎯 **Short Answer: YES** ✅
 
@@ -57,7 +57,7 @@ Your MacBook's Bluetooth is **fixed in place**:
 
 | Device | Role | Why Needed |
 |--------|------|------------|
-| **MacBook Pro** | Detection Hub | Scans for Bluetooth, runs JARVIS |
+| **MacBook Pro** | Detection Hub | Scans for Bluetooth, runs Ironcliw |
 | **Apple Watch** | Position Tracker | Moves with you, broadcasts Bluetooth |
 | **Sony TV** | Display Target | Configured location, extend target |
 
@@ -130,7 +130,7 @@ Display Scores:
 
 Decision: PROMPT_USER for Sony TV
 
-JARVIS: "Sir, I see you're near the Sony Living Room TV, 
+Ironcliw: "Sir, I see you're near the Sony Living Room TV, 
          about 2.5 meters away. Shall I connect?"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -155,9 +155,9 @@ JARVIS: "Sir, I see you're near the Sony Living Room TV,
 **What Happens:**
 1. ✅ You walk near TV with Watch
 2. ✅ Watch signal → MacBook detects your distance (2.5m)
-3. ✅ JARVIS correlates with TV location
-4. ✅ JARVIS checks if TV is on
-5. ✅ JARVIS prompts: "Would you like to connect?"
+3. ✅ Ironcliw correlates with TV location
+4. ✅ Ironcliw checks if TV is on
+5. ✅ Ironcliw prompts: "Would you like to connect?"
 6. ✅ You say "Yes" or "No"
 7. ✅ Connection happens automatically (backend)
 

@@ -1,5 +1,5 @@
-"""
-JARVIS System Primitives v90.0 - Production-Grade Systems Engineering Layer
+﻿"""
+Ironcliw System Primitives v90.0 - Production-Grade Systems Engineering Layer
 =============================================================================
 
 This module provides iron-clad, kernel-level primitives for managing:
@@ -35,7 +35,7 @@ Architecture:
     │  ResourceGuard         - Automatic cleanup with __del__ safety net      │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System v90.0
+Author: Ironcliw System v90.0
 License: MIT
 """
 
@@ -127,32 +127,32 @@ class SystemConfig:
     """
 
     # Process Management
-    PROCESS_SIGTERM_TIMEOUT: float = float(os.getenv("JARVIS_SIGTERM_TIMEOUT", "5.0"))
-    PROCESS_SIGKILL_TIMEOUT: float = float(os.getenv("JARVIS_SIGKILL_TIMEOUT", "2.0"))
-    PROCESS_GROUP_ENABLED: bool = os.getenv("JARVIS_PROCESS_GROUPS", "true").lower() == "true"
+    PROCESS_SIGTERM_TIMEOUT: float = float(os.getenv("Ironcliw_SIGTERM_TIMEOUT", "5.0"))
+    PROCESS_SIGKILL_TIMEOUT: float = float(os.getenv("Ironcliw_SIGKILL_TIMEOUT", "2.0"))
+    PROCESS_GROUP_ENABLED: bool = os.getenv("Ironcliw_PROCESS_GROUPS", "true").lower() == "true"
 
     # File Operations
-    ATOMIC_WRITE_FSYNC: bool = os.getenv("JARVIS_FSYNC_WRITES", "true").lower() == "true"
-    ATOMIC_WRITE_PERMS: int = int(os.getenv("JARVIS_FILE_PERMS", "0o600"), 8)
+    ATOMIC_WRITE_FSYNC: bool = os.getenv("Ironcliw_FSYNC_WRITES", "true").lower() == "true"
+    ATOMIC_WRITE_PERMS: int = int(os.getenv("Ironcliw_FILE_PERMS", "0o600"), 8)
 
     # Locking
-    LOCK_TIMEOUT: float = float(os.getenv("JARVIS_LOCK_TIMEOUT", "30.0"))
-    LOCK_POLL_INTERVAL: float = float(os.getenv("JARVIS_LOCK_POLL", "0.1"))
-    LOCK_STALE_THRESHOLD: float = float(os.getenv("JARVIS_LOCK_STALE", "300.0"))
+    LOCK_TIMEOUT: float = float(os.getenv("Ironcliw_LOCK_TIMEOUT", "30.0"))
+    LOCK_POLL_INTERVAL: float = float(os.getenv("Ironcliw_LOCK_POLL", "0.1"))
+    LOCK_STALE_THRESHOLD: float = float(os.getenv("Ironcliw_LOCK_STALE", "300.0"))
 
     # Heartbeat
-    HEARTBEAT_STALE_THRESHOLD: float = float(os.getenv("JARVIS_HEARTBEAT_STALE", "30.0"))
-    HEARTBEAT_PID_VALIDATE: bool = os.getenv("JARVIS_HEARTBEAT_PID_CHECK", "true").lower() == "true"
+    HEARTBEAT_STALE_THRESHOLD: float = float(os.getenv("Ironcliw_HEARTBEAT_STALE", "30.0"))
+    HEARTBEAT_PID_VALIDATE: bool = os.getenv("Ironcliw_HEARTBEAT_PID_CHECK", "true").lower() == "true"
 
     # Adaptive Waiting
-    ADAPTIVE_MIN_DELAY: float = float(os.getenv("JARVIS_ADAPTIVE_MIN_DELAY", "0.1"))
-    ADAPTIVE_MAX_DELAY: float = float(os.getenv("JARVIS_ADAPTIVE_MAX_DELAY", "30.0"))
-    ADAPTIVE_LOAD_THRESHOLD: float = float(os.getenv("JARVIS_ADAPTIVE_LOAD_THRESHOLD", "0.8"))
+    ADAPTIVE_MIN_DELAY: float = float(os.getenv("Ironcliw_ADAPTIVE_MIN_DELAY", "0.1"))
+    ADAPTIVE_MAX_DELAY: float = float(os.getenv("Ironcliw_ADAPTIVE_MAX_DELAY", "30.0"))
+    ADAPTIVE_LOAD_THRESHOLD: float = float(os.getenv("Ironcliw_ADAPTIVE_LOAD_THRESHOLD", "0.8"))
 
     # Paths
-    STATE_DIR: Path = Path(os.getenv("JARVIS_STATE_DIR", str(Path.home() / ".jarvis" / "state")))
-    LOCKS_DIR: Path = Path(os.getenv("JARVIS_LOCKS_DIR", str(Path.home() / ".jarvis" / "locks")))
-    HEARTBEATS_DIR: Path = Path(os.getenv("JARVIS_HEARTBEATS_DIR", str(Path.home() / ".jarvis" / "trinity" / "components")))
+    STATE_DIR: Path = Path(os.getenv("Ironcliw_STATE_DIR", str(Path.home() / ".jarvis" / "state")))
+    LOCKS_DIR: Path = Path(os.getenv("Ironcliw_LOCKS_DIR", str(Path.home() / ".jarvis" / "locks")))
+    HEARTBEATS_DIR: Path = Path(os.getenv("Ironcliw_HEARTBEATS_DIR", str(Path.home() / ".jarvis" / "trinity" / "components")))
 
     @classmethod
     def ensure_directories(cls) -> None:
@@ -1394,7 +1394,7 @@ class PortManager:
     Distributed port management with file-based locking.
 
     Features:
-    - Prevents multiple JARVIS instances from fighting over ports
+    - Prevents multiple Ironcliw instances from fighting over ports
     - Automatic stale lock detection and cleanup
     - Port range allocation for dynamic assignment
     - Health check integration

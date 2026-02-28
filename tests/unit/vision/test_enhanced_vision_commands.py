@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Enhanced Vision Commands
-Verifies that JARVIS can understand various vision-related queries
+Verifies that Ironcliw can understand various vision-related queries
 """
 
 import asyncio
@@ -12,27 +12,27 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent))
 
-from backend.voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
 
 async def test_vision_commands():
     """Test various vision commands"""
     print("🧠 Testing Enhanced Vision Commands")
     print("=" * 60)
     
-    # Initialize JARVIS
-    jarvis = JARVISAgentVoice()
+    # Initialize Ironcliw
+    jarvis = IroncliwAgentVoice()
     
     # Test commands that should trigger vision
     test_commands = [
-        "Hey JARVIS, what am I working on in cursor?",
+        "Hey Ironcliw, what am I working on in cursor?",
         "What can you see on my screen?",
-        "JARVIS, can you see my screen?",
-        "Hey JARVIS, analyze what I'm doing",
+        "Ironcliw, can you see my screen?",
+        "Hey Ironcliw, analyze what I'm doing",
         "What am I currently working on?",
-        "JARVIS, describe what you see",
+        "Ironcliw, describe what you see",
         "Tell me what's on my screen",
         "What applications do I have open?",
-        "Hey JARVIS, what are you seeing?",
+        "Hey Ironcliw, what are you seeing?",
     ]
     
     print(f"Vision enabled: {jarvis.vision_enabled}")
@@ -49,7 +49,7 @@ async def test_vision_commands():
         
         # Process the command
         response = await jarvis.process_voice_input(command)
-        print(f"🤖 JARVIS: {response}")
+        print(f"🤖 Ironcliw: {response}")
         print("-" * 40)
         
         # Small delay between tests

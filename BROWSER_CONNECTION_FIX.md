@@ -1,21 +1,21 @@
-# Browser Connection ValueError - Fix Guide
+﻿# Browser Connection ValueError - Fix Guide
 
 ## The Real Problem
 
-The "ValueError" in your browser is because **JARVIS backend is not actually running**. 
+The "ValueError" in your browser is because **Ironcliw backend is not actually running**. 
 
 ### Diagnosis Results:
 - ❌ Backend NOT running on port 8000
 - ❌ Frontend NOT running on port 3000  
-- ❌ No JARVIS Python processes found
-- ⚠️ Port 5000 is listening (but it's not JARVIS)
+- ❌ No Ironcliw Python processes found
+- ⚠️ Port 5000 is listening (but it's not Ironcliw)
 
 ## Solution Steps
 
-### Step 1: Start JARVIS Properly
+### Step 1: Start Ironcliw Properly
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 
@@ -23,12 +23,12 @@ python3 start_system.py
 ```
 ✅ Backend started on port 8000
 ✅ Frontend started on port 3000
-✅ JARVIS is ready!
+✅ Ironcliw is ready!
 ```
 
 ### Step 2: Clear Browser Cache
 
-Once JARVIS is running, **hard refresh your browser**:
+Once Ironcliw is running, **hard refresh your browser**:
 
 **Chrome/Edge:**
 - Mac: `Cmd + Shift + R` or `Cmd + Option + R`
@@ -70,7 +70,7 @@ Then try starting again.
 
 **Clean up old processes:**
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 pkill -f "python.*backend"
 pkill -f "node.*frontend"
 # Wait 3 seconds
@@ -89,24 +89,24 @@ Should return: `{"status":"healthy"}`
 curl http://localhost:3000 | head -20
 ```
 
-Should return HTML with "JARVIS" in it.
+Should return HTML with "Ironcliw" in it.
 
 ## What Was Happening
 
-1. You tried to use JARVIS in browser
+1. You tried to use Ironcliw in browser
 2. Browser tried to connect to backend at `http://localhost:8000`
 3. **Backend wasn't running** → Connection failed
 4. JavaScript error was shown as "ValueError" in the UI
 5. Browser cached this error state
 
-The solution is simple: **Start JARVIS, then refresh browser with cache cleared**.
+The solution is simple: **Start Ironcliw, then refresh browser with cache cleared**.
 
 ## Quick Fix Command
 
 Run this all-in-one command:
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent && \
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent && \
 pkill -f "python.*backend" ; \
 pkill -f "node.*frontend" ; \
 sleep 2 && \

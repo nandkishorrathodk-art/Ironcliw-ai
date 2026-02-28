@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 ###############################################################################
-# JARVIS Environment Setup Script
+# Ironcliw Environment Setup Script
 # ================================
 # 
-# This script sets up the complete Python environment for JARVIS with all
+# This script sets up the complete Python environment for Ironcliw with all
 # required dependencies for voice recognition, ML models, and async operations.
 #
 # Usage:
@@ -31,7 +31,7 @@ VENV_DIR="$SCRIPT_DIR/venv"
 
 echo -e "${BOLD}${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║                 🤖 JARVIS Environment Setup                      ║"
+echo "║                 🤖 Ironcliw Environment Setup                      ║"
 echo "║           Voice Recognition & AI Assistant System                ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
@@ -264,11 +264,11 @@ echo -e "${BLUE}Step 6: Creating helper scripts...${NC}"
 # Create activation script
 cat > "$SCRIPT_DIR/activate_jarvis.sh" << 'EOF'
 #!/bin/bash
-# Activate JARVIS virtual environment
+# Activate Ironcliw virtual environment
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/venv/bin/activate"
 export PYTHONPATH="$SCRIPT_DIR/backend:$PYTHONPATH"
-echo "🤖 JARVIS environment activated"
+echo "🤖 Ironcliw environment activated"
 echo "   Python: $(which python)"
 echo "   To start: python start_system.py"
 EOF
@@ -277,14 +277,14 @@ chmod +x "$SCRIPT_DIR/activate_jarvis.sh"
 # Create run script that activates venv first
 cat > "$SCRIPT_DIR/run_jarvis.sh" << 'EOF'
 #!/bin/bash
-# Run JARVIS with proper environment
+# Run Ironcliw with proper environment
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Activate virtual environment
 source "$SCRIPT_DIR/venv/bin/activate"
 export PYTHONPATH="$SCRIPT_DIR/backend:$PYTHONPATH"
 
-# Start JARVIS
+# Start Ironcliw
 cd "$SCRIPT_DIR"
 python start_system.py "$@"
 EOF
@@ -304,7 +304,7 @@ echo -e "${BOLD}${GREEN}╔═════════════════�
 echo -e "${BOLD}${GREEN}║                    ✅ Setup Complete!                            ║${NC}"
 echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${CYAN}To start JARVIS:${NC}"
+echo -e "${CYAN}To start Ironcliw:${NC}"
 echo ""
 echo -e "  ${BOLD}Option 1:${NC} Use the run script (recommended)"
 echo -e "    ${YELLOW}./run_jarvis.sh${NC}"

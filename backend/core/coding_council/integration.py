@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.2: Coding Council Integration Module
 =========================================
 
@@ -42,7 +42,7 @@ Features:
     - Dynamic capability discovery
     - Graceful degradation
 
-Author: JARVIS v77.2
+Author: Ironcliw v77.2
 """
 
 from __future__ import annotations
@@ -2182,7 +2182,7 @@ async def _prepare_rollback(
 
         # Try to create git stash
         result = subprocess.run(
-            ["git", "stash", "push", "-m", f"JARVIS Evolution Rollback: {rollback_id}"],
+            ["git", "stash", "push", "-m", f"Ironcliw Evolution Rollback: {rollback_id}"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -3130,9 +3130,9 @@ def create_coding_council_router():
                 "use_sir": config.use_sir,
                 "sir_probability": config.sir_probability,
                 "environment_variables": {
-                    "JARVIS_EVOLUTION_VOICE": "enabled" if config.enabled else "disabled",
-                    "JARVIS_EVOLUTION_PROGRESS_COOLDOWN": str(config.progress_cooldown),
-                    "JARVIS_EVOLUTION_START_COOLDOWN": str(config.start_cooldown),
+                    "Ironcliw_EVOLUTION_VOICE": "enabled" if config.enabled else "disabled",
+                    "Ironcliw_EVOLUTION_PROGRESS_COOLDOWN": str(config.progress_cooldown),
+                    "Ironcliw_EVOLUTION_START_COOLDOWN": str(config.start_cooldown),
                 },
             }
 

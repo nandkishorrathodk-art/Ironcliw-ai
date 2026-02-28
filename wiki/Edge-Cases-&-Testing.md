@@ -1,6 +1,6 @@
-# Edge Cases & Testing
+﻿# Edge Cases & Testing
 
-Comprehensive test scenarios, edge cases, and testing strategies for JARVIS AI Agent.
+Comprehensive test scenarios, edge cases, and testing strategies for Ironcliw AI Agent.
 
 ---
 
@@ -120,7 +120,7 @@ def test_speaker_discrimination():
 
 #### 3. Wake Word False Positives
 
-**Scenario:** "Hey JARVIS" detected in conversation
+**Scenario:** "Hey Ironcliw" detected in conversation
 
 **Test:**
 ```python
@@ -242,8 +242,8 @@ def test_database_corruption_recovery():
     # Simulate corruption
     corrupt_database("jarvis_local.db")
 
-    # JARVIS should detect and recover
-    db = JARVISLearningDatabase()
+    # Ironcliw should detect and recover
+    db = IroncliwLearningDatabase()
 
     assert db.is_healthy() is False
     recovery_result = db.attempt_recovery()
@@ -268,7 +268,7 @@ def test_database_corruption_recovery():
 def test_cloud_sql_connection_failure():
     """Test fallback when Cloud SQL connection fails."""
     # Start operation with cloud
-    db = JARVISLearningDatabase(use_cloud=True)
+    db = IroncliwLearningDatabase(use_cloud=True)
 
     # Kill proxy mid-operation
     kill_cloud_sql_proxy()

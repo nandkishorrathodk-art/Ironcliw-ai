@@ -1,9 +1,9 @@
-"""
+﻿"""
 Distributed Lock Manager for Cross-Repo Coordination v3.0
 ===========================================================
 
 Production-grade distributed lock manager for coordinating operations across
-JARVIS, JARVIS-Prime, and Reactor-Core repositories.
+Ironcliw, Ironcliw-Prime, and Reactor-Core repositories.
 
 Features:
 - File-based locks with automatic expiration
@@ -20,7 +20,7 @@ Features:
 - v2.0: Cross-repo coordination improvements
 - v3.0: Redis backend support for distributed environments
 - v3.0: Automatic backend selection (Redis → File fallback)
-- v3.0: Cross-repo lock bridge for JARVIS-Prime and Reactor-Core
+- v3.0: Cross-repo lock bridge for Ironcliw-Prime and Reactor-Core
 - v3.0: Fencing tokens for monotonic ordering
 - v3.0: Lock lease extension (keepalive)
 
@@ -70,7 +70,7 @@ Architecture:
     │  └────────────────────┬────────────────────┘                            │
     │                       │                                                 │
     │  ┌────────────┬───────┴───────┬────────────┐                            │
-    │  │  JARVIS    │  JARVIS-Prime │ Reactor    │                            │
+    │  │  Ironcliw    │  Ironcliw-Prime │ Reactor    │                            │
     │  │  (Body)    │  (Mind)       │ Core       │                            │
     │  └────────────┴───────────────┴────────────┘                            │
     └─────────────────────────────────────────────────────────────────────────┘
@@ -89,7 +89,7 @@ Architecture:
     ├── prime_state.dlm.lock
     └── reactor_training.dlm.lock
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0
 
 v2.0.0 CRITICAL FIX (Race Condition Resolution):
@@ -100,7 +100,7 @@ v2.0.0 CRITICAL FIX (Race Condition Resolution):
            Eliminates all inter-task race conditions.
 
 v3.0.0 CROSS-REPO UNIFICATION:
-    Before: JARVIS used file locks, Reactor-Core used Redis locks, no coordination.
+    Before: Ironcliw used file locks, Reactor-Core used Redis locks, no coordination.
     After: Unified lock manager with automatic backend selection:
            - Redis available → Use Redis (distributed across machines)
            - Redis unavailable → Fall back to file locks (single machine)
@@ -451,7 +451,7 @@ class LockConfig:
     redis_password: Optional[str] = REDIS_PASSWORD
 
     # v3.0: Cross-repo identification
-    repo_source: str = field(default_factory=lambda: os.getenv("JARVIS_REPO_SOURCE", "jarvis"))
+    repo_source: str = field(default_factory=lambda: os.getenv("Ironcliw_REPO_SOURCE", "jarvis"))
 
     # v3.0: Keepalive settings (for long-running operations)
     keepalive_enabled: bool = True
@@ -629,7 +629,7 @@ class DistributedLockManager:
         # v3.2: Redis availability caching — prevents log spam and wasted connect attempts
         self._redis_last_check_time: float = 0.0
         self._redis_retry_interval: float = float(
-            os.environ.get("JARVIS_REDIS_RETRY_INTERVAL", "300")
+            os.environ.get("Ironcliw_REDIS_RETRY_INTERVAL", "300")
         )
 
         # v3.0: Fencing token counter (monotonically increasing)
@@ -2448,9 +2448,9 @@ async def acquire_cross_repo_lock(
     """
     v3.0: Convenience function for cross-repo lock acquisition.
 
-    Makes it easy for JARVIS-Prime and Reactor-Core to acquire locks consistently.
+    Makes it easy for Ironcliw-Prime and Reactor-Core to acquire locks consistently.
 
-    Example (from JARVIS-Prime):
+    Example (from Ironcliw-Prime):
         from backend.core.distributed_lock_manager import acquire_cross_repo_lock
 
         async with acquire_cross_repo_lock("training_job", "jarvis-prime") as (acquired, meta):

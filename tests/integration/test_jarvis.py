@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script to verify JARVIS is working
+Test script to verify Ironcliw is working
 """
 
 import sys
@@ -8,11 +8,11 @@ import time
 import subprocess
 import requests
 
-print("🧪 JARVIS Test Script")
+print("🧪 Ironcliw Test Script")
 print("=" * 50)
 
 # Start the backend
-print("\n📦 Starting JARVIS backend...")
+print("\n📦 Starting Ironcliw backend...")
 process = subprocess.Popen(
     [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"],
     stdout=subprocess.PIPE,
@@ -38,7 +38,7 @@ try:
     if response.status_code == 200:
         print("✅ API docs available!")
         
-    print("\n🎉 JARVIS is running successfully!")
+    print("\n🎉 Ironcliw is running successfully!")
     print("\n📋 Access points:")
     print("   - API Docs: http://localhost:8000/docs")
     print("   - Chat Demo: http://localhost:8000/demo/chat")
@@ -49,9 +49,9 @@ except Exception as e:
     
 finally:
     # Keep running
-    print("\n💡 Press Ctrl+C to stop JARVIS")
+    print("\n💡 Press Ctrl+C to stop Ironcliw")
     try:
         process.wait()
     except KeyboardInterrupt:
-        print("\n👋 Stopping JARVIS...")
+        print("\n👋 Stopping Ironcliw...")
         process.terminate()

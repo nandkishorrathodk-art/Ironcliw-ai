@@ -1,5 +1,5 @@
-"""
-Python 3.9 Compatibility Layer for JARVIS AI System
+﻿"""
+Python 3.9 Compatibility Layer for Ironcliw AI System
 ====================================================
 
 This module provides runtime patches for Python 3.10+ features that are used
@@ -35,7 +35,7 @@ Usage:
     from backend.utils.python39_compat import ensure_python39_compatibility_async
     await ensure_python39_compatibility_async()
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0 - Fully Async Python 3.9 Support with Warning Suppression
 """
 

@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Integration Coordinator - Cross-Repo Orchestration Engine
 ==================================================================
 
 Advanced orchestration engine that coordinates all cross-repo communication
-between JARVIS, JARVIS Prime, and Reactor Core.
+between Ironcliw, Ironcliw Prime, and Reactor Core.
 
 Features:
     - Causal event delivery with vector clocks
@@ -20,7 +20,7 @@ Architecture:
     │                 Trinity Integration Coordinator              │
     ├─────────────────────────────────────────────────────────────┤
     │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-    │  │   JARVIS    │  │   J-Prime   │  │    Reactor Core     │  │
+    │  │   Ironcliw    │  │   J-Prime   │  │    Reactor Core     │  │
     │  │   (Body)    │  │   (Mind)    │  │     (Nerves)        │  │
     │  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
     │         │                │                    │              │
@@ -120,8 +120,8 @@ MODEL_VALIDATION_TIMEOUT = float(os.getenv("MODEL_VALIDATION_TIMEOUT", "30.0"))
 
 class RepoType(Enum):
     """Repository types in the Trinity ecosystem."""
-    JARVIS = "jarvis"           # Body - main orchestrator
-    JARVIS_PRIME = "jarvis_prime"  # Mind - model serving
+    Ironcliw = "jarvis"           # Body - main orchestrator
+    Ironcliw_PRIME = "jarvis_prime"  # Mind - model serving
     REACTOR_CORE = "reactor_core"  # Nerves - training
 
 
@@ -1253,7 +1253,7 @@ class TrinityIntegrationCoordinator:
                 raise ValueError(f"Missing required fields: {missing}")
 
         # Write to event file
-        targets = target_repos or [RepoType.JARVIS, RepoType.JARVIS_PRIME, RepoType.REACTOR_CORE]
+        targets = target_repos or [RepoType.Ironcliw, RepoType.Ironcliw_PRIME, RepoType.REACTOR_CORE]
 
         for target in targets:
             if target.value == self._repo_id:

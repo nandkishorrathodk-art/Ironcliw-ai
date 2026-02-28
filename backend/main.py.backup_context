@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS AI Backend - Optimized Main Entry Point
+Ironcliw AI Backend - Optimized Main Entry Point
 
-This backend loads 7 critical components that power the JARVIS AI system:
+This backend loads 7 critical components that power the Ironcliw AI system:
 
 1. CHATBOTS (Claude Vision Chatbot)
    - Powers conversational AI with Claude 3.5 Sonnet
@@ -27,8 +27,8 @@ This backend loads 7 critical components that power the JARVIS AI system:
    - Provides memory pressure alerts and automatic cleanup
    - Integration with Orchestrator for dynamic component allocation
    
-4. VOICE (JARVIS Voice Interface)
-   - Voice activation with "Hey JARVIS" wake word
+4. VOICE (Ironcliw Voice Interface)
+   - Voice activation with "Hey Ironcliw" wake word
    - Text-to-speech with multiple voice options
    - Real-time voice command processing
    
@@ -51,13 +51,13 @@ This backend loads 7 critical components that power the JARVIS AI system:
    - Adaptive authentication with continuous learning
 
 8. WAKE WORD (Hands-free Activation) - NEW!
-   - "Hey JARVIS" wake word detection
+   - "Hey Ironcliw" wake word detection
    - Always-listening mode with zero button clicks
    - Multi-engine detection (Porcupine, Vosk, WebRTC)
    - Adaptive sensitivity and anti-spoofing
    - Customizable wake words and responses
 
-All 8 components must load successfully for full JARVIS functionality.
+All 8 components must load successfully for full Ironcliw functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
 Enhanced Vision Features (v13.3.1):
@@ -400,7 +400,7 @@ def import_wake_word():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Optimized lifespan handler with parallel initialization"""
-    logger.info("🚀 Starting optimized JARVIS backend...")
+    logger.info("🚀 Starting optimized Ironcliw backend...")
     start_time = time.time()
     
     # Run parallel imports if enabled
@@ -491,22 +491,22 @@ async def lifespan(app: FastAPI):
             except ImportError as e:
                 logger.warning(f"⚠️ Could not set vision analyzer in websocket: {e}")
             
-            # Set app state in JARVIS factory for dependency injection
+            # Set app state in Ironcliw factory for dependency injection
             try:
                 from api.jarvis_factory import set_app_state
                 set_app_state(app.state)
-                logger.info("✅ App state set in JARVIS factory")
+                logger.info("✅ App state set in Ironcliw factory")
             except ImportError:
-                logger.warning("⚠️ JARVIS factory not available for dependency injection")
+                logger.warning("⚠️ Ironcliw factory not available for dependency injection")
             
             # Initialize proactive monitoring components
             try:
-                # Set JARVIS API in vision command handler for voice integration
+                # Set Ironcliw API in vision command handler for voice integration
                 from api.vision_command_handler import vision_command_handler
                 voice = components.get('voice', {})
                 if voice.get('jarvis_api'):
                     vision_command_handler.jarvis_api = voice['jarvis_api']
-                    logger.info("✅ JARVIS voice API connected to pure vision command handler")
+                    logger.info("✅ Ironcliw voice API connected to pure vision command handler")
                     
                 # Initialize pure intelligence with API key
                 if api_key:
@@ -583,7 +583,7 @@ async def lifespan(app: FastAPI):
     
     # Log final status with component details
     logger.info("\n" + "=" * 60)
-    logger.info("🤖 JARVIS Backend (Optimized) Ready!")
+    logger.info("🤖 Ironcliw Backend (Optimized) Ready!")
     
     # Count and display loaded components
     loaded_count = sum(1 for c in components.values() if c)
@@ -598,7 +598,7 @@ async def lifespan(app: FastAPI):
         ("✅" if components.get('ml_models') else "❌", "ML_MODELS   - NLP & sentiment analysis"),
         ("✅" if components.get('monitoring') else "❌", "MONITORING  - System health & metrics"),
         ("✅" if components.get('voice_unlock') else "❌", "VOICE_UNLOCK - Biometric Mac authentication"),
-        ("✅" if components.get('wake_word') else "❌", "WAKE_WORD   - Hands-free 'Hey JARVIS' activation")
+        ("✅" if components.get('wake_word') else "❌", "WAKE_WORD   - Hands-free 'Hey Ironcliw' activation")
     ]
     
     for status, desc in component_status:
@@ -607,7 +607,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"🚀 Mode: {'Optimized' if OPTIMIZE_STARTUP else 'Legacy'}")
     
     if loaded_count == 8:
-        logger.info("✨ All systems operational - JARVIS is fully functional!")
+        logger.info("✨ All systems operational - Ironcliw is fully functional!")
     else:
         logger.warning(f"⚠️  Only {loaded_count}/8 components loaded - some features may be limited")
     
@@ -623,7 +623,7 @@ async def lifespan(app: FastAPI):
             if success:
                 app.state.voice_unlock_system = voice_unlock['startup_manager']
                 logger.info("✅ Voice Unlock system started")
-                logger.info("   Say 'Hey JARVIS, unlock my mac' when screen is locked")
+                logger.info("   Say 'Hey Ironcliw, unlock my mac' when screen is locked")
             else:
                 logger.warning("⚠️ Voice Unlock system failed to start")
         except Exception as e:
@@ -646,7 +646,7 @@ async def lifespan(app: FastAPI):
                 success = await wake_service.start(wake_word_activation_callback)
                 if success:
                     app.state.wake_service = wake_service
-                    logger.info("🎤 Wake word detection service started - Say 'Hey JARVIS'!")
+                    logger.info("🎤 Wake word detection service started - Say 'Hey Ironcliw'!")
                 else:
                     logger.warning("⚠️ Wake word service failed to start")
         except Exception as e:
@@ -655,7 +655,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Cleanup
-    logger.info("🛑 Shutting down JARVIS backend...")
+    logger.info("🛑 Shutting down Ironcliw backend...")
     
     # Stop Voice Unlock system
     if hasattr(app.state, 'voice_unlock_system') and voice_unlock.get('shutdown_system'):
@@ -688,7 +688,7 @@ except Exception as e:
 # Create FastAPI app
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
-    title="JARVIS Backend (Optimized)",
+    title="Ironcliw Backend (Optimized)",
     version="13.4.0-browser-automation",
     lifespan=lifespan
 )
@@ -879,7 +879,7 @@ def mount_routers():
     voice = components.get('voice', {})
     if voice and voice.get('jarvis_available'):
         app.include_router(voice['jarvis_router'], prefix="/voice/jarvis", tags=["jarvis"])
-        logger.info("✅ JARVIS Voice API mounted")
+        logger.info("✅ Ironcliw Voice API mounted")
     
     if voice and voice.get('enhanced_available'):
         app.include_router(voice['enhanced_router'], prefix="/voice/enhanced", tags=["voice"])
@@ -1010,7 +1010,7 @@ async def process_command(request: dict):
 async def root():
     """Root endpoint"""
     return {
-        "message": "JARVIS Backend (Optimized) is running",
+        "message": "Ironcliw Backend (Optimized) is running",
         "version": "13.4.0-browser-automation",
         "proactive_vision_enabled": hasattr(app.state, 'vision_analyzer'),
         "components": {
@@ -1104,15 +1104,15 @@ async def ml_audio_websocket_compat(websocket: WebSocket):
 # Audio endpoints for frontend compatibility
 @app.post("/audio/speak")
 async def audio_speak_post(request: dict):
-    """Forward audio speak requests to JARVIS voice API"""
+    """Forward audio speak requests to Ironcliw voice API"""
     from fastapi import HTTPException
     voice = components.get('voice', {})
     jarvis_api = voice.get('jarvis_api')
     
     if not jarvis_api:
-        raise HTTPException(status_code=503, detail="JARVIS voice not available")
+        raise HTTPException(status_code=503, detail="Ironcliw voice not available")
     
-    # Forward to JARVIS speak endpoint
+    # Forward to Ironcliw speak endpoint
     return await jarvis_api.speak(request)
 
 @app.get("/audio/speak/{text}")
@@ -1128,7 +1128,7 @@ if __name__ == "__main__":
     import argparse
     
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='JARVIS Backend Server')
+    parser = argparse.ArgumentParser(description='Ironcliw Backend Server')
     parser.add_argument('--port', type=int, default=int(os.getenv('BACKEND_PORT', '8000')),
                         help='Port to run the server on')
     args = parser.parse_args()

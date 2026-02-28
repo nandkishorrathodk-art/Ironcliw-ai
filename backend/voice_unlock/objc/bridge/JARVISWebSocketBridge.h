@@ -1,6 +1,6 @@
-/**
- * JARVISWebSocketBridge.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwWebSocketBridge.h
+ * Ironcliw Voice Unlock System
  *
  * WebSocket bridge for communication between Objective-C daemon
  * and Python backend services.
@@ -11,52 +11,52 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // WebSocket connection state
-typedef NS_ENUM(NSInteger, JARVISWebSocketState) {
-    JARVISWebSocketStateDisconnected = 0,
-    JARVISWebSocketStateConnecting,
-    JARVISWebSocketStateConnected,
-    JARVISWebSocketStateDisconnecting,
-    JARVISWebSocketStateError
+typedef NS_ENUM(NSInteger, IroncliwWebSocketState) {
+    IroncliwWebSocketStateDisconnected = 0,
+    IroncliwWebSocketStateConnecting,
+    IroncliwWebSocketStateConnected,
+    IroncliwWebSocketStateDisconnecting,
+    IroncliwWebSocketStateError
 };
 
 // Message types
-typedef NS_ENUM(NSInteger, JARVISMessageType) {
-    JARVISMessageTypeCommand = 0,
-    JARVISMessageTypeStatus,
-    JARVISMessageTypeAudio,
-    JARVISMessageTypeAuthentication,
-    JARVISMessageTypeScreenState,
-    JARVISMessageTypeConfiguration,
-    JARVISMessageTypeHeartbeat
+typedef NS_ENUM(NSInteger, IroncliwMessageType) {
+    IroncliwMessageTypeCommand = 0,
+    IroncliwMessageTypeStatus,
+    IroncliwMessageTypeAudio,
+    IroncliwMessageTypeAuthentication,
+    IroncliwMessageTypeScreenState,
+    IroncliwMessageTypeConfiguration,
+    IroncliwMessageTypeHeartbeat
 };
 
 // WebSocket message
-@interface JARVISWebSocketMessage : NSObject
-@property (nonatomic, assign) JARVISMessageType type;
+@interface IroncliwWebSocketMessage : NSObject
+@property (nonatomic, assign) IroncliwMessageType type;
 @property (nonatomic, strong) NSString *identifier;
 @property (nonatomic, strong) NSDictionary *payload;
 @property (nonatomic, strong) NSDate *timestamp;
 @property (nonatomic, nullable) NSData *binaryData;
 
-+ (instancetype)messageWithType:(JARVISMessageType)type payload:(NSDictionary *)payload;
++ (instancetype)messageWithType:(IroncliwMessageType)type payload:(NSDictionary *)payload;
 - (NSString *)toJSONString;
 - (NSData *)toBinaryData;
 @end
 
 // WebSocket delegate
-@protocol JARVISWebSocketBridgeDelegate <NSObject>
+@protocol IroncliwWebSocketBridgeDelegate <NSObject>
 @optional
 - (void)webSocketDidConnect;
 - (void)webSocketDidDisconnect:(NSError * _Nullable)error;
-- (void)webSocketDidReceiveMessage:(JARVISWebSocketMessage *)message;
-- (void)webSocketConnectionStateChanged:(JARVISWebSocketState)state;
+- (void)webSocketDidReceiveMessage:(IroncliwWebSocketMessage *)message;
+- (void)webSocketConnectionStateChanged:(IroncliwWebSocketState)state;
 @end
 
 // Main WebSocket bridge interface
-@interface JARVISWebSocketBridge : NSObject
+@interface IroncliwWebSocketBridge : NSObject
 
-@property (nonatomic, weak, nullable) id<JARVISWebSocketBridgeDelegate> delegate;
-@property (nonatomic, readonly) JARVISWebSocketState connectionState;
+@property (nonatomic, weak, nullable) id<IroncliwWebSocketBridgeDelegate> delegate;
+@property (nonatomic, readonly) IroncliwWebSocketState connectionState;
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, readonly) NSUInteger reconnectAttempts;
 
@@ -75,7 +75,7 @@ typedef NS_ENUM(NSInteger, JARVISMessageType) {
 - (void)reconnect;
 
 // Messaging
-- (BOOL)sendMessage:(JARVISWebSocketMessage *)message;
+- (BOOL)sendMessage:(IroncliwWebSocketMessage *)message;
 - (BOOL)sendJSON:(NSDictionary *)json;
 - (BOOL)sendData:(NSData *)data;
 - (BOOL)sendCommand:(NSString *)command parameters:(nullable NSDictionary *)parameters;
@@ -92,7 +92,7 @@ typedef NS_ENUM(NSInteger, JARVISMessageType) {
 @end
 
 // Python bridge extension
-@interface JARVISWebSocketBridge (PythonBridge)
+@interface IroncliwWebSocketBridge (PythonBridge)
 
 // High-level Python communication
 - (void)sendPythonCommand:(NSString *)command 

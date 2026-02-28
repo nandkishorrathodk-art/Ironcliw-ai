@@ -1,4 +1,4 @@
-# Unified Voice Orchestrator & VBIA Lock Fix - Design Document
+﻿# Unified Voice Orchestrator & VBIA Lock Fix - Design Document
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -15,12 +15,12 @@
 ### Voice Issues
 1. **Overlapping voices** - Multiple TTS utterances playing simultaneously during startup
 2. **Rapid-fire repetition** - Same announcement spoken multiple times in quick succession
-3. **No coordination** - JARVIS, Prime, and Reactor all call `announce()` independently
+3. **No coordination** - Ironcliw, Prime, and Reactor all call `announce()` independently
 
 ### VBIA Lock Issues
 1. **"Temp file size mismatch"** - Race condition in temp file creation
 2. **"No such file or directory"** - Directory deleted between check and write
-3. **Cross-process races** - Per-process semaphores don't protect across JARVIS/Prime/Reactor
+3. **Cross-process races** - Per-process semaphores don't protect across Ironcliw/Prime/Reactor
 
 ---
 
@@ -36,7 +36,7 @@
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │  IPC RECEIVER (Unix Domain Socket: ~/.jarvis/voice.sock)            │   │
-│  │  ├── Accepts connections from ANY process (JARVIS/Prime/Reactor)    │   │
+│  │  ├── Accepts connections from ANY process (Ironcliw/Prime/Reactor)    │   │
 │  │  ├── Protocol: JSON-lines {priority, category, text, source, ts}    │   │
 │  │  └── Thread-safe: asyncio.Queue fed via call_soon_threadsafe        │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -288,7 +288,7 @@ CATEGORY_PRIORITY = {
 2. Stop accepting new IPC connections
 3. Cancel Coalescer timer (flush current batch immediately)
 4. Wait for current playback to complete (max 5s) OR stop_playback()
-5. Speak: "JARVIS shutting down" (best-effort, short timeout)
+5. Speak: "Ironcliw shutting down" (best-effort, short timeout)
 6. Close socket
 7. unlink(voice.sock)
 ```
@@ -340,7 +340,7 @@ Use OS-level file locking - the same mechanism databases use.
 ### 2.3 Configuration
 
 ```python
-JARVIS_LOCK_DIR = "~/.jarvis/cross_repo/locks"  # Expanded at runtime
+Ironcliw_LOCK_DIR = "~/.jarvis/cross_repo/locks"  # Expanded at runtime
 LOCK_ACQUIRE_TIMEOUT_S = 5.0
 LOCK_POLL_INTERVAL_S = 0.05
 LOCK_STALE_WARNING_S = 30.0  # Log warning if lock held longer

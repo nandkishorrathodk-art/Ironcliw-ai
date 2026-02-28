@@ -1,8 +1,8 @@
-"""
+﻿"""
 Trinity Cross-Platform Integration Tests
 =========================================
 
-Comprehensive tests for Trinity ecosystem (JARVIS + JARVIS-Prime + Reactor-Core)
+Comprehensive tests for Trinity ecosystem (Ironcliw + Ironcliw-Prime + Reactor-Core)
 with focus on cross-platform compatibility (Windows/Linux/macOS).
 
 Tests:
@@ -135,7 +135,7 @@ class TestCrossRepoCommunication:
         
         # Determine state directory based on platform
         if platform_name == "windows":
-            state_dir = Path(os.getenv("APPDATA", str(Path.home()))) / "JARVIS" / "cross_repo"
+            state_dir = Path(os.getenv("APPDATA", str(Path.home()))) / "Ironcliw" / "cross_repo"
         elif platform_name == "linux":
             state_dir = Path.home() / ".config" / "jarvis" / "cross_repo"
         else:

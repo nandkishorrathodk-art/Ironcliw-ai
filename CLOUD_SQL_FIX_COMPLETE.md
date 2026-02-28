@@ -1,4 +1,4 @@
-# ✅ Cloud SQL Connection Fix - COMPLETE
+﻿# ✅ Cloud SQL Connection Fix - COMPLETE
 
 **Date:** 2024-12-22
 **Status:** ✅ Root cause fixed - Robust, intelligent, async solution
@@ -85,7 +85,7 @@ export CLOUD_SQL_RETRY_DELAY=10.0          # Initial retry delay (seconds)
 export CLOUD_SQL_MAX_RETRY_DELAY=600.0     # Max retry delay (10 minutes)
 
 # Environment detection
-export JARVIS_ENV=development              # development|production
+export Ironcliw_ENV=development              # development|production
 export CLOUD_SQL_REQUIRE_PROXY=false       # If true, fail hard when unavailable
 ```
 
@@ -161,7 +161,7 @@ if proxy_detector and not proxy_detector.should_retry():
 **Startup:**
 ```
 03:32:40 | System loading...
-03:33:12 | Spawning JARVIS...
+03:33:12 | Spawning Ironcliw...
 03:34:34 | Backend API responding
 03:34:42 | ERROR | Connection error: [Errno 61] Connect call failed
 03:34:42 | WARNING | Circuit breaker OPEN
@@ -182,7 +182,7 @@ if proxy_detector and not proxy_detector.should_retry():
 **Startup:**
 ```
 03:32:40 | System loading...
-03:33:12 | Spawning JARVIS...
+03:33:12 | Spawning Ironcliw...
 03:34:34 | Backend API responding
 03:34:35 | INFO | 🔍 Cloud SQL Proxy Detector initialized
 03:34:35 | INFO | ℹ️  Proxy not running on 127.0.0.1:5432
@@ -212,7 +212,7 @@ if proxy_detector and not proxy_detector.should_retry():
 
 ### Local Development (No Proxy)
 ```bash
-export JARVIS_ENV=development
+export Ironcliw_ENV=development
 # Proxy detector will:
 # - Detect proxy not running
 # - Stop retrying after 5 attempts
@@ -222,7 +222,7 @@ export JARVIS_ENV=development
 
 ### Production (Proxy Expected)
 ```bash
-export JARVIS_ENV=production
+export Ironcliw_ENV=production
 export CLOUD_SQL_REQUIRE_PROXY=true
 # Proxy detector will:
 # - Continuously retry if proxy unavailable
@@ -294,7 +294,7 @@ print(f"Environment: {status_summary['environment']}")
 # Ensure Cloud SQL Proxy is NOT running
 ps aux | grep cloud_sql_proxy
 
-# Start JARVIS
+# Start Ironcliw
 python3 run_supervisor.py
 
 # Expected logs:
@@ -310,7 +310,7 @@ python3 run_supervisor.py
 
 ### Test 2: Start Proxy Later
 ```bash
-# JARVIS already running without proxy
+# Ironcliw already running without proxy
 # Start Cloud SQL Proxy
 cloud_sql_proxy -instances=project:region:instance=tcp:5432 &
 
@@ -326,10 +326,10 @@ cloud_sql_proxy -instances=project:region:instance=tcp:5432 &
 
 ### Test 3: Production Mode (Proxy Expected)
 ```bash
-export JARVIS_ENV=production
+export Ironcliw_ENV=production
 export CLOUD_SQL_REQUIRE_PROXY=true
 
-# Start JARVIS without proxy running
+# Start Ironcliw without proxy running
 python3 run_supervisor.py
 
 # Expected logs:
@@ -416,7 +416,7 @@ export CLOUD_SQL_PROXY_PORT=5433
 
 **For production environments:**
 ```bash
-export JARVIS_ENV=production
+export Ironcliw_ENV=production
 export CLOUD_SQL_REQUIRE_PROXY=true  # If proxy is mandatory
 ```
 

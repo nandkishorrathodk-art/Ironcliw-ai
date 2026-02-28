@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick health check test - verifies the backend can import and return platform info.
 This doesn't require starting the actual server.
@@ -28,14 +28,14 @@ except Exception as e:
 # Check platform detection
 try:
     print("\n[2/4] Checking platform detection...")
-    print(f"[OK] Platform: {main.JARVIS_PLATFORM}")
-    print(f"[OK] Is Windows: {main.JARVIS_IS_WINDOWS}")
-    print(f"[OK] Is macOS: {main.JARVIS_IS_MACOS}")
-    print(f"[OK] Is Linux: {main.JARVIS_IS_LINUX}")
+    print(f"[OK] Platform: {main.Ironcliw_PLATFORM}")
+    print(f"[OK] Is Windows: {main.Ironcliw_IS_WINDOWS}")
+    print(f"[OK] Is macOS: {main.Ironcliw_IS_MACOS}")
+    print(f"[OK] Is Linux: {main.Ironcliw_IS_LINUX}")
     
-    if main.JARVIS_PLATFORM_INFO:
-        print(f"[OK] OS Release: {main.JARVIS_PLATFORM_INFO.os_release}")
-        print(f"[OK] Architecture: {main.JARVIS_PLATFORM_INFO.architecture}")
+    if main.Ironcliw_PLATFORM_INFO:
+        print(f"[OK] OS Release: {main.Ironcliw_PLATFORM_INFO.os_release}")
+        print(f"[OK] Architecture: {main.Ironcliw_PLATFORM_INFO.architecture}")
 except Exception as e:
     print(f"[FAIL] Platform check failed: {e}")
     sys.exit(1)

@@ -1,8 +1,8 @@
-# Intelligent Vision Router Implementation
+﻿# Intelligent Vision Router Implementation
 
 ## 🚀 Overview
 
-JARVIS now has an **elite-tier intelligent vision routing system** that automatically selects the optimal model for each vision query:
+Ironcliw now has an **elite-tier intelligent vision routing system** that automatically selects the optimal model for each vision query:
 
 - **YOLO** (local, free, 50ms) - UI detection, counting, element finding
 - **LLaMA 3.1 70B** (local, free, 800ms) - Complex reasoning, analysis
@@ -88,7 +88,7 @@ Every query is tracked:
 ```
 
 ### View Performance Report
-Ask JARVIS: **"show performance"** or **"vision performance"**
+Ask Ironcliw: **"show performance"** or **"vision performance"**
 
 Response:
 ```

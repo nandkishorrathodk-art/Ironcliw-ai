@@ -1,8 +1,8 @@
-"""
+﻿"""
 macOS Platform Implementation
 ==============================
 
-macOS-specific implementation of JARVIS platform abstraction layer.
+macOS-specific implementation of Ironcliw platform abstraction layer.
 Wraps existing macOS functionality to maintain compatibility.
 """
 
@@ -33,7 +33,7 @@ class MacOSPlatform(PlatformInterface):
     """
     macOS platform implementation.
     
-    Wraps existing JARVIS macOS functionality.
+    Wraps existing Ironcliw macOS functionality.
     Maintains backward compatibility with existing Swift/AppleScript code.
     """
     

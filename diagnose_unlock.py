@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive unlock diagnostic tool
 Run this with your screen LOCKED to see what happens
@@ -7,7 +7,7 @@ import asyncio
 import logging
 import sys
 
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def main():
     print("\n" + "="*70)
-    print(" JARVIS UNLOCK DIAGNOSTIC TOOL")
+    print(" Ironcliw UNLOCK DIAGNOSTIC TOOL")
     print("="*70)
     
     print("\n🔒 This script will:")
@@ -36,7 +36,7 @@ async def main():
     print("1. Checking keychain password...")
     import subprocess
     result = subprocess.run(
-        ["security", "find-generic-password", "-s", "JARVIS_Screen_Unlock", "-a", "jarvis_user", "-w"],
+        ["security", "find-generic-password", "-s", "Ironcliw_Screen_Unlock", "-a", "jarvis_user", "-w"],
         capture_output=True, text=True
     )
     

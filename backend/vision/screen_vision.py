@@ -1,5 +1,5 @@
-"""
-JARVIS Screen Vision System - Cross-Platform Computer Vision for Screen Understanding
+﻿"""
+Ironcliw Screen Vision System - Cross-Platform Computer Vision for Screen Understanding
 
 v2.0.0 (Windows Port - Phase 7):
     - Platform-agnostic screen capture using platform_capture router
@@ -26,12 +26,12 @@ CURRENT_PLATFORM = sys.platform
 # v2.0.0: Made optional - use platform_capture router as primary method
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
-    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    _cached = os.environ.get("_Ironcliw_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
     result = False
     if sys.platform == "darwin":
-        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("Ironcliw_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
             pass
@@ -45,7 +45,7 @@ def _is_gui_session() -> bool:
                 result = cg.CGSessionCopyCurrentDictionary() is not None
             except Exception:
                 pass
-    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    os.environ["_Ironcliw_GUI_SESSION"] = "1" if result else "0"
     return result
 
 # Legacy macOS support (optional)
@@ -708,9 +708,9 @@ class ScreenVisionSystem:
                 return "Claude Vision analyzer is not initialized. Please check the system logs."
 
 
-# Integration with JARVIS
-class JARVISVisionIntegration:
-    """Integrate screen vision with JARVIS voice commands"""
+# Integration with Ironcliw
+class IroncliwVisionIntegration:
+    """Integrate screen vision with Ironcliw voice commands"""
 
     def __init__(self, vision_system: ScreenVisionSystem):
         self.vision = vision_system
@@ -736,7 +736,7 @@ class JARVISVisionIntegration:
             ]
         ):
             # This should be handled by the monitoring system, not here
-            return "Monitoring commands should be handled by the JARVIS voice system for proper video capture activation."
+            return "Monitoring commands should be handled by the Ironcliw voice system for proper video capture activation."
         
         # Then handle regular screen viewing commands
         elif any(
@@ -803,12 +803,12 @@ class JARVISVisionIntegration:
         """Start continuous monitoring"""
 
         async def update_callback(updates: List[UpdateNotification]):
-            # This would integrate with JARVIS's notification system
+            # This would integrate with Ironcliw's notification system
             critical = [u for u in updates if u.urgency == "critical"]
             if critical:
-                # Speak notification through JARVIS
+                # Speak notification through Ironcliw
                 print(
-                    f"JARVIS: Sir, critical update detected: {critical[0].description}"
+                    f"Ironcliw: Sir, critical update detected: {critical[0].description}"
                 )
 
         await self.vision.monitor_screen_continuously(update_callback)

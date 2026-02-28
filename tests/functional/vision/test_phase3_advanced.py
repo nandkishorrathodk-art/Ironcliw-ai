@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Phase 3 Advanced Features for JARVIS Multi-Window Intelligence
+Test Phase 3 Advanced Features for Ironcliw Multi-Window Intelligence
 Tests proactive insights and workspace optimization
 """
 
@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from backend.vision.proactive_insights import ProactiveInsights
 from backend.vision.workspace_optimizer import WorkspaceOptimizer
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
 
 async def test_proactive_insights():
@@ -36,7 +36,7 @@ async def test_proactive_insights():
             print(f"   Priority: {insight.priority}")
             print(f"   Title: {insight.title}")
             print(f"   Description: {insight.description}")
-            print(f"   JARVIS would say: \"{insight.to_jarvis_message()}\"")
+            print(f"   Ironcliw would say: \"{insight.to_jarvis_message()}\"")
     else:
         print("\n   No insights generated from current workspace state")
     
@@ -112,23 +112,23 @@ def test_workspace_optimization():
     print(f"   ✓ Identifies missing tools: {'PASS' if optimization.missing_tools or optimization.productivity_score > 0.8 else 'CHECK'}")
     print(f"   ✓ Suggests focus improvements: {'PASS' if optimization.focus_improvements or optimization.productivity_score > 0.8 else 'CHECK'}")
     
-    print(f"\n🎙️ JARVIS would say: \"{optimization.to_jarvis_message()}\"")
+    print(f"\n🎙️ Ironcliw would say: \"{optimization.to_jarvis_message()}\"")
     
     return optimization.productivity_score > 0
 
 
 async def test_jarvis_integration():
-    """Test JARVIS integration with Phase 3 features"""
+    """Test Ironcliw integration with Phase 3 features"""
     print("\n" + "="*60)
-    print("🤖 JARVIS INTEGRATION TEST")
+    print("🤖 Ironcliw INTEGRATION TEST")
     print("="*60)
     
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     # Test optimization command
     print("\n🎤 Testing optimization command...")
-    response = await workspace_intel.handle_workspace_command("Hey JARVIS, optimize my workspace")
-    print(f"🤖 JARVIS: {response}")
+    response = await workspace_intel.handle_workspace_command("Hey Ironcliw, optimize my workspace")
+    print(f"🤖 Ironcliw: {response}")
     
     # Test proactive monitoring
     print("\n🔔 Testing proactive monitoring (15 seconds)...")
@@ -160,7 +160,7 @@ async def main():
     # Test F3.2: Workspace Optimization
     optimization_passed = test_workspace_optimization()
     
-    # Test JARVIS Integration
+    # Test Ironcliw Integration
     integration_passed = await test_jarvis_integration()
     
     # Summary
@@ -169,7 +169,7 @@ async def main():
     print("="*60)
     print(f"   F3.1 Proactive Insights: {'✅ PASS' if insights_passed else '⚠️  CHECK'}")
     print(f"   F3.2 Workspace Optimization: {'✅ PASS' if optimization_passed else '❌ FAIL'}")
-    print(f"   JARVIS Integration: {'✅ PASS' if integration_passed else '❌ FAIL'}")
+    print(f"   Ironcliw Integration: {'✅ PASS' if integration_passed else '❌ FAIL'}")
     
     all_passed = insights_passed and optimization_passed and integration_passed
     print(f"\n{'✅ ALL PHASE 3 TESTS PASSED!' if all_passed else '⚠️  Some tests need attention'}")

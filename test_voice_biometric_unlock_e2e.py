@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 End-to-End Test: Voice Biometric Screen Unlock
 ================================================
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class MockJarvisInstance:
-    """Mock JARVIS instance for testing"""
+    """Mock Ironcliw instance for testing"""
     
     def __init__(self, audio_data=None, speaker_name=None):
         self.last_audio_data = audio_data
@@ -317,7 +317,7 @@ async def test_complete_flow_summary():
     
     print("1️⃣  Voice Command Captured")
     print("   → User says: 'Jarvis, unlock my screen'")
-    print("   → JARVIS captures audio data")
+    print("   → Ironcliw captures audio data")
     print("   ✅ Implemented in: jarvis_voice_api.py\n")
     
     print("2️⃣  Voice Biometric Verification")

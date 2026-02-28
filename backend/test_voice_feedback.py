@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Voice Unlock with JARVIS Voice Feedback
+Test Voice Unlock with Ironcliw Voice Feedback
 ==============================================
 
-Tests the new voice feedback feature where JARVIS audibly greets you
+Tests the new voice feedback feature where Ironcliw audibly greets you
 by name when unlocking the screen.
 """
 
@@ -15,11 +15,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 async def test_jarvis_voice():
-    """Test JARVIS voice feedback directly"""
+    """Test Ironcliw voice feedback directly"""
     from voice.voice_unlock_integration import VoiceUnlockIntegration
 
     print("\n" + "=" * 80)
-    print("🔊 TESTING JARVIS VOICE FEEDBACK")
+    print("🔊 TESTING Ironcliw VOICE FEEDBACK")
     print("=" * 80)
 
     # Initialize voice unlock integration
@@ -52,7 +52,7 @@ async def test_jarvis_voice():
     print("\n" + "=" * 80)
     print("✅ VOICE FEEDBACK TEST COMPLETE")
     print("=" * 80)
-    print("\n💡 If you heard JARVIS speak, voice feedback is working!")
+    print("\n💡 If you heard Ironcliw speak, voice feedback is working!")
     print("   - Daniel (British male voice) should be used")
     print("   - Welcome messages use 175 WPM")
     print("   - Failure/urgent messages use 200 WPM\n")

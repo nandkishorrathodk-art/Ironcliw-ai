@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Coding Council Trinity Integration
 ==========================================
 
@@ -6,7 +6,7 @@ Connects the Unified Coding Council to Project Trinity for cross-repo
 code evolution and intelligent task distribution.
 
 This module enables:
-- Evolution commands from J-Prime (Mind) to JARVIS (Body)
+- Evolution commands from J-Prime (Mind) to Ironcliw (Body)
 - Status broadcasting to Reactor Core (Nerves)
 - Cross-repo code modifications
 - Distributed task execution
@@ -22,7 +22,7 @@ Trinity Architecture Integration:
                      │   (Nerves)   │    Task Metrics
                      └──────────────┘
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 Version: 1.0.0
 """
 
@@ -96,8 +96,8 @@ def _get_trinity_repos() -> Dict[str, Path]:
     if config:
         return {name: repo.path for name, repo in config.repos.items()}
     return {
-        "jarvis": Path(os.getenv("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent"))),
-        "j_prime": Path(os.getenv("JARVIS_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
+        "jarvis": Path(os.getenv("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent"))),
+        "j_prime": Path(os.getenv("Ironcliw_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
         "reactor_core": Path(os.getenv("REACTOR_CORE_REPO", str(Path.home() / "Documents/repos/reactor-core"))),
     }
 
@@ -163,7 +163,7 @@ def _ensure_trinity_dirs() -> None:
 #   - _is_cross_repo_enabled() instead of CODING_COUNCIL_CROSS_REPO
 #   - _is_auto_approve_enabled() instead of CODING_COUNCIL_AUTO_APPROVE
 #   - _get_status_broadcast_interval() instead of STATUS_BROADCAST_INTERVAL
-#   - _get_trinity_repos() instead of JARVIS_REPO/JARVIS_PRIME_REPO/REACTOR_CORE_REPO
+#   - _get_trinity_repos() instead of Ironcliw_REPO/Ironcliw_PRIME_REPO/REACTOR_CORE_REPO
 #   - _get_trinity_dir() instead of TRINITY_DIR
 #   - _get_state_file() instead of CODING_COUNCIL_STATE_FILE
 # =============================================================================
@@ -171,8 +171,8 @@ CODING_COUNCIL_ENABLED = os.getenv("CODING_COUNCIL_ENABLED", "true").lower() == 
 CODING_COUNCIL_CROSS_REPO = os.getenv("CODING_COUNCIL_CROSS_REPO", "true").lower() == "true"
 CODING_COUNCIL_AUTO_APPROVE = os.getenv("CODING_COUNCIL_AUTO_APPROVE", "false").lower() == "true"
 STATUS_BROADCAST_INTERVAL = float(os.getenv("CODING_COUNCIL_STATUS_INTERVAL", "10.0"))
-JARVIS_REPO = Path(os.getenv("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-JARVIS_PRIME_REPO = Path(os.getenv("JARVIS_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+Ironcliw_REPO = Path(os.getenv("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
+Ironcliw_PRIME_REPO = Path(os.getenv("Ironcliw_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
 REACTOR_CORE_REPO = Path(os.getenv("REACTOR_CORE_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 TRINITY_DIR = Path.home() / ".jarvis" / "trinity"
 CODING_COUNCIL_STATE_FILE = TRINITY_DIR / "components" / "coding_council.json"
@@ -448,7 +448,7 @@ class CodingCouncilTrinityBridge:
             return
 
         logger.info("[CodingCouncilTrinity] Initializing v77.0 Trinity modules...")
-        _step_timeout = float(os.getenv("JARVIS_CC_TRINITY_STEP_TIMEOUT", "15"))
+        _step_timeout = float(os.getenv("Ironcliw_CC_TRINITY_STEP_TIMEOUT", "15"))
 
         try:
             # 1. Initialize Multi-Transport (Gap #1)
@@ -504,7 +504,7 @@ class CodingCouncilTrinityBridge:
                 # Wire up sync events to Trinity network
                 self._cross_repo_sync.on_event(self._on_sync_event)
 
-                _cross_repo_timeout = float(os.getenv("JARVIS_CC_CROSS_REPO_TIMEOUT", "35"))
+                _cross_repo_timeout = float(os.getenv("Ironcliw_CC_CROSS_REPO_TIMEOUT", "35"))
                 try:
                     await asyncio.wait_for(self._cross_repo_sync.start(), timeout=_cross_repo_timeout)
                     logger.info("[CodingCouncilTrinity] CrossRepoSync started")
@@ -1338,7 +1338,7 @@ async def initialize_coding_council_trinity(council: "UnifiedCodingCouncil") -> 
     Returns:
         True if initialization succeeded
     """
-    _init_timeout = float(os.getenv("JARVIS_CC_TRINITY_INIT_TIMEOUT", "60"))
+    _init_timeout = float(os.getenv("Ironcliw_CC_TRINITY_INIT_TIMEOUT", "60"))
     bridge = await get_coding_council_bridge()
     try:
         return await asyncio.wait_for(bridge.initialize(council), timeout=_init_timeout)

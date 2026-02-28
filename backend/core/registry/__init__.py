@@ -1,5 +1,5 @@
-"""
-JARVIS Agent Registry Module
+﻿"""
+Ironcliw Agent Registry Module
 =============================
 
 Provides distributed agent registry with Redis backing for:

@@ -1,4 +1,4 @@
-# 🧪 Enhanced Startup Narration Testing Guide
+﻿# 🧪 Enhanced Startup Narration Testing Guide
 
 Quick reference for testing sophisticated startup narration with progressive confidence, time-awareness, learning, and milestones.
 
@@ -7,7 +7,7 @@ Quick reference for testing sophisticated startup narration with progressive con
 ## 🚀 Quick Start
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -31,7 +31,7 @@ narrator = get_startup_narrator(user_name="Derek")  # Replace with your name
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online in 8.3 seconds - that was quick!
+"Good morning, Derek! Ironcliw online in 8.3 seconds - that was quick!
 All systems operational."
 ```
 
@@ -53,7 +53,7 @@ All systems operational."
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational.
+"Good morning, Derek! Ironcliw online. All systems operational.
 How can I help today?"
 ```
 
@@ -146,7 +146,7 @@ Test startup at different times to verify time-aware greetings:
 
 **7 AM Startup:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational."
+"Good morning, Derek! Ironcliw online. All systems operational."
 ```
 
 **2 PM Startup:**
@@ -174,7 +174,7 @@ Test startup at different times to verify time-aware greetings:
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational.
+"Good morning, Derek! Ironcliw online. All systems operational.
 
 First startup complete, Derek. I've learned your environment.
 Future startups will be faster as I optimize."
@@ -193,7 +193,7 @@ Future startups will be faster as I optimize."
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational.
+"Good morning, Derek! Ironcliw online. All systems operational.
 
 First startup today completed in 12.4 seconds. Systems fresh and ready."
 ```
@@ -230,7 +230,7 @@ That's my fastest startup yet, Derek - only 7.1 seconds!"
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational.
+"Good morning, Derek! Ironcliw online. All systems operational.
 
 By the way, Derek, that was my 10th startup! 9 successful,
 average time 13.2 seconds. We're getting efficient!"
@@ -250,7 +250,7 @@ average time 13.2 seconds. We're getting efficient!"
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational.
+"Good morning, Derek! Ironcliw online. All systems operational.
 
 Major milestone, Derek: 100 startups completed! Stats: 96% success rate,
 average 11.3s, fastest 6.8s. 5 fast starts in a row - you've powered
@@ -291,7 +291,7 @@ Fifth sub-10-second startup in a row. The system is really humming now, Derek."
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online. All systems operational.
+"Good morning, Derek! Ironcliw online. All systems operational.
 
 Neural Mesh initialized for the first time, Derek.
 I've learned this component."
@@ -310,7 +310,7 @@ I've learned this component."
 
 **Expected Response:**
 ```
-"Good morning, Derek! JARVIS online in 9.1 seconds. All systems operational.
+"Good morning, Derek! Ironcliw online in 9.1 seconds. All systems operational.
 
 Startup is getting faster, Derek. This one was 38% quicker than my average."
 ```
@@ -411,7 +411,7 @@ print(narrator.startup_stats)
 ## 🐛 Known Edge Cases
 
 ### Case 1: Very First Startup (No History)
-**What:** First time ever running JARVIS
+**What:** First time ever running Ironcliw
 **Expected:** "First startup complete" learning message
 **Status:** ✅ Handled - `first_startup_ever` flag
 
@@ -443,7 +443,7 @@ Test the full user experience progression:
 
 **Startup #1 (First Ever):**
 ```
-"Good morning, Derek! JARVIS online in 14.2 seconds. All systems operational.
+"Good morning, Derek! Ironcliw online in 14.2 seconds. All systems operational.
 
 First startup complete, Derek. I've learned your environment.
 Future startups will be faster as I optimize."
@@ -451,7 +451,7 @@ Future startups will be faster as I optimize."
 
 **Startup #10 (Milestone):**
 ```
-"Good morning, Derek! JARVIS online in 11.8 seconds. All systems operational.
+"Good morning, Derek! Ironcliw online in 11.8 seconds. All systems operational.
 
 By the way, Derek, that was my 10th startup! 9 successful,
 average time 12.3 seconds. We're getting efficient!"
@@ -459,7 +459,7 @@ average time 12.3 seconds. We're getting efficient!"
 
 **Startup #23 (Getting Faster):**
 ```
-"Good morning, Derek! JARVIS online in 7.9 seconds - that was quick!
+"Good morning, Derek! Ironcliw online in 7.9 seconds - that was quick!
 All systems operational.
 
 That's my fastest startup yet, Derek - only 7.9 seconds!"
@@ -467,7 +467,7 @@ That's my fastest startup yet, Derek - only 7.9 seconds!"
 
 **Startup #100 (Major Milestone):**
 ```
-"Good morning, Derek! JARVIS online in 8.1 seconds - that was quick!
+"Good morning, Derek! Ironcliw online in 8.1 seconds - that was quick!
 All systems operational.
 
 Major milestone, Derek: 100 startups completed! Stats: 97% success rate,
@@ -528,4 +528,4 @@ done
 
 ---
 
-🎉 **Happy Testing! JARVIS now communicates startup progress like a sophisticated AI assistant with learning, personality, and context awareness.**
+🎉 **Happy Testing! Ironcliw now communicates startup progress like a sophisticated AI assistant with learning, personality, and context awareness.**

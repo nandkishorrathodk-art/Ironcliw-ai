@@ -1,4 +1,4 @@
-# Cascading Failure Hardening — Implementation Plan
+﻿# Cascading Failure Hardening — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -382,7 +382,7 @@ With:
                 # Only change if significantly different (at least 1 severity level)
                 # v266.2: During startup, mode can only degrade (never recover upward).
                 # Upward recovery only after startup completes.
-                _startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE", "") == "true"
+                _startup_complete = os.environ.get("Ironcliw_STARTUP_COMPLETE", "") == "true"
                 _is_degradation = _ideal_sev > _current_sev
                 _can_change = _is_degradation or _startup_complete
                 if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current and _can_change:
@@ -402,7 +402,7 @@ git commit -m "$(cat <<'EOF'
 feat(startup): enforce monotonic mode degradation during startup
 
 Mode can only degrade (local_full → cloud_only) during startup.
-Upward recovery blocked until JARVIS_STARTUP_COMPLETE=true.
+Upward recovery blocked until Ironcliw_STARTUP_COMPLETE=true.
 Prevents oscillation when RAM fluctuates between phases.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
@@ -510,13 +510,13 @@ After the `resource_timeout` line in `_phase_resources()` (line ~67146), add:
 ```python
             # v266.2: Memory gate — re-evaluate mode at phase boundary
             await _reevaluate_startup_mode("phase_2_resources")
-            _mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
             if _mode in ("cloud_only", "minimal"):
                 self.logger.warning(
                     f"[v266.2] Phase 2: mode={_mode} — deferring heavy local resources"
                 )
-                os.environ["JARVIS_CAPABILITY_DOCKER"] = "deferred"
-                os.environ["JARVIS_CAPABILITY_LOCAL_STORAGE"] = "deferred"
+                os.environ["Ironcliw_CAPABILITY_DOCKER"] = "deferred"
+                os.environ["Ironcliw_CAPABILITY_LOCAL_STORAGE"] = "deferred"
 ```
 
 **Step 3: Add Phase 3 gate**
@@ -526,16 +526,16 @@ After the state update line in `_phase_backend()` (line ~68138, after `self._sta
 ```python
             # v266.2: Memory gate — re-evaluate mode at phase boundary
             await _reevaluate_startup_mode("phase_3_backend")
-            _mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
             if _mode in ("cloud_first", "cloud_only", "minimal"):
                 import psutil as _ps3
                 _avail_gb = _ps3.virtual_memory().available / (1024**3)
                 if _avail_gb < 2.0:
                     self.logger.warning(
                         f"[v266.2] Phase 3: mode={_mode}, available={_avail_gb:.1f}GB "
-                        f"— setting JARVIS_BACKEND_MINIMAL=true"
+                        f"— setting Ironcliw_BACKEND_MINIMAL=true"
                     )
-                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                    os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
 ```
 
 **Step 4: Verify**
@@ -552,7 +552,7 @@ git commit -m "$(cat <<'EOF'
 feat(startup): add Phase 2/3 memory gates with capability flags
 
 Phase 2: re-evaluates mode, defers Docker/local-storage on cloud_only.
-Phase 3: re-evaluates mode, sets JARVIS_BACKEND_MINIMAL=true when
+Phase 3: re-evaluates mode, sets Ironcliw_BACKEND_MINIMAL=true when
 cloud_first + available RAM < 2GB. Downstream components branch on
 capability flags rather than assuming resource availability.
 
@@ -579,13 +579,13 @@ Before the `create_subprocess_exec` call, add the admission gate check:
 ```python
                 # v266.2: Pre-spawn admission gate
                 if not await can_spawn_heavy_process(500, "backend_subprocess"):
-                    _mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                    _mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
                     self.logger.warning(
                         f"[v266.2] Backend subprocess blocked by admission gate "
                         f"(mode={_mode}) — escalating mode"
                     )
                     await _reevaluate_startup_mode("backend_subprocess_blocked")
-                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                    os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
 ```
 
 Then wrap the `create_subprocess_exec` call with ENOMEM handling. After the existing try block that contains the call, add an `except OSError` clause BEFORE the generic `except Exception`:
@@ -599,7 +599,7 @@ Then wrap the `create_subprocess_exec` call with ENOMEM handling. After the exis
                         f"Escalating startup mode."
                     )
                     await _reevaluate_startup_mode("subprocess_enomem")
-                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                    os.environ["Ironcliw_BACKEND_MINIMAL"] = "true"
                     return False
                 raise  # Re-raise non-ENOMEM OSErrors
             except MemoryError:
@@ -627,7 +627,7 @@ feat(startup): add subprocess ENOMEM handler and admission gate
 
 Pre-spawn admission gate checks available RAM before backend subprocess.
 Catches OSError with errno.ENOMEM and MemoryError, escalates startup
-mode, and sets JARVIS_BACKEND_MINIMAL=true. Uses errno detection,
+mode, and sets Ironcliw_BACKEND_MINIMAL=true. Uses errno detection,
 not string matching.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
@@ -678,12 +678,12 @@ Expected: `All 3 files syntax OK`
 ```bash
 python3 -c "
 import os
-os.environ['JARVIS_STARTUP_COMPLETE'] = ''
+os.environ['Ironcliw_STARTUP_COMPLETE'] = ''
 # During startup, should not allow recovery upward
-print('Monotonic constraint env var test: JARVIS_STARTUP_COMPLETE =', repr(os.environ.get('JARVIS_STARTUP_COMPLETE', '')))
+print('Monotonic constraint env var test: Ironcliw_STARTUP_COMPLETE =', repr(os.environ.get('Ironcliw_STARTUP_COMPLETE', '')))
 print('Expected: empty string (blocks upward recovery during startup)')
-os.environ['JARVIS_STARTUP_COMPLETE'] = 'true'
-print('After startup: JARVIS_STARTUP_COMPLETE =', repr(os.environ.get('JARVIS_STARTUP_COMPLETE')))
+os.environ['Ironcliw_STARTUP_COMPLETE'] = 'true'
+print('After startup: Ironcliw_STARTUP_COMPLETE =', repr(os.environ.get('Ironcliw_STARTUP_COMPLETE')))
 print('Expected: true (allows upward recovery)')
 print('OK')
 "

@@ -1,9 +1,9 @@
-"""
+﻿"""
 WebSocket-Based Real-Time Cross-Repo Coordinator v1.0
 =======================================================
 
 Production-grade WebSocket coordination layer for real-time bidirectional
-communication between JARVIS, JARVIS-Prime, and Reactor-Core repositories.
+communication between Ironcliw, Ironcliw-Prime, and Reactor-Core repositories.
 
 Problem Solved:
     Before: File-based state sync with 1-2s polling latency, no real-time events
@@ -22,7 +22,7 @@ Features:
 Architecture:
     ┌──────────────────────────────────────────────────────────────┐
     │              WebSocket Coordinator Hub                        │
-    │                  (JARVIS Core)                               │
+    │                  (Ironcliw Core)                               │
     │                                                              │
     │  ┌────────────────────────────────────────────────────────┐ │
     │  │  Message Router                                         │ │
@@ -60,7 +60,7 @@ Message Format:
     }
 
 Example Usage:
-    # Server (JARVIS Core)
+    # Server (Ironcliw Core)
     coordinator = WebSocketCoordinator(mode="server")
     await coordinator.start(host="0.0.0.0", port=8765)
 
@@ -77,7 +77,7 @@ Example Usage:
     # Subscribe to topic
     await coordinator.subscribe("vbia_events", callback=handle_vbia_event)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -168,7 +168,7 @@ class WebSocketCoordinator:
     """
     Production-grade WebSocket coordinator for real-time cross-repo communication.
 
-    Can operate in server mode (JARVIS Core) or client mode (J-Prime, J-Reactor).
+    Can operate in server mode (Ironcliw Core) or client mode (J-Prime, J-Reactor).
     """
 
     def __init__(
@@ -227,7 +227,7 @@ class WebSocketCoordinator:
         port: Optional[int] = None
     ) -> None:
         """
-        Start WebSocket server (JARVIS Core).
+        Start WebSocket server (Ironcliw Core).
 
         Args:
             host: Server host (default from config)

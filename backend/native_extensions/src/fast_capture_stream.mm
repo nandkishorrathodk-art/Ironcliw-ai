@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Fast Screen Capture Streaming Implementation
  * Persistent ScreenCaptureKit streams for 60 FPS surveillance
  */
@@ -73,7 +73,7 @@ struct DelegateSharedState {
  *
  * v29.0: Now uses shared state for safe lifecycle management
  */
-@interface JARVISStreamingDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
+@interface IroncliwStreamingDelegate : NSObject <SCStreamDelegate, SCStreamOutput>
 // v29.0: Shared state for lifecycle management (shared_ptr so it outlives delegate)
 @property (nonatomic, assign) std::shared_ptr<DelegateSharedState>* sharedState;
 
@@ -93,7 +93,7 @@ struct DelegateSharedState {
 @property (nonatomic, assign) id<MTLDevice> metalDevice;
 @end
 
-@implementation JARVISStreamingDelegate
+@implementation IroncliwStreamingDelegate
 
 /**
  * v29.0: RAII guard for tracking active callbacks
@@ -341,7 +341,7 @@ public:
 
 #ifdef __APPLE__
     SCStream *stream = nil;
-    JARVISStreamingDelegate *delegate = nil;
+    IroncliwStreamingDelegate *delegate = nil;
     SCShareableContent *shareable_content = nil;
     dispatch_queue_t capture_queue = nil;
     id<MTLDevice> metal_device = nil;
@@ -491,7 +491,7 @@ public:
             shared_state->activeCallbacks.store(0);
 
             // Create delegate
-            delegate = [[JARVISStreamingDelegate alloc] init];
+            delegate = [[IroncliwStreamingDelegate alloc] init];
             delegate.sharedState = &shared_state;  // v29.0: Connect shared state
             delegate.frameBuffer = &frame_buffer;
             delegate.bufferMutex = &buffer_mutex;
@@ -601,7 +601,7 @@ public:
         // This is CRITICAL - ensures no callbacks are accessing C++ objects
         if (shared_state) {
             // Configurable timeout from environment
-            const char* timeout_env = getenv("JARVIS_STREAM_SHUTDOWN_TIMEOUT_MS");
+            const char* timeout_env = getenv("Ironcliw_STREAM_SHUTDOWN_TIMEOUT_MS");
             int timeout_ms = timeout_env ? atoi(timeout_env) : 2000;
 
             shared_state->waitForCallbacksDrain(std::chrono::milliseconds(timeout_ms));

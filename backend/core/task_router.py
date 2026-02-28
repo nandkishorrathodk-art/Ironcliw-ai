@@ -1,5 +1,5 @@
-"""
-Task Router - Intelligence Dispatcher for JARVIS
+﻿"""
+Task Router - Intelligence Dispatcher for Ironcliw
 Analyzes query complexity and routes to appropriate model tier
 
 LAZY LOADING: nltk is imported on-demand, not at module load time.
@@ -73,7 +73,7 @@ def is_nltk_available() -> bool:
     return _NLTK_AVAILABLE
 
 class TaskType(Enum):
-    """Types of tasks JARVIS can handle"""
+    """Types of tasks Ironcliw can handle"""
     CHAT = "chat"              # Simple conversation
     CODE = "code"              # Code generation/analysis
     ANALYSIS = "analysis"      # Data analysis, reasoning

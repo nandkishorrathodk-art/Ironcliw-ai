@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-System States and Transitions for JARVIS Autonomous System
+System States and Transitions for Ironcliw Autonomous System
 
 This module manages the overall state machine for autonomous operations, providing
 a comprehensive framework for tracking system states, component health, and state

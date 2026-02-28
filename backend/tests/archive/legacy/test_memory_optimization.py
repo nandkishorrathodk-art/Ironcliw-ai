@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Memory Optimization Test Suite
 ==============================
@@ -315,7 +315,7 @@ class MemoryOptimizationTester:
     async def run_all_tests(self):
         """Run all memory optimization tests"""
         logger.info("=" * 60)
-        logger.info("🚀 JARVIS Memory Optimization Test Suite")
+        logger.info("🚀 Ironcliw Memory Optimization Test Suite")
         logger.info(f"Target: <35% memory usage on 16GB system")
         logger.info(f"System RAM: {self.results['system_info']['total_ram_gb']:.1f}GB")
         logger.info("=" * 60)

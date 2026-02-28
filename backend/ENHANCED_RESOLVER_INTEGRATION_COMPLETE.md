@@ -1,4 +1,4 @@
-# Enhanced Resolver Integration - Complete ✅
+﻿# Enhanced Resolver Integration - Complete ✅
 
 **Date:** 2025-10-17
 
@@ -308,13 +308,13 @@ User: "What does it say?"
 **Natural Conversations:**
 ```
 User: "What's in space 3?"
-JARVIS: [Shows space 3]
+Ironcliw: [Shows space 3]
 
 User: "What's that error?"
-JARVIS: [Knows "that" = the thing just shown in space 3]
+Ironcliw: [Knows "that" = the thing just shown in space 3]
 
 User: "How do I fix it?"
-JARVIS: [Knows user wants to fix the error from space 3]
+Ironcliw: [Knows user wants to fix the error from space 3]
       [Response tailored for FIX intent, not just EXPLAIN]
 ```
 
@@ -514,7 +514,7 @@ Potential improvements (not required for current functionality):
 
 ## Conclusion
 
-The enhanced resolver integration creates a **sophisticated natural language understanding system** for JARVIS that combines:
+The enhanced resolver integration creates a **sophisticated natural language understanding system** for Ironcliw that combines:
 
 - **Entity Resolution** (what is "it"?)
 - **Intent Classification** (what does the user want?)

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for SubprocessManager - Lifecycle management for cross-repo subprocesses.
 
 Tests cover:
@@ -549,7 +549,7 @@ class TestBuildChildEnv:
             process_type=ProcessType.SUBPROCESS,
         )
         env = manager._build_child_env(component)
-        assert "JARVIS_PRIME_CHILD_PROCESS" in env
+        assert "Ironcliw_PRIME_CHILD_PROCESS" in env
 
 
 class TestDetectLogLevel:

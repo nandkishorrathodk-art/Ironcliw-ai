@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Bridge Adapter v2.0 - Production Hardened
 =================================================
 
 Closes the Trinity Loop by watching Reactor Core event directories
-and forwarding MODEL_READY and other events to JARVIS.
+and forwarding MODEL_READY and other events to Ironcliw.
 
 HARDENED VERSION (v2.0) with:
 - FileWatchGuard for robust file watching with recovery
@@ -26,7 +26,7 @@ Architecture:
                                      │
                                      ▼
     ┌─────────────────────────────────────────────────────────────────┐
-    │                       JARVIS / JARVIS Prime                     │
+    │                       Ironcliw / Ironcliw Prime                     │
     │  [TrinityHandlers] → [UnifiedModelServing] → [Hot Swap]         │
     └─────────────────────────────────────────────────────────────────┘
 

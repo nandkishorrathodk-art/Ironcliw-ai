@@ -1,8 +1,8 @@
-"""
-Multi-Space Context Graph - Advanced Context Tracking for JARVIS
+﻿"""
+Multi-Space Context Graph - Advanced Context Tracking for Ironcliw
 =================================================================
 
-This is the foundational system for JARVIS's "workspace intelligence":
+This is the foundational system for Ironcliw's "workspace intelligence":
 - Tracks activity across all macOS Spaces simultaneously
 - Preserves temporal context (what happened 3-5 minutes ago)
 - Correlates activities across spaces (terminal error + browser research + IDE edits)
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 class ContextType(Enum):
     """Types of application contexts we track.
 
-    This enum defines the different categories of applications that JARVIS
+    This enum defines the different categories of applications that Ironcliw
     can provide specialized context tracking for.
     """
 

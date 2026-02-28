@@ -1,5 +1,5 @@
-"""
-Progressive Model Loader for JARVIS
+﻿"""
+Progressive Model Loader for Ironcliw
 Dynamic, robust model loading with automatic discovery and intelligent parallelization
 """
 
@@ -295,7 +295,7 @@ class DynamicModelDiscovery:
         # Critical patterns (Priority 1) - only the most essential
         critical_classes = [
             "VisionSystemV2",
-            "JARVISAgentVoice",
+            "IroncliwAgentVoice",
             "ClaudeAICore",
             "SimpleChatbot",
         ]
@@ -590,7 +590,7 @@ class ProgressiveModelLoader:
             "voice_core": ModelInfo(
                 name="Voice System Core",
                 module_path="voice.jarvis_agent_voice",
-                class_name="JARVISAgentVoice",
+                class_name="IroncliwAgentVoice",
                 category="voice",
                 priority=1,
                 lazy=False,
@@ -720,7 +720,7 @@ class ProgressiveModelLoader:
             "SimpleChatbot",
             "ClaudeAICore",
             "VisionSystemV2",
-            "JARVISAgentVoice",
+            "IroncliwAgentVoice",
         ]
         sorted_models = sorted(
             all_critical.items(),

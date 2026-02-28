@@ -1,4 +1,4 @@
-"""
+﻿"""
 Phase 8 Integration Test Runner
 ================================
 
@@ -64,7 +64,7 @@ def run_test_file(test_file: Path) -> dict:
 def main():
     """Run all Phase 8 integration tests."""
     print("\n" + "="*70)
-    print("JARVIS PHASE 8 INTEGRATION TEST SUITE")
+    print("Ironcliw PHASE 8 INTEGRATION TEST SUITE")
     print("="*70)
     print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Platform: {platform.platform()}")

@@ -1,16 +1,16 @@
-# 🖥️ JARVIS Multi-Monitor Support - User Guide
+﻿# 🖥️ Ironcliw Multi-Monitor Support - User Guide
 
 ## 🎉 **What's New**
 
-JARVIS can now see and understand your **entire multi-monitor setup**! Ask about specific monitors, get display summaries, and let JARVIS analyze any screen in your workspace.
+Ironcliw can now see and understand your **entire multi-monitor setup**! Ask about specific monitors, get display summaries, and let Ironcliw analyze any screen in your workspace.
 
 ---
 
 ## 🚀 **Quick Start**
 
-### **1. Restart JARVIS:**
+### **1. Restart Ironcliw:**
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 
@@ -20,25 +20,25 @@ python3 start_system.py
 ```
 "Show me all my displays"
 ```
-**JARVIS:** "Sir, you have 2 displays connected: Primary (1440x900), Monitor 2 (1920x1080)..."
+**Ironcliw:** "Sir, you have 2 displays connected: Primary (1440x900), Monitor 2 (1920x1080)..."
 
 #### **Specific Monitor:**
 ```
 "What's on my second monitor?"
 ```
-**JARVIS:** [Analyzes second display with Claude Vision OCR]
+**Ironcliw:** [Analyzes second display with Claude Vision OCR]
 
 #### **Primary Display:**
 ```
 "What's on the primary monitor?"
 ```
-**JARVIS:** [Analyzes primary display]
+**Ironcliw:** [Analyzes primary display]
 
 #### **Positional:**
 ```
 "What's on the left monitor?"
 ```
-**JARVIS:** [Finds leftmost display, analyzes]
+**Ironcliw:** [Finds leftmost display, analyzes]
 
 ---
 
@@ -62,15 +62,15 @@ python3 start_system.py
 ## 🎯 **Smart Features**
 
 ### **1. Ambiguity Detection:**
-If your query is unclear, JARVIS will ask:
+If your query is unclear, Ironcliw will ask:
 ```
 You: "What's on the monitor?"
-JARVIS: "Sir, I see 2 displays: Primary (1440x900), Monitor 2 (1920x1080). 
+Ironcliw: "Sir, I see 2 displays: Primary (1440x900), Monitor 2 (1920x1080). 
 Which one would you like me to analyze?"
 ```
 
 ### **2. Position-Based Resolution:**
-JARVIS understands physical monitor positions:
+Ironcliw understands physical monitor positions:
 - "left monitor" → Leftmost display
 - "right monitor" → Rightmost display
 
@@ -78,14 +78,14 @@ JARVIS understands physical monitor positions:
 If you only have one display:
 ```
 You: "What's on my second monitor?"
-JARVIS: "Sir, you have only one display connected."
+Ironcliw: "Sir, you have only one display connected."
 ```
 
 ### **4. Display Summary:**
 Get a quick overview of your setup:
 ```
 You: "Show me all displays"
-JARVIS: "Sir, you have 2 displays:
+Ironcliw: "Sir, you have 2 displays:
 • Primary: 1440x900 (Spaces: 1, 2, 3, 4, 5, 6)
 • Monitor 2: 1920x1080 (Spaces: 7, 8)"
 ```
@@ -120,7 +120,7 @@ Based on detection:
 ### **"I cannot detect any displays"**
 **Solution:** Enable screen recording permissions:
 1. System Settings → Privacy & Security → Screen Recording
-2. Enable for Terminal and/or JARVIS
+2. Enable for Terminal and/or Ironcliw
 
 ### **"Only detecting one display"**
 **Check:** 
@@ -148,20 +148,20 @@ yabai --start-service
 
 ```
 You: "Show me all my displays"
-JARVIS: "Sir, you have 2 displays connected:
+Ironcliw: "Sir, you have 2 displays connected:
 • Primary: 1440x900 (Spaces: 1, 2, 3, 4, 5, 6)
 • Monitor 2: 1920x1080 (Spaces: 7, 8)"
 
 You: "What's on my second monitor?"
-JARVIS: "Sir, on your second monitor (1920x1080), I see:
+Ironcliw: "Sir, on your second monitor (1920x1080), I see:
 • Space 7: Terminal - Running test suite
 • Space 8: Chrome - Viewing documentation
 
 The terminal shows 'All tests passed' and Chrome has 
-the JARVIS API documentation open."
+the Ironcliw API documentation open."
 
 You: "What's on the left monitor?"
-JARVIS: "Sir, the left monitor shows your second display (1920x1080)..."
+Ironcliw: "Sir, the left monitor shows your second display (1920x1080)..."
 ```
 
 ---
@@ -172,17 +172,17 @@ JARVIS: "Sir, the left monitor shows your second display (1920x1080)..."
 ```
 "What errors are on monitor 2, space 7?"
 ```
-**JARVIS:** [Analyzes Space 7 on Display 2 specifically]
+**Ironcliw:** [Analyzes Space 7 on Display 2 specifically]
 
 ### **Multi-Monitor Workflows:**
 ```
 "What's my workflow across both monitors?"
 ```
-**JARVIS:** [Analyzes all displays, identifies cross-monitor patterns]
+**Ironcliw:** [Analyzes all displays, identifies cross-monitor patterns]
 
 ---
 
-## 📊 **What JARVIS Now Understands**
+## 📊 **What Ironcliw Now Understands**
 
 ### **Physical Layout:**
 - How many monitors you have
@@ -205,7 +205,7 @@ JARVIS: "Sir, the left monitor shows your second display (1920x1080)..."
 ## ✅ **What's Next**
 
 Now that multi-monitor support is complete, you can:
-1. **Use it immediately** - Just restart JARVIS backend
+1. **Use it immediately** - Just restart Ironcliw backend
 2. **Combine with existing features** - Works with all space targeting
 3. **Proceed to Phase 1.2** - Temporal Analysis (change detection over time)
 4. **Proceed to Phase 1.3** - Proactive Monitoring (alert on new errors)

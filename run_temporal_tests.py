@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple test runner for TemporalQueryHandler v3.0 tests
 
@@ -12,7 +12,7 @@ def run_tests():
     """Run TemporalQueryHandler tests"""
 
     print("=" * 60)
-    print("JARVIS v3.0 - TemporalQueryHandler Test Suite")
+    print("Ironcliw v3.0 - TemporalQueryHandler Test Suite")
     print("=" * 60)
     print()
 
@@ -40,7 +40,7 @@ def run_tests():
 
         result = subprocess.run(
             ['python', '-m', 'pytest', test_path, '-xvs', '--tb=short'],
-            cwd='/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent',
+            cwd='/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent',
             capture_output=True,
             text=True
         )

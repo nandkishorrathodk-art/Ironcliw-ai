@@ -1,11 +1,11 @@
-"""
+﻿"""
 Telemetry Emitter v1.0
 ======================
 
-Emits interaction telemetry from JARVIS to Reactor-Core for training.
+Emits interaction telemetry from Ironcliw to Reactor-Core for training.
 This is the critical link that enables the continuous learning loop:
 
-    JARVIS (interactions) → Reactor-Core (training) → JARVIS-Prime (better model)
+    Ironcliw (interactions) → Reactor-Core (training) → Ironcliw-Prime (better model)
 
 ARCHITECTURE:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -13,7 +13,7 @@ ARCHITECTURE:
     │                                                                  │
     │  User Interaction                                                │
     │       ↓                                                          │
-    │  JARVIS Command Processor                                        │
+    │  Ironcliw Command Processor                                        │
     │       ↓                                                          │
     │  TelemetryEmitter (this module)                                  │
     │       ↓                                                          │
@@ -28,7 +28,7 @@ ARCHITECTURE:
     │       ↓                                                          │
     │  Training Pipeline                                               │
     │       ↓                                                          │
-    │  JARVIS-Prime Model Improvement                                  │
+    │  Ironcliw-Prime Model Improvement                                  │
     └─────────────────────────────────────────────────────────────────┘
 
 FEATURES:
@@ -400,7 +400,7 @@ class DiskBackedQueue:
 
 class TelemetryEmitter:
     """
-    Advanced telemetry emitter for JARVIS → Reactor-Core.
+    Advanced telemetry emitter for Ironcliw → Reactor-Core.
 
     Handles batching, compression, circuit breaking, and persistence.
     """
@@ -489,7 +489,7 @@ class TelemetryEmitter:
 
         Args:
             user_input: What the user said/typed
-            response: JARVIS's response
+            response: Ironcliw's response
             success: Whether the interaction was successful
             confidence: Confidence score (0-1)
             latency_ms: Response latency in milliseconds
@@ -539,7 +539,7 @@ class TelemetryEmitter:
         Emit a correction event for fine-tuning.
 
         Args:
-            original_response: What JARVIS originally said
+            original_response: What Ironcliw originally said
             corrected_response: The corrected/desired response
             user_input: The original user input
             correction_type: Type of correction (user_feedback, auto_correct, etc.)
@@ -645,7 +645,7 @@ class TelemetryEmitter:
 
             line = json.dumps(line_data) + "\n"
             # v242.1: Atomic append with file locking to prevent interleaved
-            # writes from multiple processes (JARVIS Body + J-Prime both write here)
+            # writes from multiple processes (Ironcliw Body + J-Prime both write here)
             try:
                 import fcntl as _fcntl
                 _has_fcntl = True

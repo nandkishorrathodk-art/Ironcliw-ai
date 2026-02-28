@@ -1,8 +1,8 @@
-"""
-Cross-Repo Health Aggregator for JARVIS Loading Server v212.0
+﻿"""
+Cross-Repo Health Aggregator for Ironcliw Loading Server v212.0
 =============================================================
 
-Unified health aggregation across JARVIS, JARVIS-Prime, and Reactor-Core.
+Unified health aggregation across Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
 Features:
 - Circuit breaker state tracking
@@ -20,7 +20,7 @@ Usage:
     await aggregator.initialize()
     health = await aggregator.get_unified_health()
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 
@@ -143,7 +143,7 @@ class ComponentHealth:
 @dataclass
 class CrossRepoHealthAggregator:
     """
-    Unified health aggregation across JARVIS, J-Prime, and Reactor-Core.
+    Unified health aggregation across Ironcliw, J-Prime, and Reactor-Core.
 
     Features:
     - HTTP health endpoint checking

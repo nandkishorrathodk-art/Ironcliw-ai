@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Voice Feedback for Lock/Unlock
 ===================================
 
-Tests that JARVIS speaks the lock detection feedback
+Tests that Ironcliw speaks the lock detection feedback
 """
 
 import asyncio
@@ -13,18 +13,18 @@ import subprocess
 import time
 
 async def test_voice_feedback():
-    """Test that JARVIS speaks the feedback messages"""
+    """Test that Ironcliw speaks the feedback messages"""
     
     print("\n" + "="*60)
-    print("🎤 Testing JARVIS Voice Feedback")
+    print("🎤 Testing Ironcliw Voice Feedback")
     print("="*60)
     
-    # Connect to JARVIS WebSocket
+    # Connect to Ironcliw WebSocket
     uri = "ws://localhost:8888/ws/jarvis"
     
     try:
         async with websockets.connect(uri) as websocket:
-            print("✅ Connected to JARVIS WebSocket")
+            print("✅ Connected to Ironcliw WebSocket")
             
             # Wait for connection message
             msg = await websocket.recv()
@@ -105,10 +105,10 @@ async def test_voice_feedback():
                 
     except Exception as e:
         print(f"\n❌ Error: {e}")
-        print("\nMake sure JARVIS is running (python main.py)")
+        print("\nMake sure Ironcliw is running (python main.py)")
 
 if __name__ == "__main__":
-    print("🚀 JARVIS Voice Feedback Test")
-    print("This tests if JARVIS speaks the lock detection messages")
+    print("🚀 Ironcliw Voice Feedback Test")
+    print("This tests if Ironcliw speaks the lock detection messages")
     
     asyncio.run(test_voice_feedback())

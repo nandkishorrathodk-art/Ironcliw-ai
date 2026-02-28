@@ -1,5 +1,5 @@
-"""
-Lock-Free Progress Updates for JARVIS Loading Server v212.0
+﻿"""
+Lock-Free Progress Updates for Ironcliw Loading Server v212.0
 ============================================================
 
 High-performance atomic progress updates using CAS (Compare-And-Swap).
@@ -18,7 +18,7 @@ Usage:
     success, current = progress.update_progress(50.0)
     current_progress, sequence = progress.get_progress()
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

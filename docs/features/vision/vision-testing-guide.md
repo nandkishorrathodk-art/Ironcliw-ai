@@ -1,8 +1,8 @@
-# JARVIS Vision Intelligence Testing Guide
+﻿# Ironcliw Vision Intelligence Testing Guide
 
 ## Overview
 
-This guide explains the comprehensive test suite for JARVIS's intelligent vision system, which has been transformed from a hardcoded pattern-matching system to a dynamic, intelligent vision-based system.
+This guide explains the comprehensive test suite for Ironcliw's intelligent vision system, which has been transformed from a hardcoded pattern-matching system to a dynamic, intelligent vision-based system.
 
 ## Test Categories
 
@@ -10,7 +10,7 @@ This guide explains the comprehensive test suite for JARVIS's intelligent vision
 Tests core functionality without requiring actual window detection.
 
 **Key Tests:**
-- **Unknown App Detection**: Verifies queries about apps JARVIS has never seen
+- **Unknown App Detection**: Verifies queries about apps Ironcliw has never seen
 - **Query Pattern Detection**: Tests intelligent query routing
 - **Multi-Language Support**: Tests non-English app names
 - **Flexible Query Handling**: Tests various ways users might ask questions
@@ -81,7 +81,7 @@ python test_dynamic_visual_analysis.py
 
 ### Successful Test Run
 ```
-🧪 JARVIS VISION INTELLIGENCE TEST SUITE
+🧪 Ironcliw VISION INTELLIGENCE TEST SUITE
 ======================================================================
 Platform: Darwin arm64
 Python: 3.10.0
@@ -128,7 +128,7 @@ TOTAL: 45 tests
 ## Test Scenarios Covered
 
 ### 1. Unknown Apps
-- Apps JARVIS has never seen before (SuperNewChatApp, CustomWorkTool)
+- Apps Ironcliw has never seen before (SuperNewChatApp, CustomWorkTool)
 - Apps with unusual names (未知应用, RandomBusinessApp)
 - Apps that don't fit any category
 
@@ -152,7 +152,7 @@ TOTAL: 45 tests
 
 ## Verifying the Intelligence
 
-The tests verify that JARVIS:
+The tests verify that Ironcliw:
 
 1. **Detects ANY app** without hardcoding
 2. **Understands context** from window titles
@@ -250,4 +250,4 @@ The vision intelligence system is working correctly when:
 
 ## Conclusion
 
-These tests ensure JARVIS can intelligently analyze ANY content on your screen without needing hardcoded app lists or patterns. The system is truly dynamic and future-proof.
+These tests ensure Ironcliw can intelligently analyze ANY content on your screen without needing hardcoded app lists or patterns. The system is truly dynamic and future-proof.

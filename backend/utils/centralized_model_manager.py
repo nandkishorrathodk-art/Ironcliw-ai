@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Centralized Model Manager for JARVIS
+Centralized Model Manager for Ironcliw
 Prevents duplicate model loading and manages model lifecycle
 """
 

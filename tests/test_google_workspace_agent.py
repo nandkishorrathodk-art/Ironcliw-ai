@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Suite for Google Workspace Agent
 ======================================
 
@@ -9,7 +9,7 @@ Tests the GoogleWorkspaceAgent including:
 - Contacts operations
 - Natural language query handling
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio

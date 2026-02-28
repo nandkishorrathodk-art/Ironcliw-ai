@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Cloud SQL Proxy Manager v218.0
 ========================================
@@ -398,12 +398,12 @@ class CloudSQLProxyManager:
 
         Searches in order:
         1. ~/.jarvis/gcp/database_config.json
-        2. $JARVIS_HOME/gcp/database_config.json
+        2. $Ironcliw_HOME/gcp/database_config.json
         3. ./database_config.json
         """
         search_paths = [
             Path.home() / ".jarvis" / "gcp" / "database_config.json",
-            Path(os.getenv("JARVIS_HOME", ".")) / "gcp" / "database_config.json",
+            Path(os.getenv("Ironcliw_HOME", ".")) / "gcp" / "database_config.json",
             Path("database_config.json"),
         ]
 
@@ -2349,7 +2349,7 @@ class CloudSQLProxyManager:
         cloud_sql = self.config["cloud_sql"]
 
         service_content = f"""[Unit]
-Description=JARVIS Cloud SQL Proxy
+Description=Ironcliw Cloud SQL Proxy
 After=network.target
 
 [Service]

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Ouroboros Self-Improvement Engine v2.0
 ======================================
 
-The autonomous code evolution system for JARVIS. Uses local LLM (JARVIS Prime)
+The autonomous code evolution system for Ironcliw. Uses local LLM (Ironcliw Prime)
 to analyze, improve, and evolve its own codebase without human intervention.
 
 v2.0 Enhancements:
@@ -31,7 +31,7 @@ Architecture:
     │           │                     │                     │                     │
     │           ▼                     ▼                     ▼                     │
     │  ┌────────────────┐     ┌────────────────┐     ┌────────────────┐           │
-    │  │      AST       │     │    JARVIS      │     │     Test       │           │
+    │  │      AST       │     │    Ironcliw      │     │     Test       │           │
     │  │   Analysis     │◀────│    Prime       │────▶│   Validator    │           │
     │  │ (Code Context) │     │   (Local LLM)  │     │   (pytest)     │           │
     │  └────────────────┘     └────────────────┘     └────────────────┘           │

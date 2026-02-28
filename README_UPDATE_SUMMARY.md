@@ -1,4 +1,4 @@
-# README Update Summary - Intelligence Component Manager v5.0
+﻿# README Update Summary - Intelligence Component Manager v5.0
 
 **Date:** 2024-12-22
 **Status:** ✅ Complete
@@ -99,7 +99,7 @@ An intelligent voice-activated AI assistant with **Intelligence Component Manage
 ### Architecture Diagram
 ```
 ┌────────────────────────────────────────────────────────────┐
-│              JARVIS Supervisor Boot                        │
+│              Ironcliw Supervisor Boot                        │
 └────────────────────────────────────────────────────────────┘
                          │
                          ▼

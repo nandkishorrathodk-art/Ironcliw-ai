@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS vision through WebSocket connection
+Test Ironcliw vision through WebSocket connection
 """
 
 import asyncio
@@ -8,7 +8,7 @@ import websockets
 import json
 
 async def test_vision_websocket():
-    """Test vision command through WebSocket like JARVIS would"""
+    """Test vision command through WebSocket like Ironcliw would"""
     uri = "ws://localhost:8001/ws/vision"
     
     try:
@@ -51,7 +51,7 @@ async def test_vision_websocket():
         print("  cd backend/websocket && npm start")
 
 async def main():
-    print("🔍 Testing JARVIS Vision via WebSocket")
+    print("🔍 Testing Ironcliw Vision via WebSocket")
     print("=" * 50)
     await test_vision_websocket()
 

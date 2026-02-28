@@ -1,5 +1,5 @@
-/**
- * ML-Enhanced Audio Handler for JARVIS
+﻿/**
+ * ML-Enhanced Audio Handler for Ironcliw
  * Integrates with backend ML audio manager for intelligent error recovery
  */
 

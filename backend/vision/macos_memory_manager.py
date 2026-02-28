@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-macOS Memory Pressure Manager for JARVIS Vision System
+macOS Memory Pressure Manager for Ironcliw Vision System
 
 Implements macOS-native memory pressure monitoring and adaptive memory management.
 Follows macOS philosophy: respond to memory pressure, not arbitrary thresholds.
@@ -42,7 +42,7 @@ class MemoryConfig:
 
     # Load from environment or use adaptive defaults
     enable_adaptive_management: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_ADAPTIVE_MEMORY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_ADAPTIVE_MEMORY", "true").lower() == "true"
     )
 
     # Cache size limits (MB) - dynamically adjusted based on pressure
@@ -104,7 +104,7 @@ class MemoryStats:
 class MacOSMemoryManager:
     """
     macOS-native memory pressure manager.
-    Adapts JARVIS behavior to system memory conditions.
+    Adapts Ironcliw behavior to system memory conditions.
     """
 
     def __init__(self, config: Optional[MemoryConfig] = None):

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Intelligent ML Memory Manager for JARVIS
+Intelligent ML Memory Manager for Ironcliw
 ========================================
 
 Advanced memory management system that:
@@ -12,7 +12,7 @@ Advanced memory management system that:
 
 Memory Budget Allocation (5.6GB total for 35% of 16GB):
 - System/OS: 2GB
-- JARVIS Core: 1GB 
+- Ironcliw Core: 1GB 
 - ML Models: 2GB (dynamic allocation)
 - Buffer: 0.6GB
 """

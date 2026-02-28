@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test direct connection to Living Room TV using the display ID from config
 """
@@ -39,7 +39,7 @@ async def test_direct_connection():
     print("  Living Room TV: (1221, 116)")
     print("\n" + "-"*80 + "\n")
 
-    # Connect directly (this is what JARVIS does internally)
+    # Connect directly (this is what Ironcliw does internally)
     result = await monitor.connect_display(display_id)
 
     print("\n" + "="*80)

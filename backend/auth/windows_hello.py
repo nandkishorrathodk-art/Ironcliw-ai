@@ -1,4 +1,4 @@
-"""Windows Hello biometric authentication."""
+﻿"""Windows Hello biometric authentication."""
 import sys
 import asyncio
 import logging
@@ -29,7 +29,7 @@ async def authenticate_windows_hello(reason: str = "Ironcliw-AI authentication")
 
     import os
 
-    if os.environ.get("JARVIS_AUTO_BYPASS_WINDOWS") == "true":
+    if os.environ.get("Ironcliw_AUTO_BYPASS_WINDOWS") == "true":
         logger.info("Windows Hello unavailable — auth bypass active")
         return True
 

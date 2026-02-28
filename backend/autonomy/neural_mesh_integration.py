@@ -1,5 +1,5 @@
-"""
-Neural Mesh Integration for JARVIS Autonomous System
+﻿"""
+Neural Mesh Integration for Ironcliw Autonomous System
 
 Provides seamless integration between:
 - Neural Mesh (multi-agent coordination)

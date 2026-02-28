@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - AGI OS Integration Bridge
+﻿"""
+Ironcliw macOS Helper - AGI OS Integration Bridge
 
 Deep integration between the macOS helper layer and the AGI OS coordinator.
 Enables seamless bidirectional communication:
@@ -587,7 +587,7 @@ class AGIBridge:
             True if successful
         """
         try:
-            title = action_data.get('title', 'JARVIS')
+            title = action_data.get('title', 'Ironcliw')
             message = action_data.get('message', '')
             subtitle = action_data.get('subtitle')
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Weather System Timeouts
 Verify all components have proper timeouts to prevent hanging
@@ -112,15 +112,15 @@ async def test_weather_system_timeouts():
             elapsed = time.time() - start
             print(f"❌ Query timed out after {elapsed:.2f}s")
     
-    print("\n\n6. Testing JARVIS integration:")
+    print("\n\n6. Testing Ironcliw integration:")
     print("-" * 40)
     
-    # Test JARVIS weather handler
-    from voice.jarvis_agent_voice import JARVISAgentVoice
+    # Test Ironcliw weather handler
+    from voice.jarvis_agent_voice import IroncliwAgentVoice
     
-    jarvis = JARVISAgentVoice(vision_analyzer=analyzer)
+    jarvis = IroncliwAgentVoice(vision_analyzer=analyzer)
     
-    print("Testing JARVIS weather handler with timeout...")
+    print("Testing Ironcliw weather handler with timeout...")
     start = time.time()
     
     try:
@@ -130,7 +130,7 @@ async def test_weather_system_timeouts():
         )
         elapsed = time.time() - start
         
-        print(f"✅ JARVIS responded in {elapsed:.2f}s")
+        print(f"✅ Ironcliw responded in {elapsed:.2f}s")
         print(f"   Response: {response}")
         
         # Check if response is generic fallback
@@ -139,7 +139,7 @@ async def test_weather_system_timeouts():
         
     except asyncio.TimeoutError:
         elapsed = time.time() - start
-        print(f"❌ JARVIS timed out after {elapsed:.2f}s")
+        print(f"❌ Ironcliw timed out after {elapsed:.2f}s")
     
     print("\n\n✅ Timeout testing complete!")
     print("\nSummary:")

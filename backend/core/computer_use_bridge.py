@@ -1,8 +1,8 @@
-"""
-JARVIS Computer Use Cross-Repo Bridge
+﻿"""
+Ironcliw Computer Use Cross-Repo Bridge
 =====================================
 
-Enables Computer Use capabilities across JARVIS, JARVIS Prime, and Reactor Core.
+Enables Computer Use capabilities across Ironcliw, Ironcliw Prime, and Reactor Core.
 
 Features:
 - 3D OS Awareness (Proprioception) - knows which Space/Window is active
@@ -17,7 +17,7 @@ Features:
 - Intelligent conflict resolution (v7.0)
 
 Architecture:
-    JARVIS (local) ←→ ~/.jarvis/cross_repo/ ←→ JARVIS Prime (inference)
+    Ironcliw (local) ←→ ~/.jarvis/cross_repo/ ←→ Ironcliw Prime (inference)
                               ↓
                         Reactor Core (learning)
 
@@ -25,7 +25,7 @@ Architecture:
                                     ↓
                            Smart App Switching
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 7.0.0 - Production-Grade Cross-Repo Bridge
 """
 
@@ -106,8 +106,8 @@ CU_CONFLICT_RESOLUTION_MODE = os.getenv("CU_CONFLICT_RESOLUTION_MODE", "last_wri
 # Constants
 # ============================================================================
 
-JARVIS_BASE_DIR = Path(os.getenv("JARVIS_BASE_DIR", str(Path.home() / ".jarvis")))
-COMPUTER_USE_STATE_DIR = JARVIS_BASE_DIR / "cross_repo"
+Ironcliw_BASE_DIR = Path(os.getenv("Ironcliw_BASE_DIR", str(Path.home() / ".jarvis")))
+COMPUTER_USE_STATE_DIR = Ironcliw_BASE_DIR / "cross_repo"
 COMPUTER_USE_STATE_FILE = COMPUTER_USE_STATE_DIR / "computer_use_state.json"
 COMPUTER_USE_EVENTS_FILE = COMPUTER_USE_STATE_DIR / "computer_use_events.json"
 ACTION_CACHE_FILE = COMPUTER_USE_STATE_DIR / "action_cache.json"
@@ -428,7 +428,7 @@ class SpaceInfo:
 class SpatialContext:
     """
     Complete spatial context for 3D OS Awareness.
-    This is the "proprioception" - knowing where JARVIS is in the OS.
+    This is the "proprioception" - knowing where Ironcliw is in the OS.
     """
     timestamp: str
     current_space_id: int
@@ -516,9 +516,9 @@ class SwitchOperation:
 
 class SpatialAwarenessManager:
     """
-    Manages 3D OS Awareness for JARVIS Computer Use.
+    Manages 3D OS Awareness for Ironcliw Computer Use.
 
-    This is the "proprioception" layer - JARVIS always knows:
+    This is the "proprioception" layer - Ironcliw always knows:
     - Which Space it's currently on
     - Which Window is focused
     - Where every app is located across all Spaces

@@ -1,4 +1,4 @@
-# Voice Embedding Reconstruction - Complete Fix
+﻿# Voice Embedding Reconstruction - Complete Fix
 
 ## Problem Summary
 
@@ -9,10 +9,10 @@ The voice biometric authentication system was failing to reconstruct speaker emb
 ## Architecture Overview
 
 ### Hybrid Storage System
-JARVIS uses a **hybrid cloud/local database architecture**:
+Ironcliw uses a **hybrid cloud/local database architecture**:
 
 ```
-JARVISLearningDatabase
+IroncliwLearningDatabase
 ├── CloudSQL (PostgreSQL) - Production, shared across devices
 │   └── Voice profiles + samples (when configured)
 └── SQLite - Local fallback, development

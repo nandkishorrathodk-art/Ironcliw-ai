@@ -1,4 +1,4 @@
-# Port Conflict, CloudSQL Throttling & Docker Daemon Fixes - JARVIS v9.6
+﻿# Port Conflict, CloudSQL Throttling & Docker Daemon Fixes - Ironcliw v9.6
 
 ## 🎯 Issues Fixed
 
@@ -45,7 +45,7 @@ async def _ensure_port_available(self) -> None:
     1. Check if port is in use
     2. If by our own managed process, trust it
     3. If by related process (parent/child/sibling), coordinate shutdown
-    4. If by old JARVIS Prime instance, graceful shutdown with retries
+    4. If by old Ironcliw Prime instance, graceful shutdown with retries
     5. If by unrelated process, force cleanup
     6. Wait with exponential backoff (up to 30s total)
     7. ONLY return when port is truly available OR raise exception
@@ -59,7 +59,7 @@ async def _ensure_port_available(self) -> None:
 
 1. **Never proceeds with occupied port** - Raises exception if port can't be freed
 2. **Multi-strategy cleanup**:
-   - Graceful HTTP shutdown for JARVIS Prime instances
+   - Graceful HTTP shutdown for Ironcliw Prime instances
    - SIGTERM for polite termination
    - SIGKILL for stuck processes
    - Exponential backoff waiting (0.5s → 1s → 2s → 4s → 8s)
@@ -81,7 +81,7 @@ async def _ensure_port_available(self) -> None:
 
 3. **`_get_process_info(pid)`** (lines 1001-1051)
    - Gets process name and cmdline using psutil
-   - Detects if process is JARVIS Prime instance
+   - Detects if process is Ironcliw Prime instance
    - Fallback to `ps` command
 
 4. **`_is_orphaned_instance(pid, process_info)`** (lines 1053-1116)
@@ -449,7 +449,7 @@ All fixes follow user requirements:
 - ✅ **Intelligent** - Detects state, adapts behavior, learns from environment
 - ✅ **Dynamic** - Zero hardcoding, env var configuration, platform detection
 - ✅ **No duplicate files** - Modified existing codebase only
-- ✅ **Cross-repo ready** - Utilities designed for JARVIS ↔ Prime ↔ Reactor Core
+- ✅ **Cross-repo ready** - Utilities designed for Ironcliw ↔ Prime ↔ Reactor Core
 
 ---
 
@@ -457,7 +457,7 @@ All fixes follow user requirements:
 
 **All three critical startup issues RESOLVED!** ✅
 
-The JARVIS system now has:
+The Ironcliw system now has:
 
 ### Port Management
 - ✅ **Intelligent coordination** with old instances
@@ -483,7 +483,7 @@ The JARVIS system now has:
 
 ---
 
-**Author:** Claude Sonnet 4.5 (JARVIS AI Assistant)
+**Author:** Claude Sonnet 4.5 (Ironcliw AI Assistant)
 **Date:** 2025-12-27
 **Version:** v9.6 - Clinical-Grade Intelligence Edition
 **Status:** ✅ VERIFIED & PRODUCTION READY

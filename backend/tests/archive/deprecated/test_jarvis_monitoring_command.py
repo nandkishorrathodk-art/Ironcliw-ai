@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS monitoring command through the voice API
+Test Ironcliw monitoring command through the voice API
 """
 
 import asyncio
@@ -8,15 +8,15 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
 
 async def test_jarvis_monitoring():
-    """Test that monitoring commands work through JARVIS voice API"""
-    print("\n🧪 TESTING JARVIS MONITORING COMMAND")
+    """Test that monitoring commands work through Ironcliw voice API"""
+    print("\n🧪 TESTING Ironcliw MONITORING COMMAND")
     print("=" * 60)
     
-    # Initialize JARVIS Voice API
-    jarvis = JARVISVoiceAPI()
+    # Initialize Ironcliw Voice API
+    jarvis = IroncliwVoiceAPI()
     
     # Test commands
     test_commands = [
@@ -28,7 +28,7 @@ async def test_jarvis_monitoring():
         print(f"\n📝 Testing: '{cmd_text}'")
         
         # Create command
-        command = JARVISCommand(
+        command = IroncliwCommand(
             text=cmd_text,
             source="test",
             user_id="test_user"

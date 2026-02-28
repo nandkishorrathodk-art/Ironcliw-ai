@@ -1,6 +1,6 @@
-"""
+﻿"""
 Live Testing Script for Feedback Learning & Command Safety
-Run this while JARVIS is running to test the systems in real-time.
+Run this while Ironcliw is running to test the systems in real-time.
 
 Usage:
     python -m backend.examples.live_feedback_test
@@ -319,19 +319,19 @@ async def test_integration_with_vision():
 
 
 async def test_live_jarvis_integration():
-    """Test 6: Live JARVIS integration (if running)."""
+    """Test 6: Live Ironcliw integration (if running)."""
     print("\n" + "="*80)
-    print("TEST 6: Live JARVIS Integration Check")
+    print("TEST 6: Live Ironcliw Integration Check")
     print("="*80 + "\n")
 
-    print("→ Checking if JARVIS is running...")
+    print("→ Checking if Ironcliw is running...")
 
     try:
         import requests
         response = requests.get("http://localhost:8000/health", timeout=2)
 
         if response.status_code == 200:
-            print("  ✓ JARVIS is running on port 8000")
+            print("  ✓ Ironcliw is running on port 8000")
             print()
 
             # Try to access learning endpoint (if available)
@@ -349,30 +349,30 @@ async def test_live_jarvis_integration():
                 print("  ℹ  Learning endpoints not yet implemented (this is OK)")
 
             print()
-            print("✓ JARVIS is accessible")
+            print("✓ Ironcliw is accessible")
             print()
-            print("🎯 Next steps to test with live JARVIS:")
+            print("🎯 Next steps to test with live Ironcliw:")
             print("  1. Trigger a terminal error (e.g., run 'python nonexistent.py')")
-            print("  2. Wait for JARVIS to detect it")
+            print("  2. Wait for Ironcliw to detect it")
             print("  3. Respond 'yes' or 'no' to the notification")
             print("  4. Check: cat ~/.jarvis/learning/feedback.json")
             print()
             return True
 
         else:
-            print("  ✗ JARVIS responded but with error")
+            print("  ✗ Ironcliw responded but with error")
             return False
 
     except requests.exceptions.ConnectionError:
-        print("  ℹ  JARVIS not running (this is OK for unit tests)")
+        print("  ℹ  Ironcliw not running (this is OK for unit tests)")
         print()
-        print("To test with live JARVIS:")
-        print("  1. Start JARVIS: python backend/main.py")
+        print("To test with live Ironcliw:")
+        print("  1. Start Ironcliw: python backend/main.py")
         print("  2. Re-run this test script")
         print()
         return None  # Not a failure, just not running
     except Exception as e:
-        print(f"  ✗ Error checking JARVIS: {e}")
+        print(f"  ✗ Error checking Ironcliw: {e}")
         return False
 
 
@@ -410,7 +410,7 @@ async def check_file_locations():
 async def main():
     """Run all tests."""
     print("\n" + "="*80)
-    print("  JARVIS Feedback Learning & Command Safety - Live Test Suite")
+    print("  Ironcliw Feedback Learning & Command Safety - Live Test Suite")
     print("="*80)
 
     # Check files exist
@@ -470,7 +470,7 @@ async def main():
         print()
         print("Next steps:")
         print("  1. Run the full demo: python -m backend.examples.demo_feedback_and_safety")
-        print("  2. Start JARVIS and test with real terminal errors")
+        print("  2. Start Ironcliw and test with real terminal errors")
         print("  3. Check learned data: cat ~/.jarvis/learning/feedback.json")
     elif failed > 0:
         print()

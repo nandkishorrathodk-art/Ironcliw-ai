@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration test — Phase 12-20 Windows port validation
 Run: python test_integration.py
 """
@@ -19,7 +19,7 @@ def test(name, fn):
         FAIL.append(name)
         print(f"  FAIL  {name}: {e}")
 
-print("\n=== JARVIS Windows Integration Test — Phases 12-20 ===\n")
+print("\n=== Ironcliw Windows Integration Test — Phases 12-20 ===\n")
 
 # Phase 12 — Notifications
 def t_notification_bridge():

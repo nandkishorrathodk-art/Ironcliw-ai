@@ -1,5 +1,5 @@
-/**
- * Command-line interface for testing the JARVIS Command Classifier
+﻿/**
+ * Command-line interface for testing the Ironcliw Command Classifier
  */
 
 import Foundation
@@ -28,7 +28,7 @@ struct CommandClassifierCLI {
     
     // TODO: Implement this function to run the interactive mode
     static func runInteractiveMode(classifier: CommandClassifier) {
-        print("🤖 JARVIS Command Classifier - Interactive Mode")
+        print("🤖 Ironcliw Command Classifier - Interactive Mode")
         print("Type commands to see how they're classified. Type 'quit' to exit.")
         print("Type 'stats' to see learning statistics.")
         print("Type 'learn <command> <type>' to teach the classifier.")

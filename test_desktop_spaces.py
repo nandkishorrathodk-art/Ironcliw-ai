@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify desktop spaces query is working correctly
-Run this after JARVIS is fully started
+Run this after Ironcliw is fully started
 """
 
 import asyncio
@@ -9,7 +9,7 @@ import aiohttp
 import json
 
 async def test_desktop_spaces():
-    """Test the desktop spaces query through JARVIS API"""
+    """Test the desktop spaces query through Ironcliw API"""
 
     test_queries = [
         "What's happening across my desktop spaces?",
@@ -28,13 +28,13 @@ async def test_desktop_spaces():
         try:
             async with session.get(f"{base_url}/health") as resp:
                 if resp.status == 200:
-                    print("✓ JARVIS backend is ready")
+                    print("✓ Ironcliw backend is ready")
                 else:
-                    print("❌ JARVIS backend not ready")
+                    print("❌ Ironcliw backend not ready")
                     return
         except Exception as e:
-            print(f"❌ Cannot connect to JARVIS: {e}")
-            print("Make sure JARVIS is running (check jarvis_test.log)")
+            print(f"❌ Cannot connect to Ironcliw: {e}")
+            print("Make sure Ironcliw is running (check jarvis_test.log)")
             return
 
         # Test each query

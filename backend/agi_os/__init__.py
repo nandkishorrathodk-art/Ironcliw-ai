@@ -1,5 +1,5 @@
-"""
-JARVIS AGI OS - Autonomous General Intelligence Operating System
+﻿"""
+Ironcliw AGI OS - Autonomous General Intelligence Operating System
 
 This module provides the core AGI OS functionality:
 - Proactive, intelligent autonomous operation

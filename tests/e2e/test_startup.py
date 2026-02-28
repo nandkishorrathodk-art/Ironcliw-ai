@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the updated startup components
 """
@@ -89,7 +89,7 @@ def test_vision_system():
         return False
 
 def main():
-    print("🔍 JARVIS Startup Test Suite")
+    print("🔍 Ironcliw Startup Test Suite")
     print("=" * 50)
     
     results = []

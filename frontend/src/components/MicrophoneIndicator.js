@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import './MicrophoneIndicator.css';
 
 const MicrophoneIndicator = ({ isListening }) => {
@@ -32,7 +32,7 @@ const MicrophoneIndicator = ({ isListening }) => {
         </svg>
         <div className="listening-pulse"></div>
       </div>
-      <span className="mic-status">JARVIS is listening</span>
+      <span className="mic-status">Ironcliw is listening</span>
     </div>
   );
 };

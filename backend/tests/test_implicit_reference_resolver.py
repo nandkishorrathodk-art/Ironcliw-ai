@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Suite for Implicit Reference Resolver
 ==========================================
 
@@ -192,7 +192,7 @@ async def test_implicit_reference_resolution():
     print(f"✓ Confidence: {result['confidence']:.2f}")
     print(f"✓ Referent source: {result['referent'].get('source')}")
     print(f"✓ Referent type: {result['referent'].get('type')}")
-    print(f"\n🤖 JARVIS Response:\n{result['response']}\n")
+    print(f"\n🤖 Ironcliw Response:\n{result['response']}\n")
 
     success = (
         result['intent'] in ['explain', 'describe'] and
@@ -234,13 +234,13 @@ async def test_multi_turn_conversation():
     print("Turn 1:")
     print("User: 'what's the error?'")
     result1 = await resolver.resolve_query("what's the error?")
-    print(f"JARVIS: {result1['response'][:100]}...\n")
+    print(f"Ironcliw: {result1['response'][:100]}...\n")
 
     # Turn 2 - pronoun reference
     print("Turn 2:")
     print("User: 'how do I fix it?'")  # "it" should refer to the error from Turn 1
     result2 = await resolver.resolve_query("how do I fix it?")
-    print(f"JARVIS: {result2['response'][:100]}...\n")
+    print(f"Ironcliw: {result2['response'][:100]}...\n")
 
     # Verify conversation was tracked
     turns = resolver.conversational_context.get_recent_turns()

@@ -1,12 +1,12 @@
-# Contributing Guidelines
+﻿# Contributing Guidelines
 
-How to contribute to JARVIS AI Agent development.
+How to contribute to Ironcliw AI Agent development.
 
 ---
 
 ## Welcome Contributors!
 
-We appreciate your interest in contributing to JARVIS. This guide will help you get started.
+We appreciate your interest in contributing to Ironcliw. This guide will help you get started.
 
 ---
 
@@ -26,11 +26,11 @@ We appreciate your interest in contributing to JARVIS. This guide will help you 
 ```bash
 # Fork repository on GitHub
 # Then clone your fork
-git clone https://github.com/YOUR_USERNAME/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/YOUR_USERNAME/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Add upstream remote
-git remote add upstream https://github.com/derekjrussell/JARVIS-AI-Agent.git
+git remote add upstream https://github.com/derekjrussell/Ironcliw-AI-Agent.git
 ```
 
 ### 2. Create Branch
@@ -333,7 +333,7 @@ git push origin feature/your-feature-name
 Clear description of the bug
 
 ## Steps to Reproduce
-1. Start JARVIS
+1. Start Ironcliw
 2. Execute command "..."
 3. Observe error
 
@@ -346,7 +346,7 @@ What actually happens
 ## Environment
 - OS: macOS 13.5 (M1)
 - Python: 3.10.12
-- JARVIS: v17.4.0
+- Ironcliw: v17.4.0
 
 ## Logs
 ```
@@ -369,7 +369,7 @@ Paste relevant logs
 ### Local Testing
 
 ```bash
-# Start JARVIS in dev mode
+# Start Ironcliw in dev mode
 DEBUG=true python start_system.py --dev
 
 # Watch logs
@@ -421,7 +421,7 @@ git push origin main
 
 ---
 
-**Thank you for contributing to JARVIS!**
+**Thank you for contributing to Ironcliw!**
 
 ---
 

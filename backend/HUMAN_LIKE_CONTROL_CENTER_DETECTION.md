@@ -1,12 +1,12 @@
-# Human-Like Control Center Detection System
+﻿# Human-Like Control Center Detection System
 
 ## ✨ Overview
 
-JARVIS now accurately identifies and clicks the Control Center icon like a human would, distinguishing it from similar-looking icons (especially Siri) through multiple intelligent detection layers.
+Ironcliw now accurately identifies and clicks the Control Center icon like a human would, distinguishing it from similar-looking icons (especially Siri) through multiple intelligent detection layers.
 
 ## 🎯 Problem Solved
 
-**Previous Issue**: JARVIS was clicking Siri (colorful circular orb) instead of Control Center (monochrome overlapping rectangles)
+**Previous Issue**: Ironcliw was clicking Siri (colorful circular orb) instead of Control Center (monochrome overlapping rectangles)
 
 **Root Cause**: Claude Vision was detecting icons but couldn't reliably distinguish between visually similar menu bar icons
 
@@ -149,7 +149,7 @@ User says "connect to living room tv"
 ## 🔧 Technical Details
 
 ### File Modified
-`/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/display/vision_ui_navigator.py`
+`/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/display/vision_ui_navigator.py`
 
 ### Key Methods
 - `_analyze_icon_color()`: RGB to HSV color analysis
@@ -167,7 +167,7 @@ User says "connect to living room tv"
 
 ## ✅ Testing
 
-Say **"connect to living room tv"** and JARVIS will:
+Say **"connect to living room tv"** and Ironcliw will:
 
 1. Detect menu bar icons
 2. Identify Control Center (NOT Siri)
@@ -183,7 +183,7 @@ Say **"connect to living room tv"** and JARVIS will:
 
 ## 🎯 Result
 
-JARVIS now clicks Control Center with **human-like accuracy**, reliably distinguishing it from Siri and other similar icons through intelligent color analysis, position validation, and adaptive detection strategies.
+Ironcliw now clicks Control Center with **human-like accuracy**, reliably distinguishing it from Siri and other similar icons through intelligent color analysis, position validation, and adaptive detection strategies.
 
 ---
 

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS with the specific "Where is the Terminal?" query
-Simulating the actual JARVIS system flow
+Test Ironcliw with the specific "Where is the Terminal?" query
+Simulating the actual Ironcliw system flow
 """
 
 import asyncio
@@ -20,7 +20,7 @@ async def test_terminal_query():
     os.environ['VISION_MULTI_SPACE'] = 'true'
     
     try:
-        # Import the chatbot that JARVIS uses
+        # Import the chatbot that Ironcliw uses
         from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
         
         # Use the actual API key if available
@@ -37,7 +37,7 @@ async def test_terminal_query():
         test_query = "Where is the Terminal?"
         print(f"\nQuery: {test_query}")
         
-        # Analyze screen with vision (this is what JARVIS calls)
+        # Analyze screen with vision (this is what Ironcliw calls)
         try:
             response = await chatbot.analyze_screen_with_vision(test_query)
             print(f"\nResponse: {response}")

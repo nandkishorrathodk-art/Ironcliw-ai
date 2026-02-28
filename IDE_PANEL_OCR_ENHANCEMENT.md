@@ -1,14 +1,14 @@
-# 🔍 IDE Panel OCR Enhancement
+﻿# 🔍 IDE Panel OCR Enhancement
 
 ## Problem Identified
 
-**User's Observation:** "JARVIS should see the errors in the 'PROBLEMS' section based on the screenshot I've provided."
+**User's Observation:** "Ironcliw should see the errors in the 'PROBLEMS' section based on the screenshot I've provided."
 
-**Current Behavior:** JARVIS reads the code content in the editor but **does NOT read** the PROBLEMS/ERRORS panel at the bottom of VS Code where actual linting errors, warnings, and issues are displayed.
+**Current Behavior:** Ironcliw reads the code content in the editor but **does NOT read** the PROBLEMS/ERRORS panel at the bottom of VS Code where actual linting errors, warnings, and issues are displayed.
 
 **Example:**
 - **VS Code shows:** Problems panel with 3 errors, 5 warnings
-- **JARVIS reports:** "The code appears to be part of a diagnostic framework" (reading the code, not the Problems panel)
+- **Ironcliw reports:** "The code appears to be part of a diagnostic framework" (reading the code, not the Problems panel)
 
 ## Root Cause
 
@@ -181,10 +181,10 @@ Sir, analyzing Space 5 (VS Code), I can see the PROBLEMS panel showing:
 
 ## Action Required
 
-**Restart JARVIS backend:**
+**Restart Ironcliw backend:**
 ```bash
 # In backend terminal (Ctrl+C)
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 
@@ -193,13 +193,13 @@ python3 start_system.py
 "What errors do you see in Space 5?"
 ```
 
-**Expected:** JARVIS should now read and report the errors shown in the PROBLEMS panel at the bottom of VS Code, not just the code content!
+**Expected:** Ironcliw should now read and report the errors shown in the PROBLEMS panel at the bottom of VS Code, not just the code content!
 
 ---
 
 ## Additional Notes
 
-This enhancement makes JARVIS **IDE-aware** - it now understands that IDEs display errors in dedicated UI panels, not just in the code itself. This is a critical improvement for error detection and debugging workflows.
+This enhancement makes Ironcliw **IDE-aware** - it now understands that IDEs display errors in dedicated UI panels, not just in the code itself. This is a critical improvement for error detection and debugging workflows.
 
 The OCR will now prioritize:
 1. **Problems/Errors panels** (most accurate, already parsed)

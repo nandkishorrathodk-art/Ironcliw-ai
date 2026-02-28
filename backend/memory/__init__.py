@@ -1,11 +1,11 @@
-"""Memory management module for the backend application.
+﻿"""Memory management module for the backend application.
 
 This module provides memory-related functionality and utilities for the backend
 system. It serves as the entry point for memory management components including
 caching, data storage, and memory optimization features.
 
 Components:
-- ExperienceRecorder: Black Box for JARVIS Data Flywheel (RLHF training)
+- ExperienceRecorder: Black Box for Ironcliw Data Flywheel (RLHF training)
 - Experience Types: Data models for interaction recording
 
 The module exposes key memory management classes and functions that can be
@@ -34,7 +34,7 @@ from .experience_recorder import (
 )
 
 __version__ = "2.0.0"
-__author__ = "JARVIS v5.0 Data Flywheel"
+__author__ = "Ironcliw v5.0 Data Flywheel"
 
 # Package-level exports
 __all__ = [

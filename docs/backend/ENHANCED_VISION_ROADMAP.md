@@ -1,8 +1,8 @@
-# Enhanced Vision System - Implementation Roadmap
+﻿# Enhanced Vision System - Implementation Roadmap
 
 ## Executive Summary
 
-This roadmap outlines the revolutionary approach to JARVIS's vision capabilities by combining local screen capture with Claude's advanced vision AI. Rather than trying to bypass macOS permissions (impossible), we maximize the value of those permissions by adding superhuman intelligence to what JARVIS sees.
+This roadmap outlines the revolutionary approach to Ironcliw's vision capabilities by combining local screen capture with Claude's advanced vision AI. Rather than trying to bypass macOS permissions (impossible), we maximize the value of those permissions by adding superhuman intelligence to what Ironcliw sees.
 
 ## The Revolutionary Insight
 
@@ -57,7 +57,7 @@ Now: "What's wrong with my code?" or "Help me fix this issue"
    ```python
    - Modify screen_capture_fallback.py
    - Update vision_api.py endpoints
-   - Add to JARVIS voice commands
+   - Add to Ironcliw voice commands
    ```
 
 ### Phase 2: Claude Vision Integration (Week 3-4)
@@ -229,7 +229,7 @@ class PermissionEnhancer:
             "🛡️ Detect issues before they cause problems"
         ]
         
-        print("JARVIS Enhanced Vision - One Permission, Infinite Intelligence")
+        print("Ironcliw Enhanced Vision - One Permission, Infinite Intelligence")
         for benefit in benefits:
             print(f"  {benefit}")
     
@@ -272,16 +272,16 @@ class PermissionEnhancer:
 
 ### Demo Scenarios
 1. **The Debugging Assistant**
-   - "JARVIS, what's causing this error?"
-   - JARVIS explains the error and suggests fixes
+   - "Ironcliw, what's causing this error?"
+   - Ironcliw explains the error and suggests fixes
 
 2. **The Form Helper**
-   - "JARVIS, help me fill out this form"
-   - JARVIS guides through each field
+   - "Ironcliw, help me fill out this form"
+   - Ironcliw guides through each field
 
 3. **The Update Detective**
-   - "JARVIS, do I have any updates?"
-   - JARVIS finds all updates across all apps
+   - "Ironcliw, do I have any updates?"
+   - Ironcliw finds all updates across all apps
 
 ## Security and Privacy
 
@@ -299,7 +299,7 @@ class PermissionEnhancer:
 
 ## Conclusion
 
-This approach transforms JARVIS from a screen capture tool to an intelligent visual assistant. By combining the necessity of macOS permissions with Claude's advanced vision capabilities, we create a system that's not just compliant with security requirements but actually provides MORE value because of them.
+This approach transforms Ironcliw from a screen capture tool to an intelligent visual assistant. By combining the necessity of macOS permissions with Claude's advanced vision capabilities, we create a system that's not just compliant with security requirements but actually provides MORE value because of them.
 
 The key insight: **We don't need to bypass permissions when we can make them incredibly valuable.**
 

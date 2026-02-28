@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS's ability to connect to Living Room TV with the drag fix
+Test Ironcliw's ability to connect to Living Room TV with the drag fix
 """
 
 import asyncio
@@ -12,9 +12,9 @@ import time
 sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
 async def test_jarvis_tv_command():
-    """Test JARVIS processing 'connect to living room tv' command"""
+    """Test Ironcliw processing 'connect to living room tv' command"""
     print("\n" + "=" * 80)
-    print("TESTING JARVIS TV CONNECTION WITH DRAG FIX")
+    print("TESTING Ironcliw TV CONNECTION WITH DRAG FIX")
     print("=" * 80)
 
     # Import unified command processor
@@ -37,7 +37,7 @@ async def test_jarvis_tv_command():
     print(f"   Command Type: {result.get('command_type', 'unknown')}")
 
     if result.get('success'):
-        print("\n✅ JARVIS successfully processed the TV connection command!")
+        print("\n✅ Ironcliw successfully processed the TV connection command!")
         print("   The drag fix is working correctly.")
     else:
         print("\n❌ Command failed")
@@ -82,15 +82,15 @@ async def test_clicker_factory():
 async def main():
     """Run all tests"""
     print("\n" + "=" * 80)
-    print("JARVIS TV CONNECTION TEST SUITE")
+    print("Ironcliw TV CONNECTION TEST SUITE")
     print("=" * 80)
     print("\nThis test will:")
     print("1. Check which clicker is being used")
-    print("2. Test JARVIS processing 'connect to living room tv'")
+    print("2. Test Ironcliw processing 'connect to living room tv'")
 
     try:
-        # Wait for JARVIS to be ready
-        print("\nWaiting for JARVIS to initialize...")
+        # Wait for Ironcliw to be ready
+        print("\nWaiting for Ironcliw to initialize...")
         await asyncio.sleep(3)
 
         # Test 1: Check clicker
@@ -107,7 +107,7 @@ async def main():
         print(f"Command Processing: {'✅ PASSED' if command_success else '❌ FAILED'}")
 
         if command_success:
-            print("\n🎉 JARVIS is correctly handling TV connections with drag motion!")
+            print("\n🎉 Ironcliw is correctly handling TV connections with drag motion!")
         else:
             print("\n⚠️ There may still be issues with TV connection.")
             print("Check /tmp/jarvis.log for details.")

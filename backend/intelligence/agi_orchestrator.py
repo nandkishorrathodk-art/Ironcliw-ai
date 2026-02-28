@@ -1,4 +1,4 @@
-"""
+﻿"""
 AGI Orchestrator v100.0 - Unified Artificial General Intelligence Coordinator
 ==============================================================================
 
@@ -50,7 +50,7 @@ Architecture:
     │  └─────────────────────────────────────────────────────────────────────┘│
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations

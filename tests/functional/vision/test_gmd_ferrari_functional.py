@@ -1,4 +1,4 @@
-"""
+﻿"""
 Functional Tests — Ghost Mode Display (GMD) + Ferrari Engine
 
 Tests individual components in isolation:
@@ -64,7 +64,7 @@ class TestBounceCountExtraction:
         ocr_text = (
             "STATUS: VERTICAL\n"
             "BOUNCE COUNT: 17\n"
-            "JARVIS Stereoscopic Vision Test"
+            "Ironcliw Stereoscopic Vision Test"
         )
         assert extract_bounce_count(ocr_text) == 17
 
@@ -163,7 +163,7 @@ class TestBounceTestBrowser:
         assert "mode === 'horizontal'" in content
 
     def test_html_bounce_counter_element(self, bouncing_ball_html_path):
-        """HTML has the bounce counter element JARVIS needs to detect."""
+        """HTML has the bounce counter element Ironcliw needs to detect."""
         content = bouncing_ball_html_path.read_text()
         assert 'id="counter"' in content
         # Verify the counter text format matches our OCR pattern

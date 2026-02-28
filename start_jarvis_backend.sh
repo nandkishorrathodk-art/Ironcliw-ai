@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-# JARVIS Backend Startup Script
+# Ironcliw Backend Startup Script
 # Ensures all services are properly initialized
 
-echo "🤖 Starting JARVIS Backend Services..."
+echo "🤖 Starting Ironcliw Backend Services..."
 echo "========================================"
 
 # Navigate to backend directory
@@ -46,11 +46,11 @@ fi
 
 # Start the backend
 echo ""
-echo "🚀 Starting JARVIS Backend on port 8000..."
+echo "🚀 Starting Ironcliw Backend on port 8000..."
 echo "========================================"
 echo ""
 echo "Backend will include:"
-echo "  ✅ JARVIS Voice API"
+echo "  ✅ Ironcliw Voice API"
 echo "  ✅ Vision WebSocket (/vision/ws/vision)"
 echo "  ✅ Autonomy Handler"
 echo "  ✅ Notification Intelligence"

@@ -1,5 +1,5 @@
-"""
-JARVIS High-Performance Data Classes
+﻿"""
+Ironcliw High-Performance Data Classes
 =====================================
 
 Memory-optimized data structures using __slots__ for high-frequency operations.

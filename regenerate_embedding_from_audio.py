@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Regenerate embedding directly from stored audio samples."""
 
 import asyncio
@@ -124,7 +124,7 @@ async def regenerate_embedding():
 
     print("\n🎯 NEXT STEPS:")
     print("-" * 40)
-    print("1. Restart JARVIS to load the new embedding:")
+    print("1. Restart Ironcliw to load the new embedding:")
     print("   python start_system.py --restart")
     print("\n2. Test voice unlock:")
     print("   Say: 'unlock my screen'")

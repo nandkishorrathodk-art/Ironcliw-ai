@@ -1,5 +1,5 @@
-"""
-JARVIS Parallel Initializer v3.0.0
+﻿"""
+Ironcliw Parallel Initializer v3.0.0
 ==================================
 
 Runs ALL heavy initialization as background tasks AFTER uvicorn starts serving.
@@ -160,7 +160,7 @@ logger = logging.getLogger(__name__)
 # v3.0: Path for persisting adaptive threshold history across restarts
 _THRESHOLD_HISTORY_PATH = Path(
     os.environ.get(
-        "JARVIS_THRESHOLD_HISTORY",
+        "Ironcliw_THRESHOLD_HISTORY",
         str(Path.home() / ".jarvis" / "init_threshold_history.json"),
     )
 )
@@ -261,7 +261,7 @@ class AdaptiveThresholdCalculator:
             Adaptive threshold in seconds
         """
         # Allow per-component env var override (always respected)
-        env_key = f"JARVIS_STALE_THRESHOLD_{name.upper()}"
+        env_key = f"Ironcliw_STALE_THRESHOLD_{name.upper()}"
         env_val = os.environ.get(env_key)
         if env_val:
             try:
@@ -454,7 +454,7 @@ class ComponentInit:
 
 class ParallelInitializer:
     """
-    Manages parallel background initialization of JARVIS components.
+    Manages parallel background initialization of Ironcliw components.
 
     The key insight is that uvicorn should start serving immediately,
     and all heavy initialization should run in background tasks.
@@ -536,7 +536,7 @@ class ParallelInitializer:
 
     def _register_components(self):
         """
-        Register all JARVIS components with priorities and circuit breaker settings.
+        Register all Ironcliw components with priorities and circuit breaker settings.
 
         v2.0 Enhancements:
         - is_interactive: Components needed for user interaction (faster stale threshold)
@@ -545,14 +545,14 @@ class ParallelInitializer:
         """
         # Cost-safe gating for cloud/spot features (explicit opt-in; no hardcoded cloud usage)
         enable_spot_vm = (
-            os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true"
+            os.getenv("Ironcliw_SPOT_VM_ENABLED", "false").lower() == "true"
             or os.getenv("GCP_VM_ENABLED", "false").lower() == "true"
         )
         enable_cloud_ml = bool(
-            (os.getenv("JARVIS_CLOUD_ML_ENDPOINT", "").strip())
-            or (os.getenv("JARVIS_CLOUD_ML_ENDPOINTS", "").strip())
+            (os.getenv("Ironcliw_CLOUD_ML_ENDPOINT", "").strip())
+            or (os.getenv("Ironcliw_CLOUD_ML_ENDPOINTS", "").strip())
         )
-        enable_vbi_prewarm = os.getenv("JARVIS_VBI_PREWARM_ENABLED", "false").lower() == "true"
+        enable_vbi_prewarm = os.getenv("Ironcliw_VBI_PREWARM_ENABLED", "false").lower() == "true"
 
         # Phase 1: Critical infrastructure (truly parallel - no dependencies!)
         # Config is instant, don't need circuit breaker
@@ -612,7 +612,7 @@ class ParallelInitializer:
                             soft_dependencies=["learning_database"])
         # Voice unlock API is INTERACTIVE - needed for unlock commands
         self._add_component("voice_unlock_api", priority=30, is_interactive=True, stale_threshold=20.0)
-        # JARVIS voice API is INTERACTIVE - needed for voice commands
+        # Ironcliw voice API is INTERACTIVE - needed for voice commands
         self._add_component("jarvis_voice_api", priority=30, is_interactive=True, stale_threshold=20.0)
         # WebSocket is CRITICAL for interactive use - fastest threshold
         self._add_component("unified_websocket", priority=30, is_interactive=True, stale_threshold=15.0)
@@ -670,7 +670,7 @@ class ParallelInitializer:
         """
         self.started_at = time.time()
         logger.info("=" * 60)
-        logger.info("JARVIS Parallel Startup v2.0.0")
+        logger.info("Ironcliw Parallel Startup v2.0.0")
         logger.info("=" * 60)
 
         # ============== TRINITY INTEGRATION (v3.0) ==============
@@ -679,7 +679,7 @@ class ParallelInitializer:
         if TRINITY_AVAILABLE:
             try:
                 trinity_manager = get_trinity_manager()
-                await trinity_manager.initialize(TrinityComponent.JARVIS_BODY)
+                await trinity_manager.initialize(TrinityComponent.Ironcliw_BODY)
                 self.app.state.trinity_manager = trinity_manager
                 logger.info("✅ Trinity Unified Loop Manager initialized")
             except Exception as e:
@@ -784,7 +784,19 @@ class ParallelInitializer:
         if OOM_PREVENTION_AVAILABLE:
             try:
                 # Estimate total heavy component memory
-                heavy_components = ["neural_mesh", "speaker_verification", "jarvis_voice_api"]
+                # In auth bypass mode, voice models (speaker_verification, jarvis_voice_api)
+                # are skipped entirely — exclude them from the RAM estimate so the OOM bridge
+                # doesn't force degraded/sequential mode unnecessarily.
+                _pi_auth_bypass = (
+                    os.getenv("Ironcliw_AUTH_MODE", "none").strip().lower() in ("none", "")
+                    or os.getenv("Ironcliw_VOICE_BIOMETRIC_ENABLED", "true").lower()
+                    in ("false", "0", "no")
+                )
+                _pi_neural_mesh = os.getenv("Ironcliw_NEURAL_MESH_ENABLED", "true").lower() not in ("false", "0", "no")
+                if _pi_auth_bypass:
+                    heavy_components = ["neural_mesh"] if _pi_neural_mesh else []
+                else:
+                    heavy_components = ["neural_mesh", "speaker_verification", "jarvis_voice_api"] if _pi_neural_mesh else ["speaker_verification", "jarvis_voice_api"]
                 total_estimated_mb = sum(
                     HEAVY_COMPONENT_MEMORY_ESTIMATES.get(c, 500)
                     for c in heavy_components
@@ -992,7 +1004,7 @@ class ParallelInitializer:
             success = not failed_critical
             await broadcaster.broadcast_complete(
                 success=success,
-                message="JARVIS Online" if success else f"JARVIS Online (degraded: {', '.join(failed_critical)})"
+                message="Ironcliw Online" if success else f"Ironcliw Online (degraded: {', '.join(failed_critical)})"
             )
 
             # v3.2: Signal DMS that parallel_init is done managing
@@ -1335,7 +1347,7 @@ class ParallelInitializer:
         """
         v2.0: Check if interactive components are ready.
 
-        Interactive readiness means the user can start interacting with JARVIS,
+        Interactive readiness means the user can start interacting with Ironcliw,
         even if background components (ML models, neural mesh) are still loading.
 
         Interactive components: unified_websocket, jarvis_voice_api, voice_unlock_api
@@ -1376,7 +1388,7 @@ class ParallelInitializer:
                     broadcaster = get_startup_broadcaster()
                     await broadcaster.broadcast_component_complete(
                         component="interactive_ready",
-                        message="JARVIS is ready for interaction!",
+                        message="Ironcliw is ready for interaction!",
                         duration_ms=None
                     )
 
@@ -1446,7 +1458,7 @@ class ParallelInitializer:
         if name == "cloud_sql_proxy":
             try:
                 _cloudsql_timeout_cap = float(
-                    os.environ.get("JARVIS_CLOUDSQL_STARTUP_BLOCKING_TIMEOUT", "45.0")
+                    os.environ.get("Ironcliw_CLOUDSQL_STARTUP_BLOCKING_TIMEOUT", "45.0")
                 )
             except (TypeError, ValueError):
                 _cloudsql_timeout_cap = 45.0
@@ -1759,19 +1771,19 @@ class ParallelInitializer:
         can remain degraded-but-responsive while infrastructure heals.
         """
         initial_delay = float(
-            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_INITIAL_DELAY", "5.0")
+            os.environ.get("Ironcliw_CLOUDSQL_RECOVERY_INITIAL_DELAY", "5.0")
         )
         max_attempts = int(
-            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_ATTEMPTS", "3")
+            os.environ.get("Ironcliw_CLOUDSQL_RECOVERY_ATTEMPTS", "3")
         )
         attempt_timeout = float(
-            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_ATTEMPT_TIMEOUT", "120.0")
+            os.environ.get("Ironcliw_CLOUDSQL_RECOVERY_ATTEMPT_TIMEOUT", "120.0")
         )
         base_backoff = float(
-            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_BACKOFF", "20.0")
+            os.environ.get("Ironcliw_CLOUDSQL_RECOVERY_BACKOFF", "20.0")
         )
         max_backoff = float(
-            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_MAX_BACKOFF", "120.0")
+            os.environ.get("Ironcliw_CLOUDSQL_RECOVERY_MAX_BACKOFF", "120.0")
         )
 
         try:
@@ -2819,12 +2831,12 @@ class ParallelInitializer:
                 return
 
             # Startup policy: fast mode by default for deterministic readiness.
-            fast_mode = os.getenv("JARVIS_LEARNING_DB_FAST_MODE", "true").lower() in (
+            fast_mode = os.getenv("Ironcliw_LEARNING_DB_FAST_MODE", "true").lower() in (
                 "1",
                 "true",
                 "yes",
             )
-            if os.getenv("JARVIS_LEARNING_DB_FORCE_STANDARD", "false").lower() in (
+            if os.getenv("Ironcliw_LEARNING_DB_FORCE_STANDARD", "false").lower() in (
                 "1",
                 "true",
                 "yes",
@@ -2930,7 +2942,7 @@ class ParallelInitializer:
             )
 
             # Stage 1: Memory analysis (fast — just reads psutil stats)
-            _mode_timeout = float(os.environ.get("JARVIS_MEMORY_MODE_TIMEOUT", "10.0"))
+            _mode_timeout = float(os.environ.get("Ironcliw_MEMORY_MODE_TIMEOUT", "10.0"))
             startup_decision = await asyncio.wait_for(
                 determine_startup_mode(), timeout=_mode_timeout,
             )
@@ -2967,7 +2979,7 @@ class ParallelInitializer:
 
                 if not _skip_cloud:
                     _cloud_timeout = float(
-                        os.environ.get("JARVIS_CLOUD_ML_ACTIVATION_TIMEOUT", "45.0")
+                        os.environ.get("Ironcliw_CLOUD_ML_ACTIVATION_TIMEOUT", "45.0")
                     )
                     try:
                         cloud_result = await asyncio.wait_for(
@@ -3437,7 +3449,7 @@ class ParallelInitializer:
             logger.warning(f"Voice unlock API failed: {e}")
 
     async def _init_jarvis_voice_api(self):
-        """Initialize JARVIS voice API and populate global components dict"""
+        """Initialize Ironcliw voice API and populate global components dict"""
         try:
             # Import the global components dict from main
             import main
@@ -3470,7 +3482,7 @@ class ParallelInitializer:
                     voice["jarvis_api"] = jarvis_api
                     voice["jarvis_available"] = True
 
-                    # Mount the JARVIS voice router if not already mounted
+                    # Mount the Ironcliw voice router if not already mounted
                     existing = any(
                         hasattr(r, 'path') and '/voice/jarvis' in str(r.path)
                         for r in self.app.routes
@@ -3479,25 +3491,25 @@ class ParallelInitializer:
                         self.app.include_router(
                             jarvis_voice_router, prefix="/voice/jarvis", tags=["jarvis"]
                         )
-                        logger.info("   JARVIS voice router mounted at /voice/jarvis")
+                        logger.info("   Ironcliw voice router mounted at /voice/jarvis")
                 else:
                     voice["jarvis_available"] = False
-                    logger.warning("JARVIS Voice API lazy init returned None")
+                    logger.warning("Ironcliw Voice API lazy init returned None")
 
             except ImportError as e:
                 voice["jarvis_available"] = False
-                logger.debug(f"JARVIS voice API import failed: {e}")
+                logger.debug(f"Ironcliw voice API import failed: {e}")
 
             # Populate the global components dict
             main.components["voice"] = voice
 
             if voice.get("jarvis_available"):
-                logger.info("   JARVIS voice API ready (jarvis_available=True)")
+                logger.info("   Ironcliw voice API ready (jarvis_available=True)")
             else:
-                logger.warning("   JARVIS voice API loaded but jarvis_available=False")
+                logger.warning("   Ironcliw voice API loaded but jarvis_available=False")
 
         except Exception as e:
-            logger.warning(f"JARVIS voice API failed: {e}")
+            logger.warning(f"Ironcliw voice API failed: {e}")
 
     async def _init_unified_websocket(self):
         """Initialize unified WebSocket for frontend communication"""
@@ -3696,7 +3708,7 @@ class ParallelInitializer:
 
     async def _init_agentic_system(self):
         """
-        Initialize the JARVIS Agentic System.
+        Initialize the Ironcliw Agentic System.
 
         This enables autonomous Computer Use capabilities by integrating:
         - Computer Use Tool (vision-based UI automation)
@@ -3704,7 +3716,7 @@ class ParallelInitializer:
         - Neural Mesh agent registration (multi-agent coordination)
         - Agentic configuration (dynamic, zero-hardcoding)
 
-        The agentic system allows JARVIS to autonomously execute
+        The agentic system allows Ironcliw to autonomously execute
         multi-step tasks using vision-based computer control.
         """
         try:
@@ -3876,9 +3888,9 @@ class ParallelInitializer:
 
         # Generate status message
         if is_complete:
-            message = "JARVIS startup complete!"
+            message = "Ironcliw startup complete!"
         elif is_interactive:
-            message = f"JARVIS ready for interaction! ({len(pending_components)} components still loading)"
+            message = f"Ironcliw ready for interaction! ({len(pending_components)} components still loading)"
         elif failed_components:
             message = f"Startup in progress ({len(failed_components)} failures)"
         elif stale_components:

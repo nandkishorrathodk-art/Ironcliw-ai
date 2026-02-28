@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Unified Multi-Agent Intelligence Framework (v8.0 Hyper-Speed)
+﻿"""
+Ironcliw Neural Mesh - Unified Multi-Agent Intelligence Framework (v8.0 Hyper-Speed)
 
 This module provides the core infrastructure for transforming 60+ isolated agents
 into a cohesive, collaborative AI ecosystem with:
@@ -9,7 +9,7 @@ into a cohesive, collaborative AI ecosystem with:
 - Agent Registry: Service discovery and health monitoring
 - Multi-Agent Orchestrator: Workflow coordination and task decomposition
 - Base Agent: Unified interface for all agents
-- JARVIS Bridge: Auto-discovery and integration of all JARVIS systems
+- Ironcliw Bridge: Auto-discovery and integration of all Ironcliw systems
 
 v8.0 HYPER-SPEED: All imports are JIT-loaded on first access, reducing
 module import time from 500ms+ to <10ms.
@@ -58,11 +58,11 @@ if TYPE_CHECKING:
     from .base.base_neural_mesh_agent import BaseNeuralMeshAgent
     from .neural_mesh_coordinator import NeuralMeshCoordinator
     from .config import NeuralMeshConfig
-    from .jarvis_bridge import JARVISNeuralMeshBridge, AgentDiscoveryConfig, SystemCategory
+    from .jarvis_bridge import IroncliwNeuralMeshBridge, AgentDiscoveryConfig, SystemCategory
 
 
 __version__ = "2.1.0"  # Crew system added + v8.0 Hyper-Speed
-__author__ = "JARVIS AI System"
+__author__ = "Ironcliw AI System"
 
 # =============================================================================
 # HYPER-SPEED LAZY LOADING SYSTEM v8.0
@@ -100,8 +100,8 @@ _lazy_modules = {
     "start_neural_mesh": (".neural_mesh_coordinator", "start_neural_mesh"),
     "stop_neural_mesh": (".neural_mesh_coordinator", "stop_neural_mesh"),
 
-    # JARVIS Bridge (heavy - loads many systems)
-    "JARVISNeuralMeshBridge": (".jarvis_bridge", "JARVISNeuralMeshBridge"),
+    # Ironcliw Bridge (heavy - loads many systems)
+    "IroncliwNeuralMeshBridge": (".jarvis_bridge", "IroncliwNeuralMeshBridge"),
     "AgentDiscoveryConfig": (".jarvis_bridge", "AgentDiscoveryConfig"),
     "SystemCategory": (".jarvis_bridge", "SystemCategory"),
     "get_jarvis_bridge": (".jarvis_bridge", "get_jarvis_bridge"),
@@ -169,8 +169,8 @@ __all__ = [
     "get_neural_mesh",
     "start_neural_mesh",
     "stop_neural_mesh",
-    # JARVIS Bridge
-    "JARVISNeuralMeshBridge",
+    # Ironcliw Bridge
+    "IroncliwNeuralMeshBridge",
     "AgentDiscoveryConfig",
     "SystemCategory",
     "get_jarvis_bridge",

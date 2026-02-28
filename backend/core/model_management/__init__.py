@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Model Management System v1.0
 =====================================
 
-Enterprise-grade model management for the JARVIS Trinity ecosystem.
-Handles all aspects of model lifecycle across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade model management for the Ironcliw Trinity ecosystem.
+Handles all aspects of model lifecycle across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 7 critical model management patterns:

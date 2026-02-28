@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Unified Orchestrator v86.0 - Production-Grade Cross-Repo Integration.
 ===============================================================================
 
 The SINGLE POINT OF TRUTH for Trinity integration - a battle-hardened,
-production-ready orchestrator that connects JARVIS Body, Prime, and Reactor-Core.
+production-ready orchestrator that connects Ironcliw Body, Prime, and Reactor-Core.
 
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  v86.0 STARTUP PERFORMANCE ENHANCEMENTS (Solving Timeout Issues)             ║
@@ -36,7 +36,7 @@ v86.0 Startup Timeout Fix:
               ✅ Fast-fail circuit breakers (5s detection)
 
     Environment Variables (NEW):
-    - JARVIS_PRIME_COMPONENT_TIMEOUT=600.0   # v150.0: J-Prime timeout (was 120.0)
+    - Ironcliw_PRIME_COMPONENT_TIMEOUT=600.0   # v150.0: J-Prime timeout (was 120.0)
     - REACTOR_CORE_COMPONENT_TIMEOUT=90.0    # Individual Reactor timeout
     - SUPERVISOR_STARTUP_TIMEOUT=600.0       # Global safety net
 
@@ -73,7 +73,7 @@ Usage:
         # Graceful shutdown with state preservation
         await orchestrator.stop()
 
-Author: JARVIS Trinity v86.0 - Startup Performance Optimization
+Author: Ironcliw Trinity v86.0 - Startup Performance Optimization
 """
 
 from __future__ import annotations
@@ -191,9 +191,9 @@ class ConfigRegistry:
         "TRINITY_THROTTLE_RATE_LIMIT": 100.0,
 
         # Component Paths (auto-detected if not set)
-        "JARVIS_PRIME_REPO_PATH": "",
+        "Ironcliw_PRIME_REPO_PATH": "",
         "REACTOR_CORE_REPO_PATH": "",
-        "JARVIS_PRIME_ENABLED": True,
+        "Ironcliw_PRIME_ENABLED": True,
         "REACTOR_CORE_ENABLED": True,
 
         # v95.0: Component Registration Verification (CRITICAL FIX)
@@ -326,14 +326,14 @@ class IntelligentRepoDiscovery:
 
     # Environment variable names for each repo
     ENV_VARS: Final[Dict[str, str]] = {
-        "jarvis": "JARVIS_REPO_PATH",
-        "jarvis_prime": "JARVIS_PRIME_PATH",      # Match existing env var convention
+        "jarvis": "Ironcliw_REPO_PATH",
+        "jarvis_prime": "Ironcliw_PRIME_PATH",      # Match existing env var convention
         "reactor_core": "REACTOR_CORE_PATH",       # Match existing env var convention
     }
 
     # Standard directory names for each repo
     REPO_NAMES: Final[Dict[str, List[str]]] = {
-        "jarvis": ["JARVIS-AI-Agent", "jarvis-ai-agent", "jarvis", "JARVIS"],
+        "jarvis": ["Ironcliw-AI-Agent", "jarvis-ai-agent", "jarvis", "Ironcliw"],
         "jarvis_prime": ["jarvis-prime", "jarvis_prime", "j-prime", "jprime"],
         "reactor_core": ["reactor-core", "reactor_core", "reactorcore"],
     }
@@ -2962,7 +2962,7 @@ class UnifiedStateCoordinator:
         # State directories (env-driven)
         config = get_config()
         state_dir = Path(os.path.expanduser(
-            os.getenv("JARVIS_STATE_DIR", "~/.jarvis/state")
+            os.getenv("Ironcliw_STATE_DIR", "~/.jarvis/state")
         ))
         state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2982,12 +2982,12 @@ class UnifiedStateCoordinator:
 
         # State cache with TTL
         self._state_cache: Optional[Dict[str, Any]] = None
-        self._cache_ttl = float(os.getenv("JARVIS_STATE_CACHE_TTL", "2.0"))
+        self._cache_ttl = float(os.getenv("Ironcliw_STATE_CACHE_TTL", "2.0"))
         self._last_cache_time = 0.0
 
         # Stale detection thresholds (env-driven)
-        self._stale_threshold = float(os.getenv("JARVIS_STATE_STALE_THRESHOLD", "300.0"))
-        self._heartbeat_interval = float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "10.0"))
+        self._stale_threshold = float(os.getenv("Ironcliw_STATE_STALE_THRESHOLD", "300.0"))
+        self._heartbeat_interval = float(os.getenv("Ironcliw_HEARTBEAT_INTERVAL", "10.0"))
 
         # Heartbeat tasks
         self._heartbeat_tasks: Dict[str, asyncio.Task] = {}
@@ -3002,17 +3002,17 @@ class UnifiedStateCoordinator:
         self._circuit_failure_count = 0
         self._circuit_last_failure_time = 0.0
         self._circuit_failure_threshold = int(
-            os.getenv("JARVIS_STATE_CIRCUIT_FAILURE_THRESHOLD", "5")
+            os.getenv("Ironcliw_STATE_CIRCUIT_FAILURE_THRESHOLD", "5")
         )
         self._circuit_recovery_timeout = float(
-            os.getenv("JARVIS_STATE_CIRCUIT_RECOVERY_TIMEOUT", "30.0")
+            os.getenv("Ironcliw_STATE_CIRCUIT_RECOVERY_TIMEOUT", "30.0")
         )
 
         # ═══════════════════════════════════════════════════════════════════════
         # v86.0: Adaptive timeout tracking
         # ═══════════════════════════════════════════════════════════════════════
         self._operation_history: Dict[str, List[float]] = {}
-        self._timeout_multiplier = float(os.getenv("JARVIS_TIMEOUT_MULTIPLIER", "1.5"))
+        self._timeout_multiplier = float(os.getenv("Ironcliw_TIMEOUT_MULTIPLIER", "1.5"))
 
         # ═══════════════════════════════════════════════════════════════════════
         # v86.0: Event subscribers for event-driven coordination
@@ -3031,7 +3031,7 @@ class UnifiedStateCoordinator:
         self._advanced_coord: Optional["TrinityAdvancedCoordinator"] = None
         self._advanced_coord_lock = asyncio.Lock()
         self._enable_advanced_features = os.getenv(
-            "JARVIS_ENABLE_ADVANCED_COORD", "true"
+            "Ironcliw_ENABLE_ADVANCED_COORD", "true"
         ).lower() == "true"
 
         # v87.0: Process group isolation
@@ -3048,7 +3048,7 @@ class UnifiedStateCoordinator:
         self._ultra_coord: Optional["TrinityUltraCoordinator"] = None
         self._ultra_coord_lock = asyncio.Lock()
         self._enable_ultra_features = os.getenv(
-            "JARVIS_ENABLE_ULTRA_COORD", "true"
+            "Ironcliw_ENABLE_ULTRA_COORD", "true"
         ).lower() == "true"
 
         # ═══════════════════════════════════════════════════════════════════════
@@ -3058,13 +3058,13 @@ class UnifiedStateCoordinator:
         self._stale_pid_cleanup_attempts: Dict[int, int] = {}
         self._pre_startup_cleanup_done: bool = False
         self._max_cleanup_attempts_per_pid: int = int(
-            os.getenv("JARVIS_MAX_CLEANUP_ATTEMPTS", "3")
+            os.getenv("Ironcliw_MAX_CLEANUP_ATTEMPTS", "3")
         )
 
         # v93.0: Startup grace period for state reconciliation
         self._startup_time = time.time()
         self._startup_grace_period = float(
-            os.getenv("JARVIS_STARTUP_GRACE_PERIOD", "10.0")
+            os.getenv("Ironcliw_STARTUP_GRACE_PERIOD", "10.0")
         )
 
         # v92.0: Mark as initialized (singleton pattern)
@@ -3543,7 +3543,7 @@ class UnifiedStateCoordinator:
         # Generate recommendations
         if "jprime" in self._failed_components:
             status["recommendations"].append(
-                "J-Prime unavailable - check JARVIS_PRIME_URL or start jarvis-prime service"
+                "J-Prime unavailable - check Ironcliw_PRIME_URL or start jarvis-prime service"
             )
         if "reactor" in self._failed_components:
             status["recommendations"].append(
@@ -3596,7 +3596,7 @@ class UnifiedStateCoordinator:
         Args:
             entry_point: "run_supervisor" or "start_system"
             component: Component name ("jarvis", "trinity", etc.)
-            timeout: Max time to wait (env: JARVIS_OWNERSHIP_TIMEOUT)
+            timeout: Max time to wait (env: Ironcliw_OWNERSHIP_TIMEOUT)
             force: Force acquire even if owned (for recovery)
 
         Returns:
@@ -3648,7 +3648,7 @@ class UnifiedStateCoordinator:
                 # Continue without advanced features if check fails
 
         # Use adaptive timeout if available
-        default_timeout = float(os.getenv("JARVIS_OWNERSHIP_TIMEOUT", "30.0"))
+        default_timeout = float(os.getenv("Ironcliw_OWNERSHIP_TIMEOUT", "30.0"))
         timeout = timeout or self.get_adaptive_timeout("acquire_ownership", default_timeout)
         start_time = time.time()
 
@@ -4003,7 +4003,7 @@ class UnifiedStateCoordinator:
 
                         if not pid_holds_our_lock and holding_pids:
                             # Different PIDs hold the lock - stale PID is definitely gone
-                            # But we shouldn't remove the lock if another JARVIS process has it
+                            # But we shouldn't remove the lock if another Ironcliw process has it
                             logger.debug(
                                 f"[StateCoord] Lock file held by PIDs {holding_pids}, "
                                 f"not by stale PID {stale_pid}"
@@ -4435,7 +4435,7 @@ class UnifiedStateCoordinator:
             await self._detect_and_cleanup_orphaned_lock(lock_file)
 
             # Check file size (should be small)
-            max_size = int(os.getenv("JARVIS_LOCK_FILE_MAX_SIZE", "4096"))  # 4KB max
+            max_size = int(os.getenv("Ironcliw_LOCK_FILE_MAX_SIZE", "4096"))  # 4KB max
             try:
                 if lock_file.exists():  # Re-check after cleanup
                     size = lock_file.stat().st_size
@@ -4750,7 +4750,7 @@ class UnifiedStateCoordinator:
         self._operation_history[operation].append(duration)
 
         # Keep only last 100 measurements
-        max_history = int(os.getenv("JARVIS_TIMEOUT_HISTORY_SIZE", "100"))
+        max_history = int(os.getenv("Ironcliw_TIMEOUT_HISTORY_SIZE", "100"))
         if len(self._operation_history[operation]) > max_history:
             self._operation_history[operation] = self._operation_history[operation][-max_history:]
 
@@ -4819,7 +4819,7 @@ class UnifiedStateCoordinator:
                 events.append(event)
 
                 # Keep only last N events (env-configurable)
-                max_events = int(os.getenv("JARVIS_STATE_MAX_EVENTS", "1000"))
+                max_events = int(os.getenv("Ironcliw_STATE_MAX_EVENTS", "1000"))
                 if len(events) > max_events:
                     events = events[-max_events:]
 
@@ -4885,7 +4885,7 @@ class UnifiedStateCoordinator:
 
         Returns task that can be cancelled to unsubscribe.
         """
-        poll_interval = float(os.getenv("JARVIS_EVENT_POLL_INTERVAL", "1.0"))
+        poll_interval = float(os.getenv("Ironcliw_EVENT_POLL_INTERVAL", "1.0"))
 
         async def event_poller():
             last_event_time = time.time()
@@ -5027,15 +5027,15 @@ class UnifiedStateCoordinator:
         - Event publishing on heartbeat issues
         """
         interval = interval or self._heartbeat_interval
-        max_consecutive_failures = int(os.getenv("JARVIS_HEARTBEAT_MAX_FAILURES", "5"))
-        max_backoff = float(os.getenv("JARVIS_HEARTBEAT_MAX_BACKOFF", "60.0"))
-        auto_restart_delay = float(os.getenv("JARVIS_HEARTBEAT_RESTART_DELAY", "10.0"))
+        max_consecutive_failures = int(os.getenv("Ironcliw_HEARTBEAT_MAX_FAILURES", "5"))
+        max_backoff = float(os.getenv("Ironcliw_HEARTBEAT_MAX_BACKOFF", "60.0"))
+        auto_restart_delay = float(os.getenv("Ironcliw_HEARTBEAT_RESTART_DELAY", "10.0"))
 
         async def heartbeat_loop_with_monitoring():
             consecutive_failures = 0
             last_success_time = time.time()
             restart_count = 0
-            max_restarts = int(os.getenv("JARVIS_HEARTBEAT_MAX_RESTARTS", "3"))
+            max_restarts = int(os.getenv("Ironcliw_HEARTBEAT_MAX_RESTARTS", "3"))
 
             while True:
                 try:
@@ -5261,7 +5261,7 @@ class TrinityEntryPointDetector:
         cmdline_str = " ".join(cmdline) if cmdline else ""
 
         # Priority 1: Check environment variables
-        if os.getenv("JARVIS_SUPERVISED") == "1":
+        if os.getenv("Ironcliw_SUPERVISED") == "1":
             return {
                 "entry_point": "run_supervisor",
                 "is_supervised": True,
@@ -5272,7 +5272,7 @@ class TrinityEntryPointDetector:
                 "confidence": "high",
             }
 
-        if os.getenv("JARVIS_START_SYSTEM") == "1":
+        if os.getenv("Ironcliw_START_SYSTEM") == "1":
             return {
                 "entry_point": "start_system",
                 "is_supervised": False,
@@ -5521,10 +5521,10 @@ class ResourceChecker:
 
         try:
             # Set environment variables to enable cloud offloading
-            os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
-            os.environ["JARVIS_USE_CLOUD_ML"] = "true"
-            os.environ["JARVIS_SPOT_VM_ENABLED"] = "true"
-            os.environ["JARVIS_CLOUD_OFFLOAD_REASON"] = reason
+            os.environ["Ironcliw_PREFER_CLOUD_RUN"] = "true"
+            os.environ["Ironcliw_USE_CLOUD_ML"] = "true"
+            os.environ["Ironcliw_SPOT_VM_ENABLED"] = "true"
+            os.environ["Ironcliw_CLOUD_OFFLOAD_REASON"] = reason
 
             # Try to activate the cloud ML backend
             try:
@@ -5612,9 +5612,9 @@ class ResourceChecker:
                 "min_disk_gb": float(os.getenv("REACTOR_MIN_DISK_GB", "10.0")),
             },
             "jarvis_body": {
-                "min_memory_gb": float(os.getenv("JARVIS_MIN_MEMORY_GB", "1.0")),
-                "max_cpu_percent": float(os.getenv("JARVIS_MAX_CPU_PERCENT", "95.0")),
-                "min_disk_gb": float(os.getenv("JARVIS_MIN_DISK_GB", "2.0")),
+                "min_memory_gb": float(os.getenv("Ironcliw_MIN_MEMORY_GB", "1.0")),
+                "max_cpu_percent": float(os.getenv("Ironcliw_MAX_CPU_PERCENT", "95.0")),
+                "min_disk_gb": float(os.getenv("Ironcliw_MIN_DISK_GB", "2.0")),
             },
         }
 
@@ -5831,17 +5831,17 @@ class ResourceAwareLaunchSequencer:
         # Historical learning
         self._startup_history: Dict[str, List[float]] = {}  # component -> [startup_times]
         self._history_file = Path(os.path.expanduser(
-            os.getenv("JARVIS_LAUNCH_HISTORY_FILE", "~/.jarvis/state/launch_history.json")
+            os.getenv("Ironcliw_LAUNCH_HISTORY_FILE", "~/.jarvis/state/launch_history.json")
         ))
 
         # Adaptive parameters
-        self._base_launch_delay = float(os.getenv("JARVIS_BASE_LAUNCH_DELAY", "2.0"))
-        self._max_launch_delay = float(os.getenv("JARVIS_MAX_LAUNCH_DELAY", "30.0"))
+        self._base_launch_delay = float(os.getenv("Ironcliw_BASE_LAUNCH_DELAY", "2.0"))
+        self._max_launch_delay = float(os.getenv("Ironcliw_MAX_LAUNCH_DELAY", "30.0"))
         self._resource_pressure_threshold = float(
-            os.getenv("JARVIS_RESOURCE_PRESSURE_THRESHOLD", "80.0")
+            os.getenv("Ironcliw_RESOURCE_PRESSURE_THRESHOLD", "80.0")
         )
         self._parallel_memory_threshold = float(
-            os.getenv("JARVIS_PARALLEL_MEMORY_THRESHOLD_GB", "8.0")
+            os.getenv("Ironcliw_PARALLEL_MEMORY_THRESHOLD_GB", "8.0")
         )
 
         # State coordinator integration
@@ -5937,7 +5937,7 @@ class ResourceAwareLaunchSequencer:
         self._startup_history[component].append(startup_time_sec)
 
         # Keep last 50 measurements
-        max_history = int(os.getenv("JARVIS_LAUNCH_HISTORY_SIZE", "50"))
+        max_history = int(os.getenv("Ironcliw_LAUNCH_HISTORY_SIZE", "50"))
         if len(self._startup_history[component]) > max_history:
             self._startup_history[component] = self._startup_history[component][-max_history:]
 
@@ -6479,13 +6479,13 @@ class TrinityAdvancedCoordinator:
 
         # State directories
         self._state_dir = Path(os.path.expanduser(
-            os.getenv("JARVIS_STATE_DIR", "~/.jarvis/state")
+            os.getenv("Ironcliw_STATE_DIR", "~/.jarvis/state")
         ))
         self._state_dir.mkdir(parents=True, exist_ok=True)
 
         # Unix socket paths
         self._socket_dir = Path(os.path.expanduser(
-            os.getenv("JARVIS_SOCKET_DIR", "~/.jarvis/sockets")
+            os.getenv("Ironcliw_SOCKET_DIR", "~/.jarvis/sockets")
         ))
         self._socket_dir.mkdir(parents=True, exist_ok=True)
 
@@ -6495,7 +6495,7 @@ class TrinityAdvancedCoordinator:
 
         # Shared memory
         self._shm_path = self._state_dir / "trinity_shm"
-        self._shm_size = int(os.getenv("JARVIS_SHM_SIZE", "1048576"))  # 1MB default
+        self._shm_size = int(os.getenv("Ironcliw_SHM_SIZE", "1048576"))  # 1MB default
         self._shm_fd: Optional[int] = None
         self._shm_mmap: Optional[mmap.mmap] = None
 
@@ -6508,28 +6508,28 @@ class TrinityAdvancedCoordinator:
         # Resource monitoring
         self._last_resource_check: float = 0.0
         self._resource_check_interval = float(
-            os.getenv("JARVIS_RESOURCE_CHECK_INTERVAL", "30.0")
+            os.getenv("Ironcliw_RESOURCE_CHECK_INTERVAL", "30.0")
         )
         self._fd_baseline: Optional[int] = None
-        self._fd_leak_threshold = int(os.getenv("JARVIS_FD_LEAK_THRESHOLD", "100"))
+        self._fd_leak_threshold = int(os.getenv("Ironcliw_FD_LEAK_THRESHOLD", "100"))
 
         # Clock synchronization
         self._last_clock_check: float = 0.0
         self._clock_skew_threshold = float(
-            os.getenv("JARVIS_CLOCK_SKEW_THRESHOLD", "5.0")
+            os.getenv("Ironcliw_CLOCK_SKEW_THRESHOLD", "5.0")
         )
         self._monotonic_offset: float = 0.0
 
         # Network partition detection
         self._last_successful_network_op: float = time.time()
-        self._network_timeout = float(os.getenv("JARVIS_NETWORK_TIMEOUT", "30.0"))
+        self._network_timeout = float(os.getenv("Ironcliw_NETWORK_TIMEOUT", "30.0"))
         self._partition_threshold = float(
-            os.getenv("JARVIS_PARTITION_THRESHOLD", "60.0")
+            os.getenv("Ironcliw_PARTITION_THRESHOLD", "60.0")
         )
 
         # Heartbeat deadlock detection
         self._heartbeat_watchdog: Dict[str, float] = {}
-        self._watchdog_timeout = float(os.getenv("JARVIS_WATCHDOG_TIMEOUT", "60.0"))
+        self._watchdog_timeout = float(os.getenv("Ironcliw_WATCHDOG_TIMEOUT", "60.0"))
 
         # Version registry
         self._component_versions: Dict[str, CrossRepoVersion] = {}
@@ -6548,26 +6548,26 @@ class TrinityAdvancedCoordinator:
         """Load all configuration from environment (zero hardcoding)."""
         return {
             # Filesystem thresholds
-            "disk_warning_percent": float(os.getenv("JARVIS_DISK_WARNING_PERCENT", "90.0")),
-            "disk_critical_percent": float(os.getenv("JARVIS_DISK_CRITICAL_PERCENT", "95.0")),
-            "inode_warning_percent": float(os.getenv("JARVIS_INODE_WARNING_PERCENT", "90.0")),
+            "disk_warning_percent": float(os.getenv("Ironcliw_DISK_WARNING_PERCENT", "90.0")),
+            "disk_critical_percent": float(os.getenv("Ironcliw_DISK_CRITICAL_PERCENT", "95.0")),
+            "inode_warning_percent": float(os.getenv("Ironcliw_INODE_WARNING_PERCENT", "90.0")),
 
             # Memory thresholds
-            "memory_warning_percent": float(os.getenv("JARVIS_MEMORY_WARNING_PERCENT", "85.0")),
-            "memory_critical_percent": float(os.getenv("JARVIS_MEMORY_CRITICAL_PERCENT", "95.0")),
+            "memory_warning_percent": float(os.getenv("Ironcliw_MEMORY_WARNING_PERCENT", "85.0")),
+            "memory_critical_percent": float(os.getenv("Ironcliw_MEMORY_CRITICAL_PERCENT", "95.0")),
 
             # FD thresholds
-            "fd_warning_percent": float(os.getenv("JARVIS_FD_WARNING_PERCENT", "80.0")),
-            "fd_critical_percent": float(os.getenv("JARVIS_FD_CRITICAL_PERCENT", "90.0")),
+            "fd_warning_percent": float(os.getenv("Ironcliw_FD_WARNING_PERCENT", "80.0")),
+            "fd_critical_percent": float(os.getenv("Ironcliw_FD_CRITICAL_PERCENT", "90.0")),
 
             # Timeouts
-            "file_op_timeout": float(os.getenv("JARVIS_FILE_OP_TIMEOUT", "30.0")),
-            "socket_timeout": float(os.getenv("JARVIS_SOCKET_TIMEOUT", "10.0")),
+            "file_op_timeout": float(os.getenv("Ironcliw_FILE_OP_TIMEOUT", "30.0")),
+            "socket_timeout": float(os.getenv("Ironcliw_SOCKET_TIMEOUT", "10.0")),
 
             # Retry configuration
-            "max_retries": int(os.getenv("JARVIS_MAX_RETRIES", "3")),
-            "retry_base_delay": float(os.getenv("JARVIS_RETRY_BASE_DELAY", "1.0")),
-            "retry_max_delay": float(os.getenv("JARVIS_RETRY_MAX_DELAY", "30.0")),
+            "max_retries": int(os.getenv("Ironcliw_MAX_RETRIES", "3")),
+            "retry_base_delay": float(os.getenv("Ironcliw_RETRY_BASE_DELAY", "1.0")),
+            "retry_max_delay": float(os.getenv("Ironcliw_RETRY_MAX_DELAY", "30.0")),
         }
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -8696,7 +8696,7 @@ class TraceContextManager:
     v88.0: Trace ID propagation for distributed tracing.
 
     Provides W3C Trace Context compatible tracing across
-    all Trinity components (JARVIS, J-Prime, Reactor-Core).
+    all Trinity components (Ironcliw, J-Prime, Reactor-Core).
 
     Enables end-to-end request tracking and performance analysis.
     """
@@ -8980,13 +8980,13 @@ class TrinityUltraCoordinator:
 
         # Backpressure handler
         self._backpressure = AdaptiveBackpressure(
-            max_queue_depth=int(os.getenv("JARVIS_MAX_QUEUE_DEPTH", "1000")),
-            target_latency_ms=float(os.getenv("JARVIS_TARGET_LATENCY_MS", "100")),
+            max_queue_depth=int(os.getenv("Ironcliw_MAX_QUEUE_DEPTH", "1000")),
+            target_latency_ms=float(os.getenv("Ironcliw_TARGET_LATENCY_MS", "100")),
         )
 
         # High-performance event buffer
         self._event_buffer = LockFreeRingBuffer(
-            capacity=int(os.getenv("JARVIS_EVENT_BUFFER_SIZE", "4096"))
+            capacity=int(os.getenv("Ironcliw_EVENT_BUFFER_SIZE", "4096"))
         )
 
         # Container awareness
@@ -9140,7 +9140,7 @@ class TrinityUltraCoordinator:
                 # v241.0: Shield prevents task cancellation — it may still complete
                 # in the background. But we treat it as a timeout for the caller.
                 # v242.0: Schedule cleanup with grace period (Gap A)
-                _grace = float(os.getenv("JARVIS_SHIELD_GRACE_S", "10.0"))
+                _grace = float(os.getenv("Ironcliw_SHIELD_GRACE_S", "10.0"))
                 asyncio.ensure_future(self._cleanup_shielded_task(component, task, _grace))
                 latency_ms = (time.time() - start) * 1000
                 await circuit.record_failure(latency_ms)
@@ -9263,8 +9263,8 @@ class TrinityUnifiedOrchestrator:
     Trinity Unified Orchestrator v83.0 - Production-Grade Integration.
 
     The SINGLE POINT OF TRUTH for Trinity integration with:
-    - JARVIS Body (this repo)
-    - JARVIS Prime (cognitive mind)
+    - Ironcliw Body (this repo)
+    - Ironcliw Prime (cognitive mind)
     - Reactor-Core (training nerves)
 
     v83.0 Critical Features:
@@ -9589,13 +9589,13 @@ class TrinityUnifiedOrchestrator:
         Initialize the Trinity Unified Orchestrator v83.0.
 
         Args:
-            enable_jprime: Enable JARVIS Prime integration
+            enable_jprime: Enable Ironcliw Prime integration
             enable_reactor: Enable Reactor-Core integration
             startup_timeout: Max time to wait for components
             health_check_interval: Interval between health checks
         """
         config = get_config()
-        self.enable_jprime = config.get("JARVIS_PRIME_ENABLED", enable_jprime)
+        self.enable_jprime = config.get("Ironcliw_PRIME_ENABLED", enable_jprime)
         self.enable_reactor = config.get("REACTOR_CORE_ENABLED", enable_reactor)
         self.startup_timeout = config.get("TRINITY_STARTUP_TIMEOUT", startup_timeout)
         self.health_check_interval = config.get("TRINITY_HEALTH_INTERVAL", health_check_interval)
@@ -9753,8 +9753,8 @@ class TrinityUnifiedOrchestrator:
 
         Phase 2: START (with crash recovery)
         ├── 2.1 Start Process Supervisor
-        ├── 2.2 Start JARVIS Body heartbeat
-        ├── 2.3 Start JARVIS Prime (if enabled) [PARALLEL with timeout]
+        ├── 2.2 Start Ironcliw Body heartbeat
+        ├── 2.3 Start Ironcliw Prime (if enabled) [PARALLEL with timeout]
         └── 2.4 Start Reactor-Core (if enabled) [PARALLEL with timeout]
 
         Phase 3: VERIFY (health aggregation)
@@ -9833,16 +9833,16 @@ class TrinityUnifiedOrchestrator:
                             await self._process_supervisor.start()
                             logger.info("   ✅ [v86.0] Process supervisor online")
 
-                        # Step 2.2: Start JARVIS Body heartbeat
-                        logger.info("   💓 [v86.0] Starting JARVIS Body heartbeat...")
+                        # Step 2.2: Start Ironcliw Body heartbeat
+                        logger.info("   💓 [v86.0] Starting Ironcliw Body heartbeat...")
                         async with self._tracer.span("start_body_heartbeat"):
                             await self._start_body_heartbeat()
-                            logger.info("   ✅ [v86.0] JARVIS Body heartbeat active")
+                            logger.info("   ✅ [v86.0] Ironcliw Body heartbeat active")
 
                         # v86.0: Per-component timeouts (not global)
                         # v150.0: UNIFIED TIMEOUT - 600s for J-Prime model loading
                         # Previous: 120s - caused premature timeouts during heavy model loading
-                        jprime_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "600.0"))
+                        jprime_timeout = float(os.getenv("Ironcliw_PRIME_COMPONENT_TIMEOUT", "600.0"))
                         reactor_timeout = float(os.getenv("REACTOR_CORE_COMPONENT_TIMEOUT", "90.0"))
 
                         # v100.4: SINGLE SOURCE OF TRUTH - Check if supervisor handles launching
@@ -9949,7 +9949,7 @@ class TrinityUnifiedOrchestrator:
                                 task_names = []
 
                                 if self.enable_jprime:
-                                    logger.info(f"   🧠 [v86.0] Starting JARVIS Prime (timeout={jprime_timeout}s)...")
+                                    logger.info(f"   🧠 [v86.0] Starting Ironcliw Prime (timeout={jprime_timeout}s)...")
                                     tasks.append(
                                         asyncio.wait_for(
                                             self._start_jprime_with_recovery(),
@@ -10025,7 +10025,7 @@ class TrinityUnifiedOrchestrator:
                             self._set_state(TrinityState.DEGRADED)
                             failed_components = []
                             if not jprime_ok:
-                                failed_components.append("JARVIS Prime")
+                                failed_components.append("Ironcliw Prime")
                             if not reactor_ok:
                                 failed_components.append("Reactor-Core")
                             logger.warning(
@@ -10096,7 +10096,7 @@ class TrinityUnifiedOrchestrator:
                         f"(state={self._state.value})"
                     )
                     logger.info(f"   📊 [v86.0] Component Status:")
-                    logger.info(f"      • JARVIS Body:    ✅ ONLINE")
+                    logger.info(f"      • Ironcliw Body:    ✅ ONLINE")
                     if self.enable_jprime:
                         # v86.1: Show PENDING when supervisor handles launch
                         if jprime_ok:
@@ -10105,7 +10105,7 @@ class TrinityUnifiedOrchestrator:
                             status = "⏳ PENDING (supervisor launch)"
                         else:
                             status = "❌ OFFLINE"
-                        logger.info(f"      • JARVIS Prime:   {status}")
+                        logger.info(f"      • Ironcliw Prime:   {status}")
                     if self.enable_reactor:
                         # v86.1: Show PENDING when supervisor handles launch
                         if reactor_ok:
@@ -10212,12 +10212,12 @@ class TrinityUnifiedOrchestrator:
         logger.debug("[TrinityIntegrator] Shutdown manager initialized")
 
     async def _start_body_heartbeat(self) -> None:
-        """Start JARVIS Body heartbeat publishing."""
+        """Start Ironcliw Body heartbeat publishing."""
         try:
             from backend.core.trinity_ipc import ComponentType
 
             await self._ipc_bus.publish_heartbeat(
-                component=ComponentType.JARVIS_BODY,
+                component=ComponentType.Ironcliw_BODY,
                 status="starting",
                 pid=os.getpid(),
                 metrics={"startup_time": self._start_time},
@@ -10230,7 +10230,7 @@ class TrinityUnifiedOrchestrator:
 
     async def _wait_for_jprime(self) -> bool:
         """
-        v86.0: Wait for JARVIS Prime with optimized polling.
+        v86.0: Wait for Ironcliw Prime with optimized polling.
 
         Uses adaptive polling interval:
         - Fast initial checks (0.5s) for quick startups
@@ -10244,7 +10244,7 @@ class TrinityUnifiedOrchestrator:
 
             # v86.0: Use component-specific timeout
             # v150.0: UNIFIED TIMEOUT - 600s for J-Prime model loading
-            component_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "600.0"))
+            component_timeout = float(os.getenv("Ironcliw_PRIME_COMPONENT_TIMEOUT", "600.0"))
             poll_interval = 0.5  # Start with fast polling
             max_poll_interval = 2.0
 
@@ -10365,7 +10365,7 @@ class TrinityUnifiedOrchestrator:
 
     async def _start_jprime_with_recovery(self) -> bool:
         """
-        Start JARVIS Prime with circuit breaker and crash recovery.
+        Start Ironcliw Prime with circuit breaker and crash recovery.
 
         Uses circuit breaker to fail fast if J-Prime is repeatedly failing.
         Registers process with supervisor for automatic restart on crash.
@@ -10427,7 +10427,7 @@ class TrinityUnifiedOrchestrator:
 
     async def _start_jprime(self) -> bool:
         """
-        v84.0: Start JARVIS Prime - discover or launch.
+        v84.0: Start Ironcliw Prime - discover or launch.
 
         Strategy:
         1. First check if already running (heartbeat file)
@@ -10756,12 +10756,12 @@ class TrinityUnifiedOrchestrator:
 
             # Map component name to ComponentType
             component_type_map = {
-                "jarvis_prime": ComponentType.JARVIS_PRIME,
-                "jarvis-prime": ComponentType.JARVIS_PRIME,
+                "jarvis_prime": ComponentType.Ironcliw_PRIME,
+                "jarvis-prime": ComponentType.Ironcliw_PRIME,
                 "reactor_core": ComponentType.REACTOR_CORE,
                 "reactor-core": ComponentType.REACTOR_CORE,
-                "jarvis_body": ComponentType.JARVIS_BODY,
-                "jarvis-body": ComponentType.JARVIS_BODY,
+                "jarvis_body": ComponentType.Ironcliw_BODY,
+                "jarvis-body": ComponentType.Ironcliw_BODY,
             }
 
             # Get component-specific profile
@@ -10799,7 +10799,7 @@ class TrinityUnifiedOrchestrator:
         # When cross-repo orchestrator uses non-blocking model loading,
         # we can accept "starting" status much faster since health was pre-verified
         jprime_starting_grace = float(os.getenv(
-            "JARVIS_PRIME_STARTING_GRACE_PERIOD", "5.0"
+            "Ironcliw_PRIME_STARTING_GRACE_PERIOD", "5.0"
         ))
 
         component_config = {
@@ -10835,7 +10835,7 @@ class TrinityUnifiedOrchestrator:
 
         # Registry path for service registration
         registry_dir = Path(os.getenv(
-            "JARVIS_REGISTRY_DIR",
+            "Ironcliw_REGISTRY_DIR",
             str(Path.home() / ".jarvis" / "registry")
         ))
         registry_file = registry_dir / "services.json"
@@ -11114,7 +11114,7 @@ class TrinityUnifiedOrchestrator:
                                             )
 
                                             # v109.1: Changed from WARNING to INFO - this is expected behavior
-                                            # during normal startup when JARVIS Prime is loading models.
+                                            # during normal startup when Ironcliw Prime is loading models.
                                             # The system proceeds correctly with degraded mode acceptance.
                                             logger.info(
                                                 f"[Registration] ℹ️  Phase 3: {component} accepted "
@@ -11322,7 +11322,7 @@ class TrinityUnifiedOrchestrator:
         # Determine repo path based on component
         if component == "jarvis_prime":
             repo_path = Path(os.getenv(
-                "JARVIS_PRIME_PATH",
+                "Ironcliw_PRIME_PATH",
                 str(Path.home() / "Documents" / "repos" / "jarvis-prime")
             ))
             launch_scripts = [
@@ -11330,7 +11330,7 @@ class TrinityUnifiedOrchestrator:
                 "jarvis_prime/server.py",
                 "jarvis_prime/core/trinity_bridge.py",
             ]
-            default_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+            default_port = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
         elif component == "reactor_core":
             repo_path = Path(os.getenv(
                 "REACTOR_CORE_PATH",
@@ -11471,7 +11471,7 @@ class TrinityUnifiedOrchestrator:
 
     async def _launch_jprime_process(self) -> bool:
         """
-        v86.0: Launch JARVIS Prime process with intelligent discovery and retry.
+        v86.0: Launch Ironcliw Prime process with intelligent discovery and retry.
 
         Uses IntelligentRepoDiscovery for multi-strategy path discovery
         and ResourceAwareLauncher for robust process launching with:
@@ -11486,10 +11486,10 @@ class TrinityUnifiedOrchestrator:
             launcher = await get_resource_aware_launcher()
 
             # Configuration from environment
-            port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
-            auto_download = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "false").lower() == "true"
-            max_retries = int(os.getenv("JARVIS_PRIME_MAX_RETRIES", "3"))
-            health_timeout = float(os.getenv("JARVIS_PRIME_HEALTH_TIMEOUT", "30.0"))
+            port = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
+            auto_download = os.getenv("Ironcliw_PRIME_AUTO_DOWNLOAD", "false").lower() == "true"
+            max_retries = int(os.getenv("Ironcliw_PRIME_MAX_RETRIES", "3"))
+            health_timeout = float(os.getenv("Ironcliw_PRIME_HEALTH_TIMEOUT", "30.0"))
 
             # Build extra args
             extra_args = []
@@ -11504,7 +11504,7 @@ class TrinityUnifiedOrchestrator:
                 port=port,
                 extra_args=extra_args,
                 env_vars={
-                    "JARVIS_PRIME_PORT": str(port),
+                    "Ironcliw_PRIME_PORT": str(port),
                 },
                 resources=ResourceRequirements(
                     min_memory_mb=512,
@@ -11706,7 +11706,7 @@ class TrinityUnifiedOrchestrator:
         }
 
         # Filter by enabled status
-        if not os.getenv("JARVIS_PRIME_ENABLED", "true").lower() in ("true", "1", "yes"):
+        if not os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() in ("true", "1", "yes"):
             del launch_tasks["jarvis_prime"]
             logger.info("[Launcher] J-Prime disabled, skipping")
 
@@ -12206,7 +12206,7 @@ class TrinityUnifiedOrchestrator:
         include_embeddings: bool = True,
     ) -> Dict[str, Any]:
         """
-        Synchronize voice profiles across Trinity repos (JARVIS, Prime, Reactor).
+        Synchronize voice profiles across Trinity repos (Ironcliw, Prime, Reactor).
 
         v2.7 Enhancement: Cross-repo voice profile synchronization for consistent
         voice authentication across all components.
@@ -12233,7 +12233,7 @@ class TrinityUnifiedOrchestrator:
             }
 
             try:
-                # Get voice profiles from JARVIS body
+                # Get voice profiles from Ironcliw body
                 try:
                     from voice_unlock.unified_voice_cache_manager import get_unified_voice_cache
                     cache = await get_unified_voice_cache()
@@ -12241,7 +12241,7 @@ class TrinityUnifiedOrchestrator:
                     if cache and cache.is_ready:
                         profiles = cache._preloaded_profiles
 
-                        # Sync to JARVIS Prime (if enabled and connected)
+                        # Sync to Ironcliw Prime (if enabled and connected)
                         if self.enable_jprime and self._jprime_client:
                             try:
                                 for speaker_name, profile in profiles.items():
@@ -12262,7 +12262,7 @@ class TrinityUnifiedOrchestrator:
 
                                 logger.info(
                                     f"[TrinityOrchestrator] Synced {result['profiles_synced']} "
-                                    f"voice profiles to JARVIS Prime"
+                                    f"voice profiles to Ironcliw Prime"
                                 )
 
                             except Exception as e:
@@ -12584,7 +12584,7 @@ class TrinityUnifiedOrchestrator:
         degraded: List[str] = []
         errors: List[str] = []
 
-        # Check JARVIS Body (self)
+        # Check Ironcliw Body (self)
         body_status = ComponentStatus(
             name="jarvis_body",
             health=ComponentHealth.HEALTHY,
@@ -12594,7 +12594,7 @@ class TrinityUnifiedOrchestrator:
         )
         components["jarvis_body"] = body_status
 
-        # Check JARVIS Prime
+        # Check Ironcliw Prime
         if self.enable_jprime:
             jprime_status = await self._check_jprime_health()
             components["jarvis_prime"] = jprime_status
@@ -12623,7 +12623,7 @@ class TrinityUnifiedOrchestrator:
 
     async def _check_jprime_health(self) -> ComponentStatus:
         """
-        Check JARVIS Prime health with multi-tier verification.
+        Check Ironcliw Prime health with multi-tier verification.
 
         v93.14: Enhanced health check with fallback to direct HTTP verification.
         If the IPC client reports offline but the service is actually running,
@@ -13132,7 +13132,7 @@ class TrinityUnifiedOrchestrator:
 
     @property
     def jprime_client(self):
-        """Get the JARVIS Prime client."""
+        """Get the Ironcliw Prime client."""
         return self._jprime_client
 
     @property

@@ -1,6 +1,6 @@
-# 🤖 GitHub Actions CI/CD Guide
+﻿# 🤖 GitHub Actions CI/CD Guide
 
-Complete guide to the automated CI/CD pipelines for the JARVIS AI Agent project.
+Complete guide to the automated CI/CD pipelines for the Ironcliw AI Agent project.
 
 ## 📋 Table of Contents
 - [Overview](#overview)
@@ -394,7 +394,7 @@ pytest tests/ -v
 password = "my-secret-password"
 
 # GOOD
-password = os.getenv("JARVIS_DB_PASSWORD")
+password = os.getenv("Ironcliw_DB_PASSWORD")
 ```
 
 ### Workflow Failed - Env Validation
@@ -484,4 +484,4 @@ password = os.getenv("JARVIS_DB_PASSWORD")
 ---
 
 **Last Updated:** 2025-10-30
-**Maintained by:** JARVIS Team
+**Maintained by:** Ironcliw Team

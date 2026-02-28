@@ -1,17 +1,17 @@
-# JARVIS App Control Fix Summary
+﻿# Ironcliw App Control Fix Summary
 
 ## Problem
-When you said "open Safari", JARVIS would respond that it was opening Safari but wouldn't actually do it.
+When you said "open Safari", Ironcliw would respond that it was opening Safari but wouldn't actually do it.
 
 ## Root Causes
-1. **Missing System Control Integration**: The JARVIS AI Core was not connected to the macOS system control module
+1. **Missing System Control Integration**: The Ironcliw AI Core was not connected to the macOS system control module
 2. **No Command Execution**: Commands were being analyzed but not executed through AppleScript
 3. **Incorrect Model Name**: Initial attempts used wrong Claude model names
 4. **JSON Parsing Issues**: The prompt format caused parsing errors
 
 ## Solution Implemented
 
-### 1. Added System Control Integration to JARVIS AI Core
+### 1. Added System Control Integration to Ironcliw AI Core
 ```python
 # Added imports
 from system_control.macos_controller import MacOSController
@@ -47,7 +47,7 @@ if "command" in task or "action" in task:
 ## Testing Results
 ✅ "open Safari" command now works correctly
 ✅ Safari opens immediately when commanded
-✅ JARVIS responds with confirmation
+✅ Ironcliw responds with confirmation
 ✅ System control integration verified
 
 ## Files Modified
@@ -58,11 +58,11 @@ if "command" in task or "action" in task:
 
 ## How It Works Now
 1. User says: "open Safari"
-2. JARVIS AI Core analyzes the command using Claude
+2. Ironcliw AI Core analyzes the command using Claude
 3. Recognizes intent as "app_control" with action "open_app"
 4. Passes to command interpreter for execution
 5. AppleScript opens Safari
-6. JARVIS confirms: "Opening Safari for you now. Opened Safari"
+6. Ironcliw confirms: "Opening Safari for you now. Opened Safari"
 
 ## Additional App Commands That Should Now Work
 - "open Chrome"
@@ -71,4 +71,4 @@ if "command" in task or "action" in task:
 - "open Mail"
 - Any application in the macOS system
 
-The fix ensures JARVIS can actually control your Mac, not just talk about it!
+The fix ensures Ironcliw can actually control your Mac, not just talk about it!

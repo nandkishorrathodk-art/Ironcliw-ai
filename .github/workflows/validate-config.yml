@@ -1,4 +1,4 @@
-name: Validate Configuration
+﻿name: Validate Configuration
 
 on:
   push:
@@ -75,7 +75,7 @@ jobs:
         # Check for hardcoded IPs (should use env vars)
         if grep -r "34\.46\.152\.27" --include="*.py" backend/ start_system.py; then
           echo "❌ ERROR: Found hardcoded Cloud SQL IP address!"
-          echo "Use JARVIS_DB_HOST environment variable instead"
+          echo "Use Ironcliw_DB_HOST environment variable instead"
           exit 1
         fi
 

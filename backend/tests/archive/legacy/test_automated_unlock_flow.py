@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Full Automated Unlock Flow
 ================================
@@ -6,7 +6,7 @@ Test Full Automated Unlock Flow
 Tests the complete automated scenario:
 1. Lock screen
 2. Issue command requiring screen
-3. JARVIS automatically unlocks and executes
+3. Ironcliw automatically unlocks and executes
 """
 
 import asyncio
@@ -21,7 +21,7 @@ async def test_automated_flow():
     print("\nThis test will:")
     print("1. Lock your screen")
     print("2. Send 'open safari and search for dogs'")
-    print("3. JARVIS should automatically:")
+    print("3. Ironcliw should automatically:")
     print("   - Detect screen is locked")
     print("   - Queue the command")
     print("   - Unlock the screen (type password)")
@@ -48,7 +48,7 @@ async def test_automated_flow():
             await asyncio.sleep(5)
             
             # Step 2: Send command that requires screen
-            print("\n2️⃣ SENDING COMMAND (JARVIS SHOULD AUTO-UNLOCK)...")
+            print("\n2️⃣ SENDING COMMAND (Ironcliw SHOULD AUTO-UNLOCK)...")
             start_time = time.time()
             data = {"command": "open safari and search for dogs"}
             
@@ -72,12 +72,12 @@ async def test_automated_flow():
                 if "unlocked your screen" in response_text and "safari" in response_text:
                     print("\n✅ SUCCESS! Full automated flow worked!")
                     print("   - Screen was locked")
-                    print("   - JARVIS detected it")
-                    print("   - JARVIS unlocked it automatically")
-                    print("   - JARVIS executed the command")
+                    print("   - Ironcliw detected it")
+                    print("   - Ironcliw unlocked it automatically")
+                    print("   - Ironcliw executed the command")
                     print("   - All automated, no manual intervention!")
                 elif "couldn't unlock" in response_text:
-                    print("\n❌ FAIL! JARVIS detected lock but couldn't unlock")
+                    print("\n❌ FAIL! Ironcliw detected lock but couldn't unlock")
                     print("   Check if password is stored in Voice Unlock")
                 elif result.get('success') and 'safari' in response_text:
                     print("\n⚠️  WARNING! Command executed but no unlock mentioned")

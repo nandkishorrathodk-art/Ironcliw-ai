@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Memory safety configuration for Claude Vision Analyzer
-Prevents crashes on 16GB macOS systems running JARVIS
+Prevents crashes on 16GB macOS systems running Ironcliw
 """
 
 import psutil

@@ -1,5 +1,5 @@
-"""
-JARVIS Location Service Python Wrapper
+﻿"""
+Ironcliw Location Service Python Wrapper
 Provides precise location data using macOS Core Location
 """
 

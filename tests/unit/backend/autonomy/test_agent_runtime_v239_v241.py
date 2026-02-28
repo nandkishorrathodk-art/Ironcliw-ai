@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for v239-v241 autonomy features:
   - v239.0: NeuralMeshAgentTool, ToolRegistry, _execute_action registry dispatch
   - v240.0: _gather_heartbeat_context, _record_action_experience
@@ -27,7 +27,7 @@ import pytest
 def _import_tool_classes():
     from backend.autonomy.langchain_tools import (
         FunctionTool,
-        JARVISTool,
+        IroncliwTool,
         NeuralMeshAgentTool,
         ToolCategory,
         ToolMetadata,
@@ -36,7 +36,7 @@ def _import_tool_classes():
     )
     return (
         FunctionTool,
-        JARVISTool,
+        IroncliwTool,
         NeuralMeshAgentTool,
         ToolCategory,
         ToolMetadata,
@@ -72,8 +72,8 @@ def _make_tool(
     capabilities=None,
     tags=None,
 ):
-    """Produce a minimal concrete JARVISTool for registry tests."""
-    (FunctionTool, JARVISTool_cls, _NMA, ToolCategory, ToolMetadata,
+    """Produce a minimal concrete IroncliwTool for registry tests."""
+    (FunctionTool, IroncliwTool_cls, _NMA, ToolCategory, ToolMetadata,
      _TR, ToolRiskLevel) = _import_tool_classes()
     cat = category or ToolCategory.UTILITY
     risk = risk_level or ToolRiskLevel.LOW
@@ -87,7 +87,7 @@ def _make_tool(
         tags=tags or [],
     )
 
-    class _ConcreteTool(JARVISTool_cls):
+    class _ConcreteTool(IroncliwTool_cls):
         async def _execute(self, **kwargs) -> Any:
             return {"echo": kwargs}
 
@@ -499,8 +499,8 @@ class TestRecordActionExperience:
     """Tests for _record_action_experience on the orchestrator (v240.0)."""
 
     async def test_disabled_returns_immediately(self, monkeypatch):
-        """JARVIS_ORCH_RECORD_EXPERIENCES=0 returns without importing forwarder."""
-        monkeypatch.setenv("JARVIS_ORCH_RECORD_EXPERIENCES", "0")
+        """Ironcliw_ORCH_RECORD_EXPERIENCES=0 returns without importing forwarder."""
+        monkeypatch.setenv("Ironcliw_ORCH_RECORD_EXPERIENCES", "0")
 
         from backend.agi_os.intelligent_action_orchestrator import (
             IntelligentActionOrchestrator,
@@ -527,7 +527,7 @@ class TestRecordActionExperience:
 
     async def test_forwarder_none_returns_silently(self, monkeypatch):
         """When get_experience_forwarder() returns None, no crash."""
-        monkeypatch.setenv("JARVIS_ORCH_RECORD_EXPERIENCES", "1")
+        monkeypatch.setenv("Ironcliw_ORCH_RECORD_EXPERIENCES", "1")
 
         from backend.agi_os.intelligent_action_orchestrator import (
             IntelligentActionOrchestrator,

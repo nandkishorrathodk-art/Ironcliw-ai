@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Verify backend setup for JARVIS
+Verify backend setup for Ironcliw
 """
 import os
 import sys
 from pathlib import Path
 
 def verify_setup():
-    print("🔍 Verifying JARVIS Backend Setup")
+    print("🔍 Verifying Ironcliw Backend Setup")
     print("=" * 50)
     
     backend_dir = Path(__file__).parent / "backend"
@@ -73,7 +73,7 @@ def verify_setup():
     print("3. If main.py fails, it falls back to main_minimal.py")
     print("4. Vision/monitoring commands need the full main.py")
     
-    print("\n🚀 To start JARVIS:")
+    print("\n🚀 To start Ironcliw:")
     print("python start_system.py")
     
 if __name__ == "__main__":

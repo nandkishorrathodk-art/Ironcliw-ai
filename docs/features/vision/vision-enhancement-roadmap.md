@@ -1,9 +1,9 @@
-# JARVIS Vision System Enhancement Roadmap
+﻿# Ironcliw Vision System Enhancement Roadmap
 
 ## 🎯 **Branch: `vision-system-enhancement`**
 
 **Created:** December 2024  
-**Goal:** Transform JARVIS from basic screen analysis to intelligent, context-aware vision system optimized for macOS with 16GB RAM
+**Goal:** Transform Ironcliw from basic screen analysis to intelligent, context-aware vision system optimized for macOS with 16GB RAM
 
 ---
 
@@ -12,7 +12,7 @@
 ### **Target Environment**
 - **OS:** macOS
 - **RAM:** 16GB
-- **Current Load:** Vision system must coexist with other JARVIS components
+- **Current Load:** Vision system must coexist with other Ironcliw components
 - **Available Memory:** ~4-6GB for vision processing (accounting for OS and other services)
 
 ### **What's FEASIBLE ✅**
@@ -353,4 +353,4 @@ os.environ['VISION_MAX_WORKERS'] = '2'
 
 ---
 
-*This roadmap is specifically optimized for JARVIS running on macOS with 16GB RAM, ensuring stable and efficient operation while providing intelligent vision capabilities.*
+*This roadmap is specifically optimized for Ironcliw running on macOS with 16GB RAM, ensuring stable and efficient operation while providing intelligent vision capabilities.*

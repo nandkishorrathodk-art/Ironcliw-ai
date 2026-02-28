@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Security System v1.0
 =============================
 
-Enterprise-grade security for the JARVIS Trinity ecosystem.
-Handles all aspects of security across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade security for the Ironcliw Trinity ecosystem.
+Handles all aspects of security across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 5 critical security patterns:

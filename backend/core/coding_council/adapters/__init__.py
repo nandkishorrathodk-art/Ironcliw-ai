@@ -1,10 +1,10 @@
-"""
+﻿"""
 v84.0: Coding Council Framework Adapters
 ========================================
 
 Adapters for integrating coding frameworks with the Coding Council.
 
-Primary: Anthropic Claude API / JARVIS Prime Local LLM
+Primary: Anthropic Claude API / Ironcliw Prime Local LLM
 Fallback: External tools (Aider CLI, MetaGPT package, etc.)
 
 Each adapter provides a unified interface for:
@@ -26,7 +26,7 @@ v84.0 J-Prime Adapters (Local LLM):
     JPrimeLocalAdapter     - General-purpose local inference (cost-free)
     JPrimeUnifiedEngine    - Unified engine for all J-Prime capabilities
 
-Author: JARVIS v84.0
+Author: Ironcliw v84.0
 Version: 3.0.0
 """
 

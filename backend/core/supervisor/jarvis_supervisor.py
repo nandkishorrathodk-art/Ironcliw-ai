@@ -1,18 +1,18 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Lifecycle Supervisor
+Ironcliw Lifecycle Supervisor
 ============================
 
-The bulletproof process manager that sits above JARVIS Core.
+The bulletproof process manager that sits above Ironcliw Core.
 Handles process spawning, exit code interpretation, restart logic,
 and coordination with update/rollback systems.
 
 Architecture:
-    Supervisor → spawns → JARVIS Core (start_system.py)
+    Supervisor → spawns → Ironcliw Core (start_system.py)
                 ↑
     Exit Codes: 0=clean, 1=crash, 100=update, 101=rollback, 102=restart
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -178,7 +178,7 @@ class SupervisorState(str, Enum):
 
 @dataclass
 class ProcessInfo:
-    """Information about the supervised JARVIS process."""
+    """Information about the supervised Ironcliw process."""
     pid: Optional[int] = None
     start_time: Optional[datetime] = None
     last_exit_code: Optional[int] = None
@@ -274,9 +274,9 @@ class HealthCheckState:
         return self.total_latency_ms / self.check_count
 
 
-class JARVISSupervisor:
+class IroncliwSupervisor:
     """
-    Main Lifecycle Supervisor for JARVIS.
+    Main Lifecycle Supervisor for Ironcliw.
     
     Features:
     - Async process spawning with exit code handling
@@ -288,7 +288,7 @@ class JARVISSupervisor:
     - Graceful shutdown orchestration
     
     Example:
-        >>> supervisor = JARVISSupervisor()
+        >>> supervisor = IroncliwSupervisor()
         >>> await supervisor.run()  # Runs until shutdown
     """
     
@@ -299,11 +299,11 @@ class JARVISSupervisor:
         skip_browser_open: bool = False,
     ):
         """
-        Initialize the JARVIS Supervisor.
+        Initialize the Ironcliw Supervisor.
         
         Args:
             config: Supervisor configuration (loads from YAML if None)
-            jarvis_entry_point: Path to JARVIS entry point (default: start_system.py)
+            jarvis_entry_point: Path to Ironcliw entry point (default: start_system.py)
             skip_browser_open: If True, skip opening browser (used when run_supervisor.py already opened it)
         """
         self.config = config or get_supervisor_config()
@@ -368,8 +368,8 @@ class JARVISSupervisor:
         # Manages: Network Context, Pattern Tracker, Device Monitor, Fusion Engine, Learning Coordinator (RAG+RLHF)
         self._intelligence_manager: Optional[Any] = None
 
-        # v5.1: JARVIS-Prime Orchestrator - Tier 0 Local Brain Subprocess Manager
-        # Manages JARVIS-Prime as a critical microservice for instant local responses
+        # v5.1: Ironcliw-Prime Orchestrator - Tier 0 Local Brain Subprocess Manager
+        # Manages Ironcliw-Prime as a critical microservice for instant local responses
         self._jarvis_prime_orchestrator: Optional[Any] = None
 
         # v6.0: Cross-Repo Intelligence Hub (Heist Integration)
@@ -385,9 +385,9 @@ class JARVISSupervisor:
     
     def _find_entry_point(self) -> str:
         """
-        Find the JARVIS entry point script.
+        Find the Ironcliw entry point script.
 
-        Supports two modes controlled by JARVIS_FAST_STARTUP env var:
+        Supports two modes controlled by Ironcliw_FAST_STARTUP env var:
         - Normal mode: Uses start_system.py (full features, longer startup)
         - Fast mode: Uses backend/main.py directly (minimal overhead, instant startup)
         """
@@ -396,7 +396,7 @@ class JARVISSupervisor:
         self._project_root = Path(__file__).parent.parent.parent.parent.resolve()
 
         # Check for fast startup mode (direct main.py)
-        fast_mode = os.environ.get("JARVIS_FAST_STARTUP", "").lower() in ("1", "true", "yes")
+        fast_mode = os.environ.get("Ironcliw_FAST_STARTUP", "").lower() in ("1", "true", "yes")
 
         if fast_mode:
             # Fast mode: Use backend/main.py directly via -m flag
@@ -557,8 +557,8 @@ class JARVISSupervisor:
                 # Continue without intelligence - graceful degradation
                 self._intelligence_manager = None
 
-        # v5.1: Initialize JARVIS-Prime Orchestrator (Tier 0 Local Brain)
-        # This starts JARVIS-Prime as a managed subprocess for instant local responses
+        # v5.1: Initialize Ironcliw-Prime Orchestrator (Tier 0 Local Brain)
+        # This starts Ironcliw-Prime as a managed subprocess for instant local responses
         if self._jarvis_prime_orchestrator is None:
             try:
                 from .jarvis_prime_orchestrator import (
@@ -568,29 +568,29 @@ class JARVISSupervisor:
 
                 # Create narrator callback for voice announcements
                 async def jarvis_prime_narrator_callback(message: str):
-                    """Forward JARVIS-Prime announcements to narrator."""
+                    """Forward Ironcliw-Prime announcements to narrator."""
                     if self._narrator:
                         await self._narrator.speak(message, wait=False)
 
                 # Get orchestrator with auto-start if enabled
                 self._jarvis_prime_orchestrator = await get_jarvis_prime_orchestrator_async(
                     narrator_callback=jarvis_prime_narrator_callback,
-                    auto_start=True,  # Start JARVIS-Prime during supervisor init
+                    auto_start=True,  # Start Ironcliw-Prime during supervisor init
                 )
 
                 # Log status
                 health = self._jarvis_prime_orchestrator.get_health()
                 if health.is_healthy():
-                    logger.info(f"🧠 JARVIS-Prime (Tier 0 Local Brain) started: PID {health.pid}")
+                    logger.info(f"🧠 Ironcliw-Prime (Tier 0 Local Brain) started: PID {health.pid}")
                 else:
                     logger.info(
-                        f"⚠️ JARVIS-Prime status: {health.status.value} "
+                        f"⚠️ Ironcliw-Prime status: {health.status.value} "
                         f"(enabled={self._jarvis_prime_orchestrator.config.enabled})"
                     )
 
             except Exception as e:
-                logger.warning(f"⚠️ JARVIS-Prime Orchestrator initialization failed: {e}")
-                # Continue without JARVIS-Prime - commands will fall back to Tier 1
+                logger.warning(f"⚠️ Ironcliw-Prime Orchestrator initialization failed: {e}")
+                # Continue without Ironcliw-Prime - commands will fall back to Tier 1
                 self._jarvis_prime_orchestrator = None
 
         # v6.0: Initialize Cross-Repo Intelligence Hub (Heist Integration)
@@ -659,7 +659,7 @@ class JARVISSupervisor:
     
     async def _close_all_jarvis_windows(self) -> int:
         """
-        Close ALL Chrome incognito windows + JARVIS-related regular windows.
+        Close ALL Chrome incognito windows + Ironcliw-related regular windows.
         
         v5.0: Check browser lock first - if locked, skip (another process is handling it)
         
@@ -733,7 +733,7 @@ class JARVISSupervisor:
             logger.debug(f"Could not close existing windows: {e}")
         
         if total_closed > 0:
-            logger.info(f"🗑️ Closed {total_closed} existing JARVIS window(s)")
+            logger.info(f"🗑️ Closed {total_closed} existing Ironcliw window(s)")
             await asyncio.sleep(1.0)
         
         return total_closed
@@ -745,7 +745,7 @@ class JARVISSupervisor:
         v5.0: Check browser lock first - if locked, skip since
         run_supervisor.py is already managing the browser.
         
-        This ensures exactly one browser window for JARVIS.
+        This ensures exactly one browser window for Ironcliw.
         """
         loading_url = "http://localhost:3001/"
 
@@ -755,12 +755,12 @@ class JARVISSupervisor:
             return True  # Return True since browser IS open, just not by us
 
         try:
-            # Step 1: Close all existing JARVIS windows
+            # Step 1: Close all existing Ironcliw windows
             closed_count = await self._close_all_jarvis_windows()
             
             if closed_count > 0:
                 await asyncio.sleep(1.0)  # Let Chrome process the closures
-                logger.info(f"🧹 Cleaned up {closed_count} existing JARVIS window(s)")
+                logger.info(f"🧹 Cleaned up {closed_count} existing Ironcliw window(s)")
             
             # Step 2: Open fresh incognito window with fullscreen
             applescript = f'''
@@ -798,7 +798,7 @@ class JARVISSupervisor:
             stdout, _ = await process.communicate()
             
             if stdout.decode().strip().lower() == "true":
-                logger.info(f"🌐 Opened single JARVIS window: {loading_url}")
+                logger.info(f"🌐 Opened single Ironcliw window: {loading_url}")
                 return True
             
             # Fallback to command line
@@ -819,13 +819,13 @@ class JARVISSupervisor:
     
     async def _spawn_jarvis(self) -> int:
         """
-        Spawn the JARVIS process and wait for exit.
+        Spawn the Ironcliw process and wait for exit.
         
         Includes loading page orchestration for visual feedback during startup
         AND intelligent voice narration for audio feedback.
         
         Returns:
-            Exit code from the JARVIS process
+            Exit code from the Ironcliw process
         """
         self._set_state(SupervisorState.STARTING)
 
@@ -838,7 +838,7 @@ class JARVISSupervisor:
         # ═══════════════════════════════════════════════════════════════════════════
 
         # Start loading page if enabled (first start or after crash)
-        show_loading = self._show_loading_page and os.environ.get("JARVIS_NO_LOADING") != "1"
+        show_loading = self._show_loading_page and os.environ.get("Ironcliw_NO_LOADING") != "1"
 
         if show_loading:
             try:
@@ -885,7 +885,7 @@ class JARVISSupervisor:
                 # v3.1: Use explicit flag (more reliable than env var timing)
                 supervisor_already_opened = (
                     self._skip_browser_open or 
-                    os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1"
+                    os.environ.get("Ironcliw_SUPERVISOR_LOADING") == "1"
                 )
                 
                 if self.stats.total_starts == 0 and not supervisor_already_opened:
@@ -948,7 +948,7 @@ class JARVISSupervisor:
 
         if self.jarvis_entry_point == "__FAST_MODE__":
             # Fast mode: Use python -m backend.main for direct startup
-            # This is the fastest way to start JARVIS (skips start_system.py overhead)
+            # This is the fastest way to start Ironcliw (skips start_system.py overhead)
             cmd = [python_executable, "-B", "-m", "backend.main"]
             logger.info("⚡ Using fast startup: python -m backend.main")
         else:
@@ -957,8 +957,8 @@ class JARVISSupervisor:
 
         # Add supervisor-specific environment
         env = os.environ.copy()
-        env["JARVIS_SUPERVISED"] = "1"
-        env["JARVIS_SUPERVISOR_PID"] = str(os.getpid())
+        env["Ironcliw_SUPERVISED"] = "1"
+        env["Ironcliw_SUPERVISOR_PID"] = str(os.getpid())
 
         # CRITICAL: Set PYTHONPATH to include both project root and backend directory
         # This ensures all imports work correctly regardless of startup mode:
@@ -976,14 +976,14 @@ class JARVISSupervisor:
         
         # Tell start_system.py that supervisor is handling loading page
         if self._progress_reporter:
-            env["JARVIS_SUPERVISOR_LOADING"] = "1"
+            env["Ironcliw_SUPERVISOR_LOADING"] = "1"
         
-        logger.info(f"🚀 Spawning JARVIS: {' '.join(cmd)}")
+        logger.info(f"🚀 Spawning Ironcliw: {' '.join(cmd)}")
 
         # === SPAWNING PHASE ===
         # Mark spawning as started in the hub (single source of truth)
         if self._progress_hub:
-            await self._progress_hub.component_start("spawning", "Starting JARVIS Core...")
+            await self._progress_hub.component_start("spawning", "Starting Ironcliw Core...")
 
         # Get progress from hub for reporter
         spawn_progress = self._progress_hub.get_progress() if self._progress_hub else 10
@@ -992,9 +992,9 @@ class JARVISSupervisor:
         if self._progress_reporter:
             await self._progress_reporter.report(
                 "spawning",
-                "Starting JARVIS Core...",
+                "Starting Ironcliw Core...",
                 spawn_progress,
-                log_entry=f"Spawning JARVIS process: {' '.join(cmd[:2])}...",
+                log_entry=f"Spawning Ironcliw process: {' '.join(cmd[:2])}...",
                 log_source="Supervisor",
                 log_type="info"
             )
@@ -1002,7 +1002,7 @@ class JARVISSupervisor:
         # Voice: Announce spawning NOW (aligned with visual)
         await self._startup_narrator.announce_phase(
             StartupPhase.SPAWNING,
-            "Starting JARVIS Core...",
+            "Starting Ironcliw Core...",
             spawn_progress,
             context="start",
         )
@@ -1022,7 +1022,7 @@ class JARVISSupervisor:
             self.stats.total_starts += 1
 
             self._set_state(SupervisorState.RUNNING)
-            logger.info(f"✅ JARVIS spawned (PID: {self._process.pid})")
+            logger.info(f"✅ Ironcliw spawned (PID: {self._process.pid})")
             
             # ═══════════════════════════════════════════════════════════════════
             # DEAD MAN'S SWITCH: Start probation monitoring for post-update boots
@@ -1035,13 +1035,13 @@ class JARVISSupervisor:
             # Mark spawning AND supervisor as complete in the hub
             # Supervisor's job is done once the process is spawned
             if self._progress_hub:
-                await self._progress_hub.component_complete("spawning", "JARVIS Core started")
+                await self._progress_hub.component_complete("spawning", "Ironcliw Core started")
                 await self._progress_hub.component_complete("supervisor", "Supervisor ready")
                 # Also mark early-stage components that don't have explicit tracking
                 await self._progress_hub.component_complete("cleanup", "Cleanup complete")
                 await self._progress_hub.component_complete("config", "Configuration loaded")
 
-            # NOTE: Do NOT announce "JARVIS online" here - that's premature!
+            # NOTE: Do NOT announce "Ironcliw online" here - that's premature!
             # The startup narrator will announce completion when ALL systems are ready
             # (backend, frontend, voice, vision) in _monitor_startup_progress()
             
@@ -1050,7 +1050,7 @@ class JARVISSupervisor:
                 create_safe_task(self._monitor_health())
 
             # Start loading progress monitor - this handles ALL startup narration
-            # and will announce "JARVIS online" when truly ready
+            # and will announce "Ironcliw online" when truly ready
             if self._progress_reporter:
                 create_safe_task(self._monitor_startup_progress())
             else:
@@ -1205,13 +1205,13 @@ class JARVISSupervisor:
                 datetime.now() - self.process_info.start_time
             ).total_seconds()
             
-            logger.info(f"📋 JARVIS exited with code {exit_code} (uptime: {self.process_info.uptime_seconds:.1f}s)")
+            logger.info(f"📋 Ironcliw exited with code {exit_code} (uptime: {self.process_info.uptime_seconds:.1f}s)")
             
             # ═══════════════════════════════════════════════════════════════════
             # DEAD MAN'S SWITCH: Handle exit during probation
             # ═══════════════════════════════════════════════════════════════════
             if dms_task and not dms_task.done():
-                # Cancel the probation loop since JARVIS exited
+                # Cancel the probation loop since Ironcliw exited
                 dms_task.cancel()
                 try:
                     await dms_task
@@ -1221,7 +1221,7 @@ class JARVISSupervisor:
                 # If this was a crash during probation, handle it specially
                 if self._dead_man_switch and self._dead_man_switch.is_probation_active():
                     if exit_code != 0:  # Crash or error
-                        logger.warning(f"💥 JARVIS crashed during Dead Man's Switch probation!")
+                        logger.warning(f"💥 Ironcliw crashed during Dead Man's Switch probation!")
                         decision = await self._dead_man_switch.handle_crash(exit_code)
                         if decision.should_rollback:
                             logger.info(f"🔄 Dead Man's Switch recommends rollback: {decision.reason}")
@@ -1231,7 +1231,7 @@ class JARVISSupervisor:
             return exit_code
             
         except Exception as e:
-            logger.error(f"❌ Failed to spawn JARVIS: {e}")
+            logger.error(f"❌ Failed to spawn Ironcliw: {e}")
             return ExitCode.ERROR_CRASH
         finally:
             self._process = None
@@ -1506,8 +1506,8 @@ class JARVISSupervisor:
             return {}
         
         # === INTEGRATED SERVICE HEALTH CHECKS ===
-        # Track JARVIS Prime and Reactor Core for unified health reporting
-        jarvis_prime_port = int(os.environ.get("JARVIS_PRIME_PORT", "8000"))
+        # Track Ironcliw Prime and Reactor Core for unified health reporting
+        jarvis_prime_port = int(os.environ.get("Ironcliw_PRIME_PORT", "8000"))
         jarvis_prime_url = f"http://localhost:{jarvis_prime_port}"
         reactor_core_port = int(os.environ.get("REACTOR_CORE_PORT", "8001"))
         reactor_core_url = f"http://localhost:{reactor_core_port}"
@@ -1518,13 +1518,13 @@ class JARVISSupervisor:
 
         async def check_integrated_services() -> Dict[str, bool]:
             """
-            Check JARVIS Prime and Reactor Core health in parallel.
+            Check Ironcliw Prime and Reactor Core health in parallel.
             These are optional - main startup doesn't block on them.
             """
             results = {"jarvis_prime": False, "reactor_core": False}
 
             try:
-                # Check JARVIS Prime (local LLM brain)
+                # Check Ironcliw Prime (local LLM brain)
                 prime_task = create_safe_task(
                     check_endpoint_smart(f"{jarvis_prime_url}/health", jarvis_prime_state, timeout=2.0)
                 )
@@ -1550,7 +1550,7 @@ class JARVISSupervisor:
             Run ALL health checks in parallel:
             - Main backend (required)
             - Frontend (optional based on config)
-            - JARVIS Prime (optional - local LLM)
+            - Ironcliw Prime (optional - local LLM)
             - Reactor Core (optional - training pipeline)
             """
             # Create all health check tasks
@@ -1874,7 +1874,7 @@ class JARVISSupervisor:
                     # ═══════════════════════════════════════════════════════════════════
                     # COMPLETION CHECK - Based on ACTUAL operational readiness
                     # ═══════════════════════════════════════════════════════════════════
-                    # CRITICAL: We must ensure JARVIS is actually functional before
+                    # CRITICAL: We must ensure Ironcliw is actually functional before
                     # declaring "ready". False positives mislead users and cause confusion.
                     #
                     # Readiness hierarchy:
@@ -2058,11 +2058,11 @@ class JARVISSupervisor:
                         # Mark unified hub as complete (CRITICAL: must happen BEFORE announcements)
                         # This ensures all systems know we're truly ready
                         if self._progress_hub:
-                            await self._progress_hub.mark_complete(True, "JARVIS is online!")
+                            await self._progress_hub.mark_complete(True, "Ironcliw is online!")
 
                         # Visual: Complete and redirect
                         await self._progress_reporter.complete(
-                            "JARVIS is online!",
+                            "Ironcliw is online!",
                             redirect_url=frontend_url,
                         )
 
@@ -2089,7 +2089,7 @@ class JARVISSupervisor:
                         # CRITICAL: Signal to reload manager that startup is complete
                         # This ends the grace period and enables hot-reload functionality
                         # ═══════════════════════════════════════════════════════════════════
-                        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
+                        os.environ["Ironcliw_STARTUP_COMPLETE"] = "true"
                         logger.info("🔓 Startup complete signal sent - hot-reload now active")
 
                         logger.info(f"✅ Startup complete in {duration:.1f}s")
@@ -2115,7 +2115,7 @@ class JARVISSupervisor:
                     pass
     
     async def _monitor_health(self) -> None:
-        """Monitor JARVIS health while running."""
+        """Monitor Ironcliw health while running."""
         while self.state == SupervisorState.RUNNING and self._process:
             await asyncio.sleep(self.config.health.check_interval_seconds)
             
@@ -2174,7 +2174,7 @@ class JARVISSupervisor:
                     announced_spawning = True
                     await self._startup_narrator.announce_phase(
                         StartupPhase.SPAWNING,
-                        "Starting JARVIS Core...",
+                        "Starting Ironcliw Core...",
                         15,
                         context="start",
                     )
@@ -2230,7 +2230,7 @@ class JARVISSupervisor:
                             duration_seconds=duration,
                         )
                         # Signal to reload manager that startup is complete
-                        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
+                        os.environ["Ironcliw_STARTUP_COMPLETE"] = "true"
                         logger.info(f"✅ Startup complete in {duration:.1f}s (no loading page)")
                         break
                     
@@ -2265,7 +2265,7 @@ class JARVISSupervisor:
         self.process_info.last_crash_time = datetime.now()
         self.stats.total_crashes += 1
         
-        logger.error(f"💥 JARVIS crashed (exit code: {exit_code}, crash #{self.process_info.crash_count})")
+        logger.error(f"💥 Ironcliw crashed (exit code: {exit_code}, crash #{self.process_info.crash_count})")
         
         # Announce crash detection
         await self._narrator.narrate(NarratorEvent.CRASH_DETECTED)
@@ -2381,7 +2381,7 @@ class JARVISSupervisor:
         mode_str = "Zero-Touch" if is_zero_touch else "Manual"
         logger.info(f"🔄 Update requested ({mode_str} mode)")
         
-        # Broadcast maintenance mode to frontend BEFORE JARVIS shuts down
+        # Broadcast maintenance mode to frontend BEFORE Ironcliw shuts down
         try:
             from .maintenance_broadcaster import broadcast_maintenance_mode
             await broadcast_maintenance_mode(
@@ -2564,7 +2564,7 @@ class JARVISSupervisor:
             True if rollback successful, False if failed
         """
         self._set_state(SupervisorState.ROLLING_BACK)
-        logger.info("🔄 Rollback requested by JARVIS")
+        logger.info("🔄 Rollback requested by Ironcliw")
         
         # Announce rollback starting
         await self._narrator.narrate(NarratorEvent.ROLLBACK_STARTING, wait=True)
@@ -2627,7 +2627,7 @@ class JARVISSupervisor:
         """
         Background task: Run Dead Man's Switch probation monitoring.
         
-        This runs concurrently with JARVIS and monitors its health
+        This runs concurrently with Ironcliw and monitors its health
         during the post-update probation period.
         
         v3.0: Now uses enhanced narrator for intelligent DMS status updates.
@@ -2859,7 +2859,7 @@ class JARVISSupervisor:
         v2.0: Enhanced with Zero-Touch autonomous update support.
         When Zero-Touch mode is enabled, this will:
         1. Check system idle state
-        2. Query JARVIS busy state
+        2. Query Ironcliw busy state
         3. Validate update safety
         4. Auto-apply if all conditions pass
         """
@@ -2941,7 +2941,7 @@ class JARVISSupervisor:
         """
         Check if update modifies immutable core files.
         
-        Prime Directives: The Supervisor is READ-ONLY to JARVIS.
+        Prime Directives: The Supervisor is READ-ONLY to Ironcliw.
         
         Args:
             files: List of files being modified
@@ -3001,7 +3001,7 @@ class JARVISSupervisor:
 
                     # Terminate child process to trigger restart in main loop
                     if self._process and self._process.returncode is None:
-                        logger.info(f"📡 Terminating JARVIS (PID: {self._process.pid}) for restart")
+                        logger.info(f"📡 Terminating Ironcliw (PID: {self._process.pid}) for restart")
                         try:
                             # Send SIGTERM for graceful shutdown
                             self._process.send_signal(signal.SIGTERM)
@@ -3054,7 +3054,7 @@ class JARVISSupervisor:
         if self._process and self._process.returncode is None:
             try:
                 self._process.send_signal(sig)
-                logger.info(f"📡 Forwarded {sig.name} to JARVIS (PID: {self._process.pid})")
+                logger.info(f"📡 Forwarded {sig.name} to Ironcliw (PID: {self._process.pid})")
             except ProcessLookupError:
                 pass
     
@@ -3075,7 +3075,7 @@ class JARVISSupervisor:
             logger.warning("⚠️ Supervisor is disabled in config")
             return
         
-        logger.info("🚀 Starting JARVIS Supervisor")
+        logger.info("🚀 Starting Ironcliw Supervisor")
         self.stats.supervisor_start_time = datetime.now()
 
         # v2.0: Start unified voice orchestrator FIRST (single source of truth)
@@ -3132,15 +3132,15 @@ class JARVISSupervisor:
                     self._update_requested.clear()
                     await self._handle_update_request()
 
-                # Spawn JARVIS and wait for exit
+                # Spawn Ironcliw and wait for exit
                 exit_code = await self._spawn_jarvis()
                 
                 # ═══════════════════════════════════════════════════════════════════
                 # DEAD MAN'S SWITCH: Start probation monitoring after post-update boot
                 # ═══════════════════════════════════════════════════════════════════
-                # Note: The DMS task runs DURING JARVIS execution, not after.
-                # We start it here but it monitors concurrently with JARVIS.
-                # The exit_code check below happens AFTER JARVIS exits.
+                # Note: The DMS task runs DURING Ironcliw execution, not after.
+                # We start it here but it monitors concurrently with Ironcliw.
+                # The exit_code check below happens AFTER Ironcliw exits.
                 # 
                 # For proper integration, we need to start DMS monitoring in
                 # _spawn_jarvis or right after the process is created.
@@ -3161,7 +3161,7 @@ class JARVISSupervisor:
 
                 # Handle exit code
                 if exit_code == exit_codes["clean"]:
-                    logger.info("✅ JARVIS shut down cleanly")
+                    logger.info("✅ Ironcliw shut down cleanly")
                     break
                     
                 elif exit_code == exit_codes["update"]:
@@ -3213,13 +3213,13 @@ class JARVISSupervisor:
                 except Exception as e:
                     logger.debug(f"Intelligence Component Manager cleanup error: {e}")
 
-            # v5.1: Cleanup JARVIS-Prime Orchestrator (Tier 0 Local Brain)
+            # v5.1: Cleanup Ironcliw-Prime Orchestrator (Tier 0 Local Brain)
             if self._jarvis_prime_orchestrator:
                 try:
                     await self._jarvis_prime_orchestrator.stop()
-                    logger.info("🧠 JARVIS-Prime (Tier 0 Local Brain) shutdown complete")
+                    logger.info("🧠 Ironcliw-Prime (Tier 0 Local Brain) shutdown complete")
                 except Exception as e:
-                    logger.debug(f"JARVIS-Prime Orchestrator cleanup error: {e}")
+                    logger.debug(f"Ironcliw-Prime Orchestrator cleanup error: {e}")
 
             for task in tasks:
                 task.cancel()
@@ -3286,7 +3286,7 @@ class JARVISSupervisor:
 
 async def run_supervisor() -> None:
     """Entry point for running the supervisor."""
-    supervisor = JARVISSupervisor()
+    supervisor = IroncliwSupervisor()
     await supervisor.run()
 
 

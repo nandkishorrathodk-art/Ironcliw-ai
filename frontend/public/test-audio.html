@@ -1,7 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
-    <title>JARVIS Audio Test</title>
+    <title>Ironcliw Audio Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -42,7 +42,7 @@
     </style>
 </head>
 <body>
-    <h1>JARVIS Audio Test Page</h1>
+    <h1>Ironcliw Audio Test Page</h1>
     
     <div class="test-section">
         <h2>1. Backend TTS Test</h2>
@@ -84,7 +84,7 @@
         async function testBackendTTS() {
             log('Testing backend TTS with GET method...');
             try {
-                const text = "Hello Sir, this is JARVIS testing the audio system.";
+                const text = "Hello Sir, this is Ironcliw testing the audio system.";
                 const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
                 
                 log(`Fetching audio from: ${audioUrl}`);
@@ -179,7 +179,7 @@
                 return;
             }
             
-            const text = "Testing browser speech synthesis. This is JARVIS speaking.";
+            const text = "Testing browser speech synthesis. This is Ironcliw speaking.";
             const utterance = new SpeechSynthesisUtterance(text);
             
             const voices = speechSynthesis.getVoices();

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Authentication Reasoning Nodes v2.0
 
 Enterprise-grade LangGraph nodes for voice authentication reasoning.
@@ -23,7 +23,7 @@ Nodes:
 - ResponseGeneratorNode: Context-aware announcement generation
 - LearningNode: Store experience and update baselines
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Full Screen Vision & Navigation System for JARVIS
+Full Screen Vision & Navigation System for Ironcliw
 Provides complete workspace understanding and autonomous navigation capabilities
 """
 
@@ -32,12 +32,12 @@ from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
 # abort() — a C-level process kill that bypasses Python exception handling.
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
-    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    _cached = os.environ.get("_Ironcliw_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
     result = False
     if sys.platform == "darwin":
-        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("Ironcliw_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
             pass
@@ -51,7 +51,7 @@ def _is_gui_session() -> bool:
                 result = cg.CGSessionCopyCurrentDictionary() is not None
             except Exception:
                 pass
-    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    os.environ["_Ironcliw_GUI_SESSION"] = "1" if result else "0"
     return result
 
 MACOS_AVAILABLE = False
@@ -198,7 +198,7 @@ class VisionNavigationSystem:
     async def start_navigation_mode(self):
         """Enable navigation mode for active control"""
         self.navigation_mode = True
-        logger.info("Navigation mode activated - JARVIS has full workspace control")
+        logger.info("Navigation mode activated - Ironcliw has full workspace control")
         
         # Start continuous workspace mapping
         asyncio.create_task(self._continuous_mapping())

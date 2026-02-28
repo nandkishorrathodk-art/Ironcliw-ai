@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Bloom Filter Network (4.4) for JARVIS Vision System
+Bloom Filter Network (4.4) for Ironcliw Vision System
 Hierarchical bloom filter system for preventing redundant processing through efficient duplicate detection.
 
 Architecture:

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Update Detector v2.0
+Ironcliw Update Detector v2.0
 =============================
 
 Async GitHub polling and LOCAL change detection for the Self-Updating Lifecycle Manager.
@@ -12,7 +12,7 @@ Features:
 - File change monitoring with debouncing
 - Parallel async operations for performance
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -105,7 +105,7 @@ class UpdateDetector:
     - Semantic version comparison
     - Release and commit-based detection
     - LOCAL CHANGE AWARENESS (v2.0):
-      - Detects commits made since JARVIS started
+      - Detects commits made since Ironcliw started
       - Detects pushes to remote
       - Tracks uncommitted changes
       - Intelligent restart recommendations
@@ -192,7 +192,7 @@ class UpdateDetector:
         if self._session is None or self._session.closed:
             headers = {
                 "Accept": "application/vnd.github.v3+json",
-                "User-Agent": "JARVIS-Update-Detector/1.0",
+                "User-Agent": "Ironcliw-Update-Detector/1.0",
             }
             
             # Add GitHub token if available
@@ -564,7 +564,7 @@ class UpdateDetector:
     async def initialize_baseline(self) -> None:
         """
         Initialize the baseline state for local change detection.
-        Call this when JARVIS starts to record the initial commit/branch.
+        Call this when Ironcliw starts to record the initial commit/branch.
         """
         # Get current commit and branch in parallel
         commit_task = asyncio.create_task(self.get_current_commit())
@@ -708,7 +708,7 @@ class UpdateDetector:
 
     async def check_local_changes(self, force: bool = False) -> LocalChangeInfo:
         """
-        Check for local repository changes since JARVIS started.
+        Check for local repository changes since Ironcliw started.
 
         This detects:
         - New commits made since startup
@@ -907,7 +907,7 @@ class UpdateDetector:
         return self._cached_local_changes
 
     def get_startup_info(self) -> dict[str, Any]:
-        """Get information about when JARVIS started."""
+        """Get information about when Ironcliw started."""
         return {
             "startup_commit": self._startup_commit[:12] if self._startup_commit else None,
             "startup_branch": self._startup_branch,

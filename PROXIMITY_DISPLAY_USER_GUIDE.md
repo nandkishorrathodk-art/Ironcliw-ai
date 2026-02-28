@@ -1,17 +1,17 @@
-# 🖥️ Proximity-Aware Display Connection System - User Guide
+﻿# 🖥️ Proximity-Aware Display Connection System - User Guide
 
-## 🎉 **Welcome to Spatially Intelligent JARVIS!**
+## 🎉 **Welcome to Spatially Intelligent Ironcliw!**
 
-Your MacBook Pro M1 can now automatically detect when you're near TVs and monitors using Bluetooth proximity from your Apple Watch or iPhone. JARVIS becomes environmentally intelligent - understanding your physical location and suggesting display connections contextually.
+Your MacBook Pro M1 can now automatically detect when you're near TVs and monitors using Bluetooth proximity from your Apple Watch or iPhone. Ironcliw becomes environmentally intelligent - understanding your physical location and suggesting display connections contextually.
 
 ---
 
 ## 🚀 **Quick Start**
 
-### **Step 1: Restart JARVIS Backend**
+### **Step 1: Restart Ironcliw Backend**
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 
@@ -119,7 +119,7 @@ Edit `backend/config/display_locations.json`:
 
 ### **1. Bluetooth Proximity Detection**
 
-JARVIS scans for your Apple Watch or iPhone via Bluetooth:
+Ironcliw scans for your Apple Watch or iPhone via Bluetooth:
 
 - **Strong Signal (-40 dBm):** ~0.5-1m away
 - **Medium Signal (-60 dBm):** ~2-3m away
@@ -242,7 +242,7 @@ Distance: 0.8m
 Zone: IMMEDIATE
 Proximity Score (Built-in): 0.95
 
-JARVIS: "Primary display (Built-in) is your nearest screen"
+Ironcliw: "Primary display (Built-in) is your nearest screen"
 ```
 
 ### **Example 2: Walking to Living Room**
@@ -254,7 +254,7 @@ Distance: 2.3m
 Zone: NEAR
 Proximity Score (TV): 0.85
 
-JARVIS: "I see you're near the Living Room TV (2.3m away). 
+Ironcliw: "I see you're near the Living Room TV (2.3m away). 
          Would you like to connect?"
 ```
 
@@ -271,7 +271,7 @@ AFTER (Living Room):
   - Living Room TV: score 0.85 (2.5m away)
   - Office Monitor: score 0.18 (10m away)
 
-JARVIS: "Nearest display changed from Office Monitor to Living Room TV"
+Ironcliw: "Nearest display changed from Office Monitor to Living Room TV"
 ```
 
 ---
@@ -309,12 +309,12 @@ JARVIS: "Nearest display changed from Office Monitor to Living Room TV"
 
 ### **"No proximity data"**
 
-**Problem:** JARVIS can't detect your Apple Watch/iPhone
+**Problem:** Ironcliw can't detect your Apple Watch/iPhone
 
 **Solutions:**
 1. Make sure your Apple Watch or iPhone is paired and nearby
 2. Check Bluetooth is enabled on your Mac
-3. Ensure JARVIS has Bluetooth permissions:
+3. Ensure Ironcliw has Bluetooth permissions:
    - System Settings → Privacy & Security → Bluetooth
 4. Try manual scan:
    ```bash
@@ -402,7 +402,7 @@ Higher = less responsive, better battery life
 
 ### **Phase 1C: Command Routing (Coming Soon)**
 - Voice commands: "Show me X on the nearest display"
-- JARVIS acknowledges: "I see you're near the Living Room TV"
+- Ironcliw acknowledges: "I see you're near the Living Room TV"
 - Auto-route display output based on proximity
 
 ### **Phase 1D: Auto-Connection (Future)**
@@ -410,7 +410,7 @@ Higher = less responsive, better battery life
 - "When you walk to the living room, display extends automatically"
 
 ### **Phase 2.0: ML Learning (Future)**
-- JARVIS learns your preferences
+- Ironcliw learns your preferences
 - "I notice you usually connect to the TV at 7pm"
 - Predictive connection suggestions
 
@@ -442,7 +442,7 @@ curl http://localhost:8000/api/proximity-display/health
 
 ---
 
-**JARVIS is now spatially intelligent! Enjoy your proximity-aware display system!** 🎉
+**Ironcliw is now spatially intelligent! Enjoy your proximity-aware display system!** 🎉
 
 *User Guide Version: 1.0*  
 *Date: 2025-10-14*  

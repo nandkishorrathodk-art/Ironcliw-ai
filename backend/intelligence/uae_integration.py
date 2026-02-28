@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 UAE Integration Module
 ======================
 
-Central integration point for Unified Awareness Engine (UAE) with JARVIS systems.
+Central integration point for Unified Awareness Engine (UAE) with Ironcliw systems.
 
 This module provides:
 - UAE initialization and lifecycle management
@@ -56,7 +56,7 @@ from vision.situational_awareness import (
 )
 from intelligence.learning_database import (
     get_learning_database,
-    JARVISLearningDatabase
+    IroncliwLearningDatabase
 )
 from intelligence.yabai_spatial_intelligence import (
     get_yabai_intelligence,
@@ -91,7 +91,7 @@ class UAEMode(Enum):
 # Global UAE instance
 _uae_instance: Optional[UnifiedAwarenessEngine] = None
 _uae_initialized = False
-_learning_db_instance: Optional[JARVISLearningDatabase] = None
+_learning_db_instance: Optional[IroncliwLearningDatabase] = None
 _yabai_instance: Optional[YabaiSpatialIntelligence] = None
 _pattern_learner_instance: Optional[WorkspacePatternLearner] = None
 _bridge_instance: Optional[YabaiSAIBridge] = None
@@ -628,7 +628,7 @@ async def shutdown_uae():
         logger.error(f"[UAE-SHUTDOWN] Error during shutdown: {e}", exc_info=True)
 
 
-def get_learning_db() -> Optional[JARVISLearningDatabase]:
+def get_learning_db() -> Optional[IroncliwLearningDatabase]:
     """
     Get global Learning Database instance
 

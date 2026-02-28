@@ -1,7 +1,7 @@
-# 🎙️ Voice Detection Enhancements - First-Attempt Command Recognition
+﻿# 🎙️ Voice Detection Enhancements - First-Attempt Command Recognition
 
 ## 🎯 Goal
-Make JARVIS catch commands on the very first attempt, especially critical commands like "lock my screen" and "unlock my screen".
+Make Ironcliw catch commands on the very first attempt, especially critical commands like "lock my screen" and "unlock my screen".
 
 ## 📊 Problems Identified
 
@@ -84,7 +84,7 @@ if (commandAfterWakeWord.length > 5 && (isFinal || isHighConfidence)) {
 ```
 
 **Benefits**:
-- Processes "Hey JARVIS, lock my screen" as single command
+- Processes "Hey Ironcliw, lock my screen" as single command
 - No need to wait for wake word acknowledgment
 - Instant command execution for high-confidence speech
 
@@ -116,17 +116,17 @@ recognitionRef.current.onsoundstart = () => {
 
 ## 🎯 Use Case: Lock/Unlock Commands
 
-### Scenario: "Hey JARVIS, lock my screen"
+### Scenario: "Hey Ironcliw, lock my screen"
 
 **Before**:
-1. User says "Hey JARVIS" → Wait 1-2s for wake word processing
-2. JARVIS responds "Yes?" → User must wait
+1. User says "Hey Ironcliw" → Wait 1-2s for wake word processing
+2. Ironcliw responds "Yes?" → User must wait
 3. User says "lock my screen" → Wait 2-3s for final result
 4. **Total time**: 4-6 seconds, often requires repeat
 
 **After**:
-1. User says "Hey JARVIS, lock my screen" (single sentence)
-2. Recognition detects "Hey JARVIS" with 90% confidence (interim result)
+1. User says "Hey Ironcliw, lock my screen" (single sentence)
+2. Recognition detects "Hey Ironcliw" with 90% confidence (interim result)
 3. Immediately detects "lock my screen" after wake word
 4. Processes command instantly (high confidence)
 5. **Total time**: 0.5-1 second, **works on first attempt**
@@ -171,10 +171,10 @@ recognitionRef.current.onsoundstart = () => {
 ## 🧪 Testing Recommendations
 
 ### Manual Testing
-1. **Quick Commands**: Say "Hey JARVIS, lock my screen" quickly
+1. **Quick Commands**: Say "Hey Ironcliw, lock my screen" quickly
    - Expected: Locks within 1 second
 
-2. **Pause Test**: Say "Hey JARVIS" → pause → "lock my screen"
+2. **Pause Test**: Say "Hey Ironcliw" → pause → "lock my screen"
    - Expected: Catches on first attempt of second phrase
 
 3. **Confidence Test**: Check console for confidence scores
@@ -215,20 +215,20 @@ const CONFIDENCE_THRESHOLD = 0.85; // 85%
 
 ### Before
 ```
-User: "Hey JARVIS, lock my screen"
+User: "Hey Ironcliw, lock my screen"
 [2 second pause]
-JARVIS: "Yes?"
+Ironcliw: "Yes?"
 User: "lock my screen"
 [3 second pause]
-JARVIS: "Locking your screen now, Sir."
+Ironcliw: "Locking your screen now, Sir."
 Total: 5+ seconds
 ```
 
 ### After
 ```
-User: "Hey JARVIS, lock my screen"
+User: "Hey Ironcliw, lock my screen"
 [< 1 second]
-JARVIS: "Locking your screen now, Sir."
+Ironcliw: "Locking your screen now, Sir."
 Total: <1 second
 ```
 
@@ -268,7 +268,7 @@ Check browser console for:
 - ✅ Lock/unlock commands work on **first attempt** ≥95% of time
 - ✅ Response time <1 second for clear speech
 - ✅ No need to repeat commands
-- ✅ "Hey JARVIS, [command]" works as single sentence
+- ✅ "Hey Ironcliw, [command]" works as single sentence
 - ✅ Confidence scores visible in console for debugging
 
 ### How to Verify
@@ -304,4 +304,4 @@ Check browser console for:
 - 1372-1406: Fast command processing
 - 1409-1420: Enhanced event handlers
 
-**Testing**: Test with "Hey JARVIS, lock my screen" - should work instantly!
+**Testing**: Test with "Hey Ironcliw, lock my screen" - should work instantly!

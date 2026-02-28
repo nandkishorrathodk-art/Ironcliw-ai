@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Enhanced Context Flow - Verify proper feedback messages
 ============================================================
 
-Tests the scenario where Mac is locked and user asks JARVIS to open Safari
+Tests the scenario where Mac is locked and user asks Ironcliw to open Safari
 """
 
 import asyncio
@@ -31,7 +31,7 @@ async def test_enhanced_flow():
     context_handler = wrap_with_enhanced_context(processor)
     
     # Test command
-    test_command = "JARVIS, open Safari and search for dogs"
+    test_command = "Ironcliw, open Safari and search for dogs"
     
     print(f"\n📋 Test Command: '{test_command}'")
     print("\n🔍 Processing with enhanced context handler...")

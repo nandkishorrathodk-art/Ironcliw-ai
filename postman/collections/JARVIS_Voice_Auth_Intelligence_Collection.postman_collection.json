@@ -1,7 +1,7 @@
-{
+﻿{
   "info": {
     "_postman_id": "jarvis-voice-auth-intelligence-2024",
-    "name": "JARVIS Voice Auth Intelligence (Advanced ML)",
+    "name": "Ironcliw Voice Auth Intelligence (Advanced ML)",
     "description": "Advanced Voice Authentication Intelligence API Collection\n\n## Features\n- **AAM-Softmax + Center Loss + Triplet Loss Fine-Tuning**: Train embeddings for better speaker separation\n- **Platt/Isotonic Score Calibration**: Calibrate scores for meaningful 90%/95%/98% thresholds\n- **Adaptive Threshold Management**: Thresholds that evolve based on FRR/FAR\n- **Comprehensive Anti-Spoofing**: Replay, synthesis, voice conversion, environmental detection\n- **LangGraph Adaptive Reasoning**: Intelligent retry strategies\n- **Langfuse Audit Trail**: Complete authentication transparency\n- **Helicone-style Caching**: Cost optimization for voice processing\n\n## Base URL\n`http://localhost:8010`\n\n## Journey to 0.90/0.95/0.98 Thresholds\nThis collection helps you test and train the system toward production-grade thresholds.\n\n**Current (interim):** base=0.40, high=0.60, critical=0.75\n**Target:** base=0.90, high=0.95, critical=0.98\n\nThe system learns from every authentication attempt!",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

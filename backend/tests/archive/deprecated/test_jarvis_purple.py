@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS purple indicator fix
+Test Ironcliw purple indicator fix
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 async def test_video_streaming():
-    print("\n🟣 Testing JARVIS Video Streaming with Purple Indicator")
+    print("\n🟣 Testing Ironcliw Video Streaming with Purple Indicator")
     print("=" * 60)
     
     # Import after path setup

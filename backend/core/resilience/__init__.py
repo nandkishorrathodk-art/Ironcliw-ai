@@ -1,9 +1,9 @@
-"""
+﻿"""
 Cross-Repo Resilience Utilities - Production-Hardened Components v2.0
 =====================================================================
 
 Provides distributed coordination primitives for robust cross-repo communication
-across JARVIS (Body), JARVIS Prime (Mind), and Reactor Core (Learning).
+across Ironcliw (Body), Ironcliw Prime (Mind), and Reactor Core (Learning).
 
 v2.0 Features (Unified Resilience Engine):
     - Bulkhead isolation with semaphore-based resource pools
@@ -550,7 +550,7 @@ __all__ = [
     # =========================================================================
     # v3.0: STARTUP RESILIENCE UTILITIES
     # =========================================================================
-    # Pre-configured resilience for JARVIS startup
+    # Pre-configured resilience for Ironcliw startup
     "StartupResilienceConfig",
     "StartupResilience",
     # Factory functions for health checks

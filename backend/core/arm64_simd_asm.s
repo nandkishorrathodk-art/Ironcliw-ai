@@ -1,5 +1,5 @@
-/*
- * ARM64 Assembly Language SIMD Optimizations for JARVIS ML
+﻿/*
+ * ARM64 Assembly Language SIMD Optimizations for Ironcliw ML
  *
  * Pure ARM64 assembly for maximum performance on Apple M1
  * Uses NEON SIMD instructions for vectorized operations
@@ -7,7 +7,7 @@
  * Performance: 40-50x faster than pure Python
  * Optimized for: Apple M1 cache, pipeline, and NEON engine
  *
- * Author: JARVIS AI System
+ * Author: Ironcliw AI System
  * Architecture: ARM64 (AArch64)
  */
 

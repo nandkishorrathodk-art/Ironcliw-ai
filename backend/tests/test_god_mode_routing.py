@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 God Mode Surveillance Routing Tests
 
@@ -233,7 +233,7 @@ class TestParseWatchCommand:
         "What is the weather",
         "Open Chrome",
         "Close Terminal",
-        "Hello JARVIS",
+        "Hello Ironcliw",
     ])
     def test_non_surveillance_commands_return_none(self, command):
         """Test that non-surveillance commands return None"""

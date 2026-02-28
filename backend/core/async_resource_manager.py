@@ -1,4 +1,4 @@
-"""
+﻿"""
 Async Resource Manager v2.0 - Comprehensive Resource Lifecycle Management
 
 Provides centralized management of async resources (aiohttp sessions, database
@@ -19,7 +19,7 @@ This module solves:
 - Resource leak accumulation across restarts
 - Out-of-order cleanup causing cascading failures
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 2.0.0 (January 2026)
 """
 

@@ -1,8 +1,8 @@
-# ML-Enhanced Voice Recognition System Guide
+﻿# ML-Enhanced Voice Recognition System Guide
 
 ## Overview
 
-The ML-Enhanced Voice Recognition System provides state-of-the-art voice interaction capabilities for JARVIS, achieving:
+The ML-Enhanced Voice Recognition System provides state-of-the-art voice interaction capabilities for Ironcliw, achieving:
 - **80%+ reduction in false positive wake word detections**
 - **Dynamic environmental adaptation**
 - **Continuous learning from user interactions**
@@ -117,39 +117,39 @@ Enhanced conversation understanding using Claude:
 
 1. **Check ML Performance**
    ```
-   "Hey JARVIS, show ML performance"
+   "Hey Ironcliw, show ML performance"
    ```
    Shows current accuracy, false positive reduction rate, and adaptation statistics.
 
 2. **Improve Accuracy**
    ```
-   "Hey JARVIS, improve accuracy"
+   "Hey Ironcliw, improve accuracy"
    ```
    Guides you through personalized calibration to enhance recognition.
 
 3. **Get Personalized Tips**
    ```
-   "Hey JARVIS, give me personalized tips"
+   "Hey Ironcliw, give me personalized tips"
    ```
    Provides AI-generated suggestions based on your usage patterns.
 
 4. **Export Voice Model**
    ```
-   "Hey JARVIS, export my voice model"
+   "Hey Ironcliw, export my voice model"
    ```
    Saves your personalized model for backup or transfer.
 
 ### Advanced Features
 
 #### Manual Feedback
-When JARVIS misunderstands, the system automatically tracks this for learning. You can also provide explicit feedback:
-- If JARVIS activates incorrectly, simply ignore it (counts as false positive)
-- If JARVIS doesn't activate when it should, try again with clearer pronunciation
+When Ironcliw misunderstands, the system automatically tracks this for learning. You can also provide explicit feedback:
+- If Ironcliw activates incorrectly, simply ignore it (counts as false positive)
+- If Ironcliw doesn't activate when it should, try again with clearer pronunciation
 
 #### Environmental Calibration
 The system automatically calibrates, but you can force recalibration:
 ```
-"Hey JARVIS, calibrate"
+"Hey Ironcliw, calibrate"
 ```
 
 ## Performance Metrics
@@ -183,7 +183,7 @@ The system automatically calibrates, but you can force recalibration:
 
 **Solutions:**
 1. System will auto-adjust after ~10 false positives
-2. Check for background sounds similar to "JARVIS"
+2. Check for background sounds similar to "Ironcliw"
 3. Run "show ML performance" to check current thresholds
 
 ### Issue: Slow Response Time

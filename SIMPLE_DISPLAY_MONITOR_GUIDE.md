@@ -1,8 +1,8 @@
-# 🎯 **SIMPLE Display Monitor - The CORRECT Solution**
+﻿# 🎯 **SIMPLE Display Monitor - The CORRECT Solution**
 
 ## ✅ **What You Actually Wanted**
 
-> "I have Screen Mirroring on my MacBook. When 'Living Room TV' shows up as available, JARVIS should ask me if I want to extend to it. If I say yes, connect. If I say no, don't ask again."
+> "I have Screen Mirroring on my MacBook. When 'Living Room TV' shows up as available, Ironcliw should ask me if I want to extend to it. If I say yes, connect. If I say no, don't ask again."
 
 ### **NO Apple Watch, NO Proximity Detection, JUST Simple Display Monitoring** ✅
 
@@ -19,11 +19,11 @@ STEP 1: Living Room TV turns on
   → TV broadcasts AirPlay availability
   → Shows up in Screen Mirroring menu ✅
 
-STEP 2: JARVIS detects it (polls every 10 seconds)
+STEP 2: Ironcliw detects it (polls every 10 seconds)
   → "Living Room TV is now available" ✅
 
-STEP 3: JARVIS prompts you
-  JARVIS: "Sir, I see Living Room TV is now available. 
+STEP 3: Ironcliw prompts you
+  Ironcliw: "Sir, I see Living Room TV is now available. 
            Would you like to extend your display to it?"
 
 STEP 4: You respond
@@ -116,8 +116,8 @@ curl -X POST http://localhost:8000/api/display-monitor/start
 
 Now:
 - Turn on your Living Room TV
-- JARVIS detects it within 10 seconds
-- JARVIS asks: "Would you like to extend to Living Room TV?"
+- Ironcliw detects it within 10 seconds
+- Ironcliw asks: "Would you like to extend to Living Room TV?"
 - YOU: "Yes" or "No"
 
 ---
@@ -131,27 +131,27 @@ Now:
 
 TV powers on, connects to Wi-Fi, broadcasts AirPlay
 
-[8:00:05 PM - JARVIS polls Screen Mirroring menu]
+[8:00:05 PM - Ironcliw polls Screen Mirroring menu]
   → Query: Available AirPlay devices
   → Result: "Living Room TV" found ✅
   → Status: NEW (wasn't available before)
   → Generate prompt...
 
-[8:00:06 PM - JARVIS speaks]
-  JARVIS: "Sir, I see Living Room TV is now available. 
+[8:00:06 PM - Ironcliw speaks]
+  Ironcliw: "Sir, I see Living Room TV is now available. 
            Would you like to extend your display to it?"
 
 [8:00:10 PM - You respond]
   YOU: "Yes"
 
-[8:00:11 PM - JARVIS connects]
+[8:00:11 PM - Ironcliw connects]
   → AppleScript: Click Screen Mirroring menu
   → Find "Living Room TV"
   → Click to connect
   → Set mode: Extend (not mirror)
   → Wait ~3-5 seconds
 
-  JARVIS: "Extending to Living Room TV... Done, sir."
+  Ironcliw: "Extending to Living Room TV... Done, sir."
 
 [8:00:16 PM - Connected!]
   ✅ MacBook display extends to Living Room TV
@@ -165,10 +165,10 @@ TV powers on, connects to Wi-Fi, broadcasts AirPlay
 
 ## 🎤 **Voice Commands**
 
-### **When JARVIS Prompts:**
+### **When Ironcliw Prompts:**
 
 ```
-JARVIS: "Would you like to extend to Living Room TV?"
+Ironcliw: "Would you like to extend to Living Room TV?"
 
 YOU: "Yes" → Connects
 YOU: "Yeah" → Connects
@@ -298,7 +298,7 @@ curl -X POST http://localhost:8000/api/display-monitor/start
 
 # 3. Turn on your TV
 
-# 4. JARVIS will prompt within 10 seconds
+# 4. Ironcliw will prompt within 10 seconds
 
 # 5. Say "Yes" to connect
 ```
@@ -327,7 +327,7 @@ curl -X POST http://localhost:8000/api/display-monitor/start
 ## 🏆 **Summary**
 
 ### **What You Asked For:**
-> "When Living Room TV shows up in Screen Mirroring, JARVIS asks if I want to extend. No Apple Watch needed."
+> "When Living Room TV shows up in Screen Mirroring, Ironcliw asks if I want to extend. No Apple Watch needed."
 
 ### **What I Built First (Wrong):**
 - ❌ Complex proximity detection system

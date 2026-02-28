@@ -1,5 +1,5 @@
-"""
-JARVIS Loading Server Package v212.0
+﻿"""
+Ironcliw Loading Server Package v212.0
 ====================================
 
 Modular components extracted from the loading server for enterprise-grade
@@ -34,7 +34,7 @@ Usage:
         ProgressReporter,
     )
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

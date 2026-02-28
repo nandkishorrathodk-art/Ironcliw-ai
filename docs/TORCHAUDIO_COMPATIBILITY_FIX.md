@@ -1,4 +1,4 @@
-# TorchAudio 2.9.0+ Compatibility Fix
+﻿# TorchAudio 2.9.0+ Compatibility Fix
 
 ## Problem Overview
 
@@ -218,7 +218,7 @@ pip list | grep speechbrain
 
 ## Summary
 
-This fix ensures JARVIS remains compatible with the latest PyTorch/TorchAudio ecosystem while waiting for SpeechBrain to update. The two-layer approach provides robust compatibility without sacrificing performance or functionality.
+This fix ensures Ironcliw remains compatible with the latest PyTorch/TorchAudio ecosystem while waiting for SpeechBrain to update. The two-layer approach provides robust compatibility without sacrificing performance or functionality.
 
 **Status**: ✅ Production-ready
 **Testing**: ✅ Verified on torchaudio 2.9.0 + speechbrain 1.0.3

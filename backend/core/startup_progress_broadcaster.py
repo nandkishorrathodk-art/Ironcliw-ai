@@ -1,5 +1,5 @@
-"""
-JARVIS Startup Progress Broadcaster v2.0.0
+﻿"""
+Ironcliw Startup Progress Broadcaster v2.0.0
 ==========================================
 
 Real-time WebSocket broadcaster for startup progress.
@@ -126,7 +126,7 @@ class StartupProgressBroadcaster:
         # Fallback state (used if hub not available)
         self._fallback_progress = 0.0
         self._fallback_phase = "initializing"
-        self._fallback_message = "Starting JARVIS..."
+        self._fallback_message = "Starting Ironcliw..."
         self._fallback_components: Dict[str, Dict[str, Any]] = {}
 
     @classmethod
@@ -303,7 +303,7 @@ class StartupProgressBroadcaster:
             self._fallback_phase = "complete" if success else "failed"
             await self._broadcast_event(
                 "complete", None,
-                message or ("JARVIS Online" if success else "Startup failed"),
+                message or ("Ironcliw Online" if success else "Startup failed"),
                 metadata={"success": success, "redirect_url": "http://localhost:3000"}
             )
 

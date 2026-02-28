@@ -1,27 +1,27 @@
-# Trinity Voice Coordinator - Environment Configuration Guide
+﻿# Trinity Voice Coordinator - Environment Configuration Guide
 
 **Version:** 1.0
-**Author:** JARVIS Trinity System
+**Author:** Ironcliw Trinity System
 **Last Updated:** 2025-01-10
-**JARVIS Voice:** ⭐ **UK Daniel (Signature)** ⭐
+**Ironcliw Voice:** ⭐ **UK Daniel (Signature)** ⭐
 
 ## Overview
 
-The Trinity Voice Coordinator is a **zero-hardcoding, ultra-robust, cross-repo voice announcement system** that provides intelligent voice feedback across JARVIS (Body), JARVIS-Prime (Brain), and Reactor-Core (Self-Improvement).
+The Trinity Voice Coordinator is a **zero-hardcoding, ultra-robust, cross-repo voice announcement system** that provides intelligent voice feedback across Ironcliw (Body), Ironcliw-Prime (Brain), and Reactor-Core (Self-Improvement).
 
 **All configuration is driven by environment variables, allowing complete customization without code changes.**
 
 ---
 
-## ⭐ JARVIS's Signature Voice: UK Daniel ⭐
+## ⭐ Ironcliw's Signature Voice: UK Daniel ⭐
 
-**The Trinity Voice System uses UK Daniel as JARVIS's canonical voice.**
+**The Trinity Voice System uses UK Daniel as Ironcliw's canonical voice.**
 
 - **Name:** Daniel (United Kingdom)
 - **Gender:** Male
 - **Accent:** British English (UK)
 - **Tone:** Professional, deep, authoritative
-- **Why:** This is JARVIS's signature voice across all contexts
+- **Why:** This is Ironcliw's signature voice across all contexts
 
 **Auto-Detection:**
 The system automatically detects and uses UK Daniel if installed. If not found, you'll see:
@@ -48,7 +48,7 @@ Daniel              en_GB    # Daniel from United Kingdom
 4. Find **Daniel (United Kingdom)**
 5. Click **Download**
 6. Wait for completion
-7. Restart JARVIS
+7. Restart Ironcliw
 
 ---
 
@@ -59,7 +59,7 @@ Daniel              en_GB    # Daniel from United Kingdom
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │                  Trinity Voice Coordinator                         │
-│                  (JARVIS Body - Central Hub)                       │
+│                  (Ironcliw Body - Central Hub)                       │
 ├────────────────────────────────────────────────────────────────────┤
 │                                                                    │
 │  Multi-Engine TTS Fallback Chain:                                 │
@@ -89,71 +89,71 @@ Daniel              en_GB    # Daniel from United Kingdom
 
 ## Environment Variables Reference
 
-### **JARVIS Body (Trinity Voice Coordinator)**
+### **Ironcliw Body (Trinity Voice Coordinator)**
 
 #### General Configuration
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_VOICE_ENABLED` | boolean | `true` | Master enable/disable for all voice announcements |
-| `JARVIS_VOICE_MAX_QUEUE_SIZE` | integer | `100` | Maximum announcements queued before dropping |
-| `JARVIS_VOICE_RATE_LIMIT_WINDOW` | integer | `10` | Rate limiting window in seconds |
-| `JARVIS_VOICE_RATE_LIMIT_MAX` | integer | `5` | Max announcements within rate limit window |
-| `JARVIS_VOICE_DEDUP_WINDOW` | integer | `30` | Deduplication time window in seconds |
+| `Ironcliw_VOICE_ENABLED` | boolean | `true` | Master enable/disable for all voice announcements |
+| `Ironcliw_VOICE_MAX_QUEUE_SIZE` | integer | `100` | Maximum announcements queued before dropping |
+| `Ironcliw_VOICE_RATE_LIMIT_WINDOW` | integer | `10` | Rate limiting window in seconds |
+| `Ironcliw_VOICE_RATE_LIMIT_MAX` | integer | `5` | Max announcements within rate limit window |
+| `Ironcliw_VOICE_DEDUP_WINDOW` | integer | `30` | Deduplication time window in seconds |
 
 #### Voice Personality Configuration (by Context)
 
 **Startup Voice:**
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_STARTUP_VOICE_NAME` | string | Auto-detected | Voice name for startup context |
-| `JARVIS_STARTUP_VOICE_RATE` | integer | `175` | Speech rate (words per minute) |
-| `JARVIS_STARTUP_VOICE_PITCH` | integer | `50` | Voice pitch (0-100) |
-| `JARVIS_STARTUP_VOICE_VOLUME` | float | `0.9` | Volume (0.0-1.0) |
+| `Ironcliw_STARTUP_VOICE_NAME` | string | Auto-detected | Voice name for startup context |
+| `Ironcliw_STARTUP_VOICE_RATE` | integer | `175` | Speech rate (words per minute) |
+| `Ironcliw_STARTUP_VOICE_PITCH` | integer | `50` | Voice pitch (0-100) |
+| `Ironcliw_STARTUP_VOICE_VOLUME` | float | `0.9` | Volume (0.0-1.0) |
 
 **Narrator Voice:**
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_NARRATOR_VOICE_NAME` | string | Auto-detected | Voice for progress narration |
-| `JARVIS_NARRATOR_VOICE_RATE` | integer | `180` | Speech rate |
-| `JARVIS_NARRATOR_VOICE_PITCH` | integer | `50` | Voice pitch |
-| `JARVIS_NARRATOR_VOICE_VOLUME` | float | `0.85` | Volume |
+| `Ironcliw_NARRATOR_VOICE_NAME` | string | Auto-detected | Voice for progress narration |
+| `Ironcliw_NARRATOR_VOICE_RATE` | integer | `180` | Speech rate |
+| `Ironcliw_NARRATOR_VOICE_PITCH` | integer | `50` | Voice pitch |
+| `Ironcliw_NARRATOR_VOICE_VOLUME` | float | `0.85` | Volume |
 
 **Runtime Voice:**
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_RUNTIME_VOICE_NAME` | string | Auto-detected | Voice for normal operations |
-| `JARVIS_RUNTIME_VOICE_RATE` | integer | `170` | Speech rate |
-| `JARVIS_RUNTIME_VOICE_PITCH` | integer | `55` | Voice pitch |
-| `JARVIS_RUNTIME_VOICE_VOLUME` | float | `0.8` | Volume |
+| `Ironcliw_RUNTIME_VOICE_NAME` | string | Auto-detected | Voice for normal operations |
+| `Ironcliw_RUNTIME_VOICE_RATE` | integer | `170` | Speech rate |
+| `Ironcliw_RUNTIME_VOICE_PITCH` | integer | `55` | Voice pitch |
+| `Ironcliw_RUNTIME_VOICE_VOLUME` | float | `0.8` | Volume |
 
 **Alert Voice:**
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_ALERT_VOICE_NAME` | string | Auto-detected | Voice for errors/warnings |
-| `JARVIS_ALERT_VOICE_RATE` | integer | `190` | Speech rate (faster for urgency) |
-| `JARVIS_ALERT_VOICE_PITCH` | integer | `60` | Voice pitch |
-| `JARVIS_ALERT_VOICE_VOLUME` | float | `1.0` | Volume (full for alerts) |
+| `Ironcliw_ALERT_VOICE_NAME` | string | Auto-detected | Voice for errors/warnings |
+| `Ironcliw_ALERT_VOICE_RATE` | integer | `190` | Speech rate (faster for urgency) |
+| `Ironcliw_ALERT_VOICE_PITCH` | integer | `60` | Voice pitch |
+| `Ironcliw_ALERT_VOICE_VOLUME` | float | `1.0` | Volume (full for alerts) |
 
 **Success Voice:**
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_SUCCESS_VOICE_NAME` | string | Auto-detected | Voice for success messages |
-| `JARVIS_SUCCESS_VOICE_RATE` | integer | `165` | Speech rate |
-| `JARVIS_SUCCESS_VOICE_PITCH` | integer | `55` | Voice pitch |
-| `JARVIS_SUCCESS_VOICE_VOLUME` | float | `0.9` | Volume |
+| `Ironcliw_SUCCESS_VOICE_NAME` | string | Auto-detected | Voice for success messages |
+| `Ironcliw_SUCCESS_VOICE_RATE` | integer | `165` | Speech rate |
+| `Ironcliw_SUCCESS_VOICE_PITCH` | integer | `55` | Voice pitch |
+| `Ironcliw_SUCCESS_VOICE_VOLUME` | float | `0.9` | Volume |
 
 **Trinity Voice (Cross-Repo):**
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_TRINITY_VOICE_NAME` | string | Auto-detected | Voice for cross-repo events |
-| `JARVIS_TRINITY_VOICE_RATE` | integer | `175` | Speech rate |
-| `JARVIS_TRINITY_VOICE_PITCH` | integer | `50` | Voice pitch |
-| `JARVIS_TRINITY_VOICE_VOLUME` | float | `0.9` | Volume |
+| `Ironcliw_TRINITY_VOICE_NAME` | string | Auto-detected | Voice for cross-repo events |
+| `Ironcliw_TRINITY_VOICE_RATE` | integer | `175` | Speech rate |
+| `Ironcliw_TRINITY_VOICE_PITCH` | integer | `50` | Voice pitch |
+| `Ironcliw_TRINITY_VOICE_VOLUME` | float | `0.9` | Volume |
 
 ---
 
-### **JARVIS-Prime (Brain) Voice Configuration**
+### **Ironcliw-Prime (Brain) Voice Configuration**
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -163,7 +163,7 @@ Daniel              en_GB    # Daniel from United Kingdom
 | `JPRIME_VOICE_CLOUD_FALLBACK` | boolean | `true` | Announce fallback to cloud |
 | `JPRIME_VOICE_HEALTH` | boolean | `true` | Announce health status changes |
 | `JPRIME_VOICE_SOURCE` | string | `jarvis_prime` | Source identifier for tracking |
-| `JARVIS_BODY_PATH` | path | Auto-detected | Path to JARVIS body repo (for Trinity import) |
+| `Ironcliw_BODY_PATH` | path | Auto-detected | Path to Ironcliw body repo (for Trinity import) |
 
 ---
 
@@ -178,7 +178,7 @@ Daniel              en_GB    # Daniel from United Kingdom
 | `REACTOR_VOICE_DEPLOYMENT` | boolean | `true` | Announce model deployment to J-Prime |
 | `REACTOR_VOICE_FAILURES` | boolean | `true` | Announce training failures |
 | `REACTOR_VOICE_SOURCE` | string | `reactor_core` | Source identifier for tracking |
-| `JARVIS_BODY_PATH` | path | Auto-detected | Path to JARVIS body repo (for Trinity import) |
+| `Ironcliw_BODY_PATH` | path | Auto-detected | Path to Ironcliw body repo (for Trinity import) |
 
 ---
 
@@ -188,12 +188,12 @@ Daniel              en_GB    # Daniel from United Kingdom
 
 **`.env` file:**
 ```bash
-# JARVIS Body - Trinity Voice Coordinator
-JARVIS_VOICE_ENABLED=true
-JARVIS_STARTUP_VOICE_RATE=180
-JARVIS_ALERT_VOICE_VOLUME=1.0
+# Ironcliw Body - Trinity Voice Coordinator
+Ironcliw_VOICE_ENABLED=true
+Ironcliw_STARTUP_VOICE_RATE=180
+Ironcliw_ALERT_VOICE_VOLUME=1.0
 
-# JARVIS-Prime
+# Ironcliw-Prime
 JPRIME_VOICE_ENABLED=true
 JPRIME_VOICE_MODEL_LOAD=true
 JPRIME_VOICE_TIER_ROUTING=false  # Don't announce every routing decision
@@ -211,12 +211,12 @@ REACTOR_VOICE_DEPLOYMENT=true
 ### Example 2: Development Configuration (Verbose)
 
 ```bash
-# JARVIS Body
-JARVIS_VOICE_ENABLED=true
-JARVIS_VOICE_RATE_LIMIT_MAX=10  # Allow more frequent announcements
-JARVIS_VOICE_DEDUP_WINDOW=10    # Shorter dedup window for testing
+# Ironcliw Body
+Ironcliw_VOICE_ENABLED=true
+Ironcliw_VOICE_RATE_LIMIT_MAX=10  # Allow more frequent announcements
+Ironcliw_VOICE_DEDUP_WINDOW=10    # Shorter dedup window for testing
 
-# JARVIS-Prime
+# Ironcliw-Prime
 JPRIME_VOICE_ENABLED=true
 JPRIME_VOICE_MODEL_LOAD=true
 JPRIME_VOICE_TIER_ROUTING=true  # Announce all routing decisions
@@ -236,7 +236,7 @@ REACTOR_VOICE_FAILURES=true
 
 ```bash
 # Completely disable all voice announcements
-JARVIS_VOICE_ENABLED=false
+Ironcliw_VOICE_ENABLED=false
 JPRIME_VOICE_ENABLED=false
 REACTOR_VOICE_ENABLED=false
 ```
@@ -245,12 +245,12 @@ REACTOR_VOICE_ENABLED=false
 
 ```bash
 # Use specific macOS voices for different contexts
-JARVIS_STARTUP_VOICE_NAME="Daniel"    # UK male (professional)
-JARVIS_NARRATOR_VOICE_NAME="Samantha" # US female (clear)
-JARVIS_RUNTIME_VOICE_NAME="Alex"      # US male (friendly)
-JARVIS_ALERT_VOICE_NAME="Victoria"    # UK female (urgent)
-JARVIS_SUCCESS_VOICE_NAME="Tom"       # US male (upbeat)
-JARVIS_TRINITY_VOICE_NAME="Daniel"    # UK male (formal)
+Ironcliw_STARTUP_VOICE_NAME="Daniel"    # UK male (professional)
+Ironcliw_NARRATOR_VOICE_NAME="Samantha" # US female (clear)
+Ironcliw_RUNTIME_VOICE_NAME="Alex"      # US male (friendly)
+Ironcliw_ALERT_VOICE_NAME="Victoria"    # UK female (urgent)
+Ironcliw_SUCCESS_VOICE_NAME="Tom"       # US male (upbeat)
+Ironcliw_TRINITY_VOICE_NAME="Daniel"    # UK male (formal)
 ```
 
 **Available macOS Voices:**
@@ -426,7 +426,7 @@ curl -X POST http://localhost:8010/api/trinity-voice/test
 
 **3. Check Environment Variables:**
 ```bash
-echo $JARVIS_VOICE_ENABLED
+echo $Ironcliw_VOICE_ENABLED
 echo $JPRIME_VOICE_ENABLED
 echo $REACTOR_VOICE_ENABLED
 ```
@@ -440,10 +440,10 @@ tail -f ~/.jarvis/logs/voice_coordinator.log
 
 #### Issue: "Trinity Voice Coordinator not available"
 - **Cause:** Trinity Voice Coordinator not imported correctly
-- **Fix:** Ensure `JARVIS_BODY_PATH` environment variable points to JARVIS body repo
+- **Fix:** Ensure `Ironcliw_BODY_PATH` environment variable points to Ironcliw body repo
 - **Command:**
   ```bash
-  export JARVIS_BODY_PATH=/path/to/JARVIS-AI-Agent
+  export Ironcliw_BODY_PATH=/path/to/Ironcliw-AI-Agent
   ```
 
 #### Issue: "All TTS engines failed"
@@ -464,15 +464,15 @@ tail -f ~/.jarvis/logs/voice_coordinator.log
 - **Cause:** Rate limiting disabled or set too high
 - **Fix:** Adjust rate limiting:
   ```bash
-  export JARVIS_VOICE_RATE_LIMIT_MAX=3
-  export JARVIS_VOICE_RATE_LIMIT_WINDOW=15
+  export Ironcliw_VOICE_RATE_LIMIT_MAX=3
+  export Ironcliw_VOICE_RATE_LIMIT_WINDOW=15
   ```
 
 #### Issue: Duplicate announcements
 - **Cause:** Deduplication window too short
 - **Fix:** Increase deduplication window:
   ```bash
-  export JARVIS_VOICE_DEDUP_WINDOW=60  # 60 seconds
+  export Ironcliw_VOICE_DEDUP_WINDOW=60  # 60 seconds
   ```
 
 ---
@@ -544,11 +544,11 @@ Engines are automatically ranked by health score (success/failure ratio). The he
 
 ```bash
 # Use faster speech rate
-export JARVIS_STARTUP_VOICE_RATE=200
-export JARVIS_NARRATOR_VOICE_RATE=210
+export Ironcliw_STARTUP_VOICE_RATE=200
+export Ironcliw_NARRATOR_VOICE_RATE=210
 
 # Reduce queue processing delay
-export JARVIS_VOICE_QUEUE_POLL_INTERVAL=0.05
+export Ironcliw_VOICE_QUEUE_POLL_INTERVAL=0.05
 ```
 
 ### Reduce Verbosity
@@ -559,21 +559,21 @@ export JPRIME_VOICE_TIER_ROUTING=false
 export REACTOR_VOICE_EXPORT=false
 
 # Increase rate limiting
-export JARVIS_VOICE_RATE_LIMIT_MAX=2
-export JARVIS_VOICE_RATE_LIMIT_WINDOW=20
+export Ironcliw_VOICE_RATE_LIMIT_MAX=2
+export Ironcliw_VOICE_RATE_LIMIT_WINDOW=20
 ```
 
 ### Increase Reliability
 
 ```bash
 # Allow more retries
-export JARVIS_VOICE_MAX_RETRIES=5
+export Ironcliw_VOICE_MAX_RETRIES=5
 
 # Increase queue size
-export JARVIS_VOICE_MAX_QUEUE_SIZE=200
+export Ironcliw_VOICE_MAX_QUEUE_SIZE=200
 
 # Longer timeout for slow TTS engines
-export JARVIS_VOICE_TTS_TIMEOUT=60
+export Ironcliw_VOICE_TTS_TIMEOUT=60
 ```
 
 ---

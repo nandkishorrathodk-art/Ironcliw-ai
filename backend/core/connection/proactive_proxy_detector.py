@@ -1,4 +1,4 @@
-"""
+﻿"""
 Proactive Proxy Detector with Sub-100ms Fast-Fail
 ==================================================
 
@@ -13,7 +13,7 @@ Detection strategies (in order of speed):
 This is PROACTIVE detection - we detect BEFORE attempting connections,
 avoiding the 2+ second TCP timeout when proxy is down.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

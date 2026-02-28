@@ -1,7 +1,7 @@
-# JARVIS Weather System Documentation
+﻿# Ironcliw Weather System Documentation
 
 ## Overview
-The JARVIS weather system has been enhanced to work in multiple modes, providing clear communication about its capabilities and gracefully degrading when components are unavailable.
+The Ironcliw weather system has been enhanced to work in multiple modes, providing clear communication about its capabilities and gracefully degrading when components are unavailable.
 
 ## Weather System Modes
 
@@ -19,7 +19,7 @@ The JARVIS weather system has been enhanced to work in multiple modes, providing
 4. Provides natural language response with weather details
 
 **User Experience:**
-- JARVIS says: "I'm checking the weather for you using vision analysis. One moment..."
+- Ironcliw says: "I'm checking the weather for you using vision analysis. One moment..."
 - Then provides detailed weather information read from the screen
 
 ### 2. **LIMITED MODE** (No Vision)
@@ -34,7 +34,7 @@ The JARVIS weather system has been enhanced to work in multiple modes, providing
 3. Informs user about limited mode
 
 **User Experience:**
-- JARVIS says: "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all JARVIS components are loaded."
+- Ironcliw says: "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all Ironcliw components are loaded."
 
 ### 3. **BASIC MODE** (Minimal Functionality)
 **When this happens:**
@@ -46,12 +46,12 @@ The JARVIS weather system has been enhanced to work in multiple modes, providing
 2. User must manually navigate
 
 **User Experience:**
-- JARVIS says: "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
+- Ironcliw says: "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
 
 ## Key Improvements
 
 ### 1. **Clear Mode Communication**
-- JARVIS now explicitly tells you which mode it's operating in
+- Ironcliw now explicitly tells you which mode it's operating in
 - Explains what's missing for full functionality
 - Provides actionable steps to enable full mode
 
@@ -95,7 +95,7 @@ The weather command now returns additional metadata:
    ```bash
    export ANTHROPIC_API_KEY=your_key
    python main.py
-   # In another terminal: "Hey JARVIS, what's the weather?"
+   # In another terminal: "Hey Ironcliw, what's the weather?"
    ```
 
 2. **Test Limited Mode:**

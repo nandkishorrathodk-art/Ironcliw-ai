@@ -1,4 +1,4 @@
-# Root Problem Solution Guide: Architectural Fixes for PAVA/VIBA Integration
+﻿# Root Problem Solution Guide: Architectural Fixes for PAVA/VIBA Integration
 
 **Version:** 1.0  
 **Status:** Implementation Guide  
@@ -483,7 +483,7 @@ def _generate_user_message(self, diagnostic: SystemDiagnostic) -> str:
         elif "No voice profile" in str(root_causes):
             return (
                 "Voice unlock unavailable: No voice profile enrolled. "
-                "Please say 'JARVIS, learn my voice' to complete enrollment."
+                "Please say 'Ironcliw, learn my voice' to complete enrollment."
             )
         else:
             return f"Voice unlock unavailable: {', '.join(root_causes[:2])}"
@@ -531,7 +531,7 @@ def _generate_recommendations(self, diagnostics: Dict[str, Any]) -> List[str]:
         recommendations.append("Install dependencies: pip install numpy torch speechbrain")
     
     if "no_profiles" in str(failure_reasons):
-        recommendations.append("Complete voice enrollment: Say 'JARVIS, learn my voice'")
+        recommendations.append("Complete voice enrollment: Say 'Ironcliw, learn my voice'")
     
     return recommendations
 ```

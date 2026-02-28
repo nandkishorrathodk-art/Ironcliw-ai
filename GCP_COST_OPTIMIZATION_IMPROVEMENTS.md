@@ -1,4 +1,4 @@
-# GCP Cost Optimization - Advanced Improvements
+﻿# GCP Cost Optimization - Advanced Improvements
 
 ## Problem Summary
 
@@ -91,7 +91,7 @@ if budget_exhausted:
 - Prevents thundering herd
 
 **Instance Locking (NEW):**
-- **File-based exclusive lock** prevents multiple JARVIS instances from creating VMs simultaneously
+- **File-based exclusive lock** prevents multiple Ironcliw instances from creating VMs simultaneously
 - Uses `fcntl.flock()` for atomic lock acquisition
 - Lock automatically released when VM is destroyed
 - Prevents duplicate VM creation and double billing
@@ -99,7 +99,7 @@ if budget_exhausted:
 ```python
 # Only one instance can hold the lock at a time
 if not self._acquire_vm_creation_lock():
-    return False, "⚠️ Another JARVIS instance is creating a VM"
+    return False, "⚠️ Another Ironcliw instance is creating a VM"
 ```
 
 **Cost Savings Features:**
@@ -207,9 +207,9 @@ Old: Immediate panic → VM created
 New: Waits 30s to see if pressure sustained → Often resolves locally
 ```
 
-### 2.5. Multiple JARVIS Instances (NEW)
+### 2.5. Multiple Ironcliw Instances (NEW)
 ```
-Scenario: User accidentally runs JARVIS twice
+Scenario: User accidentally runs Ironcliw twice
 Old: Both instances create VMs → 2x cost
 New: Instance locking prevents second VM → Only one VM created
 Result: Saves duplicate VM costs (~$0.029/hr per duplicate)
@@ -512,10 +512,10 @@ class HysteresisController:
 
 **Scenario:**
 ```
-Multiple JARVIS instances recommend VM creation simultaneously
+Multiple Ironcliw instances recommend VM creation simultaneously
 GCP quota: 5 spot VMs per region
 Current usage: 4 VMs
-3 JARVIS instances all try to create VM at t=0
+3 Ironcliw instances all try to create VM at t=0
 
 Race condition:
   Instance A: Checks quota (4/5) ✓ → Create request sent
@@ -876,7 +876,7 @@ Stable pattern:          M(t) = M_avg + A·sin(ωt)  (periodic)
 
 **Scenario:**
 ```
-User runs multiple JARVIS-powered projects simultaneously:
+User runs multiple Ironcliw-powered projects simultaneously:
   - Project A: ML training (GPU-heavy, CPU-light)
   - Project B: Data processing (CPU-heavy, RAM-heavy)
   - Project C: Web scraping (Network-heavy, RAM-light)
@@ -1087,7 +1087,7 @@ class MultiTenantOptimizer:
    - **Complexity:** O(1) inference after O(n²) training
 
 2. **Cross-Session Learning**
-   - Learn from all JARVIS users (opt-in)
+   - Learn from all Ironcliw users (opt-in)
    - Crowd-sourced workload patterns
    - Better workload detection
    - **Privacy:** Differential privacy for user data aggregation

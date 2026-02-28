@@ -1,46 +1,46 @@
-/**
- * JARVISVoiceUnlockDaemon.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwVoiceUnlockDaemon.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of the main daemon that monitors for voice unlock phrases
  * when the screen is locked.
  */
 
-#import "JARVISVoiceUnlockDaemon.h"
-#import "JARVISVoiceAuthenticator.h"
-#import "JARVISScreenUnlockManager.h"
-#import "JARVISVoiceMonitor.h"
-#import "JARVISPythonBridge.h"
-#import "JARVISPermissionManager.h"
-#import "JARVISWebSocketBridge.h"
-#import "../server/JARVISWebSocketServer.h"
+#import "IroncliwVoiceUnlockDaemon.h"
+#import "IroncliwVoiceAuthenticator.h"
+#import "IroncliwScreenUnlockManager.h"
+#import "IroncliwVoiceMonitor.h"
+#import "IroncliwPythonBridge.h"
+#import "IroncliwPermissionManager.h"
+#import "IroncliwWebSocketBridge.h"
+#import "../server/IroncliwWebSocketServer.h"
 
 #import <os/log.h>
 #import <dispatch/dispatch.h>
 
 // Notification constants
-NSString *const JARVISVoiceUnlockStatusChangedNotification = @"JARVISVoiceUnlockStatusChanged";
-NSString *const JARVISVoiceUnlockAuthenticationFailedNotification = @"JARVISVoiceUnlockAuthenticationFailed";
-NSString *const JARVISVoiceUnlockAuthenticationSucceededNotification = @"JARVISVoiceUnlockAuthenticationSucceeded";
+NSString *const IroncliwVoiceUnlockStatusChangedNotification = @"IroncliwVoiceUnlockStatusChanged";
+NSString *const IroncliwVoiceUnlockAuthenticationFailedNotification = @"IroncliwVoiceUnlockAuthenticationFailed";
+NSString *const IroncliwVoiceUnlockAuthenticationSucceededNotification = @"IroncliwVoiceUnlockAuthenticationSucceeded";
 
 // Error domain
-NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
+NSString *const IroncliwVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
 
 // Private interface
-@interface JARVISVoiceUnlockDaemon ()
+@interface IroncliwVoiceUnlockDaemon ()
 
-@property (nonatomic, strong) JARVISVoiceAuthenticator *authenticator;
-@property (nonatomic, strong) JARVISScreenUnlockManager *unlockManager;
-@property (nonatomic, strong) JARVISVoiceMonitor *voiceMonitor;
-@property (nonatomic, strong) JARVISPythonBridge *pythonBridge;
-@property (nonatomic, strong) JARVISPermissionManager *permissionManager;
-@property (nonatomic, strong) JARVISWebSocketBridge *webSocketBridge;
-@property (nonatomic, strong) JARVISWebSocketServer *webSocketServer;
+@property (nonatomic, strong) IroncliwVoiceAuthenticator *authenticator;
+@property (nonatomic, strong) IroncliwScreenUnlockManager *unlockManager;
+@property (nonatomic, strong) IroncliwVoiceMonitor *voiceMonitor;
+@property (nonatomic, strong) IroncliwPythonBridge *pythonBridge;
+@property (nonatomic, strong) IroncliwPermissionManager *permissionManager;
+@property (nonatomic, strong) IroncliwWebSocketBridge *webSocketBridge;
+@property (nonatomic, strong) IroncliwWebSocketServer *webSocketServer;
 
 @property (nonatomic, strong) dispatch_queue_t processingQueue;
 @property (nonatomic, strong) os_log_t logger;
 
-@property (nonatomic, readwrite) JARVISVoiceUnlockState state;
+@property (nonatomic, readwrite) IroncliwVoiceUnlockState state;
 @property (nonatomic, readwrite) BOOL isMonitoring;
 @property (nonatomic, readwrite) BOOL isScreenLocked;
 @property (nonatomic, readwrite) NSString *enrolledUserIdentifier;
@@ -55,12 +55,12 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
 
 @end
 
-@implementation JARVISVoiceUnlockDaemon
+@implementation IroncliwVoiceUnlockDaemon
 
 #pragma mark - Singleton
 
 + (instancetype)sharedDaemon {
-    static JARVISVoiceUnlockDaemon *sharedInstance = nil;
+    static IroncliwVoiceUnlockDaemon *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         sharedInstance = [[self alloc] init];
@@ -80,30 +80,30 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
         _processingQueue = dispatch_queue_create("com.jarvis.voiceunlock.processing", DISPATCH_QUEUE_SERIAL);
         
         // Initialize components
-        _authenticator = [[JARVISVoiceAuthenticator alloc] init];
-        _unlockManager = [[JARVISScreenUnlockManager alloc] init];
-        _voiceMonitor = [[JARVISVoiceMonitor alloc] init];
-        _pythonBridge = [[JARVISPythonBridge alloc] init];
-        _permissionManager = [[JARVISPermissionManager alloc] init];
-        _webSocketBridge = [[JARVISWebSocketBridge alloc] init];
-        _webSocketServer = [[JARVISWebSocketServer alloc] initWithPort:8765];
+        _authenticator = [[IroncliwVoiceAuthenticator alloc] init];
+        _unlockManager = [[IroncliwScreenUnlockManager alloc] init];
+        _voiceMonitor = [[IroncliwVoiceMonitor alloc] init];
+        _pythonBridge = [[IroncliwPythonBridge alloc] init];
+        _permissionManager = [[IroncliwPermissionManager alloc] init];
+        _webSocketBridge = [[IroncliwWebSocketBridge alloc] init];
+        _webSocketServer = [[IroncliwWebSocketServer alloc] initWithPort:8765];
         
         // Set default configuration
-        _options = JARVISVoiceUnlockOptionEnableAntiSpoofing | JARVISVoiceUnlockOptionEnableAdaptiveThresholds;
+        _options = IroncliwVoiceUnlockOptionEnableAntiSpoofing | IroncliwVoiceUnlockOptionEnableAdaptiveThresholds;
         _authenticationTimeout = 10.0;
         _maxFailedAttempts = 5;
         _lockoutDuration = 300.0; // 5 minutes
         
         // Initialize state
-        _state = JARVISVoiceUnlockStateInactive;
+        _state = IroncliwVoiceUnlockStateInactive;
         _failedAttemptCount = 0;
         
         // Initialize configuration
         _configuration = [NSMutableDictionary dictionary];
         _dynamicUnlockPhrases = [NSMutableArray arrayWithObjects:
-            @"Hello JARVIS, unlock my Mac",
-            @"JARVIS, this is Derek",
-            @"Open sesame, JARVIS",
+            @"Hello Ironcliw, unlock my Mac",
+            @"Ironcliw, this is Derek",
+            @"Open sesame, Ironcliw",
             nil];
         
         // Set up voice monitor delegate
@@ -118,7 +118,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
         // Register for screen lock notifications
         [self registerForScreenLockNotifications];
         
-        os_log_info(self.logger, "JARVISVoiceUnlockDaemon initialized");
+        os_log_info(self.logger, "IroncliwVoiceUnlockDaemon initialized");
     }
     return self;
 }
@@ -160,13 +160,13 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
         NSDictionary *options = config[@"options"];
         if ([options isKindOfClass:[NSDictionary class]]) {
             if ([options[@"livenessDetection"] boolValue]) {
-                self.options |= JARVISVoiceUnlockOptionEnableLivenessDetection;
+                self.options |= IroncliwVoiceUnlockOptionEnableLivenessDetection;
             }
             if ([options[@"continuousAuth"] boolValue]) {
-                self.options |= JARVISVoiceUnlockOptionEnableContinuousAuthentication;
+                self.options |= IroncliwVoiceUnlockOptionEnableContinuousAuthentication;
             }
             if ([options[@"debug"] boolValue]) {
-                self.options |= JARVISVoiceUnlockOptionEnableDebugLogging;
+                self.options |= IroncliwVoiceUnlockOptionEnableDebugLogging;
             }
         }
         
@@ -200,7 +200,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     // Check if user is enrolled
     if (![self isUserEnrolled]) {
         if (error) {
-            *error = [NSError errorWithDomain:JARVISVoiceUnlockErrorDomain
+            *error = [NSError errorWithDomain:IroncliwVoiceUnlockErrorDomain
                                          code:1001
                                      userInfo:@{NSLocalizedDescriptionKey: @"No user enrolled for voice unlock"}];
         }
@@ -233,7 +233,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     // Start voice monitoring
     if (![self.voiceMonitor startMonitoring]) {
         if (error) {
-            *error = [NSError errorWithDomain:JARVISVoiceUnlockErrorDomain
+            *error = [NSError errorWithDomain:IroncliwVoiceUnlockErrorDomain
                                          code:1002
                                      userInfo:@{NSLocalizedDescriptionKey: @"Failed to start audio monitoring"}];
         }
@@ -241,13 +241,13 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     }
     
     self.isMonitoring = YES;
-    self.state = JARVISVoiceUnlockStateMonitoring;
+    self.state = IroncliwVoiceUnlockStateMonitoring;
     
     // Start screen lock monitoring
     [self startScreenLockMonitoring];
     
     // Post notification
-    [[NSNotificationCenter defaultCenter] postNotificationName:JARVISVoiceUnlockStatusChangedNotification
+    [[NSNotificationCenter defaultCenter] postNotificationName:IroncliwVoiceUnlockStatusChangedNotification
                                                         object:self
                                                       userInfo:@{@"status": @"started"}];
     
@@ -259,7 +259,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     os_log_info(self.logger, "Stopping voice unlock monitoring");
     
     self.isMonitoring = NO;
-    self.state = JARVISVoiceUnlockStateInactive;
+    self.state = IroncliwVoiceUnlockStateInactive;
     
     // Stop components
     [self.voiceMonitor stopMonitoring];
@@ -272,7 +272,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     self.lockCheckTimer = nil;
     
     // Post notification
-    [[NSNotificationCenter defaultCenter] postNotificationName:JARVISVoiceUnlockStatusChangedNotification
+    [[NSNotificationCenter defaultCenter] postNotificationName:IroncliwVoiceUnlockStatusChangedNotification
                                                         object:self
                                                       userInfo:@{@"status": @"stopped"}];
 }
@@ -345,7 +345,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
 }
 
 - (void)handleScreenLocked {
-    if (self.isMonitoring && self.options & JARVISVoiceUnlockOptionEnableContinuousAuthentication) {
+    if (self.isMonitoring && self.options & IroncliwVoiceUnlockOptionEnableContinuousAuthentication) {
         // Increase monitoring sensitivity when screen is locked
         [self.voiceMonitor setHighSensitivityMode:YES];
         
@@ -385,12 +385,12 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     }
     
     dispatch_async(self.processingQueue, ^{
-        self.state = JARVISVoiceUnlockStateProcessing;
+        self.state = IroncliwVoiceUnlockStateProcessing;
         
         // Detect wake phrase
         NSString *detectedPhrase = [self detectWakePhraseInAudio:audioData];
         if (!detectedPhrase) {
-            self.state = JARVISVoiceUnlockStateMonitoring;
+            self.state = IroncliwVoiceUnlockStateMonitoring;
             return;
         }
         
@@ -433,11 +433,11 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
 - (void)handleSuccessfulAuthentication:(NSDictionary *)authResult {
     os_log_info(self.logger, "Voice authentication successful");
     
-    self.state = JARVISVoiceUnlockStateUnlocking;
+    self.state = IroncliwVoiceUnlockStateUnlocking;
     self.failedAttemptCount = 0;
     
     // Post success notification
-    [[NSNotificationCenter defaultCenter] postNotificationName:JARVISVoiceUnlockAuthenticationSucceededNotification
+    [[NSNotificationCenter defaultCenter] postNotificationName:IroncliwVoiceUnlockAuthenticationSucceededNotification
                                                         object:self
                                                       userInfo:authResult];
     
@@ -473,7 +473,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
         }];
     }
     
-    self.state = self.isScreenLocked ? JARVISVoiceUnlockStateMonitoring : JARVISVoiceUnlockStateInactive;
+    self.state = self.isScreenLocked ? IroncliwVoiceUnlockStateMonitoring : IroncliwVoiceUnlockStateInactive;
 }
 
 - (void)handleFailedAuthentication:(NSDictionary *)authResult {
@@ -482,7 +482,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
     self.failedAttemptCount++;
     
     // Post failure notification
-    [[NSNotificationCenter defaultCenter] postNotificationName:JARVISVoiceUnlockAuthenticationFailedNotification
+    [[NSNotificationCenter defaultCenter] postNotificationName:IroncliwVoiceUnlockAuthenticationFailedNotification
                                                         object:self
                                                       userInfo:authResult];
     
@@ -505,7 +505,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
         }];
     }
     
-    self.state = JARVISVoiceUnlockStateMonitoring;
+    self.state = IroncliwVoiceUnlockStateMonitoring;
 }
 
 #pragma mark - User Management
@@ -592,7 +592,7 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
 #pragma mark - Test Methods
 
 - (void)simulateVoiceUnlock:(NSString *)phrase {
-    if (self.options & JARVISVoiceUnlockOptionEnableDebugLogging) {
+    if (self.options & IroncliwVoiceUnlockOptionEnableDebugLogging) {
         os_log_info(self.logger, "Simulating voice unlock with phrase: %@", phrase);
         
         // Simulate successful authentication
@@ -605,14 +605,14 @@ NSString *const JARVISVoiceUnlockErrorDomain = @"com.jarvis.voiceunlock.error";
 }
 
 - (void)simulateScreenLock {
-    if (self.options & JARVISVoiceUnlockOptionEnableDebugLogging) {
+    if (self.options & IroncliwVoiceUnlockOptionEnableDebugLogging) {
         self.isScreenLocked = YES;
         [self handleScreenLocked];
     }
 }
 
 - (void)simulateScreenUnlock {
-    if (self.options & JARVISVoiceUnlockOptionEnableDebugLogging) {
+    if (self.options & IroncliwVoiceUnlockOptionEnableDebugLogging) {
         self.isScreenLocked = NO;
         [self handleScreenUnlocked];
     }

@@ -1,7 +1,7 @@
-# JARVIS Display Control Architecture
+﻿# Ironcliw Display Control Architecture
 
 ## Overview
-JARVIS uses an intelligent hybrid approach to control display connections through macOS Control Center, combining hardcoded coordinates with vision-based detection and UAE (Unified Awareness Engine) for dynamic adaptation.
+Ironcliw uses an intelligent hybrid approach to control display connections through macOS Control Center, combining hardcoded coordinates with vision-based detection and UAE (Unified Awareness Engine) for dynamic adaptation.
 
 ## Multi-Layer Clicking System
 

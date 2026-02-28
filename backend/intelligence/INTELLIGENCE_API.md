@@ -1,4 +1,4 @@
-# Intelligence System API Documentation
+﻿# Intelligence System API Documentation
 
 **Version:** 5.0.0
 **Last Updated:** 2024-12-22
@@ -482,16 +482,16 @@ All endpoints may return error responses:
 
 ## Authentication
 
-All API endpoints currently require the JARVIS API key:
+All API endpoints currently require the Ironcliw API key:
 
 ```bash
-curl -H "X-API-Key: $JARVIS_API_KEY" \
+curl -H "X-API-Key: $Ironcliw_API_KEY" \
      http://localhost:8010/api/intelligence/health
 ```
 
 **Environment Variable:**
 ```bash
-export JARVIS_API_KEY=your_api_key_here
+export Ironcliw_API_KEY=your_api_key_here
 ```
 
 ---
@@ -622,7 +622,7 @@ scrape_configs:
 ```json
 {
   "dashboard": {
-    "title": "JARVIS Intelligence System",
+    "title": "Ironcliw Intelligence System",
     "panels": [
       {
         "title": "Component Health",
@@ -660,7 +660,7 @@ statsd.gauge('jarvis.intelligence.auth_time.p95', 245)
 
 ### No Response from API
 **Check:**
-1. JARVIS is running: `ps aux | grep jarvis`
+1. Ironcliw is running: `ps aux | grep jarvis`
 2. Port 8010 is open: `lsof -i :8010`
 3. Logs: `tail -f ~/.jarvis/logs/intelligence.log`
 

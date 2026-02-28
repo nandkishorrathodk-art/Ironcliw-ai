@@ -1,8 +1,8 @@
-"""
+﻿"""
 GCP Hybrid Prime Router v153.0 (Enterprise Graceful Degradation)
 ================================================================
 
-Intelligent routing between local JARVIS Prime, GCP VMs, and cloud APIs
+Intelligent routing between local Ironcliw Prime, GCP VMs, and cloud APIs
 with unified cost management across all repos.
 
 v153.0 ENTERPRISE FEATURE: Graceful Degradation & Recovery Cascade
@@ -10,7 +10,7 @@ v153.0 ENTERPRISE FEATURE: Graceful Degradation & Recovery Cascade
 - GCP failure isolation: Provisioning failures don't cascade to system failure
 - Recovery escalation: Automatic retry with exponential backoff + jitter
 - Context-aware cooldown: Distinguishes OOM vs transient vs config failures
-- Cross-repo coordination: Signals recovery state to JARVIS/Prime/Reactor
+- Cross-repo coordination: Signals recovery state to Ironcliw/Prime/Reactor
 
 v93.0 MAJOR FEATURE: Predictive Memory Defense
 - Adaptive polling: 1s checks when RAM > 60% (vs 5s normal)
@@ -853,7 +853,7 @@ class GCPHybridPrimeRouter:
         local model discovery, loading, or inference.
 
         Checks (in order):
-        1. JARVIS_GCP_OFFLOAD_ACTIVE environment variable (set by supervisor)
+        1. Ironcliw_GCP_OFFLOAD_ACTIVE environment variable (set by supervisor)
         2. cloud_lock.json persistent state (survives restarts)
         3. Emergency offload active state (memory pressure)
 
@@ -861,7 +861,7 @@ class GCPHybridPrimeRouter:
             True if cloud mode is active and local operations should be SKIPPED
         """
         # Check 1: Environment variable (fastest, set by supervisor)
-        gcp_offload_active = os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true"
+        gcp_offload_active = os.getenv("Ironcliw_GCP_OFFLOAD_ACTIVE", "false").lower() == "true"
         if gcp_offload_active:
             return True
 
@@ -898,8 +898,8 @@ class GCPHybridPrimeRouter:
         Returns:
             Reason string if cloud locked, None otherwise
         """
-        if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
-            return "JARVIS_GCP_OFFLOAD_ACTIVE=true"
+        if os.getenv("Ironcliw_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+            return "Ironcliw_GCP_OFFLOAD_ACTIVE=true"
 
         if self._emergency_offload_active:
             return f"Emergency offload (RAM critical)"
@@ -934,7 +934,7 @@ class GCPHybridPrimeRouter:
         # If cloud locked, ALWAYS return cloud endpoint
         if self.is_cloud_locked():
             # Priority 1: Cloud Run URL (always available, serverless)
-            cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+            cloud_run_url = os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL")
             if cloud_run_url:
                 self.logger.debug(f"[v152.0] Cloud locked - using Cloud Run: {cloud_run_url}")
                 return cloud_run_url
@@ -961,7 +961,7 @@ class GCPHybridPrimeRouter:
             # This allows graceful degradation to offline mode
             self.logger.warning(
                 "[v152.0] Cloud locked but no GCP endpoint configured. "
-                "Set JARVIS_PRIME_CLOUD_RUN_URL or GCP_PROJECT_ID."
+                "Set Ironcliw_PRIME_CLOUD_RUN_URL or GCP_PROJECT_ID."
             )
             return None
 
@@ -1428,18 +1428,18 @@ class GCPHybridPrimeRouter:
         return slope  # MB per second
 
     def register_llm_pid(self, pid: int) -> None:
-        """Register a JARVIS-owned LLM process PID for emergency offload targeting."""
+        """Register a Ironcliw-owned LLM process PID for emergency offload targeting."""
         self._local_llm_pids.add(pid)
 
     def unregister_llm_pid(self, pid: int) -> None:
-        """Unregister a JARVIS-owned LLM process PID."""
+        """Unregister a Ironcliw-owned LLM process PID."""
         self._local_llm_pids.discard(pid)
 
     async def _pause_local_llm_processes(self) -> int:
         """v266.1: Pause local LLM processes via SIGSTOP (last resort only).
 
         Priority order:
-        1. JARVIS-owned tracked PIDs (_local_llm_pids) — always preferred
+        1. Ironcliw-owned tracked PIDs (_local_llm_pids) — always preferred
         2. ProcessIsolatedMLLoader PIDs — if available
         3. Pattern-based scan — fallback only when no tracked PIDs found
 
@@ -1451,10 +1451,10 @@ class GCPHybridPrimeRouter:
         try:
             import psutil
 
-            # Priority 1: Use tracked JARVIS-owned PIDs
+            # Priority 1: Use tracked Ironcliw-owned PIDs
             if self._local_llm_pids:
                 self.logger.info(
-                    f"[v266.1] SIGSTOP targeting {len(self._local_llm_pids)} tracked JARVIS PID(s)"
+                    f"[v266.1] SIGSTOP targeting {len(self._local_llm_pids)} tracked Ironcliw PID(s)"
                 )
                 for pid in list(self._local_llm_pids):
                     if pid not in self._paused_processes and self._pause_process(pid, "tracked_llm"):
@@ -1633,7 +1633,7 @@ class GCPHybridPrimeRouter:
             self.logger.critical(
                 f"[v266.1] LAST RESORT: RAM at {current_used_percent:.1f}% "
                 f"(>={EMERGENCY_SIGSTOP_RAM_PERCENT}%) after unload + GCP failed. "
-                f"One-shot SIGSTOP on JARVIS-owned PIDs."
+                f"One-shot SIGSTOP on Ironcliw-owned PIDs."
             )
             self._sigstop_active = True
             self._sigstop_started_at = time.time()
@@ -2361,7 +2361,7 @@ class GCPHybridPrimeRouter:
         if old_state == VMLifecycleState.ACTIVE and new_state != VMLifecycleState.ACTIVE:
             if self._model_unload_task and not self._model_unload_task.done():
                 self._model_unload_task.cancel()
-            os.environ.pop("JARVIS_GCP_OFFLOAD_ACTIVE", None)
+            os.environ.pop("Ironcliw_GCP_OFFLOAD_ACTIVE", None)
 
         return True
 
@@ -2463,7 +2463,7 @@ class GCPHybridPrimeRouter:
                 if model_serving and hasattr(model_serving, 'stop'):
                     await model_serving.stop()
                     self.logger.info("[VMLifecycle] Local model unloaded — RAM reclaimed")
-                    os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                    os.environ["Ironcliw_GCP_OFFLOAD_ACTIVE"] = "true"
                 else:
                     self.logger.debug("[VMLifecycle] UnifiedModelServing not available or has no stop()")
             except ImportError:
@@ -2481,7 +2481,7 @@ class GCPHybridPrimeRouter:
         v2.0: Trigger GCP VM provisioning with distributed locking.
 
         Uses Redis-based distributed lock to prevent concurrent VM creation
-        across multiple repos (JARVIS, JARVIS Prime).
+        across multiple repos (Ironcliw, Ironcliw Prime).
 
         Args:
             reason: Reason for triggering provisioning
@@ -2800,7 +2800,7 @@ class GCPHybridPrimeRouter:
         except Exception as e:
             self.logger.debug(f"GCP controller not available: {e}")
 
-        # JARVIS Prime client
+        # Ironcliw Prime client
         try:
             from backend.core.jarvis_prime_client import get_jarvis_prime_client
             self._prime_client = get_jarvis_prime_client()
@@ -2874,7 +2874,7 @@ class GCPHybridPrimeRouter:
                             self._degradation_entered_at = 0.0
                             return
                     elif tier == RoutingTier.GCP_CLOUD_RUN:
-                        cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+                        cloud_run_url = os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL")
                         if cloud_run_url:
                             self.logger.info(f"Recovery probe successful: {tier.value} URL configured")
                             self._degradation_mode = False
@@ -3283,7 +3283,7 @@ class GCPHybridPrimeRouter:
             return None
 
         # Cloud Run is generally always available if configured
-        cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+        cloud_run_url = os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL")
         if not cloud_run_url:
             return None
 
@@ -3576,7 +3576,7 @@ class GCPHybridPrimeRouter:
             raise ValueError(f"Unknown tier: {tier}")
 
     async def _execute_local(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute on local JARVIS Prime."""
+        """Execute on local Ironcliw Prime."""
         if self._prime_client:
             return await self._prime_client.generate(payload)
 
@@ -3611,7 +3611,7 @@ class GCPHybridPrimeRouter:
 
     async def _execute_cloud_run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Execute on Cloud Run."""
-        cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+        cloud_run_url = os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL")
         if not cloud_run_url:
             raise RuntimeError("Cloud Run URL not configured")
 

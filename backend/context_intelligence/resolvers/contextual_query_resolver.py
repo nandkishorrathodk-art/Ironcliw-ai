@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Contextual Query Resolver for JARVIS
+Contextual Query Resolver for Ironcliw
 ====================================
 
 Handles ambiguous and contextual queries with:

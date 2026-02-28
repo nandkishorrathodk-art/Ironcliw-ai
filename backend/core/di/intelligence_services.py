@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligence Services Registration
 ===================================
 
@@ -11,7 +11,7 @@ The module provides declarative service registration with:
 - Graceful degradation for optional services
 - Correct parameter passing (config, not engine instances)
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -50,7 +50,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
     # =========================================================================
     # COLLABORATION ENGINE
     # =========================================================================
-    if os.getenv("JARVIS_COLLABORATION_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_COLLABORATION_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.collaboration_engine import (
                 CollaborationConfig,
@@ -76,7 +76,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
 
             # Register cross-repo coordinator (depends on config, NOT engine)
             # FIX: The coordinator expects config, not engine instance
-            if os.getenv("JARVIS_CROSS_REPO_COLLAB", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_COLLAB", "true").lower() == "true":
                 container.register(
                     CrossRepoCollaborationCoordinator,
                     scope=Scope.SINGLETON,
@@ -96,7 +96,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
     # =========================================================================
     # CODE OWNERSHIP ENGINE
     # =========================================================================
-    if os.getenv("JARVIS_CODE_OWNERSHIP_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_CODE_OWNERSHIP_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.code_ownership import (
                 OwnershipConfig,
@@ -121,7 +121,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
             )
 
             # Register cross-repo coordinator (depends on config, NOT engine)
-            if os.getenv("JARVIS_CROSS_REPO_OWNERSHIP", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_OWNERSHIP", "true").lower() == "true":
                 container.register(
                     CrossRepoOwnershipCoordinator,
                     scope=Scope.SINGLETON,
@@ -141,7 +141,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
     # =========================================================================
     # REVIEW WORKFLOW ENGINE
     # =========================================================================
-    if os.getenv("JARVIS_REVIEW_WORKFLOW_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_REVIEW_WORKFLOW_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.review_workflow import (
                 ReviewWorkflowConfig,
@@ -166,7 +166,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
             )
 
             # Register cross-repo coordinator (depends on config, NOT engine)
-            if os.getenv("JARVIS_CROSS_REPO_REVIEW", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_REVIEW", "true").lower() == "true":
                 container.register(
                     CrossRepoReviewCoordinator,
                     scope=Scope.SINGLETON,
@@ -186,11 +186,11 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
     # =========================================================================
     # LSP SERVER
     # =========================================================================
-    if os.getenv("JARVIS_LSP_SERVER_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_LSP_SERVER_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.lsp_server import (
                 LSPServerConfig,
-                JARVISLSPServer,
+                IroncliwLSPServer,
             )
 
             # Register config
@@ -202,24 +202,24 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
 
             # Register LSP server
             container.register(
-                JARVISLSPServer,
+                IroncliwLSPServer,
                 scope=Scope.SINGLETON,
                 criticality=ServiceCriticality.OPTIONAL,
                 dependencies=[DependencySpec(LSPServerConfig, DependencyType.REQUIRED, param_name="config")],
-                factory=lambda config: JARVISLSPServer(config=config),
+                factory=lambda config: IroncliwLSPServer(config=config),
             )
 
-            registered["JARVISLSPServer"] = True
+            registered["IroncliwLSPServer"] = True
             logger.info("Registered LSP server")
 
         except ImportError as e:
             logger.info(f"LSP server not available: {e}")
-            registered["JARVISLSPServer"] = False
+            registered["IroncliwLSPServer"] = False
 
     # =========================================================================
     # IDE INTEGRATION ENGINE
     # =========================================================================
-    if os.getenv("JARVIS_IDE_INTEGRATION_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_IDE_INTEGRATION_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.ide_integration import (
                 IDEIntegrationConfig,
@@ -244,7 +244,7 @@ def register_intelligence_services(container: Any) -> Dict[str, bool]:
             )
 
             # Register cross-repo coordinator (depends on config, NOT engine)
-            if os.getenv("JARVIS_CROSS_REPO_IDE", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_IDE", "true").lower() == "true":
                 container.register(
                     CrossRepoIDECoordinator,
                     scope=Scope.SINGLETON,

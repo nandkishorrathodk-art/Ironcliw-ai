@@ -1,4 +1,4 @@
-# JARVIS Voice Biometrics & AI/ML Learning System
+﻿# Ironcliw Voice Biometrics & AI/ML Learning System
 
 **Complete Documentation for Unified Voice Capture, Intelligent Routing, and Continuous Learning**
 
@@ -23,7 +23,7 @@
 
 ## Overview
 
-JARVIS implements a sophisticated voice biometrics system that combines **browser-based voice recognition** with **AI/ML speaker identification** for continuous learning and security verification.
+Ironcliw implements a sophisticated voice biometrics system that combines **browser-based voice recognition** with **AI/ML speaker identification** for continuous learning and security verification.
 
 ### Key Features
 
@@ -45,7 +45,7 @@ JARVIS implements a sophisticated voice biometrics system that combines **browse
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         JARVIS Voice Biometrics                          │
+│                         Ironcliw Voice Biometrics                          │
 │                     Unified Capture → Intelligent Routing                │
 └─────────────────────────────────────────────────────────────────────────┘
 
@@ -63,7 +63,7 @@ JARVIS implements a sophisticated voice biometrics system that combines **browse
 │                 │                                   │                     │
 │                 ├───────────────┬───────────────────┤                     │
 │                 ↓               ↓                   ↓                     │
-│         "Hey JARVIS"    Transcribe Text    Capture Audio Chunks          │
+│         "Hey Ironcliw"    Transcribe Text    Capture Audio Chunks          │
 │                 │               │                   │                     │
 │                 └───────────────┴───────────────────┘                     │
 │                                 ↓                                         │
@@ -296,7 +296,7 @@ Command Received
 | "Unlock my screen" | **CRITICAL** | **SpeechBrain** | Security-critical |
 | "Delete all files" | HIGH | SpeechBrain (budget permitting) | Destructive operation |
 | "Show my passwords" | HIGH | SpeechBrain | Sensitive data |
-| "Hey JARVIS" (wake word) | QUICK | Resemblyzer | Always-on listening |
+| "Hey Ironcliw" (wake word) | QUICK | Resemblyzer | Always-on listening |
 
 ### Budget Protection Logic
 
@@ -496,7 +496,7 @@ const handleVoiceCommand = async (command, confidenceInfo) => {
 ```
 
 **Flow**:
-1. Wake word detected ("Hey JARVIS")
+1. Wake word detected ("Hey Ironcliw")
 2. `startVoiceAudioCapture()` begins recording
 3. Browser SpeechRecognition transcribes simultaneously
 4. User finishes speaking
@@ -610,7 +610,7 @@ class SpeakerRecognitionEngine:
 
 ### Complete End-to-End Example
 
-**Scenario**: User says "Hey JARVIS, unlock my screen" while screen is locked
+**Scenario**: User says "Hey Ironcliw, unlock my screen" while screen is locked
 
 #### Step 1: Wake Word Detection (Frontend)
 
@@ -913,15 +913,15 @@ Without intelligent routing:
 
 ```bash
 # Budget limits
-export JARVIS_VOICE_BUDGET_DAILY=240         # cents ($2.40)
-export JARVIS_VOICE_IDLE_SHUTDOWN=5          # minutes
+export Ironcliw_VOICE_BUDGET_DAILY=240         # cents ($2.40)
+export Ironcliw_VOICE_IDLE_SHUTDOWN=5          # minutes
 
 # Model preferences
-export JARVIS_VOICE_PREFER_LOCAL=true        # Use local when possible
-export JARVIS_VOICE_FORCE_CLOUD=false        # Force cloud (testing)
+export Ironcliw_VOICE_PREFER_LOCAL=true        # Use local when possible
+export Ironcliw_VOICE_FORCE_CLOUD=false        # Force cloud (testing)
 
 # Learning database
-export JARVIS_LEARNING_DB_PATH=~/.jarvis/learning/jarvis_learning.db
+export Ironcliw_LEARNING_DB_PATH=~/.jarvis/learning/jarvis_learning.db
 ```
 
 ### Router Configuration
@@ -932,9 +932,9 @@ export JARVIS_LEARNING_DB_PATH=~/.jarvis/learning/jarvis_learning.db
 class IntelligentVoiceRouter:
     def __init__(self):
         self.config = {
-            "daily_limit_cents": float(os.getenv("JARVIS_VOICE_BUDGET_DAILY", 240)),
-            "idle_shutdown_minutes": int(os.getenv("JARVIS_VOICE_IDLE_SHUTDOWN", 5)),
-            "prefer_local": os.getenv("JARVIS_VOICE_PREFER_LOCAL", "true").lower() == "true",
+            "daily_limit_cents": float(os.getenv("Ironcliw_VOICE_BUDGET_DAILY", 240)),
+            "idle_shutdown_minutes": int(os.getenv("Ironcliw_VOICE_IDLE_SHUTDOWN", 5)),
+            "prefer_local": os.getenv("Ironcliw_VOICE_PREFER_LOCAL", "true").lower() == "true",
         }
 ```
 
@@ -947,7 +947,7 @@ class IntelligentVoiceRouter:
 #### Test 1: Regular Command (Local Model)
 
 ```bash
-# Say: "Hey JARVIS, what's the weather?"
+# Say: "Hey Ironcliw, what's the weather?"
 ```
 
 **Expected Output**:
@@ -971,7 +971,7 @@ class IntelligentVoiceRouter:
 #### Test 2: Unlock Command (Cloud Model)
 
 ```bash
-# Say: "Hey JARVIS, unlock my screen"
+# Say: "Hey Ironcliw, unlock my screen"
 ```
 
 **Expected Output**:
@@ -1001,7 +1001,7 @@ class IntelligentVoiceRouter:
 
 ```bash
 # Manually set daily usage to $2.38
-# Say: "Hey JARVIS, unlock my screen" (5 times)
+# Say: "Hey Ironcliw, unlock my screen" (5 times)
 ```
 
 **Expected Output** (5th command):
@@ -1025,7 +1025,7 @@ class IntelligentVoiceRouter:
 #### Test 4: Auto-Shutdown
 
 ```bash
-# Say: "Hey JARVIS, unlock my screen"
+# Say: "Hey Ironcliw, unlock my screen"
 # Wait 6 minutes without any commands
 ```
 
@@ -1130,10 +1130,10 @@ if (permissions.state === 'denied') {
 **Solution**:
 ```bash
 # Increase daily budget
-export JARVIS_VOICE_BUDGET_DAILY=480  # $4.80/day
+export Ironcliw_VOICE_BUDGET_DAILY=480  # $4.80/day
 
 # Or force local models only
-export JARVIS_VOICE_FORCE_LOCAL=true
+export Ironcliw_VOICE_FORCE_LOCAL=true
 
 # Check budget status
 curl http://localhost:8010/voice/router/stats
@@ -1268,12 +1268,12 @@ POST /voice/budget/reset
 
 ```bash
 # Budget & costs
-JARVIS_VOICE_BUDGET_DAILY=240           # Daily limit (cents)
-JARVIS_VOICE_IDLE_SHUTDOWN=5            # Idle minutes before shutdown
+Ironcliw_VOICE_BUDGET_DAILY=240           # Daily limit (cents)
+Ironcliw_VOICE_IDLE_SHUTDOWN=5            # Idle minutes before shutdown
 
 # Model preferences
-JARVIS_VOICE_PREFER_LOCAL=true          # Prefer free local models
-JARVIS_VOICE_FORCE_CLOUD=false          # Force cloud (testing)
+Ironcliw_VOICE_PREFER_LOCAL=true          # Prefer free local models
+Ironcliw_VOICE_FORCE_CLOUD=false          # Force cloud (testing)
 
 # GCP configuration
 GCP_PROJECT_ID=jarvis-ai-agent
@@ -1285,7 +1285,7 @@ GCP_VOICE_INSTANCE=jarvis-voice-vm
 
 ## Conclusion
 
-The JARVIS Voice Biometrics System represents a sophisticated balance between:
+The Ironcliw Voice Biometrics System represents a sophisticated balance between:
 - **Performance** (instant response with browser STT + background recording)
 - **Accuracy** (95-98% with SpeechBrain for critical operations)
 - **Cost** (96% cost reduction via intelligent local/cloud routing)

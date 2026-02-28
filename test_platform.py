@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test platform abstraction layer on Windows
 """
 import sys
@@ -6,7 +6,7 @@ import asyncio
 
 # Test platform detection
 print("=" * 60)
-print("JARVIS Platform Abstraction Layer - Windows Test")
+print("Ironcliw Platform Abstraction Layer - Windows Test")
 print("=" * 60)
 
 try:

@@ -1,4 +1,4 @@
-# Phase 2: Intelligence Layer Implementation Summary
+﻿# Phase 2: Intelligence Layer Implementation Summary
 
 ## Overview
 Phase 2 adds intelligent analysis capabilities to the Multi-Window Awareness system, including window relationship detection and smart query routing.
@@ -28,8 +28,8 @@ Created `window_relationship_detector.py` with the following capabilities:
 ### Example Relationships:
 ```python
 # IDE + Terminal on same project
-Cursor: "start_system.py — JARVIS-AI-Agent"
-Terminal: "vision — JARVIS-AI-Agent"
+Cursor: "start_system.py — Ironcliw-AI-Agent"
+Terminal: "vision — Ironcliw-AI-Agent"
 → Relationship: ide_terminal (85% confidence)
 
 # Multiple documentation tabs
@@ -84,7 +84,7 @@ Query: "What am I working on?"
 - **Query Routing**: ~5ms average per query
 - **Both systems scale well** with O(n²) for relationships, O(n) for routing
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
 The intelligence layer integrates seamlessly with the existing multi-window capture:
 
@@ -122,4 +122,4 @@ Run the Phase 2 test suite:
 python tests/vision/test_phase2_intelligence.py
 ```
 
-The intelligence layer is now ready for integration with the JARVIS voice system!
+The intelligence layer is now ready for integration with the Ironcliw voice system!

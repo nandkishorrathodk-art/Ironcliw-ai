@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Optimized Startup Script
-Launches JARVIS with full system integration and resource management
+Ironcliw Optimized Startup Script
+Launches Ironcliw with full system integration and resource management
 Optimized for 16GB RAM MacBook Pro with dynamic resource allocation
 """
 
@@ -19,17 +19,17 @@ sys.path.insert(0, str(backend_path))
 from core.system_integration_coordinator import SystemIntegrationCoordinator
 
 # Import the event-driven coordinator
-from jarvis_event_coordinator import JARVISEventCoordinator
+from jarvis_event_coordinator import IroncliwEventCoordinator
 
 # Setup environment variables if not set
 def setup_environment():
     """Setup default environment variables"""
     defaults = {
-        "JARVIS_USER": "Sir",
-        "JARVIS_DEBUG": "false",
-        "JARVIS_WEB_UI": "true",
-        "JARVIS_LOG_LEVEL": "INFO",
-        "JARVIS_PERFORMANCE_DASHBOARD": "true"
+        "Ironcliw_USER": "Sir",
+        "Ironcliw_DEBUG": "false",
+        "Ironcliw_WEB_UI": "true",
+        "Ironcliw_LOG_LEVEL": "INFO",
+        "Ironcliw_PERFORMANCE_DASHBOARD": "true"
     }
     
     for key, value in defaults.items():
@@ -44,7 +44,7 @@ def setup_environment():
         print()
 
 def print_optimized_banner():
-    """Print JARVIS optimized startup banner"""
+    """Print Ironcliw optimized startup banner"""
     banner = """
     ╔══════════════════════════════════════════════════════════════════╗
     ║                                                                  ║
@@ -68,7 +68,7 @@ def print_optimized_banner():
     ║                                                                  ║
     ╚══════════════════════════════════════════════════════════════════╝
     
-    🎯 Starting JARVIS with System Integration & Performance Optimization...
+    🎯 Starting Ironcliw with System Integration & Performance Optimization...
     """
     print(banner)
 
@@ -103,7 +103,7 @@ def check_requirements():
         sys.exit(1)
 
 async def run_jarvis_optimized():
-    """Run JARVIS with full optimization"""
+    """Run Ironcliw with full optimization"""
     # Print startup banner
     print_optimized_banner()
     
@@ -114,7 +114,7 @@ async def run_jarvis_optimized():
     check_requirements()
     
     # Configure logging
-    log_level = getattr(logging, os.getenv("JARVIS_LOG_LEVEL", "INFO"))
+    log_level = getattr(logging, os.getenv("Ironcliw_LOG_LEVEL", "INFO"))
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -129,21 +129,21 @@ async def run_jarvis_optimized():
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
     
     print("✅ Environment configured")
-    print(f"👤 User: {os.getenv('JARVIS_USER')}")
-    print(f"🔍 Debug: {os.getenv('JARVIS_DEBUG')}")
-    print(f"🌐 Web UI: {os.getenv('JARVIS_WEB_UI')}")
-    print(f"📊 Performance Dashboard: {os.getenv('JARVIS_PERFORMANCE_DASHBOARD')}")
+    print(f"👤 User: {os.getenv('Ironcliw_USER')}")
+    print(f"🔍 Debug: {os.getenv('Ironcliw_DEBUG')}")
+    print(f"🌐 Web UI: {os.getenv('Ironcliw_WEB_UI')}")
+    print(f"📊 Performance Dashboard: {os.getenv('Ironcliw_PERFORMANCE_DASHBOARD')}")
     print()
     
     # Create system integration coordinator
     print("🔧 Initializing System Integration...")
     system_coordinator = SystemIntegrationCoordinator()
     
-    # Create JARVIS event coordinator
-    print("🧠 Initializing JARVIS Core Systems...")
-    jarvis_coordinator = JARVISEventCoordinator(
-        user_name=os.getenv("JARVIS_USER", "Sir"),
-        enable_web_ui=os.getenv("JARVIS_WEB_UI", "true").lower() == "true"
+    # Create Ironcliw event coordinator
+    print("🧠 Initializing Ironcliw Core Systems...")
+    jarvis_coordinator = IroncliwEventCoordinator(
+        user_name=os.getenv("Ironcliw_USER", "Sir"),
+        enable_web_ui=os.getenv("Ironcliw_WEB_UI", "true").lower() == "true"
     )
     
     try:
@@ -151,18 +151,18 @@ async def run_jarvis_optimized():
         print("⚡ Starting Resource Management & Optimization...")
         await system_coordinator.start()
         
-        # Start JARVIS coordinator
-        print("🎯 Starting JARVIS Event System...")
+        # Start Ironcliw coordinator
+        print("🎯 Starting Ironcliw Event System...")
         await jarvis_coordinator.start()
         
         print("\n" + "="*60)
-        print("✨ JARVIS is fully operational!")
+        print("✨ Ironcliw is fully operational!")
         print("="*60)
         
         print(f"\n📍 Available interfaces:")
         print(f"   Event Web UI: http://localhost:8888")
         print(f"   Performance Dashboard: http://localhost:8889")
-        print(f"\n💡 Say 'Hey JARVIS' to interact")
+        print(f"\n💡 Say 'Hey Ironcliw' to interact")
         print(f"\n🎥 Screen Monitoring Commands:")
         print(f"   'start monitoring my screen' - Begin 30 FPS capture")
         print(f"   'stop monitoring' - End video streaming")
@@ -193,23 +193,23 @@ async def run_jarvis_optimized():
         
     finally:
         # Clean shutdown
-        print("\n🛑 Shutting down JARVIS...")
+        print("\n🛑 Shutting down Ironcliw...")
         
-        # Stop JARVIS coordinator
+        # Stop Ironcliw coordinator
         await jarvis_coordinator.stop()
         
         # Stop system coordinator
         await system_coordinator.stop()
         
-        print("✅ JARVIS shutdown complete")
+        print("✅ Ironcliw shutdown complete")
         print("👋 Goodbye!")
 
 if __name__ == "__main__":
     try:
-        # Run JARVIS with optimization
+        # Run Ironcliw with optimization
         asyncio.run(run_jarvis_optimized())
     except KeyboardInterrupt:
-        print("\n👋 JARVIS shutting down gracefully...")
+        print("\n👋 Ironcliw shutting down gracefully...")
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ Error: {e}")

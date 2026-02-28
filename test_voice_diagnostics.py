@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Pipeline Diagnostics - Fix Transcription Issues
 """
@@ -112,8 +112,8 @@ def test_stt_models():
     return True
 
 def test_jarvis_stt_component():
-    """Test JARVIS's actual STT component"""
-    print("\n📍 TEST 4: JARVIS STT Component")
+    """Test Ironcliw's actual STT component"""
+    print("\n📍 TEST 4: Ironcliw STT Component")
     print("-" * 40)
 
     # Check if the STT service is running
@@ -151,7 +151,7 @@ def fix_stt_configuration():
 # Fix 1: Install Whisper as fallback STT
 pip install openai-whisper
 
-# Fix 2: Update JARVIS config to use Whisper
+# Fix 2: Update Ironcliw config to use Whisper
 cat > jarvis_stt_fix.json <<EOF
 {
   "stt_engine": "whisper",
@@ -169,7 +169,7 @@ result = model.transcribe('test_audio.wav')
 print(result['text'])
 "
 
-# Fix 4: Restart JARVIS with new STT config
+# Fix 4: Restart Ironcliw with new STT config
 killall -TERM jarvis
 python3 start_system.py --stt-engine whisper
 """
@@ -180,7 +180,7 @@ python3 start_system.py --stt-engine whisper
     print("1. Install Whisper: pip install openai-whisper")
     print("2. Test recording: sox -d test.wav trim 0 3")
     print("3. Test transcription manually")
-    print("4. Update JARVIS STT configuration")
+    print("4. Update Ironcliw STT configuration")
 
     return True
 
@@ -210,11 +210,11 @@ def main():
     print("1. ⚡ QUICK FIX: Install Whisper")
     print("   pip install openai-whisper")
     print()
-    print("2. 🔄 RESTART JARVIS with Whisper:")
+    print("2. 🔄 RESTART Ironcliw with Whisper:")
     print("   python3 start_system.py --stt-engine whisper")
     print()
     print("3. 🎤 TEST AGAIN:")
-    print("   Say: 'Hey JARVIS, unlock my screen'")
+    print("   Say: 'Hey Ironcliw, unlock my screen'")
     print()
     print("The transcription should work after these fixes!")
 

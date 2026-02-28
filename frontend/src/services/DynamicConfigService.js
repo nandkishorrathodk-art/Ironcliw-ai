@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Dynamic Configuration Service v3.0
  * ===================================
  * Fully async, non-blocking, robust configuration with:
@@ -267,7 +267,7 @@ class DynamicConfigService {
     const envPort = typeof process !== 'undefined' && process.env?.REACT_APP_BACKEND_PORT;
     
     // Priority-ordered list - most likely ports first
-    // Include JARVIS dynamic fallback range 8100-8130 for when primary ports are busy
+    // Include Ironcliw dynamic fallback range 8100-8130 for when primary ports are busy
     const dynamicFallback = Array.from({ length: 31 }, (_, i) => 8100 + i);
     const priorityPorts = [8000, 8010, 8080, 8888, 9000, 9090, ...dynamicFallback];
     
@@ -503,9 +503,9 @@ class DynamicConfigService {
             data = {};
           }
           
-          // Verify it's the JARVIS backend
+          // Verify it's the Ironcliw backend
           if (this._isJarvisBackend(data)) {
-            logger.success(`✅ Found JARVIS backend on port ${port}`);
+            logger.success(`✅ Found Ironcliw backend on port ${port}`);
             
             // Discover available endpoints
             const endpoints = await this._discoverEndpoints(baseUrl);

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Visual Event Detector v10.7
 ===========================
 
@@ -8,7 +8,7 @@ CRITICAL FIXES v10.7 (Jan 2026):
 ================================
 - FIXED: Cache thread safety - all cache operations now protected by lock
 - FIXED: Stats counters thread safety - atomic access via properties
-- ADDED: Configurable cache size via JARVIS_DETECTOR_CACHE_MAX_SIZE env var
+- ADDED: Configurable cache size via Ironcliw_DETECTOR_CACHE_MAX_SIZE env var
 
 Features:
 - OCR text detection (pytesseract)
@@ -74,20 +74,20 @@ class DetectionMethod(Enum):
 class DetectorConfig:
     """Configuration for visual event detector - NO HARDCODING"""
     # OCR settings
-    ocr_engine: str = field(default_factory=lambda: os.getenv('JARVIS_OCR_ENGINE', 'pytesseract'))
-    ocr_lang: str = field(default_factory=lambda: os.getenv('JARVIS_OCR_LANG', 'eng'))
-    ocr_psm: int = field(default_factory=lambda: int(os.getenv('JARVIS_OCR_PSM', '6')))  # Page segmentation mode
-    ocr_oem: int = field(default_factory=lambda: int(os.getenv('JARVIS_OCR_OEM', '3')))  # OCR Engine Mode
+    ocr_engine: str = field(default_factory=lambda: os.getenv('Ironcliw_OCR_ENGINE', 'pytesseract'))
+    ocr_lang: str = field(default_factory=lambda: os.getenv('Ironcliw_OCR_LANG', 'eng'))
+    ocr_psm: int = field(default_factory=lambda: int(os.getenv('Ironcliw_OCR_PSM', '6')))  # Page segmentation mode
+    ocr_oem: int = field(default_factory=lambda: int(os.getenv('Ironcliw_OCR_OEM', '3')))  # OCR Engine Mode
 
     # Detection settings
-    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('JARVIS_DETECTION_CONFIDENCE', '0.75')))
-    fuzzy_match_ratio: float = field(default_factory=lambda: float(os.getenv('JARVIS_FUZZY_MATCH_RATIO', '0.85')))
-    enable_preprocessing: bool = field(default_factory=lambda: os.getenv('JARVIS_OCR_PREPROCESS', 'true').lower() == 'true')
+    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('Ironcliw_DETECTION_CONFIDENCE', '0.75')))
+    fuzzy_match_ratio: float = field(default_factory=lambda: float(os.getenv('Ironcliw_FUZZY_MATCH_RATIO', '0.85')))
+    enable_preprocessing: bool = field(default_factory=lambda: os.getenv('Ironcliw_OCR_PREPROCESS', 'true').lower() == 'true')
 
     # Performance settings
-    max_concurrent_detections: int = field(default_factory=lambda: int(os.getenv('JARVIS_MAX_CONCURRENT_DETECT', '3')))
-    enable_caching: bool = field(default_factory=lambda: os.getenv('JARVIS_DETECTOR_CACHE', 'true').lower() == 'true')
-    cache_ttl_seconds: float = field(default_factory=lambda: float(os.getenv('JARVIS_DETECTOR_CACHE_TTL', '2.0')))
+    max_concurrent_detections: int = field(default_factory=lambda: int(os.getenv('Ironcliw_MAX_CONCURRENT_DETECT', '3')))
+    enable_caching: bool = field(default_factory=lambda: os.getenv('Ironcliw_DETECTOR_CACHE', 'true').lower() == 'true')
+    cache_ttl_seconds: float = field(default_factory=lambda: float(os.getenv('Ironcliw_DETECTOR_CACHE_TTL', '2.0')))
 
 
 @dataclass
@@ -953,7 +953,7 @@ class VisualEventDetector:
             self._cache_timestamps[key] = time.time()
 
             # Limit cache size - get configurable max from environment
-            max_cache_size = int(os.getenv('JARVIS_DETECTOR_CACHE_MAX_SIZE', '100'))
+            max_cache_size = int(os.getenv('Ironcliw_DETECTOR_CACHE_MAX_SIZE', '100'))
             if len(self._cache) > max_cache_size:
                 # Remove oldest entries
                 try:

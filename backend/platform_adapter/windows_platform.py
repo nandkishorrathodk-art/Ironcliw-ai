@@ -1,8 +1,8 @@
-"""
+﻿"""
 Windows Platform Implementation
 ================================
 
-Windows-specific implementation of JARVIS platform abstraction layer.
+Windows-specific implementation of Ironcliw platform abstraction layer.
 Uses pywin32, pyautogui, mss, and Windows APIs.
 """
 

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Fixed JARVIS Agent Voice with Intelligent Command Routing
+Fixed Ironcliw Agent Voice with Intelligent Command Routing
 Replaces keyword-based routing with Swift NLP classifier
 """
 
@@ -73,17 +73,17 @@ class IntelligentVoiceCommandMixin:
 
 def patch_jarvis_voice_agent(agent_class):
     """
-    Monkey patch the JARVISVoiceAgent to use intelligent routing
+    Monkey patch the IroncliwVoiceAgent to use intelligent routing
     
     Usage:
-        from jarvis_agent_voice import JARVISVoiceAgent
+        from jarvis_agent_voice import IroncliwVoiceAgent
         from jarvis_agent_voice_fix import patch_jarvis_voice_agent
         
         # Apply the fix
-        patch_jarvis_voice_agent(JARVISVoiceAgent)
+        patch_jarvis_voice_agent(IroncliwVoiceAgent)
         
-        # Now JARVISVoiceAgent uses intelligent routing
-        agent = JARVISVoiceAgent()
+        # Now IroncliwVoiceAgent uses intelligent routing
+        agent = IroncliwVoiceAgent()
     """
     
     # Store original methods
@@ -99,7 +99,7 @@ def patch_jarvis_voice_agent(agent_class):
         self.intelligent_handler = IntelligentCommandHandler(
             user_name=self.user_name
         )
-        logger.info("Patched JARVISVoiceAgent with intelligent command routing")
+        logger.info("Patched IroncliwVoiceAgent with intelligent command routing")
     
     async def new_process_voice_input(self, text: str) -> str:
         """Process voice input using intelligent classification"""
@@ -139,7 +139,7 @@ def patch_jarvis_voice_agent(agent_class):
     
     agent_class._is_system_command = disabled_is_system_command
     
-    logger.info("Successfully patched JARVISVoiceAgent with intelligent routing")
+    logger.info("Successfully patched IroncliwVoiceAgent with intelligent routing")
     return agent_class
 
 # Test the fix

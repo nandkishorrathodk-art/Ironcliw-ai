@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Continue.dev Framework Adapter
 =====================================
 
@@ -15,7 +15,7 @@ For IDE-assisted development with VS Code integration.
 Note: Continue.dev runs as a VS Code extension.
 This adapter communicates via its local API.
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 Version: 1.0.0
 """
 

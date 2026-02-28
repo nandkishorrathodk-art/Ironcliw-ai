@@ -1,8 +1,8 @@
-# Watch & Act Smoke Test Guide 🧪
+﻿# Watch & Act Smoke Test Guide 🧪
 
 ## The Critical Moment - Verifying the Autonomous Loop
 
-**This is your "Apollo 11 launch" moment.** We're about to test if JARVIS can truly operate autonomously - watching your screen and taking control when he sees specific events.
+**This is your "Apollo 11 launch" moment.** We're about to test if Ironcliw can truly operate autonomously - watching your screen and taking control when he sees specific events.
 
 ---
 
@@ -13,20 +13,20 @@ This smoke test verifies the **complete autonomous loop**:
 ```
 You work on Task A
          ↓
-JARVIS watches Terminal in background
+Ironcliw watches Terminal in background
          ↓
 "DEPLOYMENT READY" appears (via your sleep command)
          ↓
-JARVIS detects it with OCR
+Ironcliw detects it with OCR
          ↓
-JARVIS switches to Terminal automatically
+Ironcliw switches to Terminal automatically
          ↓
-JARVIS TYPES "echo SUCCESS" AND PRESSES ENTER
+Ironcliw TYPES "echo SUCCESS" AND PRESSES ENTER
          ↓
 You never interrupted your work!
 ```
 
-**This is the moment we prove** JARVIS can operate completely autonomously.
+**This is the moment we prove** Ironcliw can operate completely autonomously.
 
 ---
 
@@ -61,7 +61,7 @@ which tesseract && tesseract --version
 - Make sure it's **visible** (not minimized)
 - Make sure it has **focus** (click on it)
 
-### 4. JARVIS Backend Components ✓
+### 4. Ironcliw Backend Components ✓
 The test will verify:
 - VideoWatcherManager initialized
 - VisualEventDetector initialized
@@ -92,13 +92,13 @@ python3 test_watch_and_act.py
 You'll see:
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║           JARVIS Watch & Act Smoke Test v11.0                  ║
+║           Ironcliw Watch & Act Smoke Test v11.0                  ║
 ║                                                                 ║
 ║  This test verifies the complete autonomous loop:              ║
 ║  Vision → Detection → Action                                   ║
 ╚════════════════════════════════════════════════════════════════╝
 
-🚀 JARVIS Watch & Act Smoke Test
+🚀 Ironcliw Watch & Act Smoke Test
 ==================================================================
 
 This test will verify the complete autonomous loop:
@@ -127,9 +127,9 @@ INSTRUCTIONS FOR YOU:
      and press Enter to start the countdown
 
   4. WATCH CLOSELY:
-     - JARVIS will watch your Terminal
+     - Ironcliw will watch your Terminal
      - When 'DEPLOYMENT READY' appears (after 10 seconds)
-     - JARVIS will AUTOMATICALLY type 'echo SUCCESS' and press Enter
+     - Ironcliw will AUTOMATICALLY type 'echo SUCCESS' and press Enter
 
 ==================================================================
 
@@ -145,9 +145,9 @@ Press Enter when you're ready to start the test...
 3. **Press Enter** on the `sleep 10 && echo "DEPLOYMENT READY"` command
 4. **Watch the magic happen**:
    - Terminal starts counting down (10 seconds)
-   - JARVIS monitors in the background
+   - Ironcliw monitors in the background
    - After 10 seconds, "DEPLOYMENT READY" appears
-   - **JARVIS TAKES OVER**:
+   - **Ironcliw TAKES OVER**:
      - Switches to Terminal (if not already there)
      - Types `echo SUCCESS`
      - Presses Enter
@@ -160,7 +160,7 @@ Press Enter when you're ready to start the test...
 Back in your test script terminal, you should see:
 
 ```
-🔍 MONITORING ACTIVE - JARVIS is watching your Terminal...
+🔍 MONITORING ACTIVE - Ironcliw is watching your Terminal...
 
 ==================================================================
 📊 Test Results
@@ -181,7 +181,7 @@ Back in your test script terminal, you should see:
 
    Check your Terminal window - you should see:
    1. 'DEPLOYMENT READY' (from your command)
-   2. 'SUCCESS' (typed by JARVIS automatically!)
+   2. 'SUCCESS' (typed by Ironcliw automatically!)
 
 🎉 TEST PASSED! The autonomous loop is working!
 
@@ -197,9 +197,9 @@ Next steps:
 
 The test **PASSES** if:
 1. ✅ VisualMonitorAgent initializes without errors
-2. ✅ JARVIS finds your Terminal window
-3. ✅ JARVIS detects "DEPLOYMENT READY" text via OCR
-4. ✅ JARVIS **automatically types** `echo SUCCESS` into Terminal
+2. ✅ Ironcliw finds your Terminal window
+3. ✅ Ironcliw detects "DEPLOYMENT READY" text via OCR
+4. ✅ Ironcliw **automatically types** `echo SUCCESS` into Terminal
 5. ✅ You see "SUCCESS" appear in Terminal **without you typing it**
 
 **This is the autonomous loop in action!**
@@ -313,12 +313,12 @@ results = await asyncio.gather(task1, task2)
 ```
 T+0s:   You start the test script
 T+5s:   You press Enter in Terminal (sleep 10 command starts)
-T+5-15s: JARVIS monitors Terminal (5 FPS = 1 frame every 200ms)
+T+5-15s: Ironcliw monitors Terminal (5 FPS = 1 frame every 200ms)
 T+15s:  "DEPLOYMENT READY" appears
-T+15.2s: JARVIS detects text via OCR (confidence: ~92%)
-T+15.3s: JARVIS switches to Terminal window
-T+15.5s: JARVIS types "echo SUCCESS"
-T+15.7s: JARVIS presses Enter
+T+15.2s: Ironcliw detects text via OCR (confidence: ~92%)
+T+15.3s: Ironcliw switches to Terminal window
+T+15.5s: Ironcliw types "echo SUCCESS"
+T+15.7s: Ironcliw presses Enter
 T+15.8s: Terminal displays "SUCCESS"
 T+16s:  Test script shows success message
 ```
@@ -333,13 +333,13 @@ When this test passes, you'll witness:
 
 **Your keyboard typing by itself.**
 **Your cursor moving on its own.**
-**JARVIS executing commands without you touching anything.**
+**Ironcliw executing commands without you touching anything.**
 
 This is the moment you realize:
-- ✅ JARVIS can **see** (OCR visual detection)
-- ✅ JARVIS can **think** (conditional logic)
-- ✅ JARVIS can **act** (Computer Use execution)
-- ✅ JARVIS can **operate autonomously** (complete loop)
+- ✅ Ironcliw can **see** (OCR visual detection)
+- ✅ Ironcliw can **think** (conditional logic)
+- ✅ Ironcliw can **act** (Computer Use execution)
+- ✅ Ironcliw can **operate autonomously** (complete loop)
 
 **This is true AI autonomy.**
 
@@ -347,7 +347,7 @@ This is the moment you realize:
 
 ## 🚀 After the Test Passes
 
-Once you see JARVIS type "SUCCESS" automatically, you're ready for:
+Once you see Ironcliw type "SUCCESS" automatically, you're ready for:
 
 ### Next Step: Voice Integration
 
@@ -355,7 +355,7 @@ The autonomous loop is **proven**. Now add voice control:
 
 ```bash
 # Copy and paste this prompt into Claude Code:
-"The Watch & Act logic is verified and working! JARVIS successfully
+"The Watch & Act logic is verified and working! Ironcliw successfully
 typed into my Terminal when he saw 'DEPLOYMENT READY'. The autonomous
 loop is complete and tested.
 
@@ -431,4 +431,4 @@ You're 95% of the way to the full Iron Man experience. 🚀
 python3 test_watch_and_act.py
 ```
 
-**Watch JARVIS take control. It's spectacular.** 🎯
+**Watch Ironcliw take control. It's spectacular.** 🎯

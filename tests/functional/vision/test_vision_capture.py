@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify vision capture functionality
 """
@@ -80,7 +80,7 @@ def test_vision_system():
 
 def main():
     """Run all tests"""
-    print("🔍 JARVIS Vision System Test")
+    print("🔍 Ironcliw Vision System Test")
     print("=" * 50)
     
     results = []

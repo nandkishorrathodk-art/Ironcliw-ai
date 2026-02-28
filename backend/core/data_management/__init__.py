@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Data Management System v1.0
 ====================================
 
-Enterprise-grade data management for the JARVIS Trinity ecosystem.
-Handles all aspects of data lifecycle across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade data management for the Ironcliw Trinity ecosystem.
+Handles all aspects of data lifecycle across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 8 critical data management patterns:

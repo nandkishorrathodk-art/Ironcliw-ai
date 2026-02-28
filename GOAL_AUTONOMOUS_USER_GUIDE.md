@@ -1,8 +1,8 @@
-# Goal Inference + Autonomous Decision Engine - User Guide
+﻿# Goal Inference + Autonomous Decision Engine - User Guide
 
 ## 🎯 What This Does For You
 
-Instead of just executing commands, JARVIS now:
+Instead of just executing commands, Ironcliw now:
 1. **Predicts what you need** before you ask
 2. **Learns your patterns** and automates them
 3. **Proactively suggests actions** based on context
@@ -14,7 +14,7 @@ Instead of just executing commands, JARVIS now:
 
 ### Option 1: Integrate with Unified Command Processor
 
-Add this to your main JARVIS initialization:
+Add this to your main Ironcliw initialization:
 
 ```python
 # In your main.py or jarvis startup
@@ -32,7 +32,7 @@ async def process_command(command, context):
         # Present proactive suggestions to user
         for decision in decisions:
             if decision.integrated_confidence > 0.8:
-                print(f"JARVIS: {decision.reasoning}")
+                print(f"Ironcliw: {decision.reasoning}")
                 print(f"         Shall I {decision.action.action_type}?")
 
     # Then process the actual command normally
@@ -46,7 +46,7 @@ async def process_command(command, context):
 
 from backend.intelligence.goal_autonomous_uae_integration import get_integration
 
-class JARVISVoice:
+class IroncliwVoice:
     def __init__(self):
         self.integration = get_integration()
 
@@ -73,22 +73,22 @@ class JARVISVoice:
 **Before (without integration):**
 ```
 You: "connect to living room tv"
-JARVIS: *connects in 0.7s*
-JARVIS: "Connected to Living Room TV"
+Ironcliw: *connects in 0.7s*
+Ironcliw: "Connected to Living Room TV"
 ```
 
 **After (with integration):**
 ```
 [2:55 PM - You open Keynote for 3:00 PM meeting]
 
-JARVIS: "Sir, I notice you have a team meeting in 5 minutes.
+Ironcliw: "Sir, I notice you have a team meeting in 5 minutes.
          Your presentation is open in Keynote.
          Shall I connect to Living Room TV?"
 
 You: "yes"
 
-JARVIS: *connects in 0.2s*
-JARVIS: "Living Room TV connected, sir. Your presentation is ready."
+Ironcliw: *connects in 0.2s*
+Ironcliw: "Living Room TV connected, sir. Your presentation is ready."
 ```
 
 ### **Scenario 2: Daily Standup Pattern**
@@ -97,31 +97,31 @@ JARVIS: "Living Room TV connected, sir. Your presentation is ready."
 ```
 Monday 9:00 AM
 You: "living room tv"
-JARVIS: *connects*
+Ironcliw: *connects*
 ```
 
 **Week 2:**
 ```
 Monday 8:58 AM
-JARVIS: "Sir, it's almost 9:00 AM. Your daily standup is in 2 minutes.
+Ironcliw: "Sir, it's almost 9:00 AM. Your daily standup is in 2 minutes.
          Shall I connect to Living Room TV?"
 
 You: "yes please"
-JARVIS: *connects instantly*
+Ironcliw: *connects instantly*
 ```
 
 **Week 3:**
 ```
 Monday 8:58 AM
-JARVIS: "Sir, I've noticed you connect to Living Room TV every Monday
+Ironcliw: "Sir, I've noticed you connect to Living Room TV every Monday
          at 9 AM for your standup. Would you like me to do this
          automatically?"
 
 You: "yes, automate it"
-JARVIS: "Understood. I'll connect automatically from now on, sir."
+Ironcliw: "Understood. I'll connect automatically from now on, sir."
 
 [Next Monday, 8:59 AM]
-JARVIS: "Automatically connecting to Living Room TV for your standup, sir."
+Ironcliw: "Automatically connecting to Living Room TV for your standup, sir."
 *connects without asking*
 ```
 
@@ -130,9 +130,9 @@ JARVIS: "Automatically connecting to Living Room TV for your standup, sir."
 **Before:**
 ```
 You: "connect display"
-JARVIS: "Which display would you like to connect to?"
+Ironcliw: "Which display would you like to connect to?"
 You: "living room tv"
-JARVIS: *connects*
+Ironcliw: *connects*
 ```
 
 **After:**
@@ -140,7 +140,7 @@ JARVIS: *connects*
 [You have Keynote + Calendar meeting in context]
 
 You: "connect display"
-JARVIS: "Connecting to Living Room TV based on your presentation
+Ironcliw: "Connecting to Living Room TV based on your presentation
          preparation, sir."
 *connects instantly*
 ```
@@ -151,13 +151,13 @@ JARVIS: "Connecting to Living Room TV based on your presentation
 
 ### 1. Check the Logs
 
-Look for these messages in your JARVIS logs:
+Look for these messages in your Ironcliw logs:
 
 ```bash
 # Enable debug logging
-export JARVIS_LOG_LEVEL=DEBUG
+export Ironcliw_LOG_LEVEL=DEBUG
 
-# Run JARVIS and look for:
+# Run Ironcliw and look for:
 [Goal Inference] Inferred goals: meeting_preparation (confidence: 0.92)
 [Autonomous Engine] Generated 3 decisions from goals
 [Integration] Predictive display connection: Living Room TV (confidence: 0.89)
@@ -190,17 +190,17 @@ Try these test scenarios:
 2. Create a meeting in 10 minutes
 3. Open Keynote or PowerPoint
 4. Wait 30 seconds
-5. JARVIS should suggest display connection
+5. Ironcliw should suggest display connection
 
 # Scenario 2: Pattern learning
 1. Connect to TV at the same time for 3 days in a row
-2. On day 4, JARVIS should offer to automate
+2. On day 4, Ironcliw should offer to automate
 3. Accept automation
 4. Day 5 should auto-connect
 
 # Scenario 3: Context understanding
 1. Just say "display" without specifying which one
-2. JARVIS should choose Living Room TV if context matches
+2. Ironcliw should choose Living Room TV if context matches
 ```
 
 ---
@@ -236,14 +236,14 @@ from backend.intelligence.goal_autonomous_uae_integration import get_integration
 
 integration = get_integration()
 
-# If JARVIS did something good
+# If Ironcliw did something good
 integration.autonomous_engine.learn_from_feedback(
     action,
     success=True,
     user_feedback="This was exactly what I needed"
 )
 
-# If JARVIS was wrong
+# If Ironcliw was wrong
 integration.autonomous_engine.learn_from_feedback(
     action,
     success=False,
@@ -349,19 +349,19 @@ integration.config['min_decision_confidence'] = 0.80
 
 You'll know it's working when:
 
-✓ JARVIS suggests display connection before you ask
+✓ Ironcliw suggests display connection before you ask
 ✓ Connections happen noticeably faster
 ✓ Suggestions are contextually relevant
 ✓ System learns and remembers your patterns
 ✓ Automation offers appear after repeated actions
 ✓ Fewer words needed ("display" instead of "connect to living room tv")
-✓ JARVIS explains reasoning ("based on your meeting...")
+✓ Ironcliw explains reasoning ("based on your meeting...")
 
 ---
 
 ## 🚀 Next Steps
 
-1. **Activate** the integration in your main JARVIS flow
+1. **Activate** the integration in your main Ironcliw flow
 2. **Use it** normally for a few days
 3. **Watch** for proactive suggestions
 4. **Confirm** good suggestions to reinforce learning

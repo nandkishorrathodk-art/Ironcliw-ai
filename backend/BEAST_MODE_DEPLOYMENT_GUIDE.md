@@ -1,8 +1,8 @@
-# 🔬 BEAST MODE Voice Biometric System - Deployment Guide
+﻿# 🔬 BEAST MODE Voice Biometric System - Deployment Guide
 
 ## Overview
 
-Your JARVIS AI now has a **state-of-the-art multi-modal probabilistic voice biometric authentication system** with:
+Your Ironcliw AI now has a **state-of-the-art multi-modal probabilistic voice biometric authentication system** with:
 
 - **Bayesian verification** with uncertainty quantification
 - **Mahalanobis distance** with adaptive covariance
@@ -21,7 +21,7 @@ Your JARVIS AI now has a **state-of-the-art multi-modal probabilistic voice biom
 This adds all the new acoustic feature columns to your speaker_profiles table.
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 backend/migrate_acoustic_features.py
 ```
 
@@ -99,7 +99,7 @@ Try unlocking your screen:
 
 **Expected Verification Log:**
 ```
-🔍 Starting ADVANCED speaker verification for JARVIS...
+🔍 Starting ADVANCED speaker verification for Ironcliw...
    ✅ Audio loaded: 48000 samples at 16000Hz
    📊 Extracting test embedding...
    ✅ Test embedding: shape=(192,), norm=18.4567
@@ -112,7 +112,7 @@ Try unlocking your screen:
    🎯 Running multi-modal probabilistic verification...
 
 ================================================================================
-🎯 VERIFICATION RESULTS FOR JARVIS
+🎯 VERIFICATION RESULTS FOR Ironcliw
 ================================================================================
    Decision: ✅ VERIFIED
    Confidence: 87.3% (0.8730)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test persistent Swift capture with purple indicator
 """
@@ -6,7 +6,7 @@ Test persistent Swift capture with purple indicator
 import asyncio
 import sys
 
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from vision.swift_video_capture_persistent import (
     start_persistent_video_capture,

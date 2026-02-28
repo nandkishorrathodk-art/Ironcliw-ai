@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Unit Tests for JARVIS Supervisor Module
+Unit Tests for Ironcliw Supervisor Module
 ========================================
 
 Tests for the Self-Updating Lifecycle Manager components.
@@ -75,12 +75,12 @@ idle:
         from core.supervisor.supervisor_config import _env_override
         
         import os
-        os.environ["JARVIS_SUPERVISOR_TEST_VAR"] = "hello"
+        os.environ["Ironcliw_SUPERVISOR_TEST_VAR"] = "hello"
         
         result = _env_override("test_var", "default")
         assert result == "hello"
         
-        del os.environ["JARVIS_SUPERVISOR_TEST_VAR"]
+        del os.environ["Ironcliw_SUPERVISOR_TEST_VAR"]
         
         result = _env_override("test_var", "default")
         assert result == "default"
@@ -92,15 +92,15 @@ idle:
         import os
         
         for true_val in ["true", "1", "yes", "on"]:
-            os.environ["JARVIS_SUPERVISOR_BOOL_TEST"] = true_val
+            os.environ["Ironcliw_SUPERVISOR_BOOL_TEST"] = true_val
             assert _env_override("bool_test", False, bool) is True
         
         for false_val in ["false", "0", "no", "off"]:
-            os.environ["JARVIS_SUPERVISOR_BOOL_TEST"] = false_val
+            os.environ["Ironcliw_SUPERVISOR_BOOL_TEST"] = false_val
             assert _env_override("bool_test", True, bool) is False
         
-        if "JARVIS_SUPERVISOR_BOOL_TEST" in os.environ:
-            del os.environ["JARVIS_SUPERVISOR_BOOL_TEST"]
+        if "Ironcliw_SUPERVISOR_BOOL_TEST" in os.environ:
+            del os.environ["Ironcliw_SUPERVISOR_BOOL_TEST"]
 
 
 class TestExitCode:

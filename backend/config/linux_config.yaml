@@ -1,4 +1,4 @@
-# JARVIS Linux Platform Configuration
+﻿# Ironcliw Linux Platform Configuration
 # Linux-specific settings and overrides
 # Version: 1.0.0
 
@@ -215,12 +215,12 @@ desktop:
 
 # Environment Variables (Linux-specific defaults)
 env_defaults:
-  JARVIS_PLATFORM: "linux"
-  JARVIS_AUTH_BYPASS: "true"
-  JARVIS_TTS_ENGINE: "pyttsx3"
-  JARVIS_CAPTURE_METHOD: "mss"
-  JARVIS_GPU_BACKEND: "vulkan"
-  JARVIS_CONFIG_DIR: "$HOME/.config/jarvis"
+  Ironcliw_PLATFORM: "linux"
+  Ironcliw_AUTH_BYPASS: "true"
+  Ironcliw_TTS_ENGINE: "pyttsx3"
+  Ironcliw_CAPTURE_METHOD: "mss"
+  Ironcliw_GPU_BACKEND: "vulkan"
+  Ironcliw_CONFIG_DIR: "$HOME/.config/jarvis"
   XDG_CONFIG_HOME: "$HOME/.config"
   XDG_DATA_HOME: "$HOME/.local/share"
   XDG_CACHE_HOME: "$HOME/.cache"

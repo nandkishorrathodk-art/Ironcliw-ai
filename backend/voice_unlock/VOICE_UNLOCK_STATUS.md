@@ -1,11 +1,11 @@
-# JARVIS Voice Unlock System - Implementation Status
+﻿# Ironcliw Voice Unlock System - Implementation Status
 =================================================
 
 ## ✅ COMPLETED Implementation
 
-The JARVIS Voice Unlock system has been successfully implemented with the following components:
+The Ironcliw Voice Unlock system has been successfully implemented with the following components:
 
-### 1. Objective-C Daemon (`JARVISVoiceUnlockDaemon`)
+### 1. Objective-C Daemon (`IroncliwVoiceUnlockDaemon`)
 - Background service that monitors for voice commands
 - Screen lock/unlock detection
 - Voice monitoring when screen is locked
@@ -19,10 +19,10 @@ The JARVIS Voice Unlock system has been successfully implemented with the follow
 
 ### 3. WebSocket Communication
 - Python WebSocket server (port 8765)
-- Bridges JARVIS API to Objective-C daemon
+- Bridges Ironcliw API to Objective-C daemon
 - Handles all voice unlock commands
 
-### 4. JARVIS Integration
+### 4. Ironcliw Integration
 - Voice unlock commands are recognized
 - Commands are properly classified as VOICE_UNLOCK type
 - Handler processes commands and returns responses
@@ -43,18 +43,18 @@ The JARVIS Voice Unlock system has been successfully implemented with the follow
    ./start_voice_unlock_system.sh
    ```
 
-3. **Use with JARVIS**:
-   - "Hey JARVIS, voice unlock status"
-   - "Hey JARVIS, enable voice unlock"
-   - "Hey JARVIS, disable voice unlock"
-   - "Hey JARVIS, test voice unlock"
+3. **Use with Ironcliw**:
+   - "Hey Ironcliw, voice unlock status"
+   - "Hey Ironcliw, enable voice unlock"
+   - "Hey Ironcliw, disable voice unlock"
+   - "Hey Ironcliw, test voice unlock"
 
 ### When Screen is Locked
 
 With voice monitoring enabled, you can unlock by saying:
-- "Hello JARVIS, unlock my Mac"
-- "JARVIS, this is Derek"
-- "Open sesame, JARVIS"
+- "Hello Ironcliw, unlock my Mac"
+- "Ironcliw, this is Derek"
+- "Open sesame, Ironcliw"
 
 ## 📋 Current Status
 
@@ -63,7 +63,7 @@ With voice monitoring enabled, you can unlock by saying:
 - ✅ Screen lock detection works
 - ✅ Voice monitoring captures audio
 - ✅ WebSocket server provides API
-- ✅ JARVIS recognizes voice unlock commands
+- ✅ Ironcliw recognizes voice unlock commands
 - ✅ Commands are processed by the handler
 - ✅ Enrollment file structure is in place
 
@@ -75,9 +75,9 @@ With voice monitoring enabled, you can unlock by saying:
 ## 🛠️ Technical Architecture
 
 ```
-JARVIS Frontend
+Ironcliw Frontend
       ↓
-JARVIS WebSocket API (port 8000)
+Ironcliw WebSocket API (port 8000)
       ↓
 Unified Command Processor
       ↓
@@ -94,7 +94,7 @@ macOS Security Framework
 
 ## 🐛 Known Issues
 
-1. **JARVIS Response Confusion**: Sometimes JARVIS responds with generic "I can't control voice settings" messages. This is due to command classification conflicts.
+1. **Ironcliw Response Confusion**: Sometimes Ironcliw responds with generic "I can't control voice settings" messages. This is due to command classification conflicts.
 
 2. **Python Dependencies**: The full Python voice processing requires additional ML libraries that may not be installed.
 
@@ -104,7 +104,7 @@ macOS Security Framework
 
 - `/backend/voice_unlock/objc/` - Complete Objective-C implementation
 - `/backend/voice_unlock/objc/server/websocket_server.py` - WebSocket bridge
-- `/backend/api/voice_unlock_handler.py` - JARVIS command handler
+- `/backend/api/voice_unlock_handler.py` - Ironcliw command handler
 - `/backend/api/voice_unlock_integration.py` - Daemon connector
 - `/backend/voice_unlock/start_voice_unlock_system.sh` - Startup script
 - `/backend/voice_unlock/COMPLETE_GUIDE.md` - Detailed documentation
@@ -129,7 +129,7 @@ macOS Security Framework
 ## 💡 Summary
 
 The Voice Unlock system is **fully implemented and functional** from an infrastructure perspective. All the pieces are in place and working:
-- Commands flow correctly from JARVIS to the daemon
+- Commands flow correctly from Ironcliw to the daemon
 - The daemon monitors for voice when the screen is locked
 - The authentication framework is ready
 

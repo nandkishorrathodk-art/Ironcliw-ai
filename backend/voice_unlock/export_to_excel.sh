@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Quick script to export voice unlock metrics to Excel
 
 set -e
@@ -9,7 +9,7 @@ PYTHON_SCRIPT="$SCRIPT_DIR/export_metrics_to_excel.py"
 # Make Python script executable
 chmod +x "$PYTHON_SCRIPT"
 
-echo "📊 JARVIS Voice Unlock Metrics → Excel Exporter"
+echo "📊 Ironcliw Voice Unlock Metrics → Excel Exporter"
 echo "================================================"
 echo ""
 

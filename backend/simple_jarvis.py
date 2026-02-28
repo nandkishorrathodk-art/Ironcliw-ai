@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Simplified JARVIS backend that ensures fresh module loading
+Simplified Ironcliw backend that ensures fresh module loading
 """
 
 import os
@@ -27,7 +27,7 @@ from main import app
 import uvicorn
 
 if __name__ == "__main__":
-    print("\n✅ Starting JARVIS with FRESH modules on port 8010...")
+    print("\n✅ Starting Ironcliw with FRESH modules on port 8010...")
     print("   All vision fixes are loaded!")
     print("   Multi-space queries will work!\n")
     

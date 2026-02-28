@@ -1,5 +1,5 @@
-"""
-Unified Agent Runtime — The missing outer loop for JARVIS autonomous agent behavior.
+﻿"""
+Unified Agent Runtime — The missing outer loop for Ironcliw autonomous agent behavior.
 
 Each active goal gets its own coroutine (_goal_runner) that runs
 SENSE → THINK → ACT → VERIFY → REFLECT as fast as the goal allows.
@@ -367,7 +367,7 @@ class GoalCheckpointStore:
 
 class UnifiedAgentRuntime:
     """
-    The missing outer loop for JARVIS autonomous agent behavior.
+    The missing outer loop for Ironcliw autonomous agent behavior.
 
     Each active goal gets its own coroutine (_goal_runner) that runs
     SENSE→THINK→ACT→VERIFY→REFLECT as fast as the goal allows.
@@ -956,7 +956,7 @@ class UnifiedAgentRuntime:
             await self._emit_progress(goal, "cancelled", f"Goal cancelled: {reason}")
 
     async def cancel_active_goals(self, reason: str = "user_cancelled"):
-        """Cancel all active goals. Called on 'JARVIS stop'."""
+        """Cancel all active goals. Called on 'Ironcliw stop'."""
         for goal_id in list(self._active_goals.keys()):
             await self.cancel_goal(goal_id, reason)
 
@@ -1475,7 +1475,7 @@ class UnifiedAgentRuntime:
         """First iteration: break goal into concrete steps."""
         tools_text = self._get_available_tools_text()
         prompt = (
-            f"You are JARVIS, an autonomous agent. Decompose this goal into "
+            f"You are Ironcliw, an autonomous agent. Decompose this goal into "
             f"concrete executable steps.\n\n"
             f"Goal: {goal.description}\n"
             f"Current observation: {observation}\n"
@@ -1508,7 +1508,7 @@ class UnifiedAgentRuntime:
         tools_text = self._get_available_tools_text()
 
         prompt = (
-            f"You are JARVIS. The previous approach failed. Devise an "
+            f"You are Ironcliw. The previous approach failed. Devise an "
             f"ALTERNATIVE strategy that avoids the same mistakes.\n\n"
             f"Goal: {goal.description}\n"
             f"Observation: {observation}\n"
@@ -1536,7 +1536,7 @@ class UnifiedAgentRuntime:
         tools_text = self._get_available_tools_text()
 
         prompt = (
-            f"You are JARVIS. Determine the next step for this goal.\n\n"
+            f"You are Ironcliw. Determine the next step for this goal.\n\n"
             f"Goal: {goal.description}\n"
             f"Observation: {observation}\n"
             f"Context: {json.dumps(context, default=str)[:2000]}\n"
@@ -1615,7 +1615,7 @@ class UnifiedAgentRuntime:
             response = await router.generate(
                 prompt=prompt,
                 system_prompt=(
-                    "You are JARVIS, an autonomous agent runtime. "
+                    "You are Ironcliw, an autonomous agent runtime. "
                     "Always respond with valid JSON matching the requested schema. "
                     "No markdown wrapping."
                 ),
@@ -2498,14 +2498,14 @@ class UnifiedAgentRuntime:
             await notify_user(
                 f"Sir, I've completed: {desc}.{summary}",
                 urgency=NotificationUrgency.NORMAL,
-                title="JARVIS Goal Complete",
+                title="Ironcliw Goal Complete",
                 context=ctx,
             )
         elif goal.status in (GoalStatus.FAILED, GoalStatus.ABANDONED):
             await notify_user(
                 f"I wasn't able to complete: {desc}",
                 urgency=NotificationUrgency.LOW,
-                title="JARVIS Goal Update",
+                title="Ironcliw Goal Update",
                 context=ctx,
             )
 
@@ -2661,7 +2661,7 @@ class UnifiedAgentRuntime:
                         await notify_user(
                             f"Sir, I noticed something and I'm looking into it: {goal_spec['description'][:120]}",
                             urgency=urgency,
-                            title="JARVIS Proactive",
+                            title="Ironcliw Proactive",
                             context={"situation_type": situation_type, "source": "goal_submit"},
                         )
                     except Exception:
@@ -2673,7 +2673,7 @@ class UnifiedAgentRuntime:
     # v252.0: Sub-threshold Intervention Execution
     # ─────────────────────────────────────────────────────────
 
-    _SUB_THRESHOLD_TIMEOUT: float = _env_float("JARVIS_SUB_THRESHOLD_TIMEOUT", 15.0)
+    _SUB_THRESHOLD_TIMEOUT: float = _env_float("Ironcliw_SUB_THRESHOLD_TIMEOUT", 15.0)
 
     async def _maybe_execute_sub_threshold_intervention(self, context: Dict):
         """Execute notification-worthy interventions (below goal threshold).
@@ -2720,7 +2720,7 @@ class UnifiedAgentRuntime:
             # execute_intervention() does asyncio.sleep(timing_delay) before
             # dispatching.  In the heartbeat path we can't afford long waits.
             from datetime import timedelta
-            max_delay = _env_float("JARVIS_SUB_THRESHOLD_MAX_DELAY", 2.0)
+            max_delay = _env_float("Ironcliw_SUB_THRESHOLD_MAX_DELAY", 2.0)
             if decision.timing_delay.total_seconds() > max_delay:
                 decision.timing_delay = timedelta(seconds=max_delay)
 

@@ -1,7 +1,7 @@
-# 📊 Advanced Voice Unlock Metrics Logger
+﻿# 📊 Advanced Voice Unlock Metrics Logger
 
 **Version**: 2.0.0-advanced-async
-**Author**: JARVIS AI Development Team
+**Author**: Ironcliw AI Development Team
 **Last Updated**: November 13, 2025
 
 ---
@@ -627,7 +627,7 @@ Set up a daily cron job to check your unlock metrics:
 
 ```bash
 # Add to crontab: crontab -e
-0 9 * * * /path/to/daily_unlock_report.sh | mail -s "JARVIS Daily Unlock Report" you@example.com
+0 9 * * * /path/to/daily_unlock_report.sh | mail -s "Ironcliw Daily Unlock Report" you@example.com
 ```
 
 ### 2. Confidence Baseline
@@ -739,7 +739,7 @@ pytest backend/voice_unlock/tests/test_unlock_metrics_logger.py
 
 ## 📄 License
 
-This metrics logger is part of the JARVIS AI Agent project.
+This metrics logger is part of the Ironcliw AI Agent project.
 
 ---
 
@@ -751,4 +751,4 @@ This metrics logger is part of the JARVIS AI Agent project.
 
 ---
 
-**Questions?** Check the main [JARVIS Voice Unlock README](README.md) or open an issue!
+**Questions?** Check the main [Ironcliw Voice Unlock README](README.md) or open an issue!

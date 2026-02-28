@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Debug script to test desktop spaces query and capture the actual error
 """
@@ -78,7 +78,7 @@ async def test_desktop_spaces_query():
 
 if __name__ == "__main__":
     print("\n" + "=" * 80)
-    print("JARVIS Desktop Spaces Debug Test")
+    print("Ironcliw Desktop Spaces Debug Test")
     print("=" * 80)
     print("\nThis script will:")
     print("1. Test the desktop spaces query")

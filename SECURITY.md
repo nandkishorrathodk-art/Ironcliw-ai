@@ -1,8 +1,8 @@
-# Security Policy — Ironcliw-AI / JARVIS
+﻿# Security Policy — Ironcliw-AI / Ironcliw
 
 ## 🔒 Security Overview
 
-JARVIS is an AI assistant with **system-level access** to your computer (screen, keyboard, microphone, file system). Security is critical. This document outlines security policies, known risks, and how to report vulnerabilities.
+Ironcliw is an AI assistant with **system-level access** to your computer (screen, keyboard, microphone, file system). Security is critical. This document outlines security policies, known risks, and how to report vulnerabilities.
 
 ---
 
@@ -12,7 +12,7 @@ JARVIS is an AI assistant with **system-level access** to your computer (screen,
 |---------|-------------|------------------|
 | **Phase 11 (Windows Port)** | ✅ Active Development | Yes — this repo |
 | Phase 1–10 (Windows Port) | ⚠️ Superseded | Upgrade to Phase 11 |
-| Original macOS | ⚠️ Upstream Only | See [drussell23/JARVIS](https://github.com/drussell23/JARVIS) |
+| Original macOS | ⚠️ Upstream Only | See [drussell23/Ironcliw](https://github.com/drussell23/Ironcliw) |
 
 ---
 
@@ -45,8 +45,8 @@ JARVIS is an AI assistant with **system-level access** to your computer (screen,
 ### Authentication Mode
 
 ```env
-JARVIS_AUTO_BYPASS_WINDOWS=true    # Auth bypassed on Windows
-JARVIS_VOICE_BIOMETRIC_ENABLED=false
+Ironcliw_AUTO_BYPASS_WINDOWS=true    # Auth bypassed on Windows
+Ironcliw_VOICE_BIOMETRIC_ENABLED=false
 ```
 
 **What this means:**
@@ -55,7 +55,7 @@ JARVIS_VOICE_BIOMETRIC_ENABLED=false
 - ✅ Suitable for **single-user development machines only**
 - ⚠️ **NOT production-ready** for multi-user or shared systems
 
-**Mitigation**: Run JARVIS only on your personal, trusted machine. Do not expose any ports to external networks.
+**Mitigation**: Run Ironcliw only on your personal, trusted machine. Do not expose any ports to external networks.
 
 ---
 
@@ -131,7 +131,7 @@ icacls .env   # Verify
 
 ### 3. Network Security
 
-JARVIS defaults to **localhost only**. Keep it that way:
+Ironcliw defaults to **localhost only**. Keep it that way:
 
 ```env
 BACKEND_HOST=127.0.0.1    # Never 0.0.0.0
@@ -142,12 +142,12 @@ CORS_ORIGINS=http://localhost:3000
 **Windows Firewall — block external access:**
 ```powershell
 # Block inbound on port 8010 from any external IP
-New-NetFirewallRule -DisplayName "JARVIS Block External" `
+New-NetFirewallRule -DisplayName "Ironcliw Block External" `
   -Direction Inbound -LocalPort 8010 -Protocol TCP `
   -Action Block -RemoteAddress Any
 
 # Allow only localhost
-New-NetFirewallRule -DisplayName "JARVIS Allow Localhost" `
+New-NetFirewallRule -DisplayName "Ironcliw Allow Localhost" `
   -Direction Inbound -LocalPort 8010 -Protocol TCP `
   -Action Allow -RemoteAddress 127.0.0.1
 ```
@@ -184,22 +184,22 @@ npm audit fix
 
 ### 1. System-Level Access
 
-JARVIS has broad system access by design:
+Ironcliw has broad system access by design:
 
 | Permission | Purpose | Risk | Mitigation |
 |------------|---------|------|-----------|
-| Screen capture (mss) | Vision / context awareness | Medium | Only captures when JARVIS is active |
+| Screen capture (mss) | Vision / context awareness | Medium | Only captures when Ironcliw is active |
 | Keyboard/mouse (pyautogui) | Ghost Hands automation | High | User must explicitly trigger |
 | File system (pathlib) | Project management | Medium | Scoped to working directories |
-| Process management (psutil) | Orchestration | High | Only JARVIS-owned processes |
+| Process management (psutil) | Orchestration | High | Only Ironcliw-owned processes |
 | Microphone | Voice commands | Medium | No recording stored by default |
 | Network | API calls, GCP | Medium | HTTPS only, keys in env |
 
 **Recommendation**: Disable features you don't use via `.env`:
 ```env
-JARVIS_DISABLE_GHOST_HANDS=true      # Disable keyboard/mouse control
-JARVIS_DISABLE_SCREEN_CAPTURE=true   # Disable vision
-JARVIS_SKIP_GCP=true                 # Disable cloud routing
+Ironcliw_DISABLE_GHOST_HANDS=true      # Disable keyboard/mouse control
+Ironcliw_DISABLE_SCREEN_CAPTURE=true   # Disable vision
+Ironcliw_SKIP_GCP=true                 # Disable cloud routing
 ```
 
 ### 2. Third-Party APIs — Data Sent
@@ -241,8 +241,8 @@ Remove-Item -Recurse -Force backend\logs\
 
 ```env
 # ─── Authentication ─────────────────────────────────────────
-JARVIS_AUTO_BYPASS_WINDOWS=true        # ⚠️ MVP only — disable in production
-JARVIS_VOICE_BIOMETRIC_ENABLED=false   # ⚠️ Enable when GPU + speechbrain available
+Ironcliw_AUTO_BYPASS_WINDOWS=true        # ⚠️ MVP only — disable in production
+Ironcliw_VOICE_BIOMETRIC_ENABLED=false   # ⚠️ Enable when GPU + speechbrain available
 
 # ─── Network (NEVER change these unless you know what you're doing) ───
 BACKEND_HOST=127.0.0.1                 # ✅ Localhost ONLY
@@ -256,7 +256,7 @@ FIREWORKS_API_KEY=fw-xxxxx
 
 # ─── Logging ─────────────────────────────────────────────────
 LOG_LEVEL=INFO                         # ⚠️ Never DEBUG in production
-JARVIS_ENABLE_AUDIT_LOG=true           # ✅ Keep audit trail
+Ironcliw_ENABLE_AUDIT_LOG=true           # ✅ Keep audit trail
 
 # ─── GCP (optional) ──────────────────────────────────────────
 GCP_PROJECT_ID=your-project-id

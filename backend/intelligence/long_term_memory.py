@@ -1,5 +1,5 @@
-"""
-JARVIS Long-Term Memory & Reasoning Chain System (v2.7)
+﻿"""
+Ironcliw Long-Term Memory & Reasoning Chain System (v2.7)
 
 Provides persistent, cross-session memory with advanced reasoning capabilities:
 - Episodic memory (conversation history, events)
@@ -242,7 +242,7 @@ class LearnedPattern:
 
 class LongTermMemoryManager:
     """
-    Unified long-term memory manager for JARVIS.
+    Unified long-term memory manager for Ironcliw.
 
     Integrates:
     - Semantic memory (ChromaDB)
@@ -273,11 +273,11 @@ class LongTermMemoryManager:
 
     # Configuration via environment
     CHROMADB_PATH = os.getenv(
-        "JARVIS_CHROMADB_PATH",
+        "Ironcliw_CHROMADB_PATH",
         str(Path.home() / ".jarvis" / "memory" / "chromadb")
     )
     EMBEDDING_MODEL = os.getenv(
-        "JARVIS_EMBEDDING_MODEL",
+        "Ironcliw_EMBEDDING_MODEL",
         "all-MiniLM-L6-v2"
     )
 

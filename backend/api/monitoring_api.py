@@ -1,5 +1,5 @@
-"""
-JARVIS Monitoring API
+﻿"""
+Ironcliw Monitoring API
 =====================
 
 System monitoring, metrics collection, and performance tracking endpoints.
@@ -252,7 +252,7 @@ async def get_health_history(
 @router.get("/components")
 async def get_component_health() -> Dict[str, Any]:
     """
-    Get health status of all JARVIS components.
+    Get health status of all Ironcliw components.
     """
     try:
         components = {}

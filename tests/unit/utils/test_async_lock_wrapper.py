@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for backend.utils.async_lock_wrapper module.
 
 These tests verify that:
@@ -60,7 +60,7 @@ def lock_name() -> str:
 @pytest.fixture
 def mock_lock_env(temp_lock_dir: Path):
     """Set up environment with temp lock directory."""
-    with patch.dict(os.environ, {"JARVIS_LOCK_DIR": str(temp_lock_dir)}):
+    with patch.dict(os.environ, {"Ironcliw_LOCK_DIR": str(temp_lock_dir)}):
         yield temp_lock_dir
 
 
@@ -542,7 +542,7 @@ class TestEnvironmentConfiguration:
         """Test lock directory can be configured via env."""
         custom_dir = tmp_path / "custom_locks"
 
-        with patch.dict(os.environ, {"JARVIS_LOCK_DIR": str(custom_dir)}):
+        with patch.dict(os.environ, {"Ironcliw_LOCK_DIR": str(custom_dir)}):
             lock = StartupFileLock("test_lock", source="test")
             assert lock._lock_dir == custom_dir
 

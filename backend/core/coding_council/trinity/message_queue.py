@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Persistent Message Queue - Gap #4
 =========================================
 
@@ -10,7 +10,7 @@ Durable message queue for Trinity commands:
 - Message deduplication
 - TTL-based expiration
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

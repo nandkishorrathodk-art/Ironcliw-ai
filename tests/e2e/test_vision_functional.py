@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Functional Testing Suite for JARVIS Multi-Window Intelligence
+Functional Testing Suite for Ironcliw Multi-Window Intelligence
 Tests all functional requirements from the PRD
 """
 
@@ -12,7 +12,7 @@ from typing import List, Dict, Any
 # Add the backend directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 from backend.vision.window_detector import WindowDetector
 from backend.vision.privacy_controls import PrivacyControlSystem
 from backend.vision.meeting_preparation import MeetingPreparationSystem
@@ -25,10 +25,10 @@ from test_utils import (
 
 
 class FunctionalTestSuite:
-    """Functional testing for JARVIS workspace intelligence"""
+    """Functional testing for Ironcliw workspace intelligence"""
     
     def __init__(self):
-        self.jarvis = JARVISWorkspaceIntelligence()
+        self.jarvis = IroncliwWorkspaceIntelligence()
         self.results: List[TestResult] = []
         
     async def run_all_tests(self) -> List[TestResult]:

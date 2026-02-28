@@ -1,4 +1,4 @@
-# Context-Aware Follow-Up Handling System
+﻿# Context-Aware Follow-Up Handling System
 
 **Version:** 1.0
 **Author:** Derek J. Russell
@@ -8,12 +8,12 @@
 
 ## Overview
 
-The Context-Aware Follow-Up Handling System transforms JARVIS from a one-shot command executor into an intelligent conversational agent that can maintain context across multi-turn dialogues. This system enables natural interactions like:
+The Context-Aware Follow-Up Handling System transforms Ironcliw from a one-shot command executor into an intelligent conversational agent that can maintain context across multi-turn dialogues. This system enables natural interactions like:
 
 ```
-JARVIS: "I can see your Terminal. Would you like me to describe what's displayed?"
+Ironcliw: "I can see your Terminal. Would you like me to describe what's displayed?"
 You: "yes"
-JARVIS: "You're running a Python script. The output shows 'ModuleNotFoundError: No module named requests'. Would you like me to help fix this?"
+Ironcliw: "You're running a Python script. The output shows 'ModuleNotFoundError: No module named requests'. Would you like me to help fix this?"
 ```
 
 ## Key Features
@@ -135,7 +135,7 @@ from backend.examples.bootstrap_followup_system import FollowUpSystem
 system = FollowUpSystem()
 await system.start()
 
-# Track a pending question (after JARVIS asks user)
+# Track a pending question (after Ironcliw asks user)
 context_id = await system.track_pending_question(
     question_text="Would you like me to describe what's in the Terminal?",
     window_type="terminal",
@@ -452,16 +452,16 @@ patterns = registry.get_all_patterns()
 
 ```bash
 # Redis configuration
-JARVIS_REDIS_URL=redis://localhost:6379
-JARVIS_CONTEXT_STORE_BACKEND=redis  # or "memory"
+Ironcliw_REDIS_URL=redis://localhost:6379
+Ironcliw_CONTEXT_STORE_BACKEND=redis  # or "memory"
 
 # Telemetry
-JARVIS_TELEMETRY_ENABLED=true
-JARVIS_PROMETHEUS_PORT=9090
+Ironcliw_TELEMETRY_ENABLED=true
+Ironcliw_PROMETHEUS_PORT=9090
 
 # Context settings
-JARVIS_CONTEXT_TTL_SECONDS=120
-JARVIS_CONTEXT_MAX_SIZE=1000
+Ironcliw_CONTEXT_TTL_SECONDS=120
+Ironcliw_CONTEXT_MAX_SIZE=1000
 ```
 
 ---
@@ -526,7 +526,7 @@ await store.start_auto_cleanup()
 ### 1. Context Lifecycle
 
 ```python
-# Create context when JARVIS asks a question
+# Create context when Ironcliw asks a question
 context_id = await track_pending_question(...)
 
 # User responds → retrieve context
@@ -678,7 +678,7 @@ engine.add_classifier(semantic_classifier)
 ## Support
 
 For issues, questions, or contributions:
-- GitHub: [JARVIS-AI-Agent](https://github.com/yourusername/JARVIS-AI-Agent)
+- GitHub: [Ironcliw-AI-Agent](https://github.com/yourusername/Ironcliw-AI-Agent)
 - Documentation: See `docs/` directory
 - Examples: See `backend/examples/`
 

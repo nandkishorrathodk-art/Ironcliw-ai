@@ -1,5 +1,5 @@
-"""
-Weather Widget Extractor for JARVIS
+﻿"""
+Weather Widget Extractor for Ironcliw
 Extracts real-time weather data directly from macOS weather widget
 """
 

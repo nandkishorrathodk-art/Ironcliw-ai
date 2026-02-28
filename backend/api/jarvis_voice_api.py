@@ -1,6 +1,6 @@
-"""
-JARVIS Voice API - Voice endpoints with Iron Man-style personality
-Integrates JARVIS personality with the web application
+﻿"""
+Ironcliw Voice API - Voice endpoints with Iron Man-style personality
+Integrates Ironcliw personality with the web application
 
 CoreML Voice Engine Integration:
 ================================
@@ -83,7 +83,7 @@ if backend_dir not in sys.path:
 logger = logging.getLogger(__name__)
 
 # Shared module router: used by standalone endpoints in this module.
-# JARVISVoiceAPI core routes are lazily attached via get_voice_router().
+# IroncliwVoiceAPI core routes are lazily attached via get_voice_router().
 router = APIRouter()
 _jarvis_core_routes_included = False
 
@@ -231,7 +231,7 @@ async def broadcast_shutdown_notification():
 
     notification = {
         "type": "system_shutdown",
-        "message": "JARVIS backend is shutting down",
+        "message": "Ironcliw backend is shutting down",
         "timestamp": datetime.now().isoformat(),
         "reconnect_advised": True,
     }
@@ -353,28 +353,28 @@ except ImportError as e:
     # Define placeholder for type annotation when CoreML is not available
     CoreMLVoiceEngineBridge = None
 
-# Import JARVIS voice components with error handling
+# Import Ironcliw voice components with error handling
 try:
     # Try absolute import first
-    from backend.voice.jarvis_agent_voice import JARVISAgentVoice
+    from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
     from backend.voice.jarvis_voice import (
-        EnhancedJARVISPersonality,
-        EnhancedJARVISVoiceAssistant,
+        EnhancedIroncliwPersonality,
+        EnhancedIroncliwVoiceAssistant,
         VoiceCommand,
     )
 
-    JARVIS_IMPORTS_AVAILABLE = True
+    Ironcliw_IMPORTS_AVAILABLE = True
 except ImportError:
     try:
         # Fallback to relative import
-        from ..voice.jarvis_agent_voice import JARVISAgentVoice
+        from ..voice.jarvis_agent_voice import IroncliwAgentVoice
         from ..voice.jarvis_voice import (
-            EnhancedJARVISPersonality,
-            EnhancedJARVISVoiceAssistant,
+            EnhancedIroncliwPersonality,
+            EnhancedIroncliwVoiceAssistant,
             VoiceCommand,
         )
 
-        JARVIS_IMPORTS_AVAILABLE = True
+        Ironcliw_IMPORTS_AVAILABLE = True
     except ImportError:
         try:
             # Try direct import as last resort
@@ -384,46 +384,46 @@ except ImportError:
             # Add parent directory to path temporarily
             parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             sys.path.insert(0, parent_dir)
-            from voice.jarvis_agent_voice import JARVISAgentVoice
+            from voice.jarvis_agent_voice import IroncliwAgentVoice
             from voice.jarvis_voice import (
-                EnhancedJARVISPersonality,
-                EnhancedJARVISVoiceAssistant,
+                EnhancedIroncliwPersonality,
+                EnhancedIroncliwVoiceAssistant,
                 VoiceCommand,
             )
 
             sys.path.remove(parent_dir)
-            JARVIS_IMPORTS_AVAILABLE = True
+            Ironcliw_IMPORTS_AVAILABLE = True
         except ImportError as e:
             # v137.2: Downgrade to debug - this is an optional dependency
             # speech_recognition not being installed is expected on many systems
-            logger.debug(f"[Optional] JARVIS voice components not available: {e}")
-            JARVIS_IMPORTS_AVAILABLE = False
+            logger.debug(f"[Optional] Ironcliw voice components not available: {e}")
+            Ironcliw_IMPORTS_AVAILABLE = False
 
-if not JARVIS_IMPORTS_AVAILABLE:
+if not Ironcliw_IMPORTS_AVAILABLE:
     # v137.2: Log at INFO level once, clarifying this is optional
     logger.info(
-        "📢 [Optional] JARVIS voice components not loaded - "
+        "📢 [Optional] Ironcliw voice components not loaded - "
         "install 'speech_recognition' package for voice features"
     )
 
     # Create stub classes to prevent NameError
-    class EnhancedJARVISVoiceAssistant:
+    class EnhancedIroncliwVoiceAssistant:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("JARVIS voice components not available")
+            raise NotImplementedError("Ironcliw voice components not available")
 
-    class EnhancedJARVISPersonality:
+    class EnhancedIroncliwPersonality:
         pass
 
     class VoiceCommand:
         pass
 
-    class JARVISAgentVoice:
+    class IroncliwAgentVoice:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("JARVIS agent components not available")
+            raise NotImplementedError("Ironcliw agent components not available")
 
 
 # Create VoiceCommand if not imported
-if JARVIS_IMPORTS_AVAILABLE and not hasattr(VoiceCommand, "__init__"):
+if Ironcliw_IMPORTS_AVAILABLE and not hasattr(VoiceCommand, "__init__"):
 
     class VoiceCommand:
         def __init__(
@@ -439,7 +439,7 @@ if JARVIS_IMPORTS_AVAILABLE and not hasattr(VoiceCommand, "__init__"):
             self.needs_clarification = needs_clarification
 
 
-class JARVISCommand(BaseModel):
+class IroncliwCommand(BaseModel):
     """Voice command request"""
 
     text: str
@@ -470,8 +470,8 @@ class AudioTranscriptionResponse(BaseModel):
     total_request_time_ms: float  # End-to-end request time
 
 
-class JARVISConfig(BaseModel):
-    """JARVIS configuration update"""
+class IroncliwConfig(BaseModel):
+    """Ironcliw configuration update"""
 
     user_name: Optional[str] = None
     humor_level: Optional[str] = None  # low, moderate, high
@@ -627,15 +627,15 @@ async def _notify_frontend_speech(text: str) -> None:
         logger.debug(f"[VoiceAPI] v265.0: Speech state notification failed: {e}")
 
 
-class JARVISVoiceAPI:
-    """API for JARVIS voice interaction"""
+class IroncliwVoiceAPI:
+    """API for Ironcliw voice interaction"""
 
     def __init__(self):
-        """Initialize JARVIS Voice API"""
+        """Initialize Ironcliw Voice API"""
         self.router = APIRouter()
         self.error_handler = DynamicErrorHandler()
 
-        # Lazy initialization - don't create JARVIS yet
+        # Lazy initialization - don't create Ironcliw yet
         self._jarvis = None
         self._jarvis_initialized = False
 
@@ -670,15 +670,15 @@ class JARVISVoiceAPI:
 
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
-        # For now, enable basic JARVIS functionality even without full imports
+        # For now, enable basic Ironcliw functionality even without full imports
         self.jarvis_available = bool(self.api_key)
         logger.info(
-            f"[JARVIS API] API key loaded: {bool(self.api_key)}, jarvis_available: {self.jarvis_available}"
+            f"[Ironcliw API] API key loaded: {bool(self.api_key)}, jarvis_available: {self.jarvis_available}"
         )
 
         # We'll initialize on first use
         if not self.jarvis_available:
-            logger.warning("JARVIS Voice System not available - ANTHROPIC_API_KEY not set")
+            logger.warning("Ironcliw Voice System not available - ANTHROPIC_API_KEY not set")
 
         self._register_routes()
 
@@ -689,7 +689,7 @@ class JARVISVoiceAPI:
             from core.async_pipeline import get_async_pipeline
 
             self._pipeline = get_async_pipeline(self.jarvis)
-            logger.info("[JARVIS API] Async pipeline initialized for voice commands")
+            logger.info("[Ironcliw API] Async pipeline initialized for voice commands")
         return self._pipeline
 
     @property
@@ -704,9 +704,9 @@ class JARVISVoiceAPI:
 
     @property
     def jarvis(self):
-        """Get JARVIS instance, initializing if needed"""
+        """Get Ironcliw instance, initializing if needed"""
         logger.info(
-            f"[JARVIS API] JARVIS property getter called - initialized: {self._jarvis_initialized}, available: {self.jarvis_available}"
+            f"[Ironcliw API] Ironcliw property getter called - initialized: {self._jarvis_initialized}, available: {self.jarvis_available}"
         )
 
         if not self._jarvis_initialized and self.jarvis_available:
@@ -715,36 +715,36 @@ class JARVISVoiceAPI:
                 try:
                     from api.jarvis_factory import create_jarvis_agent, get_vision_analyzer
 
-                    # Check if vision analyzer is available before creating JARVIS
+                    # Check if vision analyzer is available before creating Ironcliw
                     vision_analyzer = get_vision_analyzer()
                     logger.info(
-                        f"[JARVIS API] Vision analyzer available during JARVIS creation: {vision_analyzer is not None}"
+                        f"[Ironcliw API] Vision analyzer available during Ironcliw creation: {vision_analyzer is not None}"
                     )
 
                     self._jarvis = create_jarvis_agent()
                     logger.info(
-                        "[JARVIS API] JARVIS Agent created using factory with shared vision analyzer"
+                        "[Ironcliw API] Ironcliw Agent created using factory with shared vision analyzer"
                     )
                 except ImportError:
                     # Fallback to direct creation
                     logger.warning(
                         "[INIT ORDER] Factory not available, falling back to direct creation"
                     )
-                    self._jarvis = JARVISAgentVoice()
-                    logger.info("JARVIS Agent created directly (no shared vision analyzer)")
+                    self._jarvis = IroncliwAgentVoice()
+                    logger.info("Ironcliw Agent created directly (no shared vision analyzer)")
 
                 self.system_control_enabled = (
                     self._jarvis.system_control_enabled if self._jarvis else False
                 )
-                logger.info("JARVIS Agent Voice System initialized with system control")
+                logger.info("Ironcliw Agent Voice System initialized with system control")
             except Exception as e:
-                logger.error(f"[INIT ORDER] Failed to initialize JARVIS Agent: {e}")
+                logger.error(f"[INIT ORDER] Failed to initialize Ironcliw Agent: {e}")
                 self._jarvis = None
                 self.system_control_enabled = False
             finally:
                 self._jarvis_initialized = True
 
-        logger.debug(f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}")
+        logger.debug(f"[INIT ORDER] Returning Ironcliw instance: {self._jarvis is not None}")
         return self._jarvis
 
     @staticmethod
@@ -764,7 +764,7 @@ class JARVISVoiceAPI:
     @staticmethod
     def _preview_text(value: Any, limit: int = 100) -> str:
         """Create a bounded, log-safe text preview."""
-        text = JARVISVoiceAPI._coerce_text(value, fallback="<empty>")
+        text = IroncliwVoiceAPI._coerce_text(value, fallback="<empty>")
         return text if len(text) <= limit else text[:limit]
 
     def _get_or_create_session_id(self) -> str:
@@ -881,7 +881,7 @@ class JARVISVoiceAPI:
             except Exception:
                 pass
 
-            # Get system state from JARVIS if available
+            # Get system state from Ironcliw if available
             if self.jarvis and hasattr(self.jarvis, "personality"):
                 try:
                     personality = self.jarvis.personality
@@ -899,7 +899,7 @@ class JARVISVoiceAPI:
             return {}
 
     def _register_routes(self):
-        """Register JARVIS-specific routes"""
+        """Register Ironcliw-specific routes"""
         # Status and control
         self.router.add_api_route("/status", self.get_status, methods=["GET"])
         self.router.add_api_route("/activate", self.activate, methods=["POST"])
@@ -977,12 +977,12 @@ class JARVISVoiceAPI:
         try:
             # Generate time-based greeting using coordinator
             greeting = coordinator.generate_greeting()
-            logger.warning(f"[STARTUP VOICE] 🎤 JARVIS_VOICE_API ANNOUNCING: {greeting}")
+            logger.warning(f"[STARTUP VOICE] 🎤 Ironcliw_VOICE_API ANNOUNCING: {greeting}")
 
             # Enforce canonical Daniel voice identity for startup speech.
-            os.environ.setdefault("JARVIS_FORCE_DANIEL_VOICE", "true")
-            os.environ.setdefault("JARVIS_ENFORCE_CANONICAL_VOICE", "true")
-            os.environ.setdefault("JARVIS_CANONICAL_VOICE_NAME", "Daniel")
+            os.environ.setdefault("Ironcliw_FORCE_DANIEL_VOICE", "true")
+            os.environ.setdefault("Ironcliw_ENFORCE_CANONICAL_VOICE", "true")
+            os.environ.setdefault("Ironcliw_CANONICAL_VOICE_NAME", "Daniel")
 
             ws_manager = None
             if self._jarvis_initialized and self.jarvis:
@@ -1047,21 +1047,21 @@ class JARVISVoiceAPI:
             # Don't reset the flag - better to skip announcement than have multiple
 
     async def get_status(self) -> Dict:
-        """Get JARVIS system status"""
+        """Get Ironcliw system status"""
         logger.debug("[INIT ORDER] get_status called")
 
         if not self.api_key:
             return {
                 "status": "offline",
-                "message": "JARVIS system not available - API key required",
+                "message": "Ironcliw system not available - API key required",
                 "features": [],
             }
 
         # If we have API key but imports failed, still show as ready with limited features
-        if self.api_key and not JARVIS_IMPORTS_AVAILABLE:
+        if self.api_key and not Ironcliw_IMPORTS_AVAILABLE:
             return {
                 "status": "ready",
-                "message": "JARVIS ready with limited features",
+                "message": "Ironcliw ready with limited features",
                 "features": ["basic_conversation", "text_commands"],
                 "import_status": "limited",
             }
@@ -1075,7 +1075,7 @@ class JARVISVoiceAPI:
             "humor_and_wit",
         ]
 
-        # Check if JARVIS is already initialized before accessing properties
+        # Check if Ironcliw is already initialized before accessing properties
         jarvis_instance = self._jarvis if self._jarvis_initialized else None
 
         if hasattr(self, "system_control_enabled") and self.system_control_enabled:
@@ -1089,7 +1089,7 @@ class JARVISVoiceAPI:
                 ]
             )
 
-        # Only initialize JARVIS if we actually need its properties for the response
+        # Only initialize Ironcliw if we actually need its properties for the response
         if jarvis_instance:
             running = False
             if hasattr(jarvis_instance, "running"):
@@ -1122,7 +1122,7 @@ class JARVISVoiceAPI:
             return {
                 "status": "online" if running else "standby",
                 "message": (
-                    "JARVIS Agent at your service" if running else "JARVIS in standby mode"
+                    "Ironcliw Agent at your service" if running else "Ironcliw in standby mode"
                 ),
                 "user_name": user_name,
                 "features": features,
@@ -1159,10 +1159,10 @@ class JARVISVoiceAPI:
                             "[STARTUP VOICE] ⏭️  Status endpoint skipping - already announced (path 2)"
                         )
 
-            # Return status without triggering JARVIS initialization
+            # Return status without triggering Ironcliw initialization
             return {
                 "status": "standby",
-                "message": "JARVIS ready to initialize on first command",
+                "message": "Ironcliw ready to initialize on first command",
                 "user_name": "Sir",
                 "features": features,
                 "wake_words": {
@@ -1268,7 +1268,7 @@ class JARVISVoiceAPI:
         }
 
     async def activate(self) -> Dict:
-        """Activate JARVIS voice system"""
+        """Activate Ironcliw voice system"""
         # Always use dynamic activation - never limited mode!
         try:
             from dynamic_jarvis_activation import activate_jarvis_dynamic
@@ -1286,7 +1286,7 @@ class JARVISVoiceAPI:
             # Dynamic activation ensures full functionality
             result = await activate_jarvis_dynamic(context)
 
-            # If we have the actual JARVIS instance and it's not running, start it
+            # If we have the actual Ironcliw instance and it's not running, start it
             if self.jarvis_available and hasattr(self, "jarvis") and self.jarvis:
                 if hasattr(self.jarvis, "running") and not self.jarvis.running:
                     if hasattr(self.jarvis, "start"):
@@ -1300,7 +1300,7 @@ class JARVISVoiceAPI:
             # Even in worst case, provide full features through dynamic system
             return {
                 "status": "activated",
-                "message": "JARVIS activated with dynamic optimization",
+                "message": "Ironcliw activated with dynamic optimization",
                 "mode": "full",  # NEVER limited!
                 "capabilities": [
                     "voice_recognition",
@@ -1317,15 +1317,15 @@ class JARVISVoiceAPI:
             }
 
     async def deactivate(self) -> Dict:
-        """Deactivate JARVIS voice system"""
+        """Deactivate Ironcliw voice system"""
         if not self.jarvis_available:
             # Return success to prevent 503
-            return {"status": "deactivated", "message": "JARVIS deactivated"}
+            return {"status": "deactivated", "message": "Ironcliw deactivated"}
 
         if self.jarvis and hasattr(self.jarvis, "running") and not self.jarvis.running:
             return {
                 "status": "already_inactive",
-                "message": "JARVIS is already in standby mode",
+                "message": "Ironcliw is already in standby mode",
             }
 
         if self.jarvis and hasattr(self.jarvis, "_shutdown"):
@@ -1333,19 +1333,19 @@ class JARVISVoiceAPI:
 
         return {
             "status": "deactivated",
-            "message": "JARVIS going into standby mode. Call when you need me.",
+            "message": "Ironcliw going into standby mode. Call when you need me.",
         }
 
     # =========================================================================
     # 🔒 PROACTIVE CAI (Context Awareness Intelligence) - SCREEN LOCK HANDLING
     # =========================================================================
 
-    async def _handle_proactive_screen_unlock(self, command: "JARVISCommand") -> Optional[Dict]:
+    async def _handle_proactive_screen_unlock(self, command: "IroncliwCommand") -> Optional[Dict]:
         """
         Proactively detect locked screen and handle transparent unlock with continuation.
 
         This enables autonomous workflows like:
-          "Hey JARVIS, search for dogs" → detect lock → verify voice → unlock → search
+          "Hey Ironcliw, search for dogs" → detect lock → verify voice → unlock → search
 
         Features:
           - Intelligent verbal transparency via CAI Voice Feedback Manager
@@ -1354,7 +1354,7 @@ class JARVISVoiceAPI:
           - Bulletproof continuation task scheduling
 
         Args:
-            command: The JARVIS command being processed
+            command: The Ironcliw command being processed
 
         Returns:
             None if no action needed (screen unlocked or command exempt)
@@ -1761,7 +1761,7 @@ class JARVISVoiceAPI:
             )
             await asyncio.wait_for(
                 proc.wait(),
-                timeout=float(os.environ.get("JARVIS_CAI_SPEAK_TIMEOUT", "10.0")),
+                timeout=float(os.environ.get("Ironcliw_CAI_SPEAK_TIMEOUT", "10.0")),
             )
         except (asyncio.TimeoutError, Exception) as e:
             logger.warning(f"[CAI] v265.0: speak failed: {e}")
@@ -1775,7 +1775,7 @@ class JARVISVoiceAPI:
                 except Exception:
                     pass
 
-    async def _perform_cai_unlock(self, command: "JARVISCommand") -> Dict:
+    async def _perform_cai_unlock(self, command: "IroncliwCommand") -> Dict:
         """Perform screen unlock via VBI (with audio) or keychain (without audio).
 
         Strategy:
@@ -1850,8 +1850,8 @@ class JARVISVoiceAPI:
 
     @dynamic_error_handler
     @graceful_endpoint
-    async def process_command(self, command: JARVISCommand) -> Dict:
-        """Process a JARVIS command"""
+    async def process_command(self, command: IroncliwCommand) -> Dict:
+        """Process a Ironcliw command"""
         # Enforce input text contract at ingress so downstream layers never
         # receive None/whitespace command text.
         if command is None:
@@ -1930,7 +1930,7 @@ class JARVISVoiceAPI:
 
             # Debug logging
             logger.info(
-                f"[JARVIS CMD] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}"
+                f"[Ironcliw CMD] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}"
             )
 
             # ALWAYS check for yes/no if it looks like a response
@@ -1941,7 +1941,7 @@ class JARVISVoiceAPI:
             )
 
             if is_yes_no:
-                logger.info(f"[JARVIS CMD] Detected yes/no response: '{command.text}'")
+                logger.info(f"[Ironcliw CMD] Detected yes/no response: '{command.text}'")
 
                 # If there's a pending prompt OR if Living Room TV is available, handle it
                 has_pending = monitor.has_pending_prompt()
@@ -1949,24 +1949,24 @@ class JARVISVoiceAPI:
                 living_room_available = "living_room_tv" in available_displays
 
                 logger.info(
-                    f"[JARVIS CMD] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}"
+                    f"[Ironcliw CMD] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}"
                 )
 
                 if has_pending or living_room_available:
                     logger.info(
-                        f"[JARVIS CMD] Handling display response (pending={has_pending}, tv_available={living_room_available})"
+                        f"[Ironcliw CMD] Handling display response (pending={has_pending}, tv_available={living_room_available})"
                     )
 
                     # If no pending prompt but TV is available, set it now
                     if not has_pending and living_room_available:
                         monitor.pending_prompt_display = "living_room_tv"
-                        logger.info(f"[JARVIS CMD] Set pending prompt for Living Room TV")
+                        logger.info(f"[Ironcliw CMD] Set pending prompt for Living Room TV")
 
                     display_result = await monitor.handle_user_response(command.text)
 
                     if display_result.get("handled"):
                         logger.info(
-                            f"[JARVIS CMD] Display handler processed the response successfully"
+                            f"[Ironcliw CMD] Display handler processed the response successfully"
                         )
                         return {
                             "response": display_result.get("response", "Understood."),
@@ -1977,9 +1977,9 @@ class JARVISVoiceAPI:
         except AttributeError:
             # v263.1: Display monitor not yet initialized — expected during
             # early startup. Debug-level, not error, to reduce log noise.
-            logger.debug("[JARVIS CMD] Display monitor not yet initialized, skipping prompt check")
+            logger.debug("[Ironcliw CMD] Display monitor not yet initialized, skipping prompt check")
         except Exception as e:
-            logger.error(f"[JARVIS CMD] Error checking display prompt: {e}")
+            logger.error(f"[Ironcliw CMD] Error checking display prompt: {e}")
             # Continue to normal processing if this fails
 
         # DYNAMIC COMPONENT LOADING - Load required components based on command intent
@@ -2030,7 +2030,7 @@ class JARVISVoiceAPI:
             workflow_result = await handle_workflow_command(command)
             if workflow_result:
                 logger.info(
-                    f"[JARVIS API] Processed workflow command with {workflow_result.get('workflow_result', {}).get('actions_completed', 0)} actions"
+                    f"[Ironcliw API] Processed workflow command with {workflow_result.get('workflow_result', {}).get('actions_completed', 0)} actions"
                 )
                 return workflow_result
         except Exception as e:
@@ -2063,7 +2063,7 @@ class JARVISVoiceAPI:
                             weather_system = app_state.weather_system
                             vision_available = hasattr(app_state, "vision_analyzer")
                             logger.info(
-                                f"[JARVIS API] Got weather system from app state, vision: {vision_available}"
+                                f"[Ironcliw API] Got weather system from app state, vision: {vision_available}"
                             )
                     except Exception:
                         pass
@@ -2077,7 +2077,7 @@ class JARVISVoiceAPI:
                     if weather_system and vision_available:
                         # FULL MODE with vision
                         logger.info(
-                            "[JARVIS API] FULL MODE: Processing weather with vision analysis"
+                            "[Ironcliw API] FULL MODE: Processing weather with vision analysis"
                         )
                         result = await weather_system.get_weather(command.text)
 
@@ -2100,7 +2100,7 @@ class JARVISVoiceAPI:
 
                     # LIMITED MODE - No vision
                     logger.info(
-                        "[JARVIS API] LIMITED MODE: Opening Weather app with navigation (async)"
+                        "[Ironcliw API] LIMITED MODE: Opening Weather app with navigation (async)"
                     )
 
                     # ✅ ASYNC FIX: Non-blocking app launch
@@ -2133,7 +2133,7 @@ class JARVISVoiceAPI:
                     }
 
                 except Exception as e:
-                    logger.error(f"[JARVIS API] Weather error: {e}")
+                    logger.error(f"[Ironcliw API] Weather error: {e}")
                     import traceback
 
                     traceback.print_exc()
@@ -2166,7 +2166,7 @@ class JARVISVoiceAPI:
             )
 
             if is_local_command:
-                logger.info(f"[JARVIS API] Local command detected in limited mode - routing to pipeline: '{command.text}'")
+                logger.info(f"[Ironcliw API] Local command detected in limited mode - routing to pipeline: '{command.text}'")
                 # Fall through to normal processing below
             else:
                 # For non-local commands, return the default limited mode response
@@ -2186,16 +2186,16 @@ class JARVISVoiceAPI:
                     "confidence": 0.0,
                 }
 
-            # Ensure JARVIS is active
+            # Ensure Ironcliw is active
             if self.jarvis and hasattr(self.jarvis, "running"):
                 if not self.jarvis.running:
                     self.jarvis.running = True
-                    logger.info("Activating JARVIS for command processing")
+                    logger.info("Activating Ironcliw for command processing")
 
             # ═══════════════════════════════════════════════════════════════════
             # v8.0: SELF-VOICE SUPPRESSION CHECK AT API LEVEL
             # ═══════════════════════════════════════════════════════════════════
-            # If JARVIS is speaking or in cooldown, this command might be JARVIS
+            # If Ironcliw is speaking or in cooldown, this command might be Ironcliw
             # hearing its own voice. Check the unified speech state and reject
             # if we're currently in a speech or cooldown state.
             # ═══════════════════════════════════════════════════════════════════
@@ -2225,7 +2225,7 @@ class JARVISVoiceAPI:
                 logger.debug(f"[SELF-VOICE-API] Check error (non-fatal): {e}")
             
             # Process command through async pipeline for better performance and alignment
-            logger.info(f"[JARVIS API] Processing command through async pipeline: '{command.text}'")
+            logger.info(f"[Ironcliw API] Processing command through async pipeline: '{command.text}'")
 
             # CRITICAL: Decode audio_data from base64 for voice biometric verification (VIBA/PAVA)
             audio_bytes = None
@@ -2233,17 +2233,17 @@ class JARVISVoiceAPI:
                 try:
                     import base64
                     audio_bytes = base64.b64decode(command.audio_data)
-                    logger.info(f"[JARVIS API] Decoded audio data for VIBA/PAVA: {len(audio_bytes)} bytes")
+                    logger.info(f"[Ironcliw API] Decoded audio data for VIBA/PAVA: {len(audio_bytes)} bytes")
                 except Exception as e:
-                    logger.warning(f"[JARVIS API] Failed to decode audio data: {e}")
+                    logger.warning(f"[Ironcliw API] Failed to decode audio data: {e}")
             else:
-                logger.debug("[JARVIS API] No audio data in command (text-only)")
+                logger.debug("[Ironcliw API] No audio data in command (text-only)")
 
             # Use async pipeline for all commands - ensures consistent handling
             pipeline_result = None
             try:
                 try:
-                    default_timeout = float(os.getenv("JARVIS_API_COMMAND_TIMEOUT", "35.0"))
+                    default_timeout = float(os.getenv("Ironcliw_API_COMMAND_TIMEOUT", "35.0"))
                 except (TypeError, ValueError):
                     default_timeout = 35.0
                 now_mono = time.monotonic()
@@ -2287,12 +2287,12 @@ class JARVISVoiceAPI:
                     )
 
                 logger.info(
-                    "[JARVIS API] Pipeline response: '%s...' (truncated)",
+                    "[Ironcliw API] Pipeline response: '%s...' (truncated)",
                     self._preview_text(response, limit=100),
                 )
             except asyncio.TimeoutError:
                 logger.error(
-                    f"[JARVIS API] Command processing timed out (deadline budget exhausted): '{command.text}'"
+                    f"[Ironcliw API] Command processing timed out (deadline budget exhausted): '{command.text}'"
                 )
                 # For weather commands, open the Weather app as fallback
                 if any(
@@ -2352,7 +2352,7 @@ class JARVISVoiceAPI:
     @dynamic_error_handler
     @graceful_endpoint
     async def speak(self, request: Dict[str, str]) -> Response:
-        """Make JARVIS speak the given text"""
+        """Make Ironcliw speak the given text"""
         text = request.get("text", "")
         if not text:
             raise HTTPException(status_code=400, detail="No text provided")
@@ -2398,7 +2398,7 @@ class JARVISVoiceAPI:
                 [
                     "say",
                     "-v",
-                    "Daniel",  # British voice for JARVIS
+                    "Daniel",  # British voice for Ironcliw
                     "-r",
                     "160",  # Much slower speech rate for natural delivery (words per minute)
                     "-o",
@@ -2663,7 +2663,7 @@ class JARVISVoiceAPI:
 
     @dynamic_error_handler
     async def get_config(self) -> Dict:
-        """Get JARVIS configuration"""
+        """Get Ironcliw configuration"""
         logger.debug("[INIT ORDER] get_config called")
 
         if not self.jarvis_available:
@@ -2675,7 +2675,7 @@ class JARVISVoiceAPI:
                 "special_commands": [],
             }
 
-        # Only initialize JARVIS if it's already been created
+        # Only initialize Ironcliw if it's already been created
         jarvis_instance = self._jarvis if self._jarvis_initialized else None
 
         if jarvis_instance:
@@ -2694,7 +2694,7 @@ class JARVISVoiceAPI:
                 "special_commands": list(getattr(jarvis_instance, "special_commands", {}).keys()),
             }
         else:
-            # Return default config without initializing JARVIS
+            # Return default config without initializing Ironcliw
             return {
                 "preferences": {"name": "Sir"},
                 "wake_words": {"primary": ["hey jarvis", "jarvis"], "secondary": []},
@@ -2703,24 +2703,24 @@ class JARVISVoiceAPI:
             }
 
     @dynamic_error_handler
-    async def update_config(self, config: JARVISConfig) -> Dict:
-        """Update JARVIS configuration"""
+    async def update_config(self, config: IroncliwConfig) -> Dict:
+        """Update Ironcliw configuration"""
         if not self.jarvis_available:
             # Return success to prevent 503
             return {
                 "status": "updated",
-                "updates": ["Configuration saved for when JARVIS is available"],
+                "updates": ["Configuration saved for when Ironcliw is available"],
                 "message": "Configuration updated.",
             }
 
         updates = []
 
-        # Check if JARVIS is properly initialized
+        # Check if Ironcliw is properly initialized
         if not self.jarvis or not hasattr(self.jarvis, "personality"):
             return {
                 "status": "updated",
-                "updates": ["Configuration saved for when JARVIS is fully initialized"],
-                "message": "Configuration will be applied when JARVIS is ready.",
+                "updates": ["Configuration saved for when Ironcliw is fully initialized"],
+                "message": "Configuration will be applied when Ironcliw is ready.",
             }
 
         if config.user_name:
@@ -2748,7 +2748,7 @@ class JARVISVoiceAPI:
 
     @dynamic_error_handler
     async def get_personality(self) -> Dict:
-        """Get JARVIS personality information"""
+        """Get Ironcliw personality information"""
         logger.debug("[INIT ORDER] get_personality called")
 
         if not self.jarvis_available:
@@ -2756,11 +2756,11 @@ class JARVISVoiceAPI:
             return {
                 "traits": ["helpful", "professional", "witty"],
                 "humor_level": "moderate",
-                "personality_type": "JARVIS",
+                "personality_type": "Ironcliw",
                 "capabilities": ["conversation", "assistance"],
             }
 
-        # Only initialize JARVIS if it's already been created
+        # Only initialize Ironcliw if it's already been created
         jarvis_instance = self._jarvis if self._jarvis_initialized else None
 
         base_personality = {
@@ -2796,27 +2796,27 @@ class JARVISVoiceAPI:
                 }
             )
         else:
-            # Return default without initializing JARVIS
+            # Return default without initializing Ironcliw
             base_personality.update({"current_context": {}, "humor_level": "moderate"})
 
         return base_personality
 
     @dynamic_error_handler
     async def jarvis_stream(self, websocket: WebSocket):
-        """WebSocket endpoint for real-time JARVIS interaction"""
-        logger.info("[JARVIS WS] ========= NEW WEBSOCKET CONNECTION =========")
-        logger.info("[JARVIS WS] Accepting WebSocket connection from JARVIS endpoint...")
+        """WebSocket endpoint for real-time Ironcliw interaction"""
+        logger.info("[Ironcliw WS] ========= NEW WEBSOCKET CONNECTION =========")
+        logger.info("[Ironcliw WS] Accepting WebSocket connection from Ironcliw endpoint...")
         await websocket.accept()
-        logger.info("[JARVIS WS] WebSocket connection accepted successfully")
+        logger.info("[Ironcliw WS] WebSocket connection accepted successfully")
 
         # Track this connection for shutdown notifications
         active_websockets.add(websocket)
-        logger.info(f"[JARVIS WS] Active connections: {len(active_websockets)}")
+        logger.info(f"[Ironcliw WS] Active connections: {len(active_websockets)}")
 
         if not self.jarvis_available:
-            logger.warning("[WEBSOCKET] JARVIS not available - API key required")
+            logger.warning("[WEBSOCKET] Ironcliw not available - API key required")
             await websocket.send_json(
-                {"type": "error", "message": "JARVIS not available - API key required"}
+                {"type": "error", "message": "Ironcliw not available - API key required"}
             )
             await websocket.close()
             active_websockets.discard(websocket)
@@ -2840,7 +2840,7 @@ class JARVISVoiceAPI:
                 startup_greeting = generator.generate_startup_greeting()
             except Exception:
                 # Fallback if generator not available
-                startup_greeting = f"JARVIS online. How may I assist you, {user_name}?"
+                startup_greeting = f"Ironcliw online. How may I assist you, {user_name}?"
 
             await websocket.send_json(
                 {
@@ -2861,7 +2861,7 @@ class JARVISVoiceAPI:
                         timeout=idle_timeout
                     )
                 except asyncio.TimeoutError:
-                    logger.info("JARVIS voice WebSocket idle timeout, closing connection")
+                    logger.info("Ironcliw voice WebSocket idle timeout, closing connection")
                     break
 
                 # Handle ping/pong for health monitoring
@@ -2909,7 +2909,7 @@ class JARVISVoiceAPI:
                     _is_lock_command_fast = _is_lock and (_has_target or len(_cmd_lower.split()) <= 3)
 
                     if _is_lock_command_fast:
-                        logger.info(f"[JARVIS WS] 🔒⚡ ULTRA-FAST LOCK - direct execution")
+                        logger.info(f"[Ironcliw WS] 🔒⚡ ULTRA-FAST LOCK - direct execution")
                         try:
                             import shutil
 
@@ -2969,11 +2969,11 @@ class JARVISVoiceAPI:
                                 "timestamp": datetime.now().isoformat(),
                                 "speak": True,
                             })
-                            logger.info(f"[JARVIS WS] {'✅' if lock_success else '❌'} Ultra-fast lock via {lock_method}")
+                            logger.info(f"[Ironcliw WS] {'✅' if lock_success else '❌'} Ultra-fast lock via {lock_method}")
                             continue  # Skip ALL other processing
 
                         except Exception as e:
-                            logger.error(f"[JARVIS WS] ❌ Ultra-fast lock failed: {e}")
+                            logger.error(f"[Ironcliw WS] ❌ Ultra-fast lock failed: {e}")
                             # Fall through to normal processing as backup
                             pass
 
@@ -3008,7 +3008,7 @@ class JARVISVoiceAPI:
 
                                 # Debug logging
                                 logger.info(
-                                    f"[JARVIS WS] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}"
+                                    f"[Ironcliw WS] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}"
                                 )
 
                                 # ALWAYS check for yes/no if it looks like a response
@@ -3030,7 +3030,7 @@ class JARVISVoiceAPI:
 
                                 if is_yes_no:
                                     logger.info(
-                                        f"[JARVIS WS] Detected yes/no response: '{command_text}'"
+                                        f"[Ironcliw WS] Detected yes/no response: '{command_text}'"
                                     )
 
                                     # If there's a pending prompt OR if Living Room TV is available, handle it
@@ -3041,19 +3041,19 @@ class JARVISVoiceAPI:
                                     living_room_available = "living_room_tv" in available_displays
 
                                     logger.info(
-                                        f"[JARVIS WS] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}"
+                                        f"[Ironcliw WS] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}"
                                     )
 
                                     if has_pending or living_room_available:
                                         logger.info(
-                                            f"[JARVIS WS] Handling display response (pending={has_pending}, tv_available={living_room_available})"
+                                            f"[Ironcliw WS] Handling display response (pending={has_pending}, tv_available={living_room_available})"
                                         )
 
                                         # If no pending prompt but TV is available, set it now
                                         if not has_pending and living_room_available:
                                             monitor.pending_prompt_display = "living_room_tv"
                                             logger.info(
-                                                f"[JARVIS WS] Set pending prompt for Living Room TV"
+                                                f"[Ironcliw WS] Set pending prompt for Living Room TV"
                                             )
 
                                         display_result = await monitor.handle_user_response(
@@ -3062,7 +3062,7 @@ class JARVISVoiceAPI:
 
                                         if display_result.get("handled"):
                                             logger.info(
-                                                f"[JARVIS WS] Display handler processed the response successfully"
+                                                f"[Ironcliw WS] Display handler processed the response successfully"
                                             )
                                             await websocket.send_json(
                                                 {
@@ -3079,9 +3079,9 @@ class JARVISVoiceAPI:
                                             continue
                             except AttributeError:
                                 # v263.1: Display monitor not yet initialized
-                                logger.debug("[JARVIS WS] Display monitor not yet initialized, skipping prompt check")
+                                logger.debug("[Ironcliw WS] Display monitor not yet initialized, skipping prompt check")
                             except Exception as e:
-                                logger.error(f"[JARVIS WS] Error checking display prompt: {e}")
+                                logger.error(f"[Ironcliw WS] Error checking display prompt: {e}")
                                 # Continue to normal processing if this fails
 
                             # =========================================================================
@@ -3116,11 +3116,11 @@ class JARVISVoiceAPI:
                             is_lock_command = has_lock and not has_unlock and (has_target or len(cleaned_command.split()) <= 3)
 
                             if is_lock_command:
-                                logger.info(f"[JARVIS WS] 🔒 LOCK command detected - DIRECT EXECUTION")
-                                logger.info(f"[JARVIS WS]    Original: '{command_text}'")
-                                logger.info(f"[JARVIS WS]    Cleaned:  '{cleaned_command}'")
+                                logger.info(f"[Ironcliw WS] 🔒 LOCK command detected - DIRECT EXECUTION")
+                                logger.info(f"[Ironcliw WS]    Original: '{command_text}'")
+                                logger.info(f"[Ironcliw WS]    Cleaned:  '{cleaned_command}'")
                                 if wake_phrase_detected:
-                                    logger.info(f"[JARVIS WS]    Wake phrase removed: '{wake_phrase_detected}'")
+                                    logger.info(f"[Ironcliw WS]    Wake phrase removed: '{wake_phrase_detected}'")
 
                                 try:
                                     from .unified_command_processor import get_unified_processor
@@ -3131,7 +3131,7 @@ class JARVISVoiceAPI:
                                         processor.process_command(cleaned_command, websocket, audio_data=self.last_audio_data, speaker_name=self.last_speaker_name),
                                         timeout=10.0
                                     )
-                                    logger.info(f"[JARVIS WS] ✅ Lock command completed successfully")
+                                    logger.info(f"[Ironcliw WS] ✅ Lock command completed successfully")
 
                                     # Send response immediately
                                     response_data = {
@@ -3145,11 +3145,11 @@ class JARVISVoiceAPI:
                                         **{k: v for k, v in result.items() if k not in ["response", "command_type", "success"]}
                                     }
                                     await websocket.send_json(response_data)
-                                    logger.info(f"[JARVIS WS] Sent lock response")
+                                    logger.info(f"[Ironcliw WS] Sent lock response")
                                     continue  # Skip to next message
 
                                 except asyncio.TimeoutError:
-                                    logger.error("[JARVIS WS] ❌ Lock command timed out")
+                                    logger.error("[Ironcliw WS] ❌ Lock command timed out")
                                     await websocket.send_json({
                                         "type": "response",
                                         "text": "Lock command timed out. Please try again.",
@@ -3160,7 +3160,7 @@ class JARVISVoiceAPI:
                                     })
                                     continue
                                 except Exception as e:
-                                    logger.error(f"[JARVIS WS] ❌ Lock command failed: {e}")
+                                    logger.error(f"[Ironcliw WS] ❌ Lock command failed: {e}")
                                     await websocket.send_json({
                                         "type": "response",
                                         "text": f"Failed to lock screen: {str(e)}",
@@ -3183,7 +3183,7 @@ class JARVISVoiceAPI:
 
                                 context_handler = wrap_with_enhanced_context(processor)
                                 logger.info(
-                                    f"[JARVIS WS] Processing with ENHANCED context awareness: '{command_text}'"
+                                    f"[Ironcliw WS] Processing with ENHANCED context awareness: '{command_text}'"
                                 )
                             else:
                                 # Use simple context handler
@@ -3191,7 +3191,7 @@ class JARVISVoiceAPI:
 
                                 context_handler = wrap_with_simple_context(processor)
                                 logger.info(
-                                    f"[JARVIS WS] Processing with SIMPLE context awareness: '{command_text}'"
+                                    f"[Ironcliw WS] Processing with SIMPLE context awareness: '{command_text}'"
                                 )
 
                             # Process with context awareness - WITH TIMEOUT PROTECTION
@@ -3209,7 +3209,7 @@ class JARVISVoiceAPI:
                                     timeout=_ctx_timeout
                                 )
                             except asyncio.TimeoutError:
-                                logger.error(f"[JARVIS WS] ❌ Context processing timed out for: '{command_text}'")
+                                logger.error(f"[Ironcliw WS] ❌ Context processing timed out for: '{command_text}'")
                                 result = {
                                     "success": False,
                                     "response": "I apologize, but that command is taking too long. Please try again.",
@@ -3246,7 +3246,7 @@ class JARVISVoiceAPI:
                             await _notify_frontend_speech(response_text)
                             await websocket.send_json(response_data)
                             logger.info(
-                                f"[JARVIS API] Sent ENHANCED context-aware response: {response_data['text'][:100]}..."
+                                f"[Ironcliw API] Sent ENHANCED context-aware response: {response_data['text'][:100]}..."
                             )
 
                             # 📝 LEARNING: Record interaction to database
@@ -3271,13 +3271,13 @@ class JARVISVoiceAPI:
                     try:
                         from .workflow_command_processor import handle_workflow_command
 
-                        workflow_cmd = JARVISCommand(text=command_text)
+                        workflow_cmd = IroncliwCommand(text=command_text)
                         workflow_result = await handle_workflow_command(
                             workflow_cmd, websocket=websocket
                         )
 
                         if workflow_result:
-                            logger.info(f"[JARVIS WS] Processed workflow command")
+                            logger.info(f"[Ironcliw WS] Processed workflow command")
                             await websocket.send_json(
                                 {
                                     "type": "response",
@@ -3378,7 +3378,7 @@ class JARVISVoiceAPI:
                                     "timestamp": datetime.now().isoformat(),
                                 }
                             )
-                            logger.info("[JARVIS API] Sent vision processing acknowledgment")
+                            logger.info("[Ironcliw API] Sent vision processing acknowledgment")
                         else:
                             await websocket.send_json(
                                 {
@@ -3397,7 +3397,7 @@ class JARVISVoiceAPI:
                             deadline=deadline,  # v241.0
                         )
 
-                        logger.info(f"[JARVIS API] Command result: {result}")
+                        logger.info(f"[Ironcliw API] Command result: {result}")
 
                         # Send unified response
                         response_data = {
@@ -3415,7 +3415,7 @@ class JARVISVoiceAPI:
                         }
 
                         await websocket.send_json(response_data)
-                        logger.info(f"[JARVIS API] Sent response: {response_data['text'][:100]}...")
+                        logger.info(f"[Ironcliw API] Sent response: {response_data['text'][:100]}...")
                         continue
 
                     except Exception as e:
@@ -3554,11 +3554,11 @@ class JARVISVoiceAPI:
                             )
                             continue
 
-                    # Ensure JARVIS is active for WebSocket commands
+                    # Ensure Ironcliw is active for WebSocket commands
                     if self.jarvis and hasattr(self.jarvis, "running"):
                         if not self.jarvis.running:
                             self.jarvis.running = True
-                            logger.info("Activating JARVIS for WebSocket command")
+                            logger.info("Activating Ironcliw for WebSocket command")
 
                     # Handle activation command specially
                     if command_text.lower() == "activate":
@@ -3579,8 +3579,8 @@ class JARVISVoiceAPI:
                         {"type": "processing", "speak": False, "timestamp": datetime.now().isoformat()}
                     )
 
-                    # Process with JARVIS - FAST
-                    logger.info(f"[JARVIS WS] Processing command: {command_text}")
+                    # Process with Ironcliw - FAST
+                    logger.info(f"[Ironcliw WS] Processing command: {command_text}")
 
                     # Dynamic VoiceCommand creation with error handling
                     voice_command = self.error_handler.create_safe_object(
@@ -3643,7 +3643,7 @@ class JARVISVoiceAPI:
                                         weather_system = app_state.weather_system
                                         vision_available = hasattr(app_state, "vision_analyzer")
                                         logger.info(
-                                            f"[JARVIS WS] Got weather system from app state, vision: {vision_available}"
+                                            f"[Ironcliw WS] Got weather system from app state, vision: {vision_available}"
                                         )
                                 except Exception:
                                     pass
@@ -3655,12 +3655,12 @@ class JARVISVoiceAPI:
                                     )
 
                                     weather_system = get_weather_system()
-                                    logger.info("[JARVIS WS] Using fallback weather system")
+                                    logger.info("[Ironcliw WS] Using fallback weather system")
 
                                 if weather_system and vision_available:
                                     # Full mode with vision
                                     logger.info(
-                                        "[JARVIS WS] FULL MODE: Using weather system with vision analysis"
+                                        "[Ironcliw WS] FULL MODE: Using weather system with vision analysis"
                                     )
                                     response = "Let me analyze the weather information for you..."
 
@@ -3681,7 +3681,7 @@ class JARVISVoiceAPI:
                                     if result.get("success") and result.get("formatted_response"):
                                         response = result["formatted_response"]
                                         logger.info(
-                                            "[JARVIS WS] Weather vision analysis successful"
+                                            "[Ironcliw WS] Weather vision analysis successful"
                                         )
                                     else:
                                         # Vision failed, but we tried
@@ -3690,7 +3690,7 @@ class JARVISVoiceAPI:
                                 elif weather_system:
                                     # Limited mode - no vision
                                     logger.info(
-                                        "[JARVIS WS] LIMITED MODE: Weather system without vision"
+                                        "[Ironcliw WS] LIMITED MODE: Weather system without vision"
                                     )
 
                                     # Open Weather app
@@ -3712,17 +3712,17 @@ class JARVISVoiceAPI:
                                     """
                                     )
 
-                                    response = "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all JARVIS components are loaded."
+                                    response = "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all Ironcliw components are loaded."
 
                                 else:
                                     # No weather system at all
-                                    logger.info("[JARVIS WS] NO WEATHER SYSTEM: Basic fallback")
+                                    logger.info("[Ironcliw WS] NO WEATHER SYSTEM: Basic fallback")
 
                                     await async_open_app("Weather")
                                     response = "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
 
                             except Exception as e:
-                                logger.error(f"[JARVIS WS] Weather error: {e}")
+                                logger.error(f"[Ironcliw WS] Weather error: {e}")
                                 import traceback
 
                                 traceback.print_exc()
@@ -3744,7 +3744,7 @@ class JARVISVoiceAPI:
                             response = random.choice(
                                 fallback_responses
                             )  # nosec B311 - UI responses, not cryptographic
-                    logger.info(f"[JARVIS WS] Response: {response[:100]}...")
+                    logger.info(f"[Ironcliw WS] Response: {response[:100]}...")
 
                     # Send response immediately
                     # Clean the response before sending
@@ -3840,7 +3840,7 @@ class JARVISVoiceAPI:
                         )
 
                         # v265.0: Self-voice rejection in WebSocket audio handler.
-                        # Check BEFORE auto-processing to prevent JARVIS from
+                        # Check BEFORE auto-processing to prevent Ironcliw from
                         # hearing its own TTS output and treating it as a command.
                         try:
                             from backend.core.unified_speech_state import get_speech_state_manager_sync
@@ -4035,9 +4035,9 @@ class JARVISVoiceAPI:
                     })
 
         except WebSocketDisconnect:
-            logger.info("JARVIS WebSocket disconnected")
+            logger.info("Ironcliw WebSocket disconnected")
         except Exception as e:
-            logger.error(f"Error in JARVIS WebSocket: {e}")
+            logger.error(f"Error in Ironcliw WebSocket: {e}")
             try:
                 await websocket.send_json({"type": "error", "message": str(e)})
             except Exception:
@@ -4046,7 +4046,7 @@ class JARVISVoiceAPI:
             # Remove connection from tracking
             active_websockets.discard(websocket)
             logger.info(
-                f"[JARVIS WS] Connection removed. Active connections: {len(active_websockets)}"
+                f"[Ironcliw WS] Connection removed. Active connections: {len(active_websockets)}"
             )
 
 
@@ -4054,22 +4054,22 @@ class JARVISVoiceAPI:
 # _register_routes() which can fail if dependencies aren't ready at import
 # time. Lazy getter defers construction to first actual use (typically
 # during main.py's voice API setup, well after the event loop is running).
-_jarvis_api_instance: Optional["JARVISVoiceAPI"] = None
+_jarvis_api_instance: Optional["IroncliwVoiceAPI"] = None
 
 
-def get_jarvis_api() -> Optional["JARVISVoiceAPI"]:
-    """Lazy singleton getter for JARVISVoiceAPI."""
+def get_jarvis_api() -> Optional["IroncliwVoiceAPI"]:
+    """Lazy singleton getter for IroncliwVoiceAPI."""
     global _jarvis_api_instance
     if _jarvis_api_instance is None:
         try:
-            _jarvis_api_instance = JARVISVoiceAPI()
+            _jarvis_api_instance = IroncliwVoiceAPI()
         except Exception as e:
-            logger.error("[JARVIS API] JARVISVoiceAPI initialization failed: %s", e)
+            logger.error("[Ironcliw API] IroncliwVoiceAPI initialization failed: %s", e)
     return _jarvis_api_instance
 
 
 def get_voice_router():
-    """Lazy getter for the FastAPI router (depends on JARVISVoiceAPI)."""
+    """Lazy getter for the FastAPI router (depends on IroncliwVoiceAPI)."""
     global _jarvis_core_routes_included
     api = get_jarvis_api()
     if api and not _jarvis_core_routes_included:
@@ -4082,7 +4082,7 @@ def get_voice_router():
 # Production callers (main.py, parallel_initializer, unified_websocket)
 # already use lazy imports inside function bodies.
 # New code should use get_jarvis_api() / get_voice_router().
-jarvis_api: Optional["JARVISVoiceAPI"] = None
+jarvis_api: Optional["IroncliwVoiceAPI"] = None
 
 # Initialize global CoreML engine (if available)
 coreml_engine: Optional[CoreMLVoiceEngineBridge] = None
@@ -4109,7 +4109,7 @@ if COREML_AVAILABLE:
     try:
         # v250.0: Resolve model paths relative to backend_dir, not project root.
         # backend_dir = .../backend/ and models live at backend/models/.
-        # Previously: os.path.dirname(backend_dir) went to repo root (.../JARVIS-AI-Agent/)
+        # Previously: os.path.dirname(backend_dir) went to repo root (.../Ironcliw-AI-Agent/)
         # which doesn't have a models/ directory — causing "CoreML models not found"
         # despite the models existing at backend/models/.
         project_root = backend_dir  # backend_dir = .../backend/ (contains models/)

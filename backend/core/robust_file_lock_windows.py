@@ -1,4 +1,4 @@
-"""
+﻿"""
 RobustFileLock - Windows Implementation using msvcrt
 ====================================================
 
@@ -53,7 +53,7 @@ default_lock_dir = os.path.join(
     ".jarvis", "cross_repo", "locks"
 )
 
-LOCK_DIR_RAW = os.environ.get("JARVIS_LOCK_DIR", default_lock_dir)
+LOCK_DIR_RAW = os.environ.get("Ironcliw_LOCK_DIR", default_lock_dir)
 LOCK_ACQUIRE_TIMEOUT_S = float(os.environ.get("LOCK_ACQUIRE_TIMEOUT_S", "10.0"))
 LOCK_POLL_INTERVAL_S = float(os.environ.get("LOCK_POLL_INTERVAL_S", "0.05"))
 LOCK_STALE_WARNING_S = float(os.environ.get("LOCK_STALE_WARNING_S", "30.0"))

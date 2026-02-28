@@ -1,4 +1,4 @@
-"""
+﻿"""
 DI Resolution v1.0 - Enterprise-Grade Dependency Resolution Engine
 ===================================================================
 
@@ -34,7 +34,7 @@ Architecture:
     |                    Graph Cache Layer                             |
     +------------------------------------------------------------------+
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

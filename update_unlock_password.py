@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Simple Command-Line Tool to Update JARVIS Screen Unlock Password
+Simple Command-Line Tool to Update Ironcliw Screen Unlock Password
 No popups, no GUI - just terminal-based password update
 """
 import asyncio
@@ -16,7 +16,7 @@ async def update_password():
     from macos_keychain_unlock import MacOSKeychainUnlock
     
     print("\n" + "="*60)
-    print("🔐 UPDATE JARVIS SCREEN UNLOCK PASSWORD")
+    print("🔐 UPDATE Ironcliw SCREEN UNLOCK PASSWORD")
     print("="*60)
     print("\nThis will update your screen unlock password in macOS Keychain.")
     print("Enter your CURRENT macOS login password (the correct one).\n")
@@ -50,7 +50,7 @@ async def update_password():
         test_pwd = await unlock_service.get_password_from_keychain()
         if test_pwd == password:
             print("✅ Password retrieval working correctly")
-            print("\n✅ JARVIS can now unlock your screen with the correct password!")
+            print("\n✅ Ironcliw can now unlock your screen with the correct password!")
             return True
         else:
             print("⚠️  Password was stored but retrieval test failed")
@@ -59,7 +59,7 @@ async def update_password():
         print("❌ Failed to update password in Keychain")
         print("\nTroubleshooting:")
         print("1. Make sure you have permission to update Keychain items")
-        print("2. Try running: security delete-generic-password -s JARVIS_Screen_Unlock")
+        print("2. Try running: security delete-generic-password -s Ironcliw_Screen_Unlock")
         print("3. Then run this script again")
         return False
 

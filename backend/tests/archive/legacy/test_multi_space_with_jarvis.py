@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test multi-space integration with JARVIS chatbot
+Test multi-space integration with Ironcliw chatbot
 """
 
 import asyncio
@@ -12,8 +12,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def test_jarvis_multi_space():
-    """Test JARVIS with multi-space query"""
-    print("=== Testing JARVIS Multi-Space Integration ===\n")
+    """Test Ironcliw with multi-space query"""
+    print("=== Testing Ironcliw Multi-Space Integration ===\n")
     
     try:
         # Import the chatbot

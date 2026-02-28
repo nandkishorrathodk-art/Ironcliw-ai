@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Health Aggregator - Layer 4 of Distributed Proxy System
 
 Provides:
@@ -8,7 +8,7 @@ Provides:
 - Event sourcing for complete audit trail
 - Automated diagnosis around failures
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -77,7 +77,7 @@ class HealthConfig:
     COLLECTION_INTERVAL: Final[float] = float(os.getenv("HEALTH_COLLECTION_INTERVAL", "5.0"))
 
     # Cross-repo state
-    STATE_DIR: Final[Path] = Path(os.getenv("JARVIS_STATE_DIR", str(Path.home() / ".jarvis")))
+    STATE_DIR: Final[Path] = Path(os.getenv("Ironcliw_STATE_DIR", str(Path.home() / ".jarvis")))
     CROSS_REPO_STATE_FILE: Final[Path] = STATE_DIR / "cross_repo" / "unified_state.json"
 
 

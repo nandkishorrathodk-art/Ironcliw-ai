@@ -1,4 +1,4 @@
-# Ghost Hands Windows Port - Phase 8 Complete ✅
+﻿# Ghost Hands Windows Port - Phase 8 Complete ✅
 
 **Version:** 1.0.0  
 **Status:** Production Ready  
@@ -12,7 +12,7 @@ This document describes the **Phase 8: Ghost Hands Automation Port** for Windows
 
 ### What is Ghost Hands?
 
-Ghost Hands is JARVIS's background automation system that can interact with windows, click, type, and automate tasks **without stealing focus** from the user. Think of it as "invisible hands" that work in the background while you continue using your computer normally.
+Ghost Hands is Ironcliw's background automation system that can interact with windows, click, type, and automate tasks **without stealing focus** from the user. Think of it as "invisible hands" that work in the background while you continue using your computer normally.
 
 ---
 
@@ -285,18 +285,18 @@ config = WindowsAutomationConfig(
 
 ```bash
 # Focus preservation
-JARVIS_WIN_PRESERVE_FOCUS=true
-JARVIS_WIN_FOCUS_DELAY_MS=100
+Ironcliw_WIN_PRESERVE_FOCUS=true
+Ironcliw_WIN_FOCUS_DELAY_MS=100
 
 # Multi-monitor
-JARVIS_WIN_MULTIMON=true
+Ironcliw_WIN_MULTIMON=true
 
 # Automation backend
-JARVIS_WIN_PREFER_PYAUTOGUI=true
+Ironcliw_WIN_PREFER_PYAUTOGUI=true
 
 # Timing
-JARVIS_WIN_ACTION_DELAY_MS=50
-JARVIS_WIN_ANIMATION_MS=300
+Ironcliw_WIN_ACTION_DELAY_MS=50
+Ironcliw_WIN_ANIMATION_MS=300
 
 # C# DLL path (optional)
 WINDOWS_NATIVE_DLL_PATH=C:\path\to\dll\folder
@@ -352,7 +352,7 @@ cd backend\windows_native
 **Cause:** Applications with elevated privileges can't be focused by non-elevated processes.
 
 **Solution:**
-1. Run JARVIS with administrator privileges
+1. Run Ironcliw with administrator privileges
 2. Or disable focus preservation: `config.preserve_focus = False`
 
 ---

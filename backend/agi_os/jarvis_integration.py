@@ -1,8 +1,8 @@
-"""
-JARVIS AGI OS - Integration with Existing JARVIS Systems
+﻿"""
+Ironcliw AGI OS - Integration with Existing Ironcliw Systems
 
 This module provides seamless integration between the new AGI OS
-components and the existing JARVIS infrastructure:
+components and the existing Ironcliw infrastructure:
 
 - Screen Analyzer Integration: Connect continuous monitoring to event stream
 - Decision Engine Integration: Route autonomous decisions through AGI OS
@@ -232,23 +232,23 @@ class ScreenAnalyzerBridge:
         self._last_vision_analysis: Optional[datetime] = None
         self._vision_request_timeout_seconds: float = max(
             1.0,
-            float(os.getenv("JARVIS_VISION_REQUEST_TIMEOUT_SECONDS", "45.0")),
+            float(os.getenv("Ironcliw_VISION_REQUEST_TIMEOUT_SECONDS", "45.0")),
         )
         self._vision_request_semaphore = asyncio.Semaphore(
-            max(1, int(os.getenv("JARVIS_VISION_MAX_CONCURRENT_REQUESTS", "1")))
+            max(1, int(os.getenv("Ironcliw_VISION_MAX_CONCURRENT_REQUESTS", "1")))
         )
         self._vision_failure_threshold: int = max(
             1,
-            int(os.getenv("JARVIS_VISION_FAILURE_THRESHOLD", "3")),
+            int(os.getenv("Ironcliw_VISION_FAILURE_THRESHOLD", "3")),
         )
         self._vision_circuit_cooldown_seconds: float = max(
             1.0,
-            float(os.getenv("JARVIS_VISION_CIRCUIT_COOLDOWN_SECONDS", "30.0")),
+            float(os.getenv("Ironcliw_VISION_CIRCUIT_COOLDOWN_SECONDS", "30.0")),
         )
         self._vision_consecutive_failures: int = 0
         self._vision_circuit_open_until: float = 0.0
         self._vision_error_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(
-            maxsize=max(1, int(os.getenv("JARVIS_VISION_ERROR_QUEUE_SIZE", "8")))
+            maxsize=max(1, int(os.getenv("Ironcliw_VISION_ERROR_QUEUE_SIZE", "8")))
         )
         self._vision_error_worker_task: Optional[asyncio.Task] = None
 
@@ -466,7 +466,7 @@ class ScreenAnalyzerBridge:
     ) -> None:
         """Initialize required components."""
         # v253.8: Per-component timeouts to prevent event loop deadlock.
-        _component_timeout = float(os.getenv("JARVIS_SCREEN_BRIDGE_COMPONENT_TIMEOUT", "5"))
+        _component_timeout = float(os.getenv("Ironcliw_SCREEN_BRIDGE_COMPONENT_TIMEOUT", "5"))
 
         # Event stream
         if event_stream:
@@ -844,7 +844,7 @@ class ScreenAnalyzerBridge:
                     "open_listen_window": True,
                     "listen_reason": "user_help_offer",
                     "listen_timeout_seconds": float(
-                        os.getenv("JARVIS_HELP_LISTEN_TIMEOUT_SECONDS", "20.0")
+                        os.getenv("Ironcliw_HELP_LISTEN_TIMEOUT_SECONDS", "20.0")
                     ),
                     "listen_close_on_utterance": True,
                     "listen_metadata": {
@@ -1137,7 +1137,7 @@ class ScreenAnalyzerBridge:
                     "open_listen_window": True,
                     "listen_reason": "vision_error_followup",
                     "listen_timeout_seconds": float(
-                        os.getenv("JARVIS_VISION_FOLLOWUP_LISTEN_TIMEOUT_SECONDS", "25.0")
+                        os.getenv("Ironcliw_VISION_FOLLOWUP_LISTEN_TIMEOUT_SECONDS", "25.0")
                     ),
                     "listen_close_on_utterance": True,
                     "listen_metadata": {
@@ -1253,8 +1253,8 @@ CONFIDENCE: <0.0-1.0 confidence score>
 
         Returns (base64_data, media_type).
         """
-        _max_dim = int(os.getenv("JARVIS_VISION_MAX_DIM", "1536"))
-        _jpeg_quality = int(os.getenv("JARVIS_VISION_JPEG_QUALITY", "85"))
+        _max_dim = int(os.getenv("Ironcliw_VISION_MAX_DIM", "1536"))
+        _jpeg_quality = int(os.getenv("Ironcliw_VISION_JPEG_QUALITY", "85"))
         _api_max_bytes = 5 * 1024 * 1024  # 5MB API limit (on base64 string)
         # Base64 expands by 4/3; raw threshold = API limit * 3/4
         _raw_max_bytes = _api_max_bytes * 3 // 4  # ~3.75MB
@@ -1473,7 +1473,7 @@ CONFIDENCE: <0.0-1.0 confidence score>
                     "open_listen_window": bool(pattern.suggested_action),
                     "listen_reason": "pattern_triggered",
                     "listen_timeout_seconds": float(
-                        os.getenv("JARVIS_PATTERN_LISTEN_TIMEOUT_SECONDS", "15.0")
+                        os.getenv("Ironcliw_PATTERN_LISTEN_TIMEOUT_SECONDS", "15.0")
                     ),
                     "listen_close_on_utterance": True,
                     "listen_metadata": {
@@ -2594,7 +2594,7 @@ async def integrate_all(
 if __name__ == "__main__":
     async def test():
         """Test the enhanced integration."""
-        print("Testing Enhanced JARVIS Integration...")
+        print("Testing Enhanced Ironcliw Integration...")
 
         # Test screen bridge
         bridge = ScreenAnalyzerBridge()

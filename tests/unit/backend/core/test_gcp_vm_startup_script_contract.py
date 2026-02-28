@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 import pytest
 
@@ -13,7 +13,7 @@ def _get_golden_startup_script() -> str:
 
 def test_startup_script_exports_apars_file():
     script = _get_golden_startup_script()
-    assert "JARVIS_APARS_FILE" in script, "startup script should export APARS file path"
+    assert "Ironcliw_APARS_FILE" in script, "startup script should export APARS file path"
 
 
 def test_startup_script_has_safe_env_loader():

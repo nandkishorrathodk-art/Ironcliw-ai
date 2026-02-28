@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Predictive Planning Agent
+﻿"""
+Ironcliw Neural Mesh - Predictive Planning Agent
 ===============================================
 
 The "Psychic Brain" of Proactive Parallelism.
@@ -56,7 +56,7 @@ Architecture:
     │                                                                     │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Proactive Parallelism
 """
 
@@ -643,7 +643,7 @@ class PredictivePlanningAgent(BaseNeuralMeshAgent):
         context: PredictionContext,
     ) -> PredictionResult:
         """Expand intent using Claude LLM."""
-        system_prompt = """You are JARVIS's Predictive Planning Engine.
+        system_prompt = """You are Ironcliw's Predictive Planning Engine.
 
 Your job is to expand vague user commands into concrete, executable tasks.
 

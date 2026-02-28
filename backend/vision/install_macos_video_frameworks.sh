@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Install macOS frameworks for native video capture with purple indicator
 
 echo "🎥 Installing macOS video capture frameworks..."
@@ -33,5 +33,5 @@ except ImportError as e:
 
 echo ""
 echo "🚀 Installation complete! You can now test video streaming with:"
-echo "   cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/vision"
+echo "   cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/vision"
 echo "   python3 test_video_simple.py"

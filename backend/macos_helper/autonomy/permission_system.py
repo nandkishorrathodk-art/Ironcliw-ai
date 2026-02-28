@@ -1,8 +1,8 @@
-"""
-Fine-Grained Permission System for JARVIS Autonomous Actions.
+﻿"""
+Fine-Grained Permission System for Ironcliw Autonomous Actions.
 
 This module provides a comprehensive permission management system that controls
-what actions JARVIS can perform autonomously. It supports multiple permission
+what actions Ironcliw can perform autonomously. It supports multiple permission
 levels, scopes, and contextual decision-making.
 
 Key Features:
@@ -14,10 +14,10 @@ Key Features:
     - Temporary permission grants
 
 Environment Variables:
-    JARVIS_PERMISSION_MODE: default mode (paranoid/standard/permissive)
-    JARVIS_PERMISSION_AUTO_APPROVE_MINIMAL: auto-approve minimal risk (default: true)
-    JARVIS_PERMISSION_AUDIT_ENABLED: enable audit logging (default: true)
-    JARVIS_PERMISSION_CACHE_TTL: cache TTL in seconds (default: 60)
+    Ironcliw_PERMISSION_MODE: default mode (paranoid/standard/permissive)
+    Ironcliw_PERMISSION_AUTO_APPROVE_MINIMAL: auto-approve minimal risk (default: true)
+    Ironcliw_PERMISSION_AUDIT_ENABLED: enable audit logging (default: true)
+    Ironcliw_PERMISSION_CACHE_TTL: cache TTL in seconds (default: 60)
 """
 
 from __future__ import annotations
@@ -248,7 +248,7 @@ class PermissionSystemConfig:
     @classmethod
     def from_env(cls) -> "PermissionSystemConfig":
         """Create configuration from environment variables."""
-        mode = os.getenv("JARVIS_PERMISSION_MODE", "standard")
+        mode = os.getenv("Ironcliw_PERMISSION_MODE", "standard")
 
         # Set defaults based on mode
         if mode == "paranoid":
@@ -270,38 +270,38 @@ class PermissionSystemConfig:
         return cls(
             mode=mode,
             auto_approve_minimal=os.getenv(
-                "JARVIS_PERMISSION_AUTO_APPROVE_MINIMAL",
+                "Ironcliw_PERMISSION_AUTO_APPROVE_MINIMAL",
                 str(auto_approve_minimal)
             ).lower() == "true",
             auto_approve_low=auto_approve_low,
             always_ask_high=always_ask_high,
             always_deny_critical=always_deny_critical,
             rate_limit_enabled=os.getenv(
-                "JARVIS_PERMISSION_RATE_LIMIT", "true"
+                "Ironcliw_PERMISSION_RATE_LIMIT", "true"
             ).lower() == "true",
             max_actions_per_minute=int(os.getenv(
-                "JARVIS_PERMISSION_MAX_ACTIONS_MINUTE", "30"
+                "Ironcliw_PERMISSION_MAX_ACTIONS_MINUTE", "30"
             )),
             max_actions_per_hour=int(os.getenv(
-                "JARVIS_PERMISSION_MAX_ACTIONS_HOUR", "500"
+                "Ironcliw_PERMISSION_MAX_ACTIONS_HOUR", "500"
             )),
             quiet_hours_enabled=os.getenv(
-                "JARVIS_PERMISSION_QUIET_HOURS", "false"
+                "Ironcliw_PERMISSION_QUIET_HOURS", "false"
             ).lower() == "true",
             quiet_hours_start=int(os.getenv(
-                "JARVIS_PERMISSION_QUIET_START", "22"
+                "Ironcliw_PERMISSION_QUIET_START", "22"
             )),
             quiet_hours_end=int(os.getenv(
-                "JARVIS_PERMISSION_QUIET_END", "7"
+                "Ironcliw_PERMISSION_QUIET_END", "7"
             )),
             cache_enabled=os.getenv(
-                "JARVIS_PERMISSION_CACHE", "true"
+                "Ironcliw_PERMISSION_CACHE", "true"
             ).lower() == "true",
             cache_ttl_seconds=float(os.getenv(
-                "JARVIS_PERMISSION_CACHE_TTL", "60"
+                "Ironcliw_PERMISSION_CACHE_TTL", "60"
             )),
             audit_enabled=os.getenv(
-                "JARVIS_PERMISSION_AUDIT_ENABLED", "true"
+                "Ironcliw_PERMISSION_AUDIT_ENABLED", "true"
             ).lower() == "true",
         )
 
@@ -336,7 +336,7 @@ class PermissionSystem:
     """
     Fine-grained permission management for autonomous actions.
 
-    This system controls what actions JARVIS can perform autonomously,
+    This system controls what actions Ironcliw can perform autonomously,
     supporting multiple permission levels, contextual decisions, and
     comprehensive audit logging.
     """

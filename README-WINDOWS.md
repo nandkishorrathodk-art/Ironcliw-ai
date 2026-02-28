@@ -1,8 +1,8 @@
-# JARVIS for Windows - Quick Start Guide
+﻿# Ironcliw for Windows - Quick Start Guide
 
 ## Overview
 
-JARVIS AI Assistant has been successfully adapted to run on Windows 10/11. This guide will help you get started on your Windows machine.
+Ironcliw AI Assistant has been successfully adapted to run on Windows 10/11. This guide will help you get started on your Windows machine.
 
 **Platform**: Windows 10/11 (64-bit)  
 **Python**: 3.9+ (3.12+ recommended)  
@@ -31,8 +31,8 @@ cargo --version
 ### 2. Clone Repository
 
 ```cmd
-git clone https://github.com/drussell23/JARVIS
-cd JARVIS
+git clone https://github.com/drussell23/Ironcliw
+cd Ironcliw
 ```
 
 ### 3. Install Dependencies and Build Native Extensions
@@ -99,7 +99,7 @@ User ID: bypass_user_windows_<username>
 Method: bypass_auto
 ```
 
-### 7. Start JARVIS
+### 7. Start Ironcliw
 
 ```cmd
 python unified_supervisor.py
@@ -148,38 +148,38 @@ The `.env.windows` file contains all Windows-specific settings:
 #### Authentication
 ```bash
 # Auto-bypass authentication on Windows
-JARVIS_AUTO_BYPASS_WINDOWS=true
+Ironcliw_AUTO_BYPASS_WINDOWS=true
 
 # Or require a password for bypass
-# JARVIS_BYPASS_PASSWORD=your_secure_password
+# Ironcliw_BYPASS_PASSWORD=your_secure_password
 ```
 
 #### Performance
 ```bash
 # Skip cloud features for faster startup
-JARVIS_SKIP_GCP=true
-JARVIS_SKIP_DOCKER=true
+Ironcliw_SKIP_GCP=true
+Ironcliw_SKIP_DOCKER=true
 
 # Use CPU for ML inference
-JARVIS_ML_DEVICE=cpu
+Ironcliw_ML_DEVICE=cpu
 
 # Lazy load models (load on demand)
-JARVIS_LAZY_LOAD_MODELS=true
+Ironcliw_LAZY_LOAD_MODELS=true
 ```
 
 #### Platform Settings
 ```bash
 # Screen capture
-JARVIS_SCREEN_CAPTURE_METHOD=mss
+Ironcliw_SCREEN_CAPTURE_METHOD=mss
 
 # Text-to-speech
-JARVIS_TTS_ENGINE=piper
+Ironcliw_TTS_ENGINE=piper
 
 # Window management
-JARVIS_WINDOW_MANAGER=win32gui
+Ironcliw_WINDOW_MANAGER=win32gui
 
 # Automation
-JARVIS_AUTOMATION_PROVIDER=pyautogui
+Ironcliw_AUTOMATION_PROVIDER=pyautogui
 ```
 
 ---
@@ -232,7 +232,7 @@ Run Command Prompt as Administrator:
 
 If port 8010 or 3000 is in use, change in `.env`:
 ```bash
-JARVIS_PORT=8011
+Ironcliw_PORT=8011
 FRONTEND_PORT=3001
 ```
 
@@ -240,12 +240,12 @@ FRONTEND_PORT=3001
 
 Verify `.env` contains:
 ```bash
-JARVIS_AUTO_BYPASS_WINDOWS=true
+Ironcliw_AUTO_BYPASS_WINDOWS=true
 ```
 
 Or set explicitly:
 ```bash
-JARVIS_BYPASS_AUTH=true
+Ironcliw_BYPASS_AUTH=true
 ```
 
 ---
@@ -283,7 +283,7 @@ python -c "import sounddevice as sd; print(sd.query_devices())"
 
 - **CUDA GPU**: Install PyTorch with CUDA for GPU acceleration
 - **Cloud Integration**: Configure GCP for cloud features
-- **Trinity Ecosystem**: Clone JARVIS-Prime and Reactor-Core repos
+- **Trinity Ecosystem**: Clone Ironcliw-Prime and Reactor-Core repos
 
 ---
 
@@ -309,7 +309,7 @@ python -c "import sounddevice as sd; print(sd.query_devices())"
 ## Getting Help
 
 ### Documentation
-- [Main README](README.md) - Full JARVIS documentation
+- [Main README](README.md) - Full Ironcliw documentation
 - [Technical Spec](.zenflow/tasks/ironclaw-6377/spec.md) - Cross-platform migration details
 - [Implementation Report](.zenflow/tasks/ironclaw-6377/report.md) - What was implemented
 
@@ -358,8 +358,8 @@ python test_auth_bypass.py
 Enable auto-restart on code changes:
 ```bash
 # In .env
-JARVIS_DEV_MODE=true
-JARVIS_HOT_RELOAD=true
+Ironcliw_DEV_MODE=true
+Ironcliw_HOT_RELOAD=true
 ```
 
 ---
@@ -404,7 +404,7 @@ JARVIS_HOT_RELOAD=true
 
 ## Credits
 
-**Original JARVIS**: macOS implementation by drussell23  
+**Original Ironcliw**: macOS implementation by drussell23  
 **Windows Port**: Cross-platform migration (February 2026)  
 **Platform Abstraction**: Already existed in codebase, verified working  
 **Authentication Bypass**: New implementation for Windows/Linux  
@@ -414,7 +414,7 @@ JARVIS_HOT_RELOAD=true
 
 ## License
 
-Same as main JARVIS project (see LICENSE file in root directory).
+Same as main Ironcliw project (see LICENSE file in root directory).
 
 ---
 
@@ -422,6 +422,6 @@ Same as main JARVIS project (see LICENSE file in root directory).
 - [Main README](README.md)
 - [Technical Specification](.zenflow/tasks/ironclaw-6377/spec.md)
 - [Implementation Report](.zenflow/tasks/ironclaw-6377/report.md)
-- [GitHub Repository](https://github.com/drussell23/JARVIS)
+- [GitHub Repository](https://github.com/drussell23/Ironcliw)
 
 **Windows Status**: ✅ **Working** (Core features tested and verified)

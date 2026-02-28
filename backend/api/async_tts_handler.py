@@ -1,6 +1,6 @@
-"""
+﻿"""
 Async TTS Handler with Caching and Concurrent Processing
-Optimizes JARVIS voice response time by using async operations and smart caching
+Optimizes Ironcliw voice response time by using async operations and smart caching
 """
 
 import asyncio
@@ -117,51 +117,60 @@ class AsyncTTSHandler:
             lambda: subprocess.run(cmd, capture_output=True, check=True)
         )
     
+    _VOICE_MAP = {
+        "daniel": "en-GB-RyanNeural",
+        "samantha": "en-US-AriaNeural",
+        "alex": "en-US-ChristopherNeural",
+    }
+
     async def _generate_audio_file(self, text: str, voice: str = "Daniel") -> Tuple[Path, str]:
         """
-        Generate audio file using macOS say command
+        Generate audio file using EdgeTTS (cross-platform).
+        Falls back to macOS say command only when edge_tts is unavailable.
         Returns tuple of (file_path, content_type)
         """
         import tempfile
-        
-        # Create temp file for AIFF output
+        import platform
+
+        try:
+            import edge_tts
+            edge_voice = self._VOICE_MAP.get(voice.lower(), "en-GB-RyanNeural")
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                mp3_path = Path(tmp.name)
+            communicate = edge_tts.Communicate(text, edge_voice)
+            await asyncio.wait_for(communicate.save(str(mp3_path)), timeout=15.0)
+            return mp3_path, "audio/mpeg"
+        except ImportError:
+            logger.warning("edge_tts not available, falling back to say command (macOS only)")
+        except Exception as e:
+            logger.warning(f"EdgeTTS failed: {e}, falling back to say command")
+
+        if platform.system() != "Darwin":
+            raise RuntimeError("No TTS backend available on this platform")
+
         with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as tmp:
             aiff_path = Path(tmp.name)
-        
-        # Generate audio with say command (async) - much slower rate for smooth, natural speech
-        # Default macOS speech rate is 200, we'll use 160 for smoother delivery
+
         say_cmd = ["say", "-v", voice, "-r", "160", "-o", str(aiff_path), text]
         await self._run_subprocess_async(say_cmd)
-        
-        # Try to convert to MP3 for smaller size and better compatibility
+
         mp3_path = aiff_path.with_suffix(".mp3")
-        
-        # Try ffmpeg first (fastest)
         try:
             ffmpeg_cmd = [
                 "ffmpeg", "-i", str(aiff_path),
-                "-acodec", "libmp3lame",
-                "-ab", "96k",  # Lower bitrate for speech
-                "-ar", "22050",  # Lower sample rate for speech
-                "-ac", "1",  # Mono for smaller size
-                str(mp3_path),
-                "-y"
+                "-acodec", "libmp3lame", "-ab", "96k",
+                "-ar", "22050", "-ac", "1", str(mp3_path), "-y"
             ]
             await self._run_subprocess_async(ffmpeg_cmd)
-            
-            # Clean up AIFF file
             aiff_path.unlink()
             return mp3_path, "audio/mpeg"
-            
         except (subprocess.CalledProcessError, FileNotFoundError):
-            # Try lame as fallback
             try:
                 lame_cmd = ["lame", "-b", "96", "-m", "m", str(aiff_path), str(mp3_path)]
                 await self._run_subprocess_async(lame_cmd)
                 aiff_path.unlink()
                 return mp3_path, "audio/mpeg"
             except Exception:
-                # Use AIFF if conversion fails
                 logger.warning("Audio conversion failed, using AIFF format")
                 return aiff_path, "audio/aiff"
     

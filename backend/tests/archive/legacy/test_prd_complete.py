@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Complete PRD Implementation Test
 Tests the Screen Monitoring Activation & macOS Purple Indicator System
@@ -25,7 +25,7 @@ async def test_prd_implementation():
     """Test complete PRD implementation"""
     
     print("\n" + "="*60)
-    print("🎯 JARVIS Screen Monitoring System - PRD Implementation Test")
+    print("🎯 Ironcliw Screen Monitoring System - PRD Implementation Test")
     print("="*60 + "\n")
     
     # Initialize required components
@@ -96,7 +96,7 @@ async def test_prd_implementation():
     print(f"   📍 New state: {state_manager.current_state.value}")
     print(f"   🟣 Purple indicator: {'Active' if result.get('indicator_active', False) else 'Not active'}")
     print(f"   🟢 Vision status: {vision_status_manager.get_status()['text']}")
-    print(f"\n   💬 JARVIS response: \"{result.get('response', 'No response')}\"")
+    print(f"\n   💬 Ironcliw response: \"{result.get('response', 'No response')}\"")
     
     # Check state details
     state_info = state_manager.get_state_info()

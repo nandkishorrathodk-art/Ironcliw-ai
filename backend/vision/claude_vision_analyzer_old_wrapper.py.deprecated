@@ -1,4 +1,4 @@
-"""
+﻿"""
 Wrapper for claude_vision_analyzer_main.py to provide the expected interface
 This handles the tuple return format and provides backward compatibility
 Now includes real-time monitoring and autonomous behaviors
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class ClaudeVisionAnalyzer(_ClaudeVisionAnalyzer):
     """
-    Wrapper that provides clean interface for JARVIS integration
+    Wrapper that provides clean interface for Ironcliw integration
     Includes real-time vision capabilities and autonomous behaviors
     """
     
@@ -62,8 +62,8 @@ class ClaudeVisionAnalyzer(_ClaudeVisionAnalyzer):
         return await self.get_real_time_context()
     
     async def start_jarvis_vision(self, callback: Optional[Callable] = None) -> Dict[str, Any]:
-        """Start JARVIS real-time vision - see everything happening on screen"""
-        logger.info("🤖 Starting JARVIS real-time vision...")
+        """Start Ironcliw real-time vision - see everything happening on screen"""
+        logger.info("🤖 Starting Ironcliw real-time vision...")
         
         # Define internal callback to handle vision events
         async def vision_callback(event):
@@ -84,15 +84,15 @@ class ClaudeVisionAnalyzer(_ClaudeVisionAnalyzer):
         result = await self.start_real_time_monitoring(vision_callback)
         
         if result['success']:
-            logger.info(f"✅ JARVIS vision active in {result['mode']} mode")
+            logger.info(f"✅ Ironcliw vision active in {result['mode']} mode")
         else:
             logger.error(f"❌ Failed to start vision: {result.get('error', 'Unknown error')}")
         
         return result
     
     async def stop_jarvis_vision(self) -> Dict[str, Any]:
-        """Stop JARVIS real-time vision"""
-        logger.info("🛑 Stopping JARVIS vision...")
+        """Stop Ironcliw real-time vision"""
+        logger.info("🛑 Stopping Ironcliw vision...")
         
         # Stop video streaming if active
         if hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
@@ -107,12 +107,12 @@ class ClaudeVisionAnalyzer(_ClaudeVisionAnalyzer):
         
         return {
             'success': True,
-            'message': 'JARVIS vision stopped'
+            'message': 'Ironcliw vision stopped'
         }
     
     async def see_and_respond(self, user_command: str) -> Dict[str, Any]:
         """
-        JARVIS sees the screen and responds to user commands with visual context
+        Ironcliw sees the screen and responds to user commands with visual context
         This is the main method for vision-aware command handling
         """
         try:

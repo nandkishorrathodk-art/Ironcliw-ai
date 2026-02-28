@@ -1,4 +1,4 @@
-"""
+﻿"""
 Safe File Descriptor Management v109.3
 
 Enterprise-grade file descriptor handling that prevents EXC_GUARD crashes on macOS.
@@ -50,7 +50,7 @@ Usage:
     async with SafeFDManager.open_safe('/path', os.O_RDONLY) as fd:
         os.read(fd, 1024)
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 109.3.0 (January 2026)
 """
 

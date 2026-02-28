@@ -1,4 +1,4 @@
-"""
+﻿"""
 v78.0: Unified Process Tree Manager
 ====================================
 
@@ -33,7 +33,7 @@ Usage:
     await tree.register_process(pid, parent_pid, "backend", ProcessRole.BACKEND)
     await tree.shutdown_tree(graceful=True)
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 from __future__ import annotations

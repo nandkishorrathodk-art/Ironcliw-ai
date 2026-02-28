@@ -1,4 +1,4 @@
-name: Priority 2 - Biometric Voice Unlock E2E Testing
+﻿name: Priority 2 - Biometric Voice Unlock E2E Testing
 
 on:
   workflow_dispatch:
@@ -359,7 +359,7 @@ jobs:
           Tests the CORRECT flow:
             You: "unlock my screen"
                   ↓
-            JARVIS:
+            Ironcliw:
               1. Captures your voice
               2. Extracts biometric embedding (ECAPA-TDNN 192D)
               3. Compares to database (59 samples of Derek)
@@ -805,7 +805,7 @@ jobs:
           echo "Flow being tested:"
           echo "  You: 'unlock my screen'"
           echo "        ↓"
-          echo "  JARVIS:"
+          echo "  Ironcliw:"
           echo "    1. Captures your voice"
           echo "    2. Extracts biometric embedding (ECAPA-TDNN)"
           echo "    3. Compares to database (59 samples of Derek)"

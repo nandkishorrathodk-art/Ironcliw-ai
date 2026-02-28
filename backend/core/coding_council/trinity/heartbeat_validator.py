@@ -1,4 +1,4 @@
-"""
+﻿"""
 v115.0: Heartbeat Validator - Enterprise Edition
 =================================================
 
@@ -21,7 +21,7 @@ to prevent mismatched configuration values causing cascading failures.
 CRITICAL v115.0 FIX: Dead components are permanently removed and their
 heartbeat files are deleted to prevent "removed every cycle" log spam.
 
-Author: JARVIS v115.0
+Author: Ironcliw v115.0
 """
 
 from __future__ import annotations

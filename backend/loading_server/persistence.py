@@ -1,5 +1,5 @@
-"""
-Progress Persistence for JARVIS Loading Server v212.0
+﻿"""
+Progress Persistence for Ironcliw Loading Server v212.0
 ======================================================
 
 Provides persistent storage for loading progress, enabling:
@@ -27,7 +27,7 @@ Usage:
     persistence.save_progress(session_id, progress, stage, message)
     latest = persistence.load_latest_progress()
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

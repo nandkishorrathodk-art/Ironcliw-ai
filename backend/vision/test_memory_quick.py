@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick memory usage test for Claude Vision Analyzer
 Focuses on key metrics to determine crash risk on 16GB macOS
@@ -51,7 +51,7 @@ async def test_memory_usage():
     """Run quick memory tests"""
     print("="*70)
     print("QUICK MEMORY USAGE TEST FOR CLAUDE VISION ANALYZER")
-    print("System: 16GB macOS running JARVIS")
+    print("System: 16GB macOS running Ironcliw")
     print("="*70)
     
     # Initial state
@@ -133,7 +133,7 @@ async def test_memory_usage():
         increase = peak_mb - before['process_mb']
         
         # Assess crash risk
-        # Assume backend needs to stay under 2GB to be safe with other JARVIS components
+        # Assume backend needs to stay under 2GB to be safe with other Ironcliw components
         crash_risk = peak_mb > 2048
         risk_level = "⚠️ HIGH RISK" if crash_risk else "✅ SAFE"
         

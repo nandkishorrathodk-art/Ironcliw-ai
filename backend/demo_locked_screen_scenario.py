@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Demo: Locked Screen Scenario
 ============================
@@ -32,7 +32,7 @@ async def demo_scenario():
     
     print("\n📱 Current Scenario:")
     print("- Mac screen is LOCKED")
-    print("- User says: 'JARVIS, open Safari and search for dogs'")
+    print("- User says: 'Ironcliw, open Safari and search for dogs'")
     print("-"*60)
     
     # Lock screen
@@ -55,28 +55,28 @@ async def demo_scenario():
     
     # Process command
     print("\n2️⃣ User gives command while screen is locked...")
-    print('💬 User: "JARVIS, open Safari and search for dogs"')
+    print('💬 User: "Ironcliw, open Safari and search for dogs"')
     
     handler = wrap_with_enhanced_context(MockProcessor())
     websocket = MockWebSocket()
     
-    print("\n3️⃣ JARVIS processes with Context Intelligence...")
+    print("\n3️⃣ Ironcliw processes with Context Intelligence...")
     result = await handler.process_with_context(
         "open Safari and search for dogs",
         websocket
     )
     
     # Show what happened
-    print("\n4️⃣ What JARVIS did:")
+    print("\n4️⃣ What Ironcliw did:")
     print("✓ Detected screen was locked")
     print("✓ Queued the command")
     print("✓ Checked unlock policy (browser = LOW sensitivity)")
     print("✓ Unlocked the screen automatically")
     print("✓ Executed the command")
     
-    print("\n5️⃣ What JARVIS said:")
+    print("\n5️⃣ What Ironcliw said:")
     for msg in feedback_messages:
-        print(f"🔊 JARVIS: {msg}")
+        print(f"🔊 Ironcliw: {msg}")
     
     print("\n✅ Scenario Complete!")
     print("-"*60)

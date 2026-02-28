@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Biometric Voice Unlock E2E Test Suite - Priority 2
 ==================================================
@@ -1124,9 +1124,9 @@ class BiometricVoiceTester:
                 sys.path.insert(0, str(Path.cwd() / "backend"))
 
                 try:
-                    from intelligence.learning_database import JARVISLearningDatabase
+                    from intelligence.learning_database import IroncliwLearningDatabase
 
-                    db = JARVISLearningDatabase()
+                    db = IroncliwLearningDatabase()
                     await db.initialize()
 
                     success = True

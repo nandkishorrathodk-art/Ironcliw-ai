@@ -1,4 +1,4 @@
-"""
+﻿"""
 AST Transformer Module - Advanced Refactoring Engine v1.0
 =========================================================
 
@@ -29,7 +29,7 @@ Architecture:
     │              └───────────────────────┘                          │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

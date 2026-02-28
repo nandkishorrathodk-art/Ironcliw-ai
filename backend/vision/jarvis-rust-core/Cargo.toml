@@ -1,8 +1,8 @@
-[package]
+﻿[package]
 name = "jarvis-rust-core"
 version = "0.1.0"
 edition = "2021"
-authors = ["JARVIS AI Team"]
+authors = ["Ironcliw AI Team"]
 
 [lib]
 name = "jarvis_rust_core"

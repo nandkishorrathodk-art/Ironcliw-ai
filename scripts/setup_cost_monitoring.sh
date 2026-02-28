@@ -1,5 +1,5 @@
-#!/bin/bash
-# Advanced Cost Monitoring Setup for JARVIS Hybrid Cloud
+﻿#!/bin/bash
+# Advanced Cost Monitoring Setup for Ironcliw Hybrid Cloud
 # Features: GCP Budget API automation, email alerts, cron jobs, dynamic config
 # No hardcoding - all values from environment variables
 
@@ -11,11 +11,11 @@ set -e
 
 # Load from environment or use defaults
 PROJECT_ID="${GCP_PROJECT_ID:-}"
-ALERT_EMAIL="${JARVIS_ALERT_EMAIL:-}"
-BUDGET_NAME="${JARVIS_BUDGET_NAME:-jarvis-hybrid-cloud-budget}"
-JARVIS_DIR="${JARVIS_HOME:-$HOME/.jarvis}"
-LOG_DIR="${JARVIS_LOG_DIR:-$JARVIS_DIR/logs}"
-LEARNING_DIR="${JARVIS_LEARNING_DIR:-$JARVIS_DIR/learning}"
+ALERT_EMAIL="${Ironcliw_ALERT_EMAIL:-}"
+BUDGET_NAME="${Ironcliw_BUDGET_NAME:-jarvis-hybrid-cloud-budget}"
+Ironcliw_DIR="${Ironcliw_HOME:-$HOME/.jarvis}"
+LOG_DIR="${Ironcliw_LOG_DIR:-$Ironcliw_DIR/logs}"
+LEARNING_DIR="${Ironcliw_LEARNING_DIR:-$Ironcliw_DIR/learning}"
 
 # Budget thresholds (configurable)
 BUDGET_AMOUNT_1="${BUDGET_THRESHOLD_1:-20}"
@@ -78,7 +78,7 @@ validate_email() {
 
 echo ""
 echo "=========================================="
-echo "💰 JARVIS Cost Monitoring Setup (Advanced)"
+echo "💰 Ironcliw Cost Monitoring Setup (Advanced)"
 echo "=========================================="
 echo ""
 
@@ -90,8 +90,8 @@ if [ -z "$PROJECT_ID" ]; then
 fi
 
 if [ -z "$ALERT_EMAIL" ]; then
-    log_warning "JARVIS_ALERT_EMAIL not set - email alerts will be disabled"
-    log_info "Set via: export JARVIS_ALERT_EMAIL=your-email@example.com"
+    log_warning "Ironcliw_ALERT_EMAIL not set - email alerts will be disabled"
+    log_info "Set via: export Ironcliw_ALERT_EMAIL=your-email@example.com"
 fi
 
 log_info "Configuration:"
@@ -111,14 +111,14 @@ log_info "Creating directory structure..."
 
 mkdir -p "$LOG_DIR"
 mkdir -p "$LEARNING_DIR"
-mkdir -p "$JARVIS_DIR/config"
-mkdir -p "$JARVIS_DIR/gcp"
+mkdir -p "$Ironcliw_DIR/config"
+mkdir -p "$Ironcliw_DIR/gcp"
 
 log_success "Directories created:"
 echo "   Logs: $LOG_DIR"
 echo "   Learning: $LEARNING_DIR"
-echo "   Config: $JARVIS_DIR/config"
-echo "   GCP: $JARVIS_DIR/gcp"
+echo "   Config: $Ironcliw_DIR/config"
+echo "   GCP: $Ironcliw_DIR/gcp"
 
 # ============================================================================
 # 2. VALIDATE GCP CLI
@@ -173,7 +173,7 @@ fi
 log_success "Billing account: $BILLING_ACCOUNT"
 
 # Create budget configuration file
-BUDGET_CONFIG="$JARVIS_DIR/config/budget_config.json"
+BUDGET_CONFIG="$Ironcliw_DIR/config/budget_config.json"
 
 create_budget_json() {
     local budget_amount=$1
@@ -259,7 +259,7 @@ log_info "Setting up email notifications..."
 
 if [ -n "$ALERT_EMAIL" ] && validate_email "$ALERT_EMAIL"; then
     # Create Cloud Function for email notifications
-    FUNCTION_DIR="$JARVIS_DIR/functions/budget-alerts"
+    FUNCTION_DIR="$Ironcliw_DIR/functions/budget-alerts"
     mkdir -p "$FUNCTION_DIR"
 
     # Create Cloud Function code
@@ -284,7 +284,7 @@ def process_budget_alert(event, context):
     threshold = (cost_amount / budget_amount * 100) if budget_amount > 0 else 0
 
     # Send email via SendGrid
-    alert_email = os.environ.get('JARVIS_ALERT_EMAIL')
+    alert_email = os.environ.get('Ironcliw_ALERT_EMAIL')
     sendgrid_key = os.environ.get('SENDGRID_API_KEY')
 
     if not alert_email or not sendgrid_key:
@@ -294,7 +294,7 @@ def process_budget_alert(event, context):
     message = Mail(
         from_email='noreply@jarvis-ai.cloud',
         to_emails=alert_email,
-        subject=f'⚠️ JARVIS Budget Alert: {budget_name}',
+        subject=f'⚠️ Ironcliw Budget Alert: {budget_name}',
         html_content=f'''
         <h2>🚨 Budget Alert Triggered</h2>
         <p><strong>Budget:</strong> {budget_name}</p>
@@ -324,7 +324,7 @@ EOF
     echo "     --runtime python311 \\"
     echo "     --trigger-topic budget-alerts \\"
     echo "     --entry-point process_budget_alert \\"
-    echo "     --set-env-vars JARVIS_ALERT_EMAIL=$ALERT_EMAIL,SENDGRID_API_KEY=<your-key>"
+    echo "     --set-env-vars Ironcliw_ALERT_EMAIL=$ALERT_EMAIL,SENDGRID_API_KEY=<your-key>"
 
 else
     log_warning "Email not configured - skipping email notifications"
@@ -347,12 +347,12 @@ if [ ! -f "$CLEANUP_SCRIPT" ]; then
     # Create cleanup script if it doesn't exist
     cat > "$CLEANUP_SCRIPT" <<'CLEANUP_EOF'
 #!/bin/bash
-# Automated cleanup of orphaned JARVIS VMs
+# Automated cleanup of orphaned Ironcliw VMs
 # Configured via environment variables
 
 PROJECT_ID="${GCP_PROJECT_ID:-}"
 MAX_AGE_HOURS="${ORPHANED_VM_MAX_AGE_HOURS:-6}"
-LOG_FILE="${JARVIS_LOG_DIR:-$HOME/.jarvis/logs}/cleanup.log"
+LOG_FILE="${Ironcliw_LOG_DIR:-$HOME/.jarvis/logs}/cleanup.log"
 
 echo "$(date): Starting orphaned VM cleanup..." >> "$LOG_FILE"
 
@@ -390,7 +390,7 @@ if crontab -l 2>/dev/null | grep -q "$CLEANUP_SCRIPT"; then
     log_success "Cron job already exists"
 else
     # Add cron job
-    (crontab -l 2>/dev/null; echo "# JARVIS Orphaned VM Cleanup"; echo "$CRON_CMD") | crontab -
+    (crontab -l 2>/dev/null; echo "# Ironcliw Orphaned VM Cleanup"; echo "$CRON_CMD") | crontab -
     log_success "Cron job added"
 fi
 
@@ -406,10 +406,10 @@ echo "   Max age: ${ORPHANED_VM_MAX_AGE}h"
 echo ""
 log_info "Saving configuration..."
 
-CONFIG_FILE="$JARVIS_DIR/config/cost_monitoring.env"
+CONFIG_FILE="$Ironcliw_DIR/config/cost_monitoring.env"
 
 cat > "$CONFIG_FILE" <<EOF
-# JARVIS Cost Monitoring Configuration
+# Ironcliw Cost Monitoring Configuration
 # Generated: $(date)
 
 # GCP Configuration
@@ -417,7 +417,7 @@ export GCP_PROJECT_ID="$PROJECT_ID"
 export GCP_BILLING_ACCOUNT="$BILLING_ACCOUNT"
 
 # Cost Monitoring
-export JARVIS_ALERT_EMAIL="${ALERT_EMAIL}"
+export Ironcliw_ALERT_EMAIL="${ALERT_EMAIL}"
 export BUDGET_THRESHOLD_1="$BUDGET_AMOUNT_1"
 export BUDGET_THRESHOLD_2="$BUDGET_AMOUNT_2"
 export BUDGET_THRESHOLD_3="$BUDGET_AMOUNT_3"
@@ -427,9 +427,9 @@ export CLEANUP_CRON_SCHEDULE="$CRON_SCHEDULE"
 export ORPHANED_VM_MAX_AGE_HOURS="$ORPHANED_VM_MAX_AGE"
 
 # Directories
-export JARVIS_HOME="$JARVIS_DIR"
-export JARVIS_LOG_DIR="$LOG_DIR"
-export JARVIS_LEARNING_DIR="$LEARNING_DIR"
+export Ironcliw_HOME="$Ironcliw_DIR"
+export Ironcliw_LOG_DIR="$LOG_DIR"
+export Ironcliw_LEARNING_DIR="$LEARNING_DIR"
 EOF
 
 log_success "Configuration saved: $CONFIG_FILE"
@@ -493,7 +493,7 @@ echo "   - WebSocket: ws://localhost:8010/hybrid/ws"
 echo ""
 
 echo "🔧 Next Steps:"
-echo "   1. Start JARVIS backend to initialize cost tracking"
+echo "   1. Start Ironcliw backend to initialize cost tracking"
 echo "   2. Monitor budgets: https://console.cloud.google.com/billing/$PROJECT_ID/budgets"
 if [ -n "$ALERT_EMAIL" ]; then
     echo "   3. Deploy email notification function (optional)"

@@ -1,8 +1,8 @@
-# JARVIS Windows Port - Technical Specification
+﻿# Ironcliw Windows Port - Technical Specification
 
 ## Executive Summary
 
-**Project:** Port JARVIS AI Assistant from macOS to Windows 10/11  
+**Project:** Port Ironcliw AI Assistant from macOS to Windows 10/11  
 **Target Hardware:** Acer Swift Neo (512GB SSD, 16GB RAM)  
 **Complexity:** **HARD** - Extensive platform dependencies, large codebase (~83k lines in unified_supervisor.py alone), multi-language stack  
 **Timeline Estimate:** 4-6 weeks for core functionality, 8-12 weeks for full feature parity
@@ -29,7 +29,7 @@
 └─────────────────────────────────────────────────────────────────────┘
          │
          ├── Backend (FastAPI)     port 8010
-         ├── JARVIS-Prime (LLM)    port 8000
+         ├── Ironcliw-Prime (LLM)    port 8000
          ├── Reactor-Core          port 8090
          ├── GCP Golden Image      (cloud inference)
          └── Frontend (React)      port 3000
@@ -137,10 +137,10 @@ Keychain verification
 
 #### **Option A: Remove Voice Unlock (Recommended for v1.0)**
 - **Pros:** Fastest path to working system, reduces complexity
-- **Cons:** Loses core JARVIS feature
+- **Cons:** Loses core Ironcliw feature
 - **Implementation:**
   - Create stub `voice_unlock_stub.py` that returns success
-  - Environment variable: `JARVIS_SKIP_VOICE_AUTH=true`
+  - Environment variable: `Ironcliw_SKIP_VOICE_AUTH=true`
   - Manual password entry for Windows Hello bypass
 
 #### **Option B: Windows Hello Integration**
@@ -455,8 +455,8 @@ system:
   
 paths:
   home: "%USERPROFILE%"
-  app_data: "%APPDATA%\\JARVIS"
-  temp: "%TEMP%\\JARVIS"
+  app_data: "%APPDATA%\\Ironcliw"
+  temp: "%TEMP%\\Ironcliw"
   
 permissions:
   require_admin: false
@@ -474,12 +474,12 @@ authentication:
 
 ```bash
 # .env.windows
-JARVIS_PLATFORM=windows
-JARVIS_SKIP_VOICE_AUTH=true
-JARVIS_SKIP_SWIFT_BRIDGE=true
-JARVIS_AUDIO_BACKEND=wasapi
-JARVIS_ML_BACKEND=directml
-JARVIS_CREDENTIAL_STORE=windows
+Ironcliw_PLATFORM=windows
+Ironcliw_SKIP_VOICE_AUTH=true
+Ironcliw_SKIP_SWIFT_BRIDGE=true
+Ironcliw_AUDIO_BACKEND=wasapi
+Ironcliw_ML_BACKEND=directml
+Ironcliw_CREDENTIAL_STORE=windows
 WINDOWS_NATIVE_DLL_PATH=backend/windows_native/bin/Release
 ```
 
@@ -498,7 +498,7 @@ No changes required.
 ### 6.1 New Directories
 
 ```
-JARVIS/
+Ironcliw/
 ├── backend/
 │   ├── platform/              # NEW - Platform abstraction layer
 │   │   ├── __init__.py
@@ -706,8 +706,8 @@ winget install Rustlang.Rust.MSVC
 winget install Microsoft.DotNet.SDK.8
 
 # Clone repository
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Create virtual environment
 python -m venv venv
@@ -881,7 +881,7 @@ This Windows port is a **HARD** but **achievable** project. The key success fact
 4. **C# Native Bridge** - Faster development than C++ for Windows APIs
 5. **Extensive Testing** - Automated + manual verification at each phase
 
-With the Acer Swift Neo's 16GB RAM and modern hardware, JARVIS should run well on Windows once ported. The GCP cloud inference architecture actually makes this easier since heavy LLM work stays in the cloud.
+With the Acer Swift Neo's 16GB RAM and modern hardware, Ironcliw should run well on Windows once ported. The GCP cloud inference architecture actually makes this easier since heavy LLM work stays in the cloud.
 
 **Estimated total effort:** 400-600 engineering hours  
 **Recommended team size:** 2-3 developers  

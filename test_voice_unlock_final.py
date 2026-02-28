@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Final test of JARVIS Voice Unlock System
+Final test of Ironcliw Voice Unlock System
 Tests the complete pipeline with all fixes applied
 """
 
@@ -21,7 +21,7 @@ async def test_voice_unlock():
     """Test the voice unlock system with a simulated unlock command"""
 
     logger.info("=" * 60)
-    logger.info("JARVIS VOICE UNLOCK SYSTEM - FINAL TEST")
+    logger.info("Ironcliw VOICE UNLOCK SYSTEM - FINAL TEST")
     logger.info("=" * 60)
 
     try:

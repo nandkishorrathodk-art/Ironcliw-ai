@@ -1,8 +1,8 @@
-# JARVIS Intelligent Multi-Space Vision System
+﻿# Ironcliw Intelligent Multi-Space Vision System
 
 ## 🚀 Overview
 
-The **Intelligent Multi-Space Vision System** is an advanced, adaptive query classification and routing system for JARVIS. It uses Claude AI to intelligently classify user queries and route them to the optimal processing pipeline, eliminating hardcoded patterns and continuously learning from user feedback.
+The **Intelligent Multi-Space Vision System** is an advanced, adaptive query classification and routing system for Ironcliw. It uses Claude AI to intelligently classify user queries and route them to the optimal processing pipeline, eliminating hardcoded patterns and continuously learning from user feedback.
 
 ### Key Features
 
@@ -280,7 +280,7 @@ pytest test_intelligent_system.py::TestIntegration -v
 The system is automatically used when you send vision queries:
 
 ```python
-# In your JARVIS session
+# In your Ironcliw session
 handler = vision_command_handler
 
 # Automatically classified and routed
@@ -534,7 +534,7 @@ For issues or questions:
 
 ## 📜 License
 
-Part of the JARVIS AI Assistant project. See main LICENSE file.
+Part of the Ironcliw AI Assistant project. See main LICENSE file.
 
 ---
 

@@ -1,14 +1,14 @@
-"""
-Startup Resilience Utilities - JARVIS-Specific Startup Integration
+﻿"""
+Startup Resilience Utilities - Ironcliw-Specific Startup Integration
 ===================================================================
 
-This module provides pre-configured resilience primitives for JARVIS startup,
+This module provides pre-configured resilience primitives for Ironcliw startup,
 making it easy to integrate graceful degradation, background recovery, and
 health probes into the startup sequence.
 
 Features:
 - Pre-configured health probes for Docker, Ollama, and Invincible Node
-- Factory functions for creating JARVIS-specific resilience components
+- Factory functions for creating Ironcliw-specific resilience components
 - StartupResilience coordinator for managing all startup-related resilience
 - Integration helpers for broadcasting progress and handling failures
 
@@ -1028,8 +1028,8 @@ class StartupResilience:
         
         # v219.0: Clear the hollow client flag so clients know to fall back
         # This is the shared state between kernel and clients
-        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
-        self.logger.info("[Resilience] v219.0 Cleared JARVIS_HOLLOW_CLIENT_ACTIVE (unhealthy)")
+        os.environ.pop("Ironcliw_HOLLOW_CLIENT_ACTIVE", None)
+        self.logger.info("[Resilience] v219.0 Cleared Ironcliw_HOLLOW_CLIENT_ACTIVE (unhealthy)")
 
     async def _on_invincible_node_healthy(self) -> None:
         """
@@ -1039,12 +1039,12 @@ class StartupResilience:
         self.logger.info("[Resilience] Invincible Node (GCP VM) is now healthy")
         
         # v219.0: Re-activate hollow client if we have the IP
-        invincible_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
-        invincible_port = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "8000")
+        invincible_ip = os.environ.get("Ironcliw_INVINCIBLE_NODE_IP", "")
+        invincible_port = os.environ.get("Ironcliw_INVINCIBLE_NODE_PORT", "8000")
         if invincible_ip:
-            os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
+            os.environ["Ironcliw_HOLLOW_CLIENT_ACTIVE"] = "true"
             prime_url = f"http://{invincible_ip}:{invincible_port}"
-            os.environ["JARVIS_PRIME_URL"] = prime_url
+            os.environ["Ironcliw_PRIME_URL"] = prime_url
             os.environ["GCP_PRIME_ENDPOINT"] = prime_url
             self.logger.info(f"[Resilience] v219.0 Re-activated hollow client: {prime_url}")
 
@@ -1059,12 +1059,12 @@ class StartupResilience:
             self._invincible_node_probe.reset()
         
         # v219.0: Re-activate hollow client after recovery
-        invincible_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
-        invincible_port = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "8000")
+        invincible_ip = os.environ.get("Ironcliw_INVINCIBLE_NODE_IP", "")
+        invincible_port = os.environ.get("Ironcliw_INVINCIBLE_NODE_PORT", "8000")
         if invincible_ip:
-            os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
+            os.environ["Ironcliw_HOLLOW_CLIENT_ACTIVE"] = "true"
             prime_url = f"http://{invincible_ip}:{invincible_port}"
-            os.environ["JARVIS_PRIME_URL"] = prime_url
+            os.environ["Ironcliw_PRIME_URL"] = prime_url
             os.environ["GCP_PRIME_ENDPOINT"] = prime_url
             self.logger.info(f"[Resilience] v219.0 Hollow client re-activated after recovery: {prime_url}")
 
@@ -1077,8 +1077,8 @@ class StartupResilience:
         self._set_recovery_pause_deadline("invincible node", self._invincible_node_recovery)
         
         # v219.0: Clear hollow client flag since recovery failed
-        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
-        self.logger.warning("[Resilience] v219.0 Cleared JARVIS_HOLLOW_CLIENT_ACTIVE (recovery failed)")
+        os.environ.pop("Ironcliw_HOLLOW_CLIENT_ACTIVE", None)
+        self.logger.warning("[Resilience] v219.0 Cleared Ironcliw_HOLLOW_CLIENT_ACTIVE (recovery failed)")
 
     async def _on_llm_upgraded(self) -> None:
         """Called when LLM mode is upgraded to cloud."""

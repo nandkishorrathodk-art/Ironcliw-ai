@@ -1,7 +1,7 @@
-"""
-JARVIS Neural Mesh - Legacy Agent Adapter
+﻿"""
+Ironcliw Neural Mesh - Legacy Agent Adapter
 
-Adapter class that wraps existing JARVIS agents to make them
+Adapter class that wraps existing Ironcliw agents to make them
 compatible with the Neural Mesh system.
 
 This allows existing agents to:
@@ -48,7 +48,7 @@ class LegacyAgentAdapter(BaseNeuralMeshAgent):
     """
     Adapter that wraps existing agents for Neural Mesh compatibility.
 
-    This adapter allows you to integrate existing JARVIS agents without
+    This adapter allows you to integrate existing Ironcliw agents without
     modifying their original code. Simply wrap them with this adapter
     and they gain full Neural Mesh capabilities.
 

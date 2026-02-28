@@ -1,5 +1,5 @@
-"""
-Autonomy Handler for JARVIS
+﻿"""
+Autonomy Handler for Ironcliw
 Manages autonomous mode activation and system integration
 """
 

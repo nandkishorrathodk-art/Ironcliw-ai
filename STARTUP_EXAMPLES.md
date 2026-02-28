@@ -1,4 +1,4 @@
-# 🚀 JARVIS Startup Examples - Goal Inference Integration
+﻿# 🚀 Ironcliw Startup Examples - Goal Inference Integration
 
 ## Quick Reference Guide
 
@@ -11,7 +11,7 @@ All Goal Inference configuration is now **fully automatic and intelligent**!
 ## 🤖 Method 1: Fully Automatic (Recommended)
 
 ### Scenario 1: First Time User
-**Goal**: Get JARVIS running with zero configuration
+**Goal**: Get Ironcliw running with zero configuration
 
 ```bash
 python start_system.py
@@ -20,19 +20,19 @@ python start_system.py
 **What happens:**
 - 🤖 **Auto-detects** this is your first run (no database)
 - 🎯 **Automatically selects** 'learning' preset for fast adaptation
-- ⚠️ **Automation disabled** - you're new, JARVIS needs to learn first
+- ⚠️ **Automation disabled** - you're new, Ironcliw needs to learn first
 - ✅ Auto-creates configuration
 - ✅ Initializes SQLite + ChromaDB databases
-- ✅ Starts JARVIS with all 10 components + Goal Inference
+- ✅ Starts Ironcliw with all 10 components + Goal Inference
 
 **Startup Output:**
 ```
 🎯 Auto-detected Goal Inference Preset: learning
    → First run detected, using 'learning' preset for fast adaptation
-   (Override with --goal-preset or JARVIS_GOAL_PRESET environment variable)
+   (Override with --goal-preset or Ironcliw_GOAL_PRESET environment variable)
 ⚠️ Goal Inference Automation: DISABLED
 
-🚀 Starting JARVIS...
+🚀 Starting Ironcliw...
 ✅ Goal Inference + Learning Database loaded
    • Goal Confidence: 0.75
    • Proactive Suggestions: True
@@ -66,7 +66,7 @@ python start_system.py --goal-preset learning
 - 🚀 Faster adaptation to your routines
 
 **Best for:**
-- First week of using JARVIS
+- First week of using Ironcliw
 - Teaching new routines
 - Onboarding new users
 
@@ -87,7 +87,7 @@ python start_system.py --goal-preset aggressive --enable-automation
 - ⚠️ **WARNING**: Will auto-execute actions with >95% confidence
 
 **Best for:**
-- Power users who trust JARVIS
+- Power users who trust Ironcliw
 - Highly repetitive workflows
 - Maximum productivity
 
@@ -131,7 +131,7 @@ python start_system.py --goal-preset performance
 **Best for:**
 - Powerful machines (16GB+ RAM)
 - Speed-critical workflows
-- Heavy JARVIS usage
+- Heavy Ironcliw usage
 
 ---
 
@@ -166,8 +166,8 @@ python start_system.py --goal-preset conservative --debug
 
 Add to `~/.bashrc` or `~/.zshrc`:
 ```bash
-export JARVIS_GOAL_PRESET=aggressive
-export JARVIS_GOAL_AUTOMATION=true
+export Ironcliw_GOAL_PRESET=aggressive
+export Ironcliw_GOAL_AUTOMATION=true
 ```
 
 Then just run:
@@ -187,12 +187,12 @@ python start_system.py
 **Goal**: Use different preset for this session only
 
 ```bash
-JARVIS_GOAL_PRESET=learning python start_system.py
+Ironcliw_GOAL_PRESET=learning python start_system.py
 ```
 
 Or override both preset and automation:
 ```bash
-JARVIS_GOAL_PRESET=conservative JARVIS_GOAL_AUTOMATION=false python start_system.py
+Ironcliw_GOAL_PRESET=conservative Ironcliw_GOAL_AUTOMATION=false python start_system.py
 ```
 
 **What happens:**
@@ -225,7 +225,7 @@ python start_system.py [flags]
 --verbose             # Verbose logging
 --debug               # Debug mode
 --port 8000           # Backend port
---restart             # Restart JARVIS
+--restart             # Restart Ironcliw
 ```
 
 ---
@@ -236,7 +236,7 @@ python start_system.py [flags]
 ```bash
 ./start_jarvis.sh learning
 ```
-- Let JARVIS observe your patterns
+- Let Ironcliw observe your patterns
 - Review suggestions but don't enable automation yet
 - Check metrics weekly
 
@@ -246,21 +246,21 @@ python start_system.py [flags]
 ```
 - Switch to balanced mode
 - Keep automation disabled
-- JARVIS has learned your patterns now
+- Ironcliw has learned your patterns now
 
 ### Month 2+: Aggressive or Custom
 ```bash
 ./start_jarvis.sh aggressive --enable-automation
 ```
 - Enable automation for trusted actions
-- JARVIS is now reliable and personalized
+- Ironcliw is now reliable and personalized
 - Fine-tune with `configure_goal_inference.py` if needed
 
 ---
 
 ## 🔍 Verification
 
-After starting JARVIS, check the startup logs:
+After starting Ironcliw, check the startup logs:
 
 ```
 ✅ Goal Inference + Learning Database loaded
@@ -281,13 +281,13 @@ After starting JARVIS, check the startup logs:
 **Solution:**
 ```bash
 # Check environment variable
-echo $JARVIS_GOAL_PRESET
+echo $Ironcliw_GOAL_PRESET
 
 # Clear it if set incorrectly
-unset JARVIS_GOAL_PRESET
+unset Ironcliw_GOAL_PRESET
 
 # Or override for this session
-JARVIS_GOAL_PRESET=balanced ./start_jarvis.sh
+Ironcliw_GOAL_PRESET=balanced ./start_jarvis.sh
 ```
 
 ### Issue: Automation enabled when I don't want it
@@ -297,7 +297,7 @@ JARVIS_GOAL_PRESET=balanced ./start_jarvis.sh
 ./start_jarvis.sh balanced --disable-automation
 
 # Or clear environment variable
-unset JARVIS_GOAL_AUTOMATION
+unset Ironcliw_GOAL_AUTOMATION
 ```
 
 ### Issue: Config not updating
@@ -346,7 +346,7 @@ python start_system.py --goal-preset aggressive --enable-automation
 **🔧 Production ready (Environment Variables):**
 ```bash
 # Add to .bashrc/.zshrc
-export JARVIS_GOAL_PRESET=balanced
+export Ironcliw_GOAL_PRESET=balanced
 
 # Then just:
 python start_system.py

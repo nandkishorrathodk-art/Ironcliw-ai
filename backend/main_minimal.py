@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Minimal JARVIS backend for testing - bypasses import errors
+Minimal Ironcliw backend for testing - bypasses import errors
 """
 import os
 import sys
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     global _upgrader
     
     logger.info("=" * 60)
-    logger.info("🚀 Starting JARVIS Minimal Backend")
+    logger.info("🚀 Starting Ironcliw Minimal Backend")
     logger.info("=" * 60)
     logger.info("📌 MODE: MINIMAL - Basic functionality only")
     logger.info("⏳ This is temporary while full system initializes")
@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="JARVIS Minimal Backend", 
+    title="Ironcliw Minimal Backend", 
     version="1.0.0",
     lifespan=lifespan
 )
@@ -91,7 +91,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"status": "JARVIS Minimal Backend Running"}
+    return {"status": "Ironcliw Minimal Backend Running"}
 
 
 @app.get("/health/ping")
@@ -170,10 +170,10 @@ async def audio_config():
 
 @app.post("/voice/jarvis/activate")
 async def activate_jarvis():
-    logger.info("✅ JARVIS activated in minimal mode")
+    logger.info("✅ Ironcliw activated in minimal mode")
     logger.info("  📌 Basic voice commands available")
     logger.info("  ⏳ Advanced features will activate when full mode is ready")
-    return {"success": True, "message": "JARVIS activated in minimal mode"}
+    return {"success": True, "message": "Ironcliw activated in minimal mode"}
 
 
 @app.post("/audio/ml/predict")
@@ -249,5 +249,5 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8010")))
     args = parser.parse_args()
 
-    logger.info(f"Starting JARVIS Minimal Backend on port {args.port}")
+    logger.info(f"Starting Ironcliw Minimal Backend on port {args.port}")
     uvicorn.run(app, host="0.0.0.0", port=args.port)

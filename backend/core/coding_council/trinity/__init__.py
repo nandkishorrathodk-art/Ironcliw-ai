@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Trinity Module - Gaps #1-7
 ==================================
 
@@ -11,7 +11,7 @@ Cross-repo Trinity integration for Coding Council:
 - Gap #6: Component discovery and health
 - Gap #7: Graceful degradation on component failure
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from .multi_transport import (

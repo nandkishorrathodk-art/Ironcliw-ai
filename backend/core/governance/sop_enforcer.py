@@ -1,8 +1,8 @@
-"""
+﻿"""
 SOP Enforcer - Clinical-Grade Architectural Discipline
 =======================================================
 
-Implements the "Measure Twice, Cut Once" philosophy by forcing JARVIS to
+Implements the "Measure Twice, Cut Once" philosophy by forcing Ironcliw to
 create a structured Design Plan before writing any code.
 
 Inspired by MetaGPT's SOP patterns, this module provides:
@@ -16,7 +16,7 @@ Integration:
     When a coding task is detected, execution is blocked until a valid design plan
     is provided and approved.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -77,67 +77,67 @@ class SOPEnforcerConfig:
 
     # Enforcement settings
     enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_ENFORCER_ENABLED", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_ENFORCER_ENABLED", True)
     )
     strict_mode: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_STRICT_MODE", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_STRICT_MODE", True)
     )
 
     # Complexity thresholds
     complexity_threshold: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_SOP_COMPLEXITY_THRESHOLD", 0.5)
+        default_factory=lambda: _get_env_float("Ironcliw_SOP_COMPLEXITY_THRESHOLD", 0.5)
     )
     min_files_for_plan: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MIN_FILES_FOR_PLAN", 2)
+        default_factory=lambda: _get_env_int("Ironcliw_SOP_MIN_FILES_FOR_PLAN", 2)
     )
 
     # Plan validation
     require_goal: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_REQUIRE_GOAL", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_REQUIRE_GOAL", True)
     )
     require_context: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_REQUIRE_CONTEXT", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_REQUIRE_CONTEXT", True)
     )
     require_proposed_changes: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_REQUIRE_CHANGES", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_REQUIRE_CHANGES", True)
     )
     require_risk_assessment: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_REQUIRE_RISKS", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_REQUIRE_RISKS", True)
     )
     require_test_plan: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_REQUIRE_TESTS", False)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_REQUIRE_TESTS", False)
     )
 
     # Quality thresholds
     min_goal_length: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MIN_GOAL_LENGTH", 20)
+        default_factory=lambda: _get_env_int("Ironcliw_SOP_MIN_GOAL_LENGTH", 20)
     )
     min_context_length: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MIN_CONTEXT_LENGTH", 50)
+        default_factory=lambda: _get_env_int("Ironcliw_SOP_MIN_CONTEXT_LENGTH", 50)
     )
     min_changes_count: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MIN_CHANGES_COUNT", 1)
+        default_factory=lambda: _get_env_int("Ironcliw_SOP_MIN_CHANGES_COUNT", 1)
     )
     min_risks_count: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MIN_RISKS_COUNT", 1)
+        default_factory=lambda: _get_env_int("Ironcliw_SOP_MIN_RISKS_COUNT", 1)
     )
 
     # Plan caching
     cache_plans: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_CACHE_PLANS", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_CACHE_PLANS", True)
     )
     plan_cache_ttl_seconds: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_PLAN_CACHE_TTL", 3600)
+        default_factory=lambda: _get_env_int("Ironcliw_SOP_PLAN_CACHE_TTL", 3600)
     )
 
     # Cross-repo integration
     cross_repo_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_CROSS_REPO", True)
+        default_factory=lambda: _get_env_bool("Ironcliw_SOP_CROSS_REPO", True)
     )
 
     # Bypass settings
     bypass_keywords: List[str] = field(
-        default_factory=lambda: _get_env("JARVIS_SOP_BYPASS_KEYWORDS", "hotfix,urgent,emergency").split(",")
+        default_factory=lambda: _get_env("Ironcliw_SOP_BYPASS_KEYWORDS", "hotfix,urgent,emergency").split(",")
     )
 
 
@@ -212,7 +212,7 @@ class DesignPlan(BaseModel):
     """
     Complete design plan for a coding task.
 
-    This is the "Clinical-Grade" plan that JARVIS must create before writing code.
+    This is the "Clinical-Grade" plan that Ironcliw must create before writing code.
     It enforces the "Measure Twice, Cut Once" philosophy.
     """
     plan_id: str = Field(default_factory=lambda: uuid4().hex)
@@ -280,7 +280,7 @@ class ThinkingProtocol(ABC):
     """
     Abstract protocol for structured thinking before code execution.
 
-    This enforces that JARVIS "thinks before acting" by requiring a structured
+    This enforces that Ironcliw "thinks before acting" by requiring a structured
     thought process documented in a DesignPlan.
     """
 
@@ -318,16 +318,16 @@ class ThinkingProtocol(ABC):
         pass
 
 
-class JARVISThinkingProtocol(ThinkingProtocol):
+class IroncliwThinkingProtocol(ThinkingProtocol):
     """
-    JARVIS implementation of the ThinkingProtocol.
+    Ironcliw implementation of the ThinkingProtocol.
 
     Uses LLM to generate structured design plans and validates them
     against quality thresholds.
     """
 
     # Prompt template for plan generation
-    PLAN_GENERATION_PROMPT = """You are JARVIS, a clinical-grade AI assistant. Before writing any code,
+    PLAN_GENERATION_PROMPT = """You are Ironcliw, a clinical-grade AI assistant. Before writing any code,
 you MUST create a comprehensive Design Plan.
 
 ## Task
@@ -675,7 +675,7 @@ class SOPEnforcer:
         thinking_protocol: Optional[ThinkingProtocol] = None,
     ):
         self.config = config or SOPEnforcerConfig()
-        self.thinking = thinking_protocol or JARVISThinkingProtocol(self.config)
+        self.thinking = thinking_protocol or IroncliwThinkingProtocol(self.config)
         self.analyzer = ComplexityAnalyzer(self.config)
 
         # State
@@ -975,7 +975,7 @@ __all__ = [
 
     # Core Classes
     "ThinkingProtocol",
-    "JARVISThinkingProtocol",
+    "IroncliwThinkingProtocol",
     "ComplexityAnalyzer",
     "SOPEnforcer",
 

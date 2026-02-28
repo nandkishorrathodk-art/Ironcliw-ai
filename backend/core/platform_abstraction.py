@@ -1,7 +1,7 @@
-"""
+﻿"""
 Platform Abstraction Layer - Platform Detection Module
 
-This module provides cross-platform detection capabilities for JARVIS,
+This module provides cross-platform detection capabilities for Ironcliw,
 enabling support for macOS, Windows, and Linux.
 
 Created: 2026-02-22
@@ -16,7 +16,7 @@ import os
 
 
 class SupportedPlatform(Enum):
-    """Enum representing platforms supported by JARVIS."""
+    """Enum representing platforms supported by Ironcliw."""
     MACOS = "macos"
     WINDOWS = "windows"
     LINUX = "linux"
@@ -28,7 +28,7 @@ class PlatformDetector:
     Singleton class for detecting and querying the current platform.
     
     This class provides a centralized way to detect the operating system
-    and query platform-specific information throughout JARVIS.
+    and query platform-specific information throughout Ironcliw.
     
     Usage:
         detector = PlatformDetector()
@@ -173,7 +173,7 @@ class PlatformDetector:
     
     def is_supported(self) -> bool:
         """
-        Check if the current platform is supported by JARVIS.
+        Check if the current platform is supported by Ironcliw.
         
         Returns:
             bool: True if platform is supported, False otherwise
@@ -182,7 +182,7 @@ class PlatformDetector:
     
     def get_config_dir(self) -> str:
         """
-        Get the platform-specific configuration directory for JARVIS.
+        Get the platform-specific configuration directory for Ironcliw.
         
         Returns:
             str: Path to the configuration directory
@@ -191,16 +191,16 @@ class PlatformDetector:
             # Unix-like: ~/.jarvis
             return os.path.expanduser("~/.jarvis")
         elif self.is_windows():
-            # Windows: %APPDATA%\JARVIS
+            # Windows: %APPDATA%\Ironcliw
             appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
-            return os.path.join(appdata, "JARVIS")
+            return os.path.join(appdata, "Ironcliw")
         else:
             # Fallback to current directory
             return os.path.join(os.getcwd(), ".jarvis")
     
     def get_log_dir(self) -> str:
         """
-        Get the platform-specific log directory for JARVIS.
+        Get the platform-specific log directory for Ironcliw.
         
         Returns:
             str: Path to the log directory
@@ -209,14 +209,14 @@ class PlatformDetector:
             # Unix-like: ~/.jarvis/logs
             return os.path.join(self.get_config_dir(), "logs")
         elif self.is_windows():
-            # Windows: %APPDATA%\JARVIS\logs
+            # Windows: %APPDATA%\Ironcliw\logs
             return os.path.join(self.get_config_dir(), "logs")
         else:
             return os.path.join(self.get_config_dir(), "logs")
     
     def get_data_dir(self) -> str:
         """
-        Get the platform-specific data directory for JARVIS.
+        Get the platform-specific data directory for Ironcliw.
         
         Returns:
             str: Path to the data directory
@@ -225,29 +225,29 @@ class PlatformDetector:
             # Unix-like: ~/.jarvis/data
             return os.path.join(self.get_config_dir(), "data")
         elif self.is_windows():
-            # Windows: %APPDATA%\JARVIS\data
+            # Windows: %APPDATA%\Ironcliw\data
             return os.path.join(self.get_config_dir(), "data")
         else:
             return os.path.join(self.get_config_dir(), "data")
     
     def get_cache_dir(self) -> str:
         """
-        Get the platform-specific cache directory for JARVIS.
+        Get the platform-specific cache directory for Ironcliw.
         
         Returns:
             str: Path to the cache directory
         """
         if self.is_macos():
-            # macOS: ~/Library/Caches/JARVIS
-            return os.path.expanduser("~/Library/Caches/JARVIS")
+            # macOS: ~/Library/Caches/Ironcliw
+            return os.path.expanduser("~/Library/Caches/Ironcliw")
         elif self.is_linux():
             # Linux: ~/.cache/jarvis
             xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
             return os.path.join(xdg_cache, "jarvis")
         elif self.is_windows():
-            # Windows: %LOCALAPPDATA%\JARVIS\Cache
+            # Windows: %LOCALAPPDATA%\Ironcliw\Cache
             localappdata = os.environ.get("LOCALAPPDATA", os.path.join(os.environ.get("APPDATA", ""), "..", "Local"))
-            return os.path.join(localappdata, "JARVIS", "Cache")
+            return os.path.join(localappdata, "Ironcliw", "Cache")
         else:
             return os.path.join(self.get_config_dir(), "cache")
     
@@ -259,7 +259,7 @@ class PlatformDetector:
         """Human-readable string representation."""
         info = self.get_platform_info()
         return (
-            f"JARVIS Platform: {self.get_platform_name()}\n"
+            f"Ironcliw Platform: {self.get_platform_name()}\n"
             f"System: {info.get('system', 'unknown')}\n"
             f"Release: {info.get('release', 'unknown')}\n"
             f"Architecture: {info.get('architecture', 'unknown')}"

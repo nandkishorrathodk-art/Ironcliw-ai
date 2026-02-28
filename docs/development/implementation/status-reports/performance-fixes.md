@@ -1,4 +1,4 @@
-# JARVIS Performance Fixes Summary
+﻿# Ironcliw Performance Fixes Summary
 
 ## Issues Fixed
 
@@ -18,7 +18,7 @@
 - Backoff multiplier of 1.5x between attempts
 - Max delay of 30 seconds
 
-### 4. Slow JARVIS Wake Word Response ✅
+### 4. Slow Ironcliw Wake Word Response ✅
 **Problem**: Backend was attempting text-to-speech, causing delays in response.
 **Fix**: 
 - Removed backend TTS for wake word activation
@@ -29,7 +29,7 @@
 **Problem**: Smart startup manager was logging high CPU warnings too frequently.
 **Fix**: Changed to log only when reaching 3 consecutive high readings (not on every high reading).
 
-## How to Start JARVIS
+## How to Start Ironcliw
 
 1. **Start Backend First**:
    ```bash
@@ -58,8 +58,8 @@
 
 ## Voice Commands
 
-- Say "Hey JARVIS" to activate
-- JARVIS will respond with "Yes, sir?" immediately
+- Say "Hey Ironcliw" to activate
+- Ironcliw will respond with "Yes, sir?" immediately
 - Then give your command
 - Available commands: weather, time, calculations, system control, etc.
 

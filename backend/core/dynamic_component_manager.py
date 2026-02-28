@@ -1,5 +1,5 @@
-"""
-JARVIS Dynamic Component Management System
+﻿"""
+Ironcliw Dynamic Component Management System
 ==========================================
 
 Revolutionary dynamic resource management system that:
@@ -13,7 +13,7 @@ Memory Target: 4.8GB → 1.9GB (60% reduction)
 Response Time: 200ms → 100ms (50% faster)
 Max Components: 8 → Unlimited
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0
 Date: 2025-10-04
 """
@@ -140,7 +140,7 @@ class ARM64Vectorizer:
         self._init_default_vocabulary()
 
     def _init_default_vocabulary(self):
-        """Initialize with JARVIS-specific vocabulary"""
+        """Initialize with Ironcliw-specific vocabulary"""
         common_words = [
             'weather', 'time', 'reminder', 'email', 'search', 'open', 'close',
             'lock', 'unlock', 'screenshot', 'vision', 'analyze', 'brightness',
@@ -1928,7 +1928,7 @@ class DynamicComponentManager:
         # Check if we should trigger cloud offloading
         # Trigger on MEDIUM pressure or HIGH/CRITICAL, or if specifically enabled for LOW
         cloud_trigger_pressure = [MemoryPressure.MEDIUM, MemoryPressure.HIGH, MemoryPressure.CRITICAL, MemoryPressure.EMERGENCY]
-        if os.getenv("JARVIS_CLOUD_OFFLOAD_AGGRESSIVE", "false").lower() == "true":
+        if os.getenv("Ironcliw_CLOUD_OFFLOAD_AGGRESSIVE", "false").lower() == "true":
             cloud_trigger_pressure.append(MemoryPressure.LOW)
 
         if pressure in cloud_trigger_pressure:
@@ -1977,9 +1977,9 @@ class DynamicComponentManager:
                 vm_manager.mark_cloud_offload_active(offload_reason)
 
                 # Set environment variables for ML routers to pick up
-                os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
-                os.environ["JARVIS_USE_CLOUD_ML"] = "true"
-                os.environ["JARVIS_CLOUD_OFFLOAD_REASON"] = offload_reason
+                os.environ["Ironcliw_PREFER_CLOUD_RUN"] = "true"
+                os.environ["Ironcliw_USE_CLOUD_ML"] = "true"
+                os.environ["Ironcliw_CLOUD_OFFLOAD_REASON"] = offload_reason
 
                 # Trigger async provisioning (fire and forget to not block main thread)
                 asyncio.create_task(self._provision_cloud_resources(vm_manager, offload_reason))
@@ -1998,8 +1998,8 @@ class DynamicComponentManager:
             # This catches the case where enabled property might be missing
             logger.warning(f"GCP VM Manager interface issue: {e}")
             # Fallback: try to set env vars anyway for ML routers
-            os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
-            os.environ["JARVIS_USE_CLOUD_ML"] = "true"
+            os.environ["Ironcliw_PREFER_CLOUD_RUN"] = "true"
+            os.environ["Ironcliw_USE_CLOUD_ML"] = "true"
         except Exception as e:
             logger.warning(f"Failed to trigger cloud offloading: {e}")
 
@@ -2080,7 +2080,7 @@ class DynamicComponentManager:
         """
         v86.0: Publish cloud offloading state to Trinity Protocol.
 
-        This enables JARVIS Prime and Reactor Core to be aware of
+        This enables Ironcliw Prime and Reactor Core to be aware of
         the cloud offloading status and coordinate ML routing.
 
         Args:

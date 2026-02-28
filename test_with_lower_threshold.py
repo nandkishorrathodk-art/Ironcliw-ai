@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test voice verification with lower threshold to see actual confidence."""
 
 import asyncio
@@ -54,7 +54,7 @@ async def test_threshold():
         print("   python backend/quick_voice_enhancement.py")
         print("\n2. After recording, re-enable BEAST MODE:")
         print("   python backend/enable_beast_mode_now.py")
-        print("\n3. Restart JARVIS and test again")
+        print("\n3. Restart Ironcliw and test again")
     else:
         print("\n1. Consider temporarily lowering threshold to 10%")
         print("2. System will learn and improve confidence over time")

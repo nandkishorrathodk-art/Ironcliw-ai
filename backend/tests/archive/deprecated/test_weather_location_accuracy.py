@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test OpenWeatherMap Location Detection Accuracy"""
 
 import asyncio
@@ -110,5 +110,5 @@ async def test_location_accuracy():
     print("- Hybrid system ensures weather is always available")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_location_accuracy())

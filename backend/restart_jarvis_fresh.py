@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Restart JARVIS with fresh code, ensuring old instances are stopped."""
+﻿#!/usr/bin/env python3
+"""Restart Ironcliw with fresh code, ensuring old instances are stopped."""
 
 import subprocess
 import time
@@ -7,11 +7,11 @@ import os
 import signal
 import sys
 
-print("🔄 Restarting JARVIS with fresh code...")
+print("🔄 Restarting Ironcliw with fresh code...")
 print("=" * 50)
 
-# Find all JARVIS-related processes
-print("\n1. Finding existing JARVIS processes...")
+# Find all Ironcliw-related processes
+print("\n1. Finding existing Ironcliw processes...")
 try:
     # Get all Python processes
     result = subprocess.run(
@@ -30,7 +30,7 @@ try:
                     processes.append((pid, line.strip()))
     
     if processes:
-        print(f"\nFound {len(processes)} JARVIS process(es):")
+        print(f"\nFound {len(processes)} Ironcliw process(es):")
         for pid, line in processes:
             print(f"  PID {pid}: {line[:100]}...")
             
@@ -49,7 +49,7 @@ try:
         print("\n3. Waiting for processes to stop...")
         time.sleep(2)
     else:
-        print("   No existing JARVIS processes found")
+        print("   No existing Ironcliw processes found")
         
 except Exception as e:
     print(f"Error checking processes: {e}")
@@ -75,18 +75,18 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(backend_dir)
 print(f"\n5. Working directory: {os.getcwd()}")
 
-# Start fresh JARVIS instance
-print("\n6. Starting fresh JARVIS instance on port 8000...")
+# Start fresh Ironcliw instance
+print("\n6. Starting fresh Ironcliw instance on port 8000...")
 print("   This will include all the audio fixes we just made")
 print("\n" + "=" * 50)
-print("Starting JARVIS...\n")
+print("Starting Ironcliw...\n")
 
 try:
     # Start on default port 8000 with all our fixes
     subprocess.run([sys.executable, "main.py"], check=False)
 except KeyboardInterrupt:
-    print("\n\n✅ JARVIS stopped by user")
+    print("\n\n✅ Ironcliw stopped by user")
 except Exception as e:
-    print(f"\n❌ Error starting JARVIS: {e}")
+    print(f"\n❌ Error starting Ironcliw: {e}")
 
 print("\n✅ Restart complete")

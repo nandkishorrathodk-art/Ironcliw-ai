@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Voice Unlock WebSocket Integration for JARVIS
+Voice Unlock WebSocket Integration for Ironcliw
 ============================================
 
-This module integrates the Voice Unlock system with JARVIS's main WebSocket server.
+This module integrates the Voice Unlock system with Ironcliw's main WebSocket server.
 """
 
 import asyncio
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceUnlockWebSocketHandler:
-    """Handles Voice Unlock WebSocket messages within JARVIS"""
+    """Handles Voice Unlock WebSocket messages within Ironcliw"""
     
     def __init__(self):
         self.clients: Dict[str, WebSocketServerProtocol] = {}
@@ -65,7 +65,7 @@ class VoiceUnlockWebSocketHandler:
             pass
     
     async def _handle_client_messages(self, websocket: WebSocketServerProtocol, client_id: str):
-        """Handle messages from JARVIS clients"""
+        """Handle messages from Ironcliw clients"""
         try:
             async for message in websocket:
                 try:
@@ -145,9 +145,9 @@ class VoiceUnlockWebSocketHandler:
 
 def integrate_with_jarvis_websocket(websocket_handler):
     """
-    Integrate Voice Unlock with JARVIS's main WebSocket handler
+    Integrate Voice Unlock with Ironcliw's main WebSocket handler
     
-    This function should be called from the main JARVIS WebSocket server
+    This function should be called from the main Ironcliw WebSocket server
     to add Voice Unlock functionality.
     """
     voice_handler = VoiceUnlockWebSocketHandler()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Complete Screen Lock/Unlock Testing Suite
 Tests both lock/unlock functionality and locked screen command detection
@@ -157,7 +157,7 @@ async def test_lock_variations():
 async def main():
     """Run all tests"""
     print("\n" + "="*80)
-    print("🧪 JARVIS SCREEN LOCK/UNLOCK COMPREHENSIVE TEST SUITE")
+    print("🧪 Ironcliw SCREEN LOCK/UNLOCK COMPREHENSIVE TEST SUITE")
     print("="*80)
 
     print("\n⚠️  IMPORTANT: This test will lock and unlock your screen multiple times.")

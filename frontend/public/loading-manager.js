@@ -1,5 +1,5 @@
-/**
- * JARVIS Advanced Loading Manager v87.0 - Trinity Ultra Edition
+﻿/**
+ * Ironcliw Advanced Loading Manager v87.0 - Trinity Ultra Edition
  *
  * ARCHITECTURE: Display-only client that trusts start_system.py as authority
  *
@@ -67,16 +67,16 @@ const PHASE_LABELS = {
     'marking_ready': { short: 'Ready', full: 'Finalizing' }
 };
 
-class JARVISLoadingManager {
+class IroncliwLoadingManager {
     constructor() {
         // v210.0: Enhanced port detection with dynamic discovery
         // ROOT CAUSE FIX: Instead of relying on potentially stale values,
         // we now discover the actual running ports dynamically.
         
         // Priority 1: Server-injected ports (most reliable when page is freshly served)
-        const injectedLoadingPort = window.JARVIS_LOADING_SERVER_PORT;
-        const injectedFrontendPort = window.JARVIS_FRONTEND_PORT;
-        const injectedBackendPort = window.JARVIS_BACKEND_PORT;
+        const injectedLoadingPort = window.Ironcliw_LOADING_SERVER_PORT;
+        const injectedFrontendPort = window.Ironcliw_FRONTEND_PORT;
+        const injectedBackendPort = window.Ironcliw_BACKEND_PORT;
         
         // Priority 2: Window location (may be stale if page is cached)
         const currentPort = parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
@@ -198,7 +198,7 @@ class JARVISLoadingManager {
                 icon: '🔍',
                 phase: 'cleanup',
                 expectedProgress: [3, 5],
-                substeps: ['Scanning PID table', 'Identifying JARVIS processes']
+                substeps: ['Scanning PID table', 'Identifying Ironcliw processes']
             },
             'scanning_ports': {
                 name: 'Port Scanning',
@@ -398,7 +398,7 @@ class JARVISLoadingManager {
                 icon: '🔗',
                 phase: 'initialization',
                 expectedProgress: [78, 80],
-                substeps: ['Connecting to JARVIS Prime (8002)', 'Reactor Core link', 'Neural Mesh coordination']
+                substeps: ['Connecting to Ironcliw Prime (8002)', 'Reactor Core link', 'Neural Mesh coordination']
             },
             // === v80.0: PROJECT TRINITY CROSS-REPO LOADING ===
             'v80_cross_repo_init': {
@@ -416,7 +416,7 @@ class JARVISLoadingManager {
                 substeps: ['Creating Trinity directories', 'Cloud SQL check']
             },
             'trinity_jarvis_body': {
-                name: 'Trinity: JARVIS Body',
+                name: 'Trinity: Ironcliw Body',
                 icon: '🦾',
                 phase: 'initialization',
                 expectedProgress: [82, 85],
@@ -589,7 +589,7 @@ class JARVISLoadingManager {
                 substeps: ['All systems operational']
             },
             'complete': {
-                name: 'JARVIS Online',
+                name: 'Ironcliw Online',
                 icon: '🚀',
                 phase: 'complete',
                 expectedProgress: [98, 100],
@@ -673,7 +673,7 @@ class JARVISLoadingManager {
                 substeps: ['Merging changes', 'Updating dependencies']
             },
             'zero_touch_restarting': {
-                name: 'Restarting JARVIS',
+                name: 'Restarting Ironcliw',
                 icon: '🔄',
                 phase: 'zero_touch',
                 expectedProgress: [70, 85],
@@ -732,7 +732,7 @@ class JARVISLoadingManager {
 
             // ===================================================================
             // v9.4: ADVANCED INTELLIGENCE STAGES
-            // Data Flywheel, JARVIS-Prime, Learning Goals, Reactor-Core, Neural Mesh
+            // Data Flywheel, Ironcliw-Prime, Learning Goals, Reactor-Core, Neural Mesh
             // ===================================================================
 
             // === Data Flywheel (Experience Collection & Training Data) ===
@@ -752,9 +752,9 @@ class JARVISLoadingManager {
                 detailFields: ['experiences', 'training_schedule', 'quality_threshold']
             },
 
-            // === JARVIS-Prime (Tier-0 Local Brain) ===
+            // === Ironcliw-Prime (Tier-0 Local Brain) ===
             'jarvis_prime_init': {
-                name: 'JARVIS-Prime Init',
+                name: 'Ironcliw-Prime Init',
                 icon: '🧠',
                 phase: 'initialization',
                 expectedProgress: [76, 78],
@@ -768,7 +768,7 @@ class JARVISLoadingManager {
                 substeps: ['Downloading model weights', 'Loading into memory']
             },
             'jarvis_prime_ready': {
-                name: 'JARVIS-Prime Active',
+                name: 'Ironcliw-Prime Active',
                 icon: '🧠',
                 phase: 'initialization',
                 expectedProgress: [82, 84],
@@ -873,11 +873,11 @@ class JARVISLoadingManager {
                 substeps: ['Registering production agents', 'Starting agent pool']
             },
             'neural_mesh_bridge': {
-                name: 'JARVIS Bridge',
+                name: 'Ironcliw Bridge',
                 icon: '🌉',
                 phase: 'initialization',
                 expectedProgress: [92, 93],
-                substeps: ['Connecting JARVIS systems', 'Cross-system integration']
+                substeps: ['Connecting Ironcliw systems', 'Cross-system integration']
             },
             'neural_mesh_ready': {
                 name: 'Neural Mesh Active',
@@ -980,7 +980,7 @@ class JARVISLoadingManager {
                 icon: '🔺',
                 phase: 'initialization',
                 expectedProgress: [70, 85],
-                substeps: ['JARVIS Body (execution)', 'J-Prime Mind (reasoning)', 'Reactor-Core Nerves (learning)'],
+                substeps: ['Ironcliw Body (execution)', 'J-Prime Mind (reasoning)', 'Reactor-Core Nerves (learning)'],
                 isUnifiedSupervisor: true,
                 components: ['jarvis', 'prime', 'reactor']
             },
@@ -1005,7 +1005,7 @@ class JARVISLoadingManager {
             // TRINITY COMPONENT STATUS (shown in loading page)
             // ===================================================================
             'trinity_jarvis': {
-                name: 'JARVIS Body',
+                name: 'Ironcliw Body',
                 icon: '🦾',
                 phase: 'initialization',
                 expectedProgress: [70, 75],
@@ -1038,7 +1038,7 @@ class JARVISLoadingManager {
             targetProgress: 0,
             stage: 'initializing',
             substage: null,
-            message: 'Initializing JARVIS...',
+            message: 'Initializing Ironcliw...',
             reconnectAttempts: 0,
             pollingInterval: null,
             pollingTimeout: null,       // For adaptive polling setTimeout
@@ -1083,7 +1083,7 @@ class JARVISLoadingManager {
                 status: 'inactive'
             },
 
-            // JARVIS-Prime (Tier-0 Local Brain)
+            // Ironcliw-Prime (Tier-0 Local Brain)
             jarvisPrime: {
                 active: false,
                 tier: 'unknown',
@@ -1301,7 +1301,7 @@ class JARVISLoadingManager {
             // Parallel Component Progress (individual bars)
             parallelComponents: {
                 jarvisPrime: {
-                    name: 'JARVIS Prime',
+                    name: 'Ironcliw Prime',
                     progress: 0,
                     status: 'pending',
                     phase: 'init',
@@ -1740,7 +1740,7 @@ class JARVISLoadingManager {
     }
 
     async init() {
-        console.log('[JARVIS] Loading Manager v210.0 starting...');
+        console.log('[Ironcliw] Loading Manager v210.0 starting...');
         console.log(`[Config] Initial loading server guess: ${this.config.hostname}:${this.config.loadingServerPort}`);
         console.log('[Mode] DISPLAY - trusts start_system.py as authority');
 
@@ -1767,7 +1767,7 @@ class JARVISLoadingManager {
         // Quick check: Skip loading if system already fully ready (backend + frontend + WebSocket)
         const fullyReady = await this.checkFullSystemReady();
         if (fullyReady) {
-            console.log('[JARVIS] ✅ Full system already ready - skipping loading screen');
+            console.log('[Ironcliw] ✅ Full system already ready - skipping loading screen');
             await this.quickRedirectToApp();
             return;
         }
@@ -1792,7 +1792,7 @@ class JARVISLoadingManager {
                     this.state.progress = 95;
                     this.state.targetProgress = 100;
                     this.state.stage = 'complete';
-                    this.state.message = 'JARVIS backend is ready! Waiting for frontend...';
+                    this.state.message = 'Ironcliw backend is ready! Waiting for frontend...';
                     
                     // Show backend fallback immediately
                     this._showBackendFallbackEarly = true;
@@ -1899,7 +1899,7 @@ class JARVISLoadingManager {
     async checkBackendHealth() {
         /**
          * Check if backend is already running and healthy.
-         * This allows skipping the loading screen if JARVIS is already up.
+         * This allows skipping the loading screen if Ironcliw is already up.
          */
         try {
             const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.backendPort}/health`;
@@ -2056,7 +2056,7 @@ class JARVISLoadingManager {
         
         // Update UI to show ready state
         if (this.elements.statusMessage) {
-            this.elements.statusMessage.textContent = 'JARVIS is online!';
+            this.elements.statusMessage.textContent = 'Ironcliw is online!';
         }
         if (this.elements.progressBar) {
             this.elements.progressBar.style.width = '100%';
@@ -2071,7 +2071,7 @@ class JARVISLoadingManager {
         // Brief delay for visual feedback, then redirect
         setTimeout(() => {
             const redirectUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
-            console.log(`[JARVIS] Redirecting to ${redirectUrl}`);
+            console.log(`[Ironcliw] Redirecting to ${redirectUrl}`);
             window.location.href = redirectUrl;
         }, 1000);
     }
@@ -2115,12 +2115,12 @@ class JARVISLoadingManager {
 
                             if (backendHealthy && frontendReady) {
                                 // Both services ready - complete and redirect to frontend
-                                console.log('[JARVIS] ✅ Stuck detection: All services ready, forcing completion');
+                                console.log('[Ironcliw] ✅ Stuck detection: All services ready, forcing completion');
                                 clearInterval(pollInterval);
 
                                 this.handleProgressUpdate({
                                     stage: 'complete',
-                                    message: 'JARVIS is online!',
+                                    message: 'Ironcliw is online!',
                                     progress: 100,
                                     metadata: {
                                         success: true,
@@ -2142,7 +2142,7 @@ class JARVISLoadingManager {
                                 // v6.0: Only give up if frontendOptional is set (increased from 60s to 120s)
                                 // CRITICAL: Don't auto-redirect to backend just because webpack is slow
                                 if (this.config.frontendOptional || stuckDuration >= 120000) {
-                                    console.log('[JARVIS] ✅ Stuck detection: Backend ready, completing without frontend');
+                                    console.log('[Ironcliw] ✅ Stuck detection: Backend ready, completing without frontend');
                                     clearInterval(pollInterval);
 
                                     // Show helpful message instead of redirecting to broken frontend
@@ -2204,12 +2204,12 @@ class JARVISLoadingManager {
                             return;
                         }
 
-                        console.log('[JARVIS] ✅ Full system ready via fallback polling');
+                        console.log('[Ironcliw] ✅ Full system ready via fallback polling');
                         clearInterval(pollInterval);
 
                         this.handleProgressUpdate({
                             stage: 'complete',
-                            message: 'JARVIS is online - All systems operational',
+                            message: 'Ironcliw is online - All systems operational',
                             progress: 100,
                             metadata: {
                                 success: true,
@@ -2949,7 +2949,7 @@ class JARVISLoadingManager {
                 this.updateAdvancedStatusPanel('flywheel');
             }
 
-            // JARVIS-Prime (Tier-0 Local Brain)
+            // Ironcliw-Prime (Tier-0 Local Brain)
             if (metadata.jarvis_prime || metadata.jarvisPrime) {
                 const jp = metadata.jarvis_prime || metadata.jarvisPrime;
                 this.state.jarvisPrime = {
@@ -2961,7 +2961,7 @@ class JARVISLoadingManager {
                     status: jp.status || 'inactive'
                 };
                 if (jp.active) {
-                    this.addLogEntry('Prime', `JARVIS-Prime ${jp.tier || 'local'}: ${jp.model || 'model'} loaded`, 'success');
+                    this.addLogEntry('Prime', `Ironcliw-Prime ${jp.tier || 'local'}: ${jp.model || 'model'} loaded`, 'success');
                 }
                 this.updateAdvancedStatusPanel('jarvis_prime');
             }
@@ -3189,7 +3189,7 @@ class JARVISLoadingManager {
                     if (cr.neural_mesh_active || cr.neuralMeshActive) connections.push(`Mesh:${cr.registered_agents || cr.registeredAgents || 0} agents`);
                     this.addLogEntry('CrossRepo', `Connected: ${connections.join(', ') || 'None'}`, 'success');
                 } else if (cr.jarvis_prime_connected || cr.jarvisPrimeConnected) {
-                    this.addLogEntry('CrossRepo', `JARVIS Prime connected (port ${cr.jarvis_prime_port || cr.jarvisPrimePort || 8002})`, 'success');
+                    this.addLogEntry('CrossRepo', `Ironcliw Prime connected (port ${cr.jarvis_prime_port || cr.jarvisPrimePort || 8002})`, 'success');
                 } else if (cr.neural_mesh_active || cr.neuralMeshActive) {
                     this.addLogEntry('CrossRepo', `Neural Mesh active: ${cr.registered_agents || cr.registeredAgents || 0} agents`, 'info');
                 }
@@ -3221,7 +3221,7 @@ class JARVISLoadingManager {
                 if (phase) {
                     const phaseNames = {
                         'infrastructure': 'Infrastructure Setup',
-                        'jarvis_body': 'JARVIS Body (Execution)',
+                        'jarvis_body': 'Ironcliw Body (Execution)',
                         'cross_repo_parallel': 'J-Prime + Reactor (Parallel)',
                         'trinity_sync': 'Trinity Sync',
                         'finalization': 'Finalization'
@@ -3308,7 +3308,7 @@ class JARVISLoadingManager {
                 // Log Trinity component status changes
                 for (const [name, comp] of Object.entries(components)) {
                     if (['jarvis', 'prime', 'reactor'].includes(name) && comp.status === 'complete') {
-                        const labels = { jarvis: 'JARVIS Body', prime: 'J-Prime Mind', reactor: 'Reactor-Core' };
+                        const labels = { jarvis: 'Ironcliw Body', prime: 'J-Prime Mind', reactor: 'Reactor-Core' };
                         this.addLogEntry('Trinity', `${labels[name] || name} ready`, 'success');
                     }
                 }
@@ -3438,7 +3438,7 @@ class JARVISLoadingManager {
 
             // Still proceed to main app after brief delay
             setTimeout(() => {
-                this.handleCompletion(success, redirectUrl, message || 'JARVIS partially ready', metadata);
+                this.handleCompletion(success, redirectUrl, message || 'Ironcliw partially ready', metadata);
             }, 2000);
         }
 
@@ -4003,7 +4003,7 @@ class JARVISLoadingManager {
     }
 
     /**
-     * Update JARVIS-Prime UI
+     * Update Ironcliw-Prime UI
      */
     updateJarvisPrimeUI(panel) {
         const grid = panel.querySelector('#ai-systems-grid');
@@ -4017,7 +4017,7 @@ class JARVISLoadingManager {
             item.innerHTML = `
                 <span class="security-icon">🧠</span>
                 <div class="security-info">
-                    <div class="security-label">JARVIS-Prime</div>
+                    <div class="security-label">Ironcliw-Prime</div>
                     <div class="security-status" id="prime-status-text">Initializing...</div>
                 </div>
             `;
@@ -4305,7 +4305,7 @@ class JARVISLoadingManager {
         }
 
         // v4.0: Keep subtitle in sync with phase for consistency
-        // The subtitle below JARVIS logo should match the connection status
+        // The subtitle below Ironcliw logo should match the connection status
         if (this.elements.subtitle) {
             const phaseMap = {
                 'connected': 'CONNECTED',
@@ -4414,7 +4414,7 @@ class JARVISLoadingManager {
             if (fastChecksPassed) {
                 const finalRedirectUrl = this._buildReadyRedirectUrl(redirectUrl);
                 this.elements.subtitle.textContent = 'SYSTEM READY';
-                this.elements.statusMessage.textContent = message || 'JARVIS is online!';
+                this.elements.statusMessage.textContent = message || 'Ironcliw is online!';
                 this.updateStatusText('System ready', 'ready');
                 this.state.progress = 100;
                 this.state.targetProgress = 100;
@@ -4512,7 +4512,7 @@ class JARVISLoadingManager {
 
         // Update UI to show completion
         this.elements.subtitle.textContent = 'SYSTEM READY';
-        this.elements.statusMessage.textContent = message || 'JARVIS is online!';
+        this.elements.statusMessage.textContent = message || 'Ironcliw is online!';
         this.updateStatusText('System ready', 'ready');
         this.state.progress = 100;
         this.state.targetProgress = 100;
@@ -4731,7 +4731,7 @@ class JARVISLoadingManager {
     /**
      * v182.0: Wait for Trinity components to be ready.
      *
-     * This ensures all Trinity components (JARVIS Body, J-Prime Mind, Reactor-Core)
+     * This ensures all Trinity components (Ironcliw Body, J-Prime Mind, Reactor-Core)
      * are fully initialized before proceeding with redirect.
      *
      * The unified_supervisor already waits for Trinity on the server side,
@@ -4766,7 +4766,7 @@ class JARVISLoadingManager {
                 const reactorReady = reactorStatus === 'complete' || reactorStatus === 'ready';
                 const reactorSkipped = reactorStatus === 'skipped' || reactorStatus === 'unavailable';
 
-                // JARVIS Body (backend) is REQUIRED
+                // Ironcliw Body (backend) is REQUIRED
                 // Prime and Reactor can be ready OR skipped/unavailable
                 const primeAcceptable = primeReady || primeSkipped;
                 const reactorAcceptable = reactorReady || reactorSkipped;
@@ -4779,7 +4779,7 @@ class JARVISLoadingManager {
 
                     if (notConfigured.length > 0) {
                         const message = `[Trinity Wait] ✓ Backend ready; ${notConfigured.join(' and ')} not configured`;
-                        console.log(message + ' (set JARVIS_PRIME_PATH/REACTOR_CORE_PATH if needed)');
+                        console.log(message + ' (set Ironcliw_PRIME_PATH/REACTOR_CORE_PATH if needed)');
                     } else {
                         console.log('[Trinity Wait] ✓ All Trinity components ready');
                     }
@@ -4789,7 +4789,7 @@ class JARVISLoadingManager {
 
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 console.log(`[Trinity Wait] Waiting... (${elapsed}s) - ` +
-                    `JARVIS:${jarvisReady}, Prime:${primeAcceptable}(ready:${primeReady},skipped:${primeSkipped}), ` +
+                    `Ironcliw:${jarvisReady}, Prime:${primeAcceptable}(ready:${primeReady},skipped:${primeSkipped}), ` +
                     `Reactor:${reactorAcceptable}(ready:${reactorReady},skipped:${reactorSkipped})`);
             }
 
@@ -6166,9 +6166,9 @@ class JARVISLoadingManager {
 
     _formatComponentName(componentName) {
         const names = {
-            'jarvis_prime': 'JARVIS Prime (Tier-0)',
+            'jarvis_prime': 'Ironcliw Prime (Tier-0)',
             'reactor_core': 'Reactor Core (ML)',
-            'jarvis': 'JARVIS (Main)',
+            'jarvis': 'Ironcliw (Main)',
         };
         return names[componentName] || componentName.replace(/_/g, ' ').toUpperCase();
     }
@@ -6297,10 +6297,10 @@ class JARVISLoadingManager {
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        window.jarvisLoader = new JARVISLoadingManager();
+        window.jarvisLoader = new IroncliwLoadingManager();
     });
 } else {
-    window.jarvisLoader = new JARVISLoadingManager();
+    window.jarvisLoader = new IroncliwLoadingManager();
 }
 
 // Cleanup on page unload

@@ -1,8 +1,8 @@
-"""
-Voice Unlock Integration for JARVIS API
+﻿"""
+Voice Unlock Integration for Ironcliw API
 ======================================
 
-This module integrates the Voice Unlock daemon with JARVIS's main API.
+This module integrates the Voice Unlock daemon with Ironcliw's main API.
 """
 
 import asyncio
@@ -198,7 +198,7 @@ async def initialize_voice_unlock():
 
 async def handle_voice_unlock_in_jarvis(command: str, jarvis_instance=None) -> dict:
     """
-    Handle voice unlock commands from JARVIS
+    Handle voice unlock commands from Ironcliw
 
     This should be called from unified_command_processor when
     voice unlock commands are detected.
@@ -250,7 +250,7 @@ async def handle_voice_unlock_in_jarvis(command: str, jarvis_instance=None) -> d
             logger.warning(f"Daemon connection failed (non-critical for unlock/lock): {e}")
             # Continue anyway for unlock/lock commands
 
-    # Map JARVIS commands to daemon commands
+    # Map Ironcliw commands to daemon commands
     if "enable voice unlock" in command_lower:
         result = await voice_unlock_connector.enable_monitoring()
         return {
@@ -321,7 +321,7 @@ async def handle_voice_unlock_in_jarvis(command: str, jarvis_instance=None) -> d
             return {
                 "type": "proximity_auth",
                 "action": "enroll_prompt",
-                "message": 'Sir, I need you to say "Hello JARVIS, this is [your name]" three times for voice enrollment.',
+                "message": 'Sir, I need you to say "Hello Ironcliw, this is [your name]" three times for voice enrollment.',
                 "requires_audio": True,
                 "success": True,
             }

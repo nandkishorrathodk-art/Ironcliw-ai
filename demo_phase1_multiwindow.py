@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Multi-Window Awareness - Phase 1 Demo
+Ironcliw Multi-Window Awareness - Phase 1 Demo
 Shows the MVP functionality in action
 """
 
@@ -13,29 +13,29 @@ sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
 from backend.vision.window_detector import WindowDetector
 from backend.vision.multi_window_capture import MultiWindowCapture
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
 
 async def demo_phase1():
     """Demonstrate Phase 1 multi-window capabilities"""
     
-    print("🚀 JARVIS Multi-Window Awareness - Phase 1 Demo")
+    print("🚀 Ironcliw Multi-Window Awareness - Phase 1 Demo")
     print("=" * 60)
     print("\nWelcome to the world's first Workspace Intelligence Agent!")
-    print("\nThis demo shows JARVIS understanding your entire workspace,")
+    print("\nThis demo shows Ironcliw understanding your entire workspace,")
     print("not just a single window.\n")
     
     # Initialize components
     detector = WindowDetector()
     capture_system = MultiWindowCapture()
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     # Demo 1: Window Detection
     print("📊 Demo 1: Real-Time Window Detection")
     print("-" * 40)
     
     windows = detector.get_all_windows()
-    print(f"\nJARVIS detects {len(windows)} open windows:")
+    print(f"\nIroncliw detects {len(windows)} open windows:")
     
     for i, window in enumerate(windows[:5]):
         focus_marker = "🎯" if window.is_focused else "  "
@@ -74,7 +74,7 @@ async def demo_phase1():
     # Demo 4: Natural Language Queries
     print("\n\n💬 Demo 4: Natural Language Understanding")
     print("-" * 40)
-    print("\nNow let's ask JARVIS about your workspace...\n")
+    print("\nNow let's ask Ironcliw about your workspace...\n")
     
     queries = [
         "What am I working on?",
@@ -86,14 +86,14 @@ async def demo_phase1():
     for query in queries:
         print(f"🎤 You: {query}")
         response = await workspace_intel.handle_workspace_command(query)
-        print(f"🤖 JARVIS: {response}")
+        print(f"🤖 Ironcliw: {response}")
         print()
         await asyncio.sleep(1)
     
     # Demo 5: Focus Change Detection
     print("\n📍 Demo 5: Real-Time Focus Tracking")
     print("-" * 40)
-    print("\nJARVIS will monitor window changes for 5 seconds.")
+    print("\nIroncliw will monitor window changes for 5 seconds.")
     print("Try switching between windows!\n")
     
     async def monitor_demo():
@@ -120,7 +120,7 @@ async def demo_phase1():
     # Summary
     print("\n\n🎉 Phase 1 Demo Complete!")
     print("=" * 60)
-    print("\n✅ What JARVIS Can Now Do:")
+    print("\n✅ What Ironcliw Can Now Do:")
     print("  • Detect all open windows across your workspace")
     print("  • Track which window has focus in real-time")
     print("  • Capture multiple windows efficiently")
@@ -132,8 +132,8 @@ async def demo_phase1():
     print("  • Smart query routing based on context")
     print("  • Workflow pattern learning")
     
-    print("\n💡 Try these commands with JARVIS:")
-    print('  • "Hey JARVIS, what am I working on?"')
+    print("\n💡 Try these commands with Ironcliw:")
+    print('  • "Hey Ironcliw, what am I working on?"')
     print('  • "Do I have any messages?"')
     print('  • "What windows are open?"')
     print('  • "Describe my current workspace"')

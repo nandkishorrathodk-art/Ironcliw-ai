@@ -1,4 +1,4 @@
-"""
+﻿"""
 Advanced macOS Video Capture System (v10.7)
 Production-grade implementation using PyObjC + AVFoundation
 
@@ -22,9 +22,9 @@ CRITICAL FIXES v10.7 (Jan 2026):
   → Thread-safe stats counters with properties
 
 - FIXED: Hardcoded timeouts replaced with environment variables
-  → JARVIS_CAPTURE_CALLBACK_DRAIN_TIMEOUT (default: 5.0s)
-  → JARVIS_CAPTURE_RUNLOOP_STOP_TIMEOUT (default: 2.0s)
-  → JARVIS_WATCHER_THREAD_STOP_TIMEOUT (default: 2.0s)
+  → Ironcliw_CAPTURE_CALLBACK_DRAIN_TIMEOUT (default: 5.0s)
+  → Ironcliw_CAPTURE_RUNLOOP_STOP_TIMEOUT (default: 2.0s)
+  → Ironcliw_WATCHER_THREAD_STOP_TIMEOUT (default: 2.0s)
 
 Features:
 - Native AVFoundation integration via PyObjC
@@ -85,13 +85,13 @@ except ImportError:
 # bypasses Python exception handling entirely.
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
-    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    _cached = os.environ.get("_Ironcliw_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
     import sys as _sys
     result = False
     if _sys.platform == "darwin":
-        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("Ironcliw_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
             pass
@@ -105,7 +105,7 @@ def _is_gui_session() -> bool:
                 result = cg.CGSessionCopyCurrentDictionary() is not None
             except Exception:
                 pass
-    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    os.environ["_Ironcliw_GUI_SESSION"] = "1" if result else "0"
     return result
 
 # Import PyObjC frameworks (gated behind GUI session check)
@@ -218,77 +218,77 @@ class EdgeCaseConfig:
     """Configuration for edge case resilience (all configurable via env vars)"""
     # Permission monitoring
     permission_check_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PERMISSION_CHECK_INTERVAL", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PERMISSION_CHECK_INTERVAL", "30.0"))
     )
     permission_popup_detection_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PERMISSION_POPUP_DETECTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PERMISSION_POPUP_DETECTION", "true").lower() == "true"
     )
 
     # Fullscreen handling
     fullscreen_check_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_FULLSCREEN_CHECK_INTERVAL", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_FULLSCREEN_CHECK_INTERVAL", "2.0"))
     )
     fullscreen_exit_wait: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_FULLSCREEN_EXIT_WAIT", "0.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_FULLSCREEN_EXIT_WAIT", "0.5"))
     )
     chrome_fullscreen_f11_detection: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_CHROME_F11_DETECTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_CHROME_F11_DETECTION", "true").lower() == "true"
     )
     video_player_detection_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VIDEO_PLAYER_DETECTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VIDEO_PLAYER_DETECTION", "true").lower() == "true"
     )
 
     # Display health monitoring
     display_health_check_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DISPLAY_HEALTH_INTERVAL", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DISPLAY_HEALTH_INTERVAL", "5.0"))
     )
     display_disconnect_recovery_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_DISPLAY_RECOVERY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_DISPLAY_RECOVERY", "true").lower() == "true"
     )
     display_wake_retry_count: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_DISPLAY_WAKE_RETRIES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_DISPLAY_WAKE_RETRIES", "3"))
     )
 
     # Black screen detection (adaptive thresholds)
     black_screen_brightness_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_BLACK_SCREEN_BRIGHTNESS", "0.02"))
+        default_factory=lambda: float(os.getenv("Ironcliw_BLACK_SCREEN_BRIGHTNESS", "0.02"))
     )
     black_screen_variance_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_BLACK_SCREEN_VARIANCE", "0.001"))
+        default_factory=lambda: float(os.getenv("Ironcliw_BLACK_SCREEN_VARIANCE", "0.001"))
     )
     black_screen_adaptive_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_BLACK_SCREEN_ADAPTIVE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_BLACK_SCREEN_ADAPTIVE", "true").lower() == "true"
     )
     black_screen_sample_count: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_BLACK_SCREEN_SAMPLES", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_BLACK_SCREEN_SAMPLES", "10"))
     )
 
     # System load & GPU monitoring
     gpu_monitoring_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_GPU_MONITORING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_GPU_MONITORING", "true").lower() == "true"
     )
     gpu_memory_warning_percent: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_GPU_MEM_WARNING", "80.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_GPU_MEM_WARNING", "80.0"))
     )
     gpu_utilization_warning_percent: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_GPU_UTIL_WARNING", "85.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_GPU_UTIL_WARNING", "85.0"))
     )
     load_prediction_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_LOAD_PREDICTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_LOAD_PREDICTION", "true").lower() == "true"
     )
     load_history_window: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_LOAD_HISTORY_WINDOW", "30"))
+        default_factory=lambda: int(os.getenv("Ironcliw_LOAD_HISTORY_WINDOW", "30"))
     )
 
     # Adaptive timeouts
     timeout_base_multiplier: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TIMEOUT_BASE_MULTIPLIER", "1.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TIMEOUT_BASE_MULTIPLIER", "1.0"))
     )
     timeout_max_multiplier: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TIMEOUT_MAX_MULTIPLIER", "3.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TIMEOUT_MAX_MULTIPLIER", "3.0"))
     )
     timeout_progressive_backoff: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TIMEOUT_PROGRESSIVE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TIMEOUT_PROGRESSIVE", "true").lower() == "true"
     )
 
 
@@ -425,7 +425,7 @@ class EdgeCaseResilienceManager:
             if not automation["granted"]:
                 # Automation is less critical - just a warning
                 result["recommendations"].append(
-                    "Grant Automation: Allow JARVIS to control other apps when prompted"
+                    "Grant Automation: Allow Ironcliw to control other apps when prompted"
                 )
 
             # Log any pending popups
@@ -1287,54 +1287,54 @@ class AdvancedCaptureConfig:
     """Dynamic configuration for macOS video capture - NO HARDCODING"""
 
     # Display settings
-    display_id: int = field(default_factory=lambda: int(os.getenv('JARVIS_CAPTURE_DISPLAY_ID', '0')))
+    display_id: int = field(default_factory=lambda: int(os.getenv('Ironcliw_CAPTURE_DISPLAY_ID', '0')))
 
     # Quality settings
-    target_fps: int = field(default_factory=lambda: int(os.getenv('JARVIS_CAPTURE_FPS', '30')))
-    resolution: str = field(default_factory=lambda: os.getenv('JARVIS_CAPTURE_RESOLUTION', '1920x1080'))
-    pixel_format: str = field(default_factory=lambda: os.getenv('JARVIS_CAPTURE_PIXEL_FORMAT', '32BGRA'))
+    target_fps: int = field(default_factory=lambda: int(os.getenv('Ironcliw_CAPTURE_FPS', '30')))
+    resolution: str = field(default_factory=lambda: os.getenv('Ironcliw_CAPTURE_RESOLUTION', '1920x1080'))
+    pixel_format: str = field(default_factory=lambda: os.getenv('Ironcliw_CAPTURE_PIXEL_FORMAT', '32BGRA'))
 
     # Performance settings
-    min_fps: int = field(default_factory=lambda: int(os.getenv('JARVIS_CAPTURE_MIN_FPS', '10')))
-    max_fps: int = field(default_factory=lambda: int(os.getenv('JARVIS_CAPTURE_MAX_FPS', '60')))
+    min_fps: int = field(default_factory=lambda: int(os.getenv('Ironcliw_CAPTURE_MIN_FPS', '10')))
+    max_fps: int = field(default_factory=lambda: int(os.getenv('Ironcliw_CAPTURE_MAX_FPS', '60')))
     enable_adaptive_quality: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_ADAPTIVE', 'true').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_ADAPTIVE', 'true').lower() == 'true'
     )
 
     # Memory settings
-    max_memory_mb: int = field(default_factory=lambda: int(os.getenv('JARVIS_CAPTURE_MAX_MEMORY_MB', '500')))
-    frame_buffer_size: int = field(default_factory=lambda: int(os.getenv('JARVIS_CAPTURE_BUFFER_SIZE', '10')))
+    max_memory_mb: int = field(default_factory=lambda: int(os.getenv('Ironcliw_CAPTURE_MAX_MEMORY_MB', '500')))
+    frame_buffer_size: int = field(default_factory=lambda: int(os.getenv('Ironcliw_CAPTURE_BUFFER_SIZE', '10')))
     enable_memory_monitoring: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_MEMORY_MONITOR', 'true').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_MEMORY_MONITOR', 'true').lower() == 'true'
     )
 
     # Capture settings
     capture_cursor: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_CURSOR', 'false').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_CURSOR', 'false').lower() == 'true'
     )
     capture_mouse_clicks: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_MOUSE_CLICKS', 'false').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_MOUSE_CLICKS', 'false').lower() == 'true'
     )
     discard_late_frames: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_DISCARD_LATE', 'true').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_DISCARD_LATE', 'true').lower() == 'true'
     )
 
     # Fallback settings
     enable_fallback_chain: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_FALLBACK', 'true').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_FALLBACK', 'true').lower() == 'true'
     )
     preferred_method: Optional[CaptureMethod] = field(
         default_factory=lambda: CaptureMethod(
-            os.getenv('JARVIS_CAPTURE_METHOD', 'avfoundation')
-        ) if os.getenv('JARVIS_CAPTURE_METHOD') else None
+            os.getenv('Ironcliw_CAPTURE_METHOD', 'avfoundation')
+        ) if os.getenv('Ironcliw_CAPTURE_METHOD') else None
     )
 
     # Diagnostics
     enable_diagnostics: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_DIAGNOSTICS', 'true').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_DIAGNOSTICS', 'true').lower() == 'true'
     )
     log_frame_metrics: bool = field(
-        default_factory=lambda: os.getenv('JARVIS_CAPTURE_LOG_METRICS', 'false').lower() == 'true'
+        default_factory=lambda: os.getenv('Ironcliw_CAPTURE_LOG_METRICS', 'false').lower() == 'true'
     )
 
     def get_resolution_tuple(self) -> Tuple[int, int]:
@@ -1841,8 +1841,8 @@ class AVFoundationCapture:
         logger.info("Stopping AVFoundation capture...")
 
         # Get configurable timeouts from environment
-        callback_drain_timeout = float(os.getenv('JARVIS_CAPTURE_CALLBACK_DRAIN_TIMEOUT', '5.0'))
-        runloop_stop_timeout = float(os.getenv('JARVIS_CAPTURE_RUNLOOP_STOP_TIMEOUT', '2.0'))
+        callback_drain_timeout = float(os.getenv('Ironcliw_CAPTURE_CALLBACK_DRAIN_TIMEOUT', '5.0'))
+        runloop_stop_timeout = float(os.getenv('Ironcliw_CAPTURE_RUNLOOP_STOP_TIMEOUT', '2.0'))
 
         try:
             # STEP 1: Signal delegate to stop processing new frames (FIRST!)
@@ -2302,19 +2302,19 @@ class VisualEventResult:
 class WatcherConfig:
     """Configuration for video watcher - NO HARDCODING"""
     window_id: int
-    fps: int = field(default_factory=lambda: int(os.getenv('JARVIS_WATCHER_DEFAULT_FPS', '5')))
-    priority: str = field(default_factory=lambda: os.getenv('JARVIS_WATCHER_PRIORITY', 'low'))
-    timeout: float = field(default_factory=lambda: float(os.getenv('JARVIS_WATCHER_TIMEOUT', '300.0')))
-    max_buffer_size: int = field(default_factory=lambda: int(os.getenv('JARVIS_WATCHER_BUFFER_SIZE', '10')))
+    fps: int = field(default_factory=lambda: int(os.getenv('Ironcliw_WATCHER_DEFAULT_FPS', '5')))
+    priority: str = field(default_factory=lambda: os.getenv('Ironcliw_WATCHER_PRIORITY', 'low'))
+    timeout: float = field(default_factory=lambda: float(os.getenv('Ironcliw_WATCHER_TIMEOUT', '300.0')))
+    max_buffer_size: int = field(default_factory=lambda: int(os.getenv('Ironcliw_WATCHER_BUFFER_SIZE', '10')))
 
     # v61.1 RETINA FOCUS: Target specific hardware display
     # 1 = Main Display, 2+ = Secondary/Virtual Display (Ghost Display)
     display_id: int = 1
 
     # Visual detection settings
-    enable_ocr: bool = field(default_factory=lambda: os.getenv('JARVIS_WATCHER_OCR', 'true').lower() == 'true')
-    enable_element_detection: bool = field(default_factory=lambda: os.getenv('JARVIS_WATCHER_ELEMENTS', 'true').lower() == 'true')
-    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('JARVIS_DETECTION_CONFIDENCE', '0.75')))
+    enable_ocr: bool = field(default_factory=lambda: os.getenv('Ironcliw_WATCHER_OCR', 'true').lower() == 'true')
+    enable_element_detection: bool = field(default_factory=lambda: os.getenv('Ironcliw_WATCHER_ELEMENTS', 'true').lower() == 'true')
+    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('Ironcliw_DETECTION_CONFIDENCE', '0.75')))
 
 
 # =============================================================================
@@ -2394,7 +2394,7 @@ def _resolve_ghost_display_width() -> int:
                 return dims[0]
     except Exception:
         pass
-    return int(os.getenv('JARVIS_GHOST_WIDTH', '1920'))
+    return int(os.getenv('Ironcliw_GHOST_WIDTH', '1920'))
 
 
 def _resolve_ghost_display_height() -> int:
@@ -2408,7 +2408,7 @@ def _resolve_ghost_display_height() -> int:
                 return dims[1]
     except Exception:
         pass
-    return int(os.getenv('JARVIS_GHOST_HEIGHT', '1080'))
+    return int(os.getenv('Ironcliw_GHOST_HEIGHT', '1080'))
 
 
 @dataclass
@@ -2428,26 +2428,26 @@ class MosaicWatcherConfig:
     display_height: int = field(default_factory=lambda: _resolve_ghost_display_height())
 
     # Capture settings (lower FPS acceptable since we only need to detect text)
-    fps: int = field(default_factory=lambda: int(os.getenv('JARVIS_MOSAIC_FPS', '5')))
-    max_buffer_size: int = field(default_factory=lambda: int(os.getenv('JARVIS_MOSAIC_BUFFER_SIZE', '5')))
+    fps: int = field(default_factory=lambda: int(os.getenv('Ironcliw_MOSAIC_FPS', '5')))
+    max_buffer_size: int = field(default_factory=lambda: int(os.getenv('Ironcliw_MOSAIC_BUFFER_SIZE', '5')))
 
     # Performance settings
-    resolution_scale: float = field(default_factory=lambda: float(os.getenv('JARVIS_MOSAIC_SCALE', '1.0')))
+    resolution_scale: float = field(default_factory=lambda: float(os.getenv('Ironcliw_MOSAIC_SCALE', '1.0')))
     capture_cursor: bool = False  # No cursor needed for text detection
 
     # Timeout
-    timeout: float = field(default_factory=lambda: float(os.getenv('JARVIS_MOSAIC_TIMEOUT', '300.0')))
+    timeout: float = field(default_factory=lambda: float(os.getenv('Ironcliw_MOSAIC_TIMEOUT', '300.0')))
 
     # OCR settings
     enable_ocr: bool = True
-    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('JARVIS_DETECTION_CONFIDENCE', '0.75')))
+    confidence_threshold: float = field(default_factory=lambda: float(os.getenv('Ironcliw_DETECTION_CONFIDENCE', '0.75')))
 
     # Window tile mapping (populated when windows are teleported)
     window_tiles: List[WindowTileInfo] = field(default_factory=list)
 
     # v38.5: Enable z-order resolution for overlapping windows
     enable_zorder_resolution: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MOSAIC_ZORDER", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MOSAIC_ZORDER", "true").lower() == "true"
     )
 
     def get_tile_for_point(self, x: int, y: int) -> Optional[WindowTileInfo]:
@@ -2707,9 +2707,9 @@ class VideoWatcher:
                 # so the timeout timer never fires → infinite hang.
                 #
                 # SOLUTION: Run in thread executor so event loop stays responsive.
-                # CONFIGURABLE: JARVIS_SCK_STREAM_START_TIMEOUT env var (default 8s)
+                # CONFIGURABLE: Ironcliw_SCK_STREAM_START_TIMEOUT env var (default 8s)
                 # =====================================================================
-                sck_start_timeout = float(os.getenv('JARVIS_SCK_STREAM_START_TIMEOUT', '8.0'))
+                sck_start_timeout = float(os.getenv('Ironcliw_SCK_STREAM_START_TIMEOUT', '8.0'))
                 loop = asyncio.get_event_loop()
 
                 try:
@@ -2766,7 +2766,7 @@ class VideoWatcher:
                     # SOLUTION: Wait briefly for first frame before claiming success.
                     # If no frame within timeout, fall back to CGWindowListCreateImage.
                     # =====================================================================
-                    first_frame_timeout = float(os.getenv('JARVIS_SCK_FIRST_FRAME_TIMEOUT', '2.0'))
+                    first_frame_timeout = float(os.getenv('Ironcliw_SCK_FIRST_FRAME_TIMEOUT', '2.0'))
                     logger.debug(
                         f"[Watcher {self.watcher_id}] Verifying SCK frame production "
                         f"(timeout: {first_frame_timeout}s)..."
@@ -2858,7 +2858,7 @@ class VideoWatcher:
         # - Missing Screen Recording permission
         # - Hidden/minimized windows that can't be captured
         # =====================================================================
-        fallback_frame_timeout = float(os.getenv('JARVIS_FALLBACK_FIRST_FRAME_TIMEOUT', '3.0'))
+        fallback_frame_timeout = float(os.getenv('Ironcliw_FALLBACK_FIRST_FRAME_TIMEOUT', '3.0'))
         logger.debug(
             f"[Watcher {self.watcher_id}] Verifying CGWindowListCreateImage frame production "
             f"(timeout: {fallback_frame_timeout}s)..."
@@ -3264,7 +3264,7 @@ class VideoWatcher:
         logger.info(f"Stopping watcher {self.watcher_id}...")
 
         # Get configurable timeout from environment
-        thread_stop_timeout = float(os.getenv('JARVIS_WATCHER_THREAD_STOP_TIMEOUT', '2.0'))
+        thread_stop_timeout = float(os.getenv('Ironcliw_WATCHER_THREAD_STOP_TIMEOUT', '2.0'))
 
         # Signal stop
         self._stop_event.set()
@@ -3361,7 +3361,7 @@ class VideoWatcher:
             True if restart succeeded, False otherwise
         """
         original_window_id = self.config.window_id
-        restart_timeout = float(os.getenv('JARVIS_WATCHER_RESTART_TIMEOUT', '10.0'))
+        restart_timeout = float(os.getenv('Ironcliw_WATCHER_RESTART_TIMEOUT', '10.0'))
 
         logger.info(
             f"[Watcher {self.watcher_id}] 🔄 Initiating stream restart "
@@ -3386,7 +3386,7 @@ class VideoWatcher:
             # ===================================================================
             # PHASE 1: Graceful Stop (don't wait forever)
             # ===================================================================
-            stop_timeout = float(os.getenv('JARVIS_WATCHER_STOP_TIMEOUT', '3.0'))
+            stop_timeout = float(os.getenv('Ironcliw_WATCHER_STOP_TIMEOUT', '3.0'))
             try:
                 await asyncio.wait_for(self.stop(), timeout=stop_timeout)
             except asyncio.TimeoutError:
@@ -3500,7 +3500,7 @@ class VideoWatcher:
         time_since_frame = time.time() - last_frame if last_frame > 0 else float('inf')
 
         # If no frame in 5 seconds, stream may be unhealthy
-        frame_timeout = float(os.getenv('JARVIS_STREAM_HEALTH_TIMEOUT', '5.0'))
+        frame_timeout = float(os.getenv('Ironcliw_STREAM_HEALTH_TIMEOUT', '5.0'))
         if time_since_frame > frame_timeout:
             logger.warning(
                 f"[Watcher {self.watcher_id}] Stream unhealthy: "
@@ -3695,7 +3695,7 @@ class MosaicWatcher:
                 # produces no frames, fall back to per-window composite.
                 if success:
                     validation_timeout = float(os.getenv(
-                        'JARVIS_MOSAIC_VALIDATION_TIMEOUT', '3.0'
+                        'Ironcliw_MOSAIC_VALIDATION_TIMEOUT', '3.0'
                     ))
                     has_frame = await self.wait_for_first_frame(timeout=validation_timeout)
                     if not has_frame:
@@ -3886,7 +3886,7 @@ class MosaicWatcher:
         self._use_per_window_fallback = True
         max_workers = min(
             len(self.config.window_tiles),
-            int(os.getenv('JARVIS_COMPOSITE_CAPTURE_WORKERS', '4'))
+            int(os.getenv('Ironcliw_COMPOSITE_CAPTURE_WORKERS', '4'))
         )
         self._composite_executor = ThreadPoolExecutor(
             max_workers=max_workers,
@@ -3928,8 +3928,8 @@ class MosaicWatcher:
             import numpy as np
 
             frame_interval = 1.0 / self.config.fps
-            composite_resolution = os.getenv('JARVIS_COMPOSITE_RESOLUTION', 'logical')
-            max_tiles = int(os.getenv('JARVIS_COMPOSITE_MAX_TILES', '8'))
+            composite_resolution = os.getenv('Ironcliw_COMPOSITE_RESOLUTION', 'logical')
+            max_tiles = int(os.getenv('Ironcliw_COMPOSITE_MAX_TILES', '8'))
 
             logger.info(
                 f"[MosaicWatcher v243.0] Composite loop started "
@@ -4251,7 +4251,7 @@ class MosaicWatcher:
 
         # Wait for capture thread
         if self._capture_thread and self._capture_thread.is_alive():
-            timeout = float(os.getenv('JARVIS_MOSAIC_STOP_TIMEOUT', '3.0'))
+            timeout = float(os.getenv('Ironcliw_MOSAIC_STOP_TIMEOUT', '3.0'))
             start = time.monotonic()
             while self._capture_thread.is_alive():
                 if time.monotonic() - start > timeout:
@@ -4709,7 +4709,7 @@ class VideoWatcherManager:
     Manager for multiple background video watchers.
 
     Enables parallel monitoring of multiple windows simultaneously.
-    This is the "God Mode" - JARVIS watching multiple things at once.
+    This is the "God Mode" - Ironcliw watching multiple things at once.
     """
 
     def __init__(
@@ -4717,7 +4717,7 @@ class VideoWatcherManager:
         max_parallel_watchers: Optional[int] = None
     ):
         self.max_parallel_watchers = max_parallel_watchers or int(
-            os.getenv('JARVIS_WATCHER_MAX_PARALLEL', '3')
+            os.getenv('Ironcliw_WATCHER_MAX_PARALLEL', '3')
         )
 
         self.watchers: Dict[str, VideoWatcher] = {}
@@ -4771,8 +4771,8 @@ class VideoWatcherManager:
                 )
 
             # Validate FPS
-            min_fps = int(os.getenv('JARVIS_WATCHER_MIN_FPS', '1'))
-            max_fps = int(os.getenv('JARVIS_WATCHER_MAX_FPS', '10'))
+            min_fps = int(os.getenv('Ironcliw_WATCHER_MIN_FPS', '1'))
+            max_fps = int(os.getenv('Ironcliw_WATCHER_MAX_FPS', '10'))
             fps = max(min_fps, min(max_fps, fps))
 
             # Create watcher

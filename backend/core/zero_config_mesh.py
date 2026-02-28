@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
-"""Zero Configuration Mesh Network for JARVIS.
+﻿#!/usr/bin/env python3
+"""Zero Configuration Mesh Network for Ironcliw.
 
 This module provides automatic service discovery and interconnection capabilities
-for the JARVIS system. Services can automatically find and connect to each other
+for the Ironcliw system. Services can automatically find and connect to each other
 without manual configuration, creating a self-organizing mesh network.
 
 The mesh network supports:

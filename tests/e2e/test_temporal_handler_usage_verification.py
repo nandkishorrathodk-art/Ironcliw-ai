@@ -1,8 +1,8 @@
-"""
-E2E Verification Test for TemporalQueryHandler v3.0 Usage in JARVIS
+﻿"""
+E2E Verification Test for TemporalQueryHandler v3.0 Usage in Ironcliw
 
 This test verifies that:
-1. TemporalQueryHandler is initialized when JARVIS starts
+1. TemporalQueryHandler is initialized when Ironcliw starts
 2. It's accessible via the global handler
 3. It's integrated with HybridProactiveMonitoringManager
 4. It's used by actual query endpoints
@@ -18,11 +18,11 @@ import sys
 import os
 from pathlib import Path
 
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 
 class TestTemporalHandlerUsageVerification:
-    """Verify TemporalQueryHandler v3.0 is actually used in JARVIS"""
+    """Verify TemporalQueryHandler v3.0 is actually used in Ironcliw"""
 
     # ========================================
     # TEST 1: Handler Initialization
@@ -74,7 +74,7 @@ class TestTemporalHandlerUsageVerification:
     def test_main_py_imports_temporal_handler(self):
         """Test that main.py imports and initializes TemporalQueryHandler"""
 
-        main_py = Path('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/main.py')
+        main_py = Path('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/main.py')
 
         assert main_py.exists(), "main.py should exist"
 
@@ -92,7 +92,7 @@ class TestTemporalHandlerUsageVerification:
     def test_main_py_has_temporal_handler_setup(self):
         """Test that main.py has TemporalQueryHandler initialization code"""
 
-        main_py = Path('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/main.py')
+        main_py = Path('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/main.py')
 
         with open(main_py, 'r') as f:
             content = f.read()
@@ -151,7 +151,7 @@ class TestTemporalHandlerUsageVerification:
         expected_location = os.path.expanduser('~/.jarvis/learned_patterns.json')
 
         # Check the handler code references this path
-        handler_file = Path('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/context_intelligence/handlers/temporal_query_handler.py')
+        handler_file = Path('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/context_intelligence/handlers/temporal_query_handler.py')
 
         with open(handler_file, 'r') as f:
             content = f.read()
@@ -309,7 +309,7 @@ class TestTemporalHandlerUsageVerification:
     def test_start_system_py_mentions_temporal_handler(self):
         """Test that start_system.py documents TemporalQueryHandler"""
 
-        start_system = Path('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/start_system.py')
+        start_system = Path('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/start_system.py')
 
         if start_system.exists():
             with open(start_system, 'r') as f:
@@ -323,7 +323,7 @@ class TestTemporalHandlerUsageVerification:
     def test_readme_mentions_v2_features(self):
         """Test that README.md mentions v2.0/v3.0 features"""
 
-        readme = Path('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/README.md')
+        readme = Path('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/README.md')
 
         if readme.exists():
             with open(readme, 'r') as f:

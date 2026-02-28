@@ -1,11 +1,11 @@
-# 🔌 The Final Wire: Voice-Activated God Mode Integration
+﻿# 🔌 The Final Wire: Voice-Activated God Mode Integration
 
 ## Overview
 
 **Status:** ✅ COMPLETE - The Final Wire has been connected!
 
 **What This Is:**
-The integration that connects JARVIS's Voice Handler (Ears) to the VisualMonitorAgent (Brain), enabling voice-activated God Mode surveillance with natural language commands.
+The integration that connects Ironcliw's Voice Handler (Ears) to the VisualMonitorAgent (Brain), enabling voice-activated God Mode surveillance with natural language commands.
 
 **Before:** "Watch Chrome" → No response (disconnected)
 **After:** "Watch all Chrome windows for bouncing balls" → Spawns Ferrari Engines immediately across all spaces
@@ -164,34 +164,34 @@ Please make sure Chrome is open.
 
 ### Single Window Mode
 ```
-"JARVIS, watch Terminal for Build Complete"
-"JARVIS, monitor Chrome for Error"
-"JARVIS, notify me when Terminal says DONE"
+"Ironcliw, watch Terminal for Build Complete"
+"Ironcliw, monitor Chrome for Error"
+"Ironcliw, notify me when Terminal says DONE"
 ```
 → Watches FIRST matching window only
 
 ### God Mode (All Spaces)
 ```
-"JARVIS, watch all Terminal windows for Build Complete"
-"JARVIS, monitor Chrome across all spaces for bouncing ball"
-"JARVIS, watch every Chrome window for BOUNCE COUNT"
+"Ironcliw, watch all Terminal windows for Build Complete"
+"Ironcliw, monitor Chrome across all spaces for bouncing ball"
+"Ironcliw, watch every Chrome window for BOUNCE COUNT"
 ```
 → Spawns Ferrari Engine for EVERY matching window across ALL spaces
 
 ### With Duration
 ```
-"JARVIS, watch Terminal for 5 minutes when it says finished"
-"JARVIS, monitor Chrome for 2 hours for Error"
+"Ironcliw, watch Terminal for 5 minutes when it says finished"
+"Ironcliw, monitor Chrome for 2 hours for Error"
 ```
 → Auto-timeout after specified duration
 
 ### Alternative Phrasings
 ```
-"JARVIS, track Terminal for SUCCESS"
-"JARVIS, observe Chrome for ready"
-"JARVIS, tell me when Terminal says completed"
-"JARVIS, alert me when Chrome shows done"
-"JARVIS, watch for Error in Terminal"
+"Ironcliw, track Terminal for SUCCESS"
+"Ironcliw, observe Chrome for ready"
+"Ironcliw, tell me when Terminal says completed"
+"Ironcliw, alert me when Chrome shows done"
+"Ironcliw, watch for Error in Terminal"
 ```
 → All variations supported by flexible regex patterns
 
@@ -210,7 +210,7 @@ Please make sure Chrome is open.
 6. "Alert me when Chrome shows ready" → Chrome, "ready", Single
 7. "Watch for Error in Terminal" → Terminal, "Error", Single
 8. "Track Terminal for 5 minutes when it says finished" → Terminal, "finished", Single, 300s
-9. "JARVIS, watch all Chrome windows for BOUNCE COUNT" → Chrome, "BOUNCE COUNT", God Mode
+9. "Ironcliw, watch all Chrome windows for BOUNCE COUNT" → Chrome, "BOUNCE COUNT", God Mode
 
 **✅ All 5 Non-Watch Commands Correctly Ignored:**
 1. "What's the weather today?" - No parse
@@ -278,9 +278,9 @@ result = await agent.watch(
 
 ### Example 1: Watch Build Process
 ```python
-User: "JARVIS, watch Terminal for Build Complete"
+User: "Ironcliw, watch Terminal for Build Complete"
 
-JARVIS: "Understood, Derek. Watching Terminal for 'Build Complete'."
+Ironcliw: "Understood, Derek. Watching Terminal for 'Build Complete'."
         [Spawns Ferrari Engine, monitors Terminal window]
 
         [When detected]
@@ -289,9 +289,9 @@ JARVIS: "Understood, Derek. Watching Terminal for 'Build Complete'."
 
 ### Example 2: God Mode - All Spaces
 ```python
-User: "JARVIS, watch all Chrome windows for Error"
+User: "Ironcliw, watch all Chrome windows for Error"
 
-JARVIS: "Understood, Derek. Activating God Mode surveillance -
+Ironcliw: "Understood, Derek. Activating God Mode surveillance -
          I'll watch ALL Chrome windows across every desktop space for 'Error'."
         [Spawns 5 Ferrari Engines across Spaces 1, 2, 4, 6, 8]
 
@@ -303,9 +303,9 @@ JARVIS: "Understood, Derek. Activating God Mode surveillance -
 
 ### Example 3: Timeout
 ```python
-User: "JARVIS, watch Terminal for 2 minutes when it says DONE"
+User: "Ironcliw, watch Terminal for 2 minutes when it says DONE"
 
-JARVIS: "Understood, Derek. Watching Terminal for 'DONE'."
+Ironcliw: "Understood, Derek. Watching Terminal for 'DONE'."
         [Monitors for 120 seconds]
 
         [After 2 minutes with no trigger]
@@ -351,7 +351,7 @@ PYTHONPATH="$PWD:$PWD/backend" python3 test_voice_god_mode.py
 
 ### Manual Testing
 1. Open bouncing ball test pages (vertical.html, horizontal.html)
-2. Say: "JARVIS, watch all Chrome windows for BOUNCE COUNT"
+2. Say: "Ironcliw, watch all Chrome windows for BOUNCE COUNT"
 3. Verify: Ferrari Engines spawn, OCR detects text, voice announces success
 
 ---
@@ -376,7 +376,7 @@ PYTHONPATH="$PWD:$PWD/backend" python3 test_voice_god_mode.py
 ## Next Steps (Optional Enhancements)
 
 ### Phase 2: Advanced Features
-1. **Command History:** "JARVIS, watch Terminal like you did yesterday"
+1. **Command History:** "Ironcliw, watch Terminal like you did yesterday"
 2. **Smart Defaults:** Learn user's preferred apps and triggers
 3. **Multi-Trigger:** "Watch for 'Error' OR 'Warning' OR 'Failed'"
 4. **Regex Triggers:** "Watch for any line matching pattern '^ERROR:.*'"
@@ -407,6 +407,6 @@ PYTHONPATH="$PWD:$PWD/backend" python3 test_voice_god_mode.py
 
 **Before:** Ferrari Engine (Muscle) + VisualMonitorAgent (Brain) existed but Voice Handler (Ears) couldn't reach them.
 
-**After:** Say "JARVIS, watch all Chrome windows for bouncing balls" → Ferrari Engines spawn immediately across all desktop spaces.
+**After:** Say "Ironcliw, watch all Chrome windows for bouncing balls" → Ferrari Engines spawn immediately across all desktop spaces.
 
 🔌 **THE FINAL WIRE HAS BEEN CONNECTED** 🔌

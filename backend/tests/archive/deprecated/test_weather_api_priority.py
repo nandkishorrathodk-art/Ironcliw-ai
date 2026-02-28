@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test Weather API Priority - Ensure API is used first, not Weather app"""
 
 import asyncio
@@ -7,7 +7,7 @@ import sys
 from dotenv import load_dotenv
 
 # Add backend to path
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 async def test_api_priority():
     """Test that API is used as primary weather source"""
@@ -38,11 +38,11 @@ async def test_api_priority():
     else:
         print("✅ SUCCESS: Using API without opening Weather app!")
     
-    # Test 2: Test with JARVIS voice handler
-    print("\n🧪 Test 2: JARVIS Voice Handler Test")
-    from voice.jarvis_agent_voice import JARVISAgentVoice
+    # Test 2: Test with Ironcliw voice handler
+    print("\n🧪 Test 2: Ironcliw Voice Handler Test")
+    from voice.jarvis_agent_voice import IroncliwAgentVoice
     
-    jarvis = JARVISAgentVoice()
+    jarvis = IroncliwAgentVoice()
     response = await jarvis._handle_weather_command("what's the weather today?")
     print(f"✅ Response: {response[:150]}...")
     

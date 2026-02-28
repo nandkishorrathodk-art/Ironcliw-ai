@@ -1,5 +1,5 @@
-"""
-JARVIS Distributed Proxy System
+﻿"""
+Ironcliw Distributed Proxy System
 
 A production-grade, distributed Cloud SQL proxy lifecycle management system that provides:
 
@@ -12,7 +12,7 @@ A production-grade, distributed Cloud SQL proxy lifecycle management system that
 Architecture:
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS Unified Supervisor (run_supervisor.py)             │
+│                    Ironcliw Unified Supervisor (run_supervisor.py)             │
 │                         Single Entry Point for Everything                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Layer 1: CROSS-REPO LEADER ELECTION                                        │
@@ -54,7 +54,7 @@ Usage:
         auto_start=True,
     )
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

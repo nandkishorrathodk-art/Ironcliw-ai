@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Lock/Unlock Flow
 ====================
 
 Tests the complete flow:
-1. Lock the screen with JARVIS
-2. Unlock the screen with JARVIS
+1. Lock the screen with Ironcliw
+2. Unlock the screen with Ironcliw
 """
 
 import asyncio
@@ -42,7 +42,7 @@ async def test_lock_unlock():
                     data = json.loads(response)
                     
                     if data.get('text'):
-                        print(f"JARVIS: {data['text']}")
+                        print(f"Ironcliw: {data['text']}")
                         if 'lock' in data['text'].lower():
                             lock_success = True
                             
@@ -76,7 +76,7 @@ async def test_lock_unlock():
                         data = json.loads(response)
                         
                         if data.get('text'):
-                            print(f"JARVIS: {data['text']}")
+                            print(f"Ironcliw: {data['text']}")
                             if 'unlock' in data['text'].lower():
                                 unlock_success = True
                                 

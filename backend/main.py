@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS AI Backend - Optimized Main Entry Point with Advanced Intelligence
+Ironcliw AI Backend - Optimized Main Entry Point with Advanced Intelligence
 v17.8.0 - PRD v2.0 Voice Biometric Intelligence Edition
 
-This backend loads 10 critical components that power the JARVIS AI system:
+This backend loads 10 critical components that power the Ironcliw AI system:
 
 1. CHATBOTS (Claude Vision Chatbot)
    - Powers conversational AI with Claude 3.5 Sonnet
@@ -38,8 +38,8 @@ This backend loads 10 critical components that power the JARVIS AI system:
    - Provides memory pressure alerts and automatic cleanup
    - Integration with Orchestrator for dynamic component allocation
 
-4. VOICE (JARVIS Voice Interface with CoreML Acceleration)
-   - Voice activation with "Hey JARVIS" wake word
+4. VOICE (Ironcliw Voice Interface with CoreML Acceleration)
+   - Voice activation with "Hey Ironcliw" wake word
    - CoreML Voice Engine: Hardware-accelerated VAD on Apple Neural Engine
      * 232KB model (4-bit quantized Silero VAD)
      * <10ms inference latency
@@ -81,7 +81,7 @@ This backend loads 10 critical components that power the JARVIS AI system:
    - Screensaver and system integration
 
 8. WAKE WORD (Hands-free Activation)
-   - "Hey JARVIS" wake word detection
+   - "Hey Ironcliw" wake word detection
    - Always-listening mode with zero button clicks
    - Multi-engine detection (Porcupine, Vosk, WebRTC)
    - Adaptive sensitivity and anti-spoofing
@@ -120,7 +120,7 @@ This backend loads 10 critical components that power the JARVIS AI system:
    - Knowledge Graph: Shared semantic memory across all agents
    - Communication Bus: Real-time event-driven messaging (10,000 msg/s capacity)
    - Multi-Agent Orchestration: Complex task decomposition and agent collaboration
-   - JARVIS Bridge: Connects all JARVIS systems (Main, Prime, Reactor Core)
+   - Ironcliw Bridge: Connects all Ironcliw systems (Main, Prime, Reactor Core)
    - Health Monitoring: Continuous health checks and auto-recovery
    - Google Workspace Agent (v2.0 - Chief of Staff):
      * Three-Tier Waterfall: Google API → macOS Local → Computer Use
@@ -134,7 +134,7 @@ This backend loads 10 critical components that power the JARVIS AI system:
    - Voice Integration: Intelligent narrator announces agent registration and status
    - Async/Parallel: All operations non-blocking for maximum performance
 
-All 11 components must load successfully for full JARVIS functionality.
+All 11 components must load successfully for full Ironcliw functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
 Enhanced Vision Features (v13.3.1):
@@ -165,7 +165,7 @@ Startup Narrator Voice Announcements (v6.2):
 - Intelligent Voice Feedback: Real-time spoken status updates during initialization
 - Security Milestones: Announces two-tier security, VBIA, visual threat detection
 - Neural Mesh Status: Coordinator online, agent registration, Google Workspace ready
-- Cross-Repo Integration: Announces when JARVIS, Prime, and Reactor Core connect
+- Cross-Repo Integration: Announces when Ironcliw, Prime, and Reactor Core connect
 - Adaptive Pacing: 2-3 second intervals, non-blocking, doesn't slow startup
 - Environment-Aware: Dynamic announcements based on visual security settings
 - Example Announcements:
@@ -360,7 +360,7 @@ if sys.platform == "darwin":  # macOS specific
 # HuggingFace/Transformers offline mode — intelligent cache-aware activation.
 # Only enable offline mode when ALL required model caches are verified present.
 # This prevents first-run failures while still avoiding network timeouts once cached.
-# Override with JARVIS_HF_OFFLINE=1 (force offline) or JARVIS_HF_OFFLINE=0 (force online).
+# Override with Ironcliw_HF_OFFLINE=1 (force offline) or Ironcliw_HF_OFFLINE=0 (force online).
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # Always disable telemetry
 
 def _check_hf_models_cached() -> bool:
@@ -384,7 +384,7 @@ def _check_hf_models_cached() -> bool:
             return False
     return True
 
-_hf_offline_override = os.getenv("JARVIS_HF_OFFLINE", "").lower()
+_hf_offline_override = os.getenv("Ironcliw_HF_OFFLINE", "").lower()
 if _hf_offline_override == "1":
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -496,16 +496,16 @@ except ImportError:
         os.environ.pop('NUMBA_DISABLE_JIT', None)
         os.environ.pop('NUMBA_NUM_THREADS', None)
         _numba_init_success = True
-        os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
+        os.environ['_Ironcliw_NUMBA_INIT_ATTEMPTED'] = '1'
     except ImportError:
         print("[STARTUP] numba not installed (optional)")
-        os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
+        os.environ['_Ironcliw_NUMBA_INIT_ATTEMPTED'] = '1'
     except Exception as e:
         print(f"[STARTUP] ⚠️ numba pre-import fallback warning: {e}")
-        os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
+        os.environ['_Ironcliw_NUMBA_INIT_ATTEMPTED'] = '1'
 except Exception as e:
     print(f"[STARTUP] ⚠️ numba pre-import warning: {e}")
-    os.environ['_JARVIS_NUMBA_INIT_ATTEMPTED'] = '1'
+    os.environ['_Ironcliw_NUMBA_INIT_ATTEMPTED'] = '1'
 
 # Clean up leaked semaphores from previous runs FIRST
 if sys.platform == "darwin":  # macOS specific
@@ -553,22 +553,22 @@ from typing import Optional
 try:
     from backend.core.platform_abstraction import PlatformDetector
     _detector = PlatformDetector()
-    JARVIS_PLATFORM = _detector.get_platform().value
-    JARVIS_IS_WINDOWS = _detector.is_windows()
-    JARVIS_IS_MACOS = _detector.is_macos()
-    JARVIS_IS_LINUX = _detector.is_linux()
-    JARVIS_PLATFORM_INFO = _detector.get_platform_info()
-    print(f"[STARTUP] ✅ Platform detected: {JARVIS_PLATFORM} ({JARVIS_PLATFORM_INFO['system']} {JARVIS_PLATFORM_INFO['release']})")
+    Ironcliw_PLATFORM = _detector.get_platform().value
+    Ironcliw_IS_WINDOWS = _detector.is_windows()
+    Ironcliw_IS_MACOS = _detector.is_macos()
+    Ironcliw_IS_LINUX = _detector.is_linux()
+    Ironcliw_PLATFORM_INFO = _detector.get_platform_info()
+    print(f"[STARTUP] ✅ Platform detected: {Ironcliw_PLATFORM} ({Ironcliw_PLATFORM_INFO['system']} {Ironcliw_PLATFORM_INFO['release']})")
 except ImportError as e:
     print(f"[STARTUP] ⚠️ Platform detection unavailable: {e}")
     # Fallback to sys.platform
     _sys_platform = sys.platform.lower()
-    JARVIS_PLATFORM = 'macos' if _sys_platform == 'darwin' else ('windows' if _sys_platform == 'win32' else 'linux')
-    JARVIS_IS_WINDOWS = JARVIS_PLATFORM == 'windows'
-    JARVIS_IS_MACOS = JARVIS_PLATFORM == 'macos'
-    JARVIS_IS_LINUX = JARVIS_PLATFORM == 'linux'
-    JARVIS_PLATFORM_INFO = None
-    print(f"[STARTUP] ⚠️ Using fallback platform detection: {JARVIS_PLATFORM}")
+    Ironcliw_PLATFORM = 'macos' if _sys_platform == 'darwin' else ('windows' if _sys_platform == 'win32' else 'linux')
+    Ironcliw_IS_WINDOWS = Ironcliw_PLATFORM == 'windows'
+    Ironcliw_IS_MACOS = Ironcliw_PLATFORM == 'macos'
+    Ironcliw_IS_LINUX = Ironcliw_PLATFORM == 'linux'
+    Ironcliw_PLATFORM_INFO = None
+    print(f"[STARTUP] ⚠️ Using fallback platform detection: {Ironcliw_PLATFORM}")
 
 # v242.2: Centralized log sanitization for CWE-117 (log injection) prevention
 try:
@@ -630,7 +630,7 @@ def _run_deferred_coordinate_diagnostic():
 
         if _diag_script.exists():
             print("[STARTUP-DEBUG] Running coordinate diagnostic (deferred)...")
-            exec(_diag_script.read_text())
+            exec(_diag_script.read_text(encoding='utf-8'))
     except Exception as e:
         print(f"[STARTUP-DEBUG] Coordinate diagnostic failed: {e}")
 
@@ -704,7 +704,7 @@ class _RegisteredCheckpointFilter(logging.Filter):
         return "registered checkpoint" not in record.getMessage().lower()
 
 
-if os.getenv("JARVIS_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", "true").lower() in (
+if os.getenv("Ironcliw_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", "true").lower() in (
     "1", "true", "yes", "on"
 ):
     _checkpoint_filter = _RegisteredCheckpointFilter()
@@ -815,7 +815,7 @@ import_times = {}
 # EARLY SHUTDOWN HOOK REGISTRATION
 # =============================================================================
 # Register shutdown hook as early as possible to ensure GCP VMs are cleaned up
-# even if JARVIS crashes during startup. This provides the "Local Cleanup" layer
+# even if Ironcliw crashes during startup. This provides the "Local Cleanup" layer
 # of the Triple-Lock safety system for preventing orphaned VMs.
 # =============================================================================
 try:
@@ -832,10 +832,10 @@ DYNAMIC_LOADING_ENABLED = False
 # GCP VM Manager
 gcp_vm_manager = None
 # Cost-safe default: Spot/VM auto-creation must be explicitly enabled.
-# Accept legacy env var GCP_VM_ENABLED, but default to JARVIS_SPOT_VM_ENABLED=false.
+# Accept legacy env var GCP_VM_ENABLED, but default to Ironcliw_SPOT_VM_ENABLED=false.
 _gcp_vm_flag = os.getenv("GCP_VM_ENABLED")
 if _gcp_vm_flag is None:
-    _gcp_vm_flag = os.getenv("JARVIS_SPOT_VM_ENABLED", "false")
+    _gcp_vm_flag = os.getenv("Ironcliw_SPOT_VM_ENABLED", "false")
 GCP_VM_ENABLED = str(_gcp_vm_flag).lower() == "true"
 
 try:
@@ -871,7 +871,7 @@ def _init_thread_manager_lazy():
         return None
     
     try:
-        # Create custom policy optimized for JARVIS
+        # Create custom policy optimized for Ironcliw
         thread_policy = ThreadPolicy(
             graceful_shutdown_timeout=8.0,
             forceful_shutdown_timeout=5.0,
@@ -992,7 +992,7 @@ def import_vision_system():
         vision["analyzer"] = ClaudeVisionAnalyzer
         
         # Platform-specific screen capture
-        if JARVIS_IS_WINDOWS:
+        if Ironcliw_IS_WINDOWS:
             # Windows: Use Windows platform capture
             try:
                 from backend.platform_adapter.windows.vision import WindowsVisionCapture
@@ -1004,7 +1004,7 @@ def import_vision_system():
                 logger.warning(f"  ⚠️ Windows vision capture unavailable: {e}")
                 vision["platform_available"] = False
                 vision["macos_available"] = False
-        elif JARVIS_IS_MACOS:
+        elif Ironcliw_IS_MACOS:
             # macOS: Use Swift-based capture
             try:
                 from vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE, VideoStreamCapture
@@ -1015,7 +1015,7 @@ def import_vision_system():
                 logger.warning(f"  ⚠️ macOS vision capture unavailable: {e}")
                 vision["macos_available"] = False
                 vision["platform_available"] = False
-        elif JARVIS_IS_LINUX:
+        elif Ironcliw_IS_LINUX:
             # Linux: Use X11/Wayland capture (future)
             logger.warning("  ⚠️ Linux vision capture not yet implemented")
             vision["platform_available"] = False
@@ -1033,7 +1033,7 @@ def import_vision_system():
 
     # Check purple indicator separately (macOS-only feature)
     try:
-        if JARVIS_IS_MACOS:
+        if Ironcliw_IS_MACOS:
             pass
         vision["purple_indicator"] = True
     except ImportError:
@@ -1114,17 +1114,17 @@ def import_voice_system():
             voice["jarvis_api"] = jarvis_api
             voice["jarvis_available"] = True
         else:
-            logger.warning("JARVIS Voice API lazy init returned None")
+            logger.warning("Ironcliw Voice API lazy init returned None")
             voice["jarvis_available"] = False
     except ImportError as e:
-        logger.exception(f"Failed to import JARVIS Voice API: {e}")
+        logger.exception(f"Failed to import Ironcliw Voice API: {e}")
         voice["jarvis_available"] = False
     except Exception as e:
-        logger.exception(f"Unexpected error importing JARVIS Voice API: {e}")
+        logger.exception(f"Unexpected error importing Ironcliw Voice API: {e}")
         voice["jarvis_available"] = False
     
     # Platform-specific audio engine availability
-    if JARVIS_IS_WINDOWS:
+    if Ironcliw_IS_WINDOWS:
         try:
             from backend.platform_adapter.windows.audio import WindowsAudioEngine
             voice["platform_audio"] = WindowsAudioEngine
@@ -1133,11 +1133,11 @@ def import_voice_system():
         except ImportError as e:
             logger.warning(f"  ⚠️ Windows audio engine unavailable: {e}")
             voice["platform_audio_available"] = False
-    elif JARVIS_IS_MACOS:
+    elif Ironcliw_IS_MACOS:
         # macOS uses pyaudio with CoreAudio backend (built into voice modules)
         voice["platform_audio_available"] = True
         logger.info("  ✅ macOS audio engine available (CoreAudio)")
-    elif JARVIS_IS_LINUX:
+    elif Ironcliw_IS_LINUX:
         # Linux uses pyaudio with ALSA/PulseAudio
         voice["platform_audio_available"] = True
         logger.info("  ✅ Linux audio engine available (ALSA/PulseAudio)")
@@ -1192,7 +1192,7 @@ def import_voice_unlock():
     voice_unlock = {}
 
     # Platform-specific authentication handling
-    if JARVIS_IS_WINDOWS:
+    if Ironcliw_IS_WINDOWS:
         # Windows MVP: Use bypass mode authentication
         logger.info("  🪟 Windows platform detected - using bypass authentication mode")
         try:
@@ -1210,7 +1210,7 @@ def import_voice_unlock():
             voice_unlock["initialized"] = False
         return voice_unlock
     
-    elif JARVIS_IS_LINUX:
+    elif Ironcliw_IS_LINUX:
         # Linux: Bypass mode for now (future: implement Linux biometrics)
         logger.info("  🐧 Linux platform detected - using bypass authentication mode")
         voice_unlock["bypass_mode"] = True
@@ -1380,8 +1380,8 @@ def import_goal_inference():
         config_path = Path("backend/config/integration_config.json")
 
         # Check for environment variable overrides
-        preset_override = os.getenv("JARVIS_GOAL_PRESET", None)
-        automation_override = os.getenv("JARVIS_GOAL_AUTOMATION", None)
+        preset_override = os.getenv("Ironcliw_GOAL_PRESET", None)
+        automation_override = os.getenv("Ironcliw_GOAL_AUTOMATION", None)
 
         if config_path.exists():
             with open(config_path, "r") as f:
@@ -1702,11 +1702,11 @@ async def memory_pressure_callback(pressure_level: str):
 # =============================================================================
 # PARALLEL STARTUP MODE (v1.0.0) - Server starts IMMEDIATELY
 # =============================================================================
-# Enable via: JARVIS_PARALLEL_STARTUP=true
+# Enable via: Ironcliw_PARALLEL_STARTUP=true
 # This mode starts the server within 1-2 seconds and runs heavy initialization
 # in background tasks. The /health/startup endpoint tracks progress.
 # =============================================================================
-PARALLEL_STARTUP_ENABLED = os.getenv("JARVIS_PARALLEL_STARTUP", "true").lower() == "true"
+PARALLEL_STARTUP_ENABLED = os.getenv("Ironcliw_PARALLEL_STARTUP", "true").lower() == "true"
 
 
 @asynccontextmanager
@@ -1917,7 +1917,7 @@ async def parallel_lifespan(app: FastAPI):
                     logger.debug(f"   Repo discovery not available: {e}")
 
                 # =============================================================
-                # Initialize Prime Router (connects to JARVIS-Prime)
+                # Initialize Prime Router (connects to Ironcliw-Prime)
                 # =============================================================
                 try:
                     from core.prime_router import get_prime_router
@@ -1940,15 +1940,15 @@ async def parallel_lifespan(app: FastAPI):
                 app.state.graceful_degradation = degradation
 
                 # =============================================================
-                # Check if JARVIS-Prime is available
+                # Check if Ironcliw-Prime is available
                 # =============================================================
                 router_status = router.get_status()
                 prime_available = router_status.get("prime_client", {}).get("available", False)
 
                 if prime_available:
-                    logger.info("✅ Trinity: JARVIS-Prime (Mind) connected")
+                    logger.info("✅ Trinity: Ironcliw-Prime (Mind) connected")
                 else:
-                    logger.info("⚠️ Trinity: JARVIS-Prime not available, using cloud fallback")
+                    logger.info("⚠️ Trinity: Ironcliw-Prime not available, using cloud fallback")
 
                 # =============================================================
                 # v85.0: Cross-repo verification
@@ -2094,7 +2094,7 @@ async def parallel_lifespan(app: FastAPI):
 @asynccontextmanager  # type: ignore[arg-type]
 async def lifespan(app: FastAPI):  # type: ignore[misc]
     """Optimized lifespan handler with parallel initialization"""
-    logger.info("🚀 Starting optimized JARVIS backend...")
+    logger.info("🚀 Starting optimized Ironcliw backend...")
     start_time = time.time()
 
     # =================================================================
@@ -2143,7 +2143,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
     # v258.0 R2-#3: Clean stale signal files from previous crash
     try:
-        _signal_dir = os.path.expanduser(os.getenv("JARVIS_SIGNAL_DIR", "~/.jarvis/signals"))
+        _signal_dir = os.path.expanduser(os.getenv("Ironcliw_SIGNAL_DIR", "~/.jarvis/signals"))
         if os.path.isdir(_signal_dir):
             import json as _json
             _now = time.time()
@@ -2511,13 +2511,13 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             else:
                 logger.warning("   ⚠️ voice_unlock loaded but router not available")
 
-            # IMPORTANT: Voice system must be loaded for JARVIS voice interface
+            # IMPORTANT: Voice system must be loaded for Ironcliw voice interface
             # This provides jarvis_available, jarvis_router, etc. for /voice/jarvis/* endpoints
             components["voice"] = import_voice_system()
             if components["voice"] and components["voice"].get("jarvis_available"):
-                logger.info("   ✅ voice system loaded (JARVIS available)")
+                logger.info("   ✅ voice system loaded (Ironcliw available)")
             else:
-                logger.warning("   ⚠️ voice system loaded but JARVIS not available")
+                logger.warning("   ⚠️ voice system loaded but Ironcliw not available")
 
             logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
@@ -2945,7 +2945,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     # This prevents 10GB+ memory usage at startup by loading on first use
     try:
         # Check if lazy loading is enabled (default: True for memory efficiency)
-        lazy_load_intelligence = os.getenv("JARVIS_LAZY_INTELLIGENCE", "true").lower() == "true"
+        lazy_load_intelligence = os.getenv("Ironcliw_LAZY_INTELLIGENCE", "true").lower() == "true"
 
         if lazy_load_intelligence:
             logger.info("🧠 UAE/SAI/Learning DB: LAZY LOADING enabled (loads on first use)")
@@ -2998,7 +2998,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
                         await jarvis_api.speak({"text": text})
                         logger.debug(f"[PROACTIVE-VOICE] Spoke: {sanitize_for_log(text, 100)}")
                     else:
-                        logger.warning("[PROACTIVE-VOICE] JARVIS API not available")
+                        logger.warning("[PROACTIVE-VOICE] Ironcliw API not available")
                 except Exception as e:
                     logger.error(f"[PROACTIVE-VOICE] Error: {e}")
 
@@ -3080,7 +3080,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
                         logger.info("")
                         logger.info("   📍 PHASE 4: Proactive Communication (Magic)")
                         logger.info("   • Natural Language Suggestions: ✅ Active")
-                        logger.info("   • Voice Output: ✅ Enabled (JARVIS API)")
+                        logger.info("   • Voice Output: ✅ Enabled (Ironcliw API)")
                         logger.info("   • Predictive App Launching: ✅ Active")
                         logger.info("   • Workflow Optimization Tips: ✅ Active")
                         logger.info("   • Smart Space Switching: ✅ Active")
@@ -3201,7 +3201,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
     # Connect vision analyzer to other components (analyzer already initialized earlier)
     if hasattr(app.state, "vision_analyzer") and app.state.vision_analyzer:
-        logger.info("🔗 Connecting vision analyzer to other JARVIS components...")
+        logger.info("🔗 Connecting vision analyzer to other Ironcliw components...")
 
         # Connect Vision Navigator to vision analyzer (for display connection)
         try:
@@ -3210,7 +3210,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             navigator = get_vision_navigator()
             navigator.set_vision_analyzer(app.state.vision_analyzer)
             logger.info("✅ Vision Navigator connected to Claude Vision analyzer")
-            logger.info("   👁️ JARVIS can now navigate Control Center using vision!")
+            logger.info("   👁️ Ironcliw can now navigate Control Center using vision!")
         except Exception as e:
             logger.debug(f"Vision Navigator connection skipped: {e}")
 
@@ -3223,20 +3223,20 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         except ImportError as e:
             logger.warning(f"⚠️ Could not set vision analyzer in websocket: {e}")
 
-        # Set app state in JARVIS factory for dependency injection
+        # Set app state in Ironcliw factory for dependency injection
         try:
             from api.jarvis_factory import set_app_state
 
             set_app_state(app.state)
-            logger.info("✅ App state set in JARVIS factory")
+            logger.info("✅ App state set in Ironcliw factory")
         except ImportError:
-            logger.warning("⚠️ JARVIS factory not available for dependency injection")
+            logger.warning("⚠️ Ironcliw factory not available for dependency injection")
     else:
         logger.warning("⚠️ Vision analyzer not available - vision features disabled")
         try:
             from api.jarvis_factory import set_app_state
             set_app_state(app.state)
-            logger.info("✅ App state set in JARVIS factory (no vision analyzer)")
+            logger.info("✅ App state set in Ironcliw factory (no vision analyzer)")
         except ImportError:
             pass
 
@@ -3252,7 +3252,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         voice = components.get("voice", {})
         if voice.get("jarvis_api"):
             vision_command_handler.jarvis_api = voice["jarvis_api"]
-            logger.info("✅ JARVIS voice API connected to pure vision command handler")
+            logger.info("✅ Ironcliw voice API connected to pure vision command handler")
 
         # Initialize pure intelligence with API key
         if api_key:
@@ -3535,7 +3535,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             patterns = vision.get_detection_patterns()
             logger.info(f"✅ Unified Vision: {len(patterns)} proactive detection patterns")
 
-            # Integrate with existing JARVIS systems
+            # Integrate with existing Ironcliw systems
             integration_result = await integrate_all(
                 screen_analyzer=getattr(app.state, 'vision_analyzer', None),
                 decision_engine=getattr(app.state, 'decision_engine', None),
@@ -3597,7 +3597,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
                     if voice and getattr(app.state, 'voice_enabled', True):
                         create_safe_task(
                             voice.speak(
-                                f"JARVIS online. Ready for your command, {owner_name}.",
+                                f"Ironcliw online. Ready for your command, {owner_name}.",
                                 mode=VoiceMode.NORMAL
                             )
                         )
@@ -3685,7 +3685,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
     # Log final status with component details
     logger.info("\n" + "=" * 60)
-    logger.info("🤖 JARVIS Backend (Optimized) Ready!")
+    logger.info("🤖 Ironcliw Backend (Optimized) Ready!")
 
     # Count and display loaded components
     loaded_count = sum(1 for c in components.values() if c)
@@ -3723,7 +3723,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         ),
         (
             "✅" if components.get("wake_word") else "❌",
-            "WAKE_WORD   - Hands-free 'Hey JARVIS' activation",
+            "WAKE_WORD   - Hands-free 'Hey Ironcliw' activation",
         ),
     ]
 
@@ -3733,7 +3733,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     logger.info(f"🚀 Mode: {'Optimized' if OPTIMIZE_STARTUP else 'Legacy'}")
 
     if loaded_count == 8:
-        logger.info("✨ All systems operational - JARVIS is fully functional!")
+        logger.info("✨ All systems operational - Ironcliw is fully functional!")
     else:
         logger.warning(f"⚠️  Only {loaded_count}/8 components loaded - some features may be limited")
 
@@ -3755,7 +3755,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
                 # Also set app.state.voice_unlock so health check reports correct status
                 app.state.voice_unlock = voice_unlock
                 logger.info("✅ Voice Unlock system started")
-                logger.info("   Say 'Hey JARVIS, unlock my mac' when screen is locked")
+                logger.info("   Say 'Hey Ironcliw, unlock my mac' when screen is locked")
             else:
                 logger.warning("⚠️ Voice Unlock system failed to start")
         except Exception as e:
@@ -3778,7 +3778,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
                 success = await wake_service.start(wake_word_activation_callback)
                 if success:
                     app.state.wake_service = wake_service
-                    logger.info("🎤 Wake word detection service started - Say 'Hey JARVIS'!")
+                    logger.info("🎤 Wake word detection service started - Say 'Hey Ironcliw'!")
                 else:
                     logger.warning("⚠️ Wake word service failed to start")
         except Exception as e:
@@ -3836,57 +3836,61 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     # ═══════════════════════════════════════════════════════════════
     # CLOUD SQL PROXY + VOICE VERIFICATION HEALTH CHECKS
     # ═══════════════════════════════════════════════════════════════
-    try:
-        logger.info("🔐 Initializing Cloud SQL Proxy + Voice Verification...")
-        from intelligence.cloud_database_adapter import get_database_adapter
-        from voice.speaker_verification_service import SpeakerVerificationService
-
-        # Initialize database (will auto-start Cloud SQL proxy if needed)
-        db_adapter = await get_database_adapter()
-        app.state.db_adapter = db_adapter
-
-        if db_adapter.is_cloud:
-            logger.info("✅ Cloud SQL proxy started and database connected")
-            logger.info(f"   • Connection: {db_adapter.config.connection_name}")
-            logger.info(f"   • Database: {db_adapter.config.db_name}")
-            logger.info(f"   • Host: {db_adapter.config.db_host}:{db_adapter.config.db_port}")
-        else:
-            logger.info("✅ Using local SQLite database")
-            logger.info(f"   • Path: {db_adapter.config.sqlite_path}")
-
-        # Initialize voice verification service
-        voice_verification = SpeakerVerificationService()
-        await voice_verification.initialize()
-        app.state.voice_verification = voice_verification
-
-        # Validate profiles and dimensions
-        profile_count = len(voice_verification.speaker_profiles)
-        model_dim = voice_verification.current_model_dimension
-
-        if profile_count > 0:
-            logger.info(f"✅ Voice Verification initialized successfully")
-            logger.info(f"   • Loaded profiles: {profile_count}")
-            logger.info(f"   • Model dimension: {model_dim}D")
-
-            # Validate each profile
-            for name, profile in voice_verification.speaker_profiles.items():
-                import numpy as np
-                emb_shape = np.array(profile['embedding']).shape
-                emb_dim = emb_shape[0] if len(emb_shape) == 1 else emb_shape[1]
-
-                if emb_dim == model_dim:
-                    logger.info(f"   • {name}: {emb_dim}D ✅ (matches model)")
-                else:
-                    logger.warning(f"   • {name}: {emb_dim}D ⚠️ (expected {model_dim}D)")
-        else:
-            logger.warning("⚠️ No voice profiles loaded - voice unlock disabled")
-            logger.warning("   → Enroll a voice profile to enable biometric authentication")
-
-    except Exception as e:
-        logger.error(f"❌ Cloud SQL/Voice Verification initialization failed: {e}", exc_info=True)
-        logger.warning("   → Voice unlock features will be disabled")
+    _auth_mode_main = os.getenv("Ironcliw_AUTH_MODE", "none").strip().lower()
+    _voice_bio_main = os.getenv("Ironcliw_VOICE_BIOMETRIC_ENABLED", "true").lower() not in ("false", "0", "no")
+    _skip_voice_init = _auth_mode_main in ("none", "") or not _voice_bio_main
+    if _skip_voice_init:
+        logger.info("⚡ Voice Verification: SKIPPED (AUTH_MODE=none or Ironcliw_VOICE_BIOMETRIC_ENABLED=false) — saves ~1GB RAM")
         app.state.db_adapter = None
         app.state.voice_verification = None
+    else:
+        try:
+            logger.info("🔐 Initializing Cloud SQL Proxy + Voice Verification...")
+            from intelligence.cloud_database_adapter import get_database_adapter
+            from voice.speaker_verification_service import SpeakerVerificationService
+
+            db_adapter = await get_database_adapter()
+            app.state.db_adapter = db_adapter
+
+            if db_adapter.is_cloud:
+                logger.info("✅ Cloud SQL proxy started and database connected")
+                logger.info(f"   • Connection: {db_adapter.config.connection_name}")
+                logger.info(f"   • Database: {db_adapter.config.db_name}")
+                logger.info(f"   • Host: {db_adapter.config.db_host}:{db_adapter.config.db_port}")
+            else:
+                logger.info("✅ Using local SQLite database")
+                logger.info(f"   • Path: {db_adapter.config.sqlite_path}")
+
+            voice_verification = SpeakerVerificationService()
+            await voice_verification.initialize()
+            app.state.voice_verification = voice_verification
+
+            profile_count = len(voice_verification.speaker_profiles)
+            model_dim = voice_verification.current_model_dimension
+
+            if profile_count > 0:
+                logger.info(f"✅ Voice Verification initialized successfully")
+                logger.info(f"   • Loaded profiles: {profile_count}")
+                logger.info(f"   • Model dimension: {model_dim}D")
+
+                for name, profile in voice_verification.speaker_profiles.items():
+                    import numpy as np
+                    emb_shape = np.array(profile['embedding']).shape
+                    emb_dim = emb_shape[0] if len(emb_shape) == 1 else emb_shape[1]
+
+                    if emb_dim == model_dim:
+                        logger.info(f"   • {name}: {emb_dim}D ✅ (matches model)")
+                    else:
+                        logger.warning(f"   • {name}: {emb_dim}D ⚠️ (expected {model_dim}D)")
+            else:
+                logger.warning("⚠️ No voice profiles loaded - voice unlock disabled")
+                logger.warning("   → Enroll a voice profile to enable biometric authentication")
+
+        except Exception as e:
+            logger.error(f"❌ Cloud SQL/Voice Verification initialization failed: {e}", exc_info=True)
+            logger.warning("   → Voice unlock features will be disabled")
+            app.state.db_adapter = None
+            app.state.voice_verification = None
 
     # =================================================================
     # PERFORMANCE OPTIMIZER: Attach to app state for lifecycle management
@@ -4011,7 +4015,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     # =================================================================
     # PROJECT TRINITY: Unified Cognitive Architecture Integration
     # =================================================================
-    # Trinity connects JARVIS (Body) ↔ J-Prime (Mind) ↔ Reactor Core (Nerves)
+    # Trinity connects Ironcliw (Body) ↔ J-Prime (Mind) ↔ Reactor Core (Nerves)
     # This enables distributed AI reasoning, surveillance, and action execution
     # across all three repositories with file-based message passing.
     # =================================================================
@@ -4021,15 +4025,15 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             initialize_trinity,
             is_trinity_initialized,
             get_trinity_status,
-            JARVIS_INSTANCE_ID,
+            Ironcliw_INSTANCE_ID,
         )
 
         logger.info("=" * 60)
-        logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection")
+        logger.info("PROJECT TRINITY: Initializing Ironcliw Body Connection")
         logger.info("=" * 60)
 
         # v253.7: Added timeout to prevent Trinity init from stalling backend startup
-        _trinity_init_timeout = float(os.getenv("JARVIS_TRINITY_INIT_TIMEOUT", "45"))
+        _trinity_init_timeout = float(os.getenv("Ironcliw_TRINITY_INIT_TIMEOUT", "45"))
         try:
             trinity_initialized = await asyncio.wait_for(
                 initialize_trinity(app), timeout=_trinity_init_timeout
@@ -4042,11 +4046,11 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
         if trinity_initialized:
             app.state.trinity_initialized = True
-            app.state.trinity_instance_id = JARVIS_INSTANCE_ID
+            app.state.trinity_instance_id = Ironcliw_INSTANCE_ID
 
             status = get_trinity_status()
-            logger.info("✅ PROJECT TRINITY: JARVIS Body Online")
-            logger.info(f"   • Instance ID: {JARVIS_INSTANCE_ID[:16]}...")
+            logger.info("✅ PROJECT TRINITY: Ironcliw Body Online")
+            logger.info(f"   • Instance ID: {Ironcliw_INSTANCE_ID[:16]}...")
             logger.info(f"   • Connected: {status.get('connected', False)}")
             logger.info(f"   • Heartbeat: {status.get('heartbeat_interval', 5.0)}s")
             logger.info("   • Mind ↔ Body ↔ Nerves: Distributed architecture active")
@@ -4059,7 +4063,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
         app.state.trinity_initialized = False
     except Exception as e:
         logger.warning(f"⚠️ PROJECT TRINITY initialization failed: {e}")
-        logger.warning("   → JARVIS will operate in standalone mode")
+        logger.warning("   → Ironcliw will operate in standalone mode")
         app.state.trinity_initialized = False
 
     # =================================================================
@@ -4193,7 +4197,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             logger.info("📊 [v2.0] ReadinessStateManager: System accepting traffic")
 
             elapsed = time.time() - start_time
-            logger.info(f"🎉 JARVIS fully initialized in {elapsed:.1f}s - /health/ready returns 200 OK")
+            logger.info(f"🎉 Ironcliw fully initialized in {elapsed:.1f}s - /health/ready returns 200 OK")
 
             # v112.0: Signal "stable" lifecycle state - startup complete
             if hasattr(app.state, 'service_registry') and app.state.service_registry:
@@ -4209,7 +4213,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     else:
         # No readiness manager - log startup complete without it
         elapsed = time.time() - start_time
-        logger.info(f"🎉 JARVIS initialized in {elapsed:.1f}s (legacy health check mode)")
+        logger.info(f"🎉 Ironcliw initialized in {elapsed:.1f}s (legacy health check mode)")
 
         # v112.0: Signal "stable" even in legacy mode
         if hasattr(app.state, 'service_registry') and app.state.service_registry:
@@ -4222,7 +4226,7 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
     yield
 
     # Cleanup
-    logger.info("🛑 Shutting down JARVIS backend...")
+    logger.info("🛑 Shutting down Ironcliw backend...")
 
     # =================================================================
     # v258.0: Stop shared async system metrics
@@ -4515,8 +4519,8 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
         reconciler = get_reconciler()
 
-        # Stop Cloud SQL if configured (saves ~$10/month when JARVIS not running)
-        stop_sql_on_shutdown = os.getenv("JARVIS_STOP_SQL_ON_SHUTDOWN", "false").lower() == "true"
+        # Stop Cloud SQL if configured (saves ~$10/month when Ironcliw not running)
+        stop_sql_on_shutdown = os.getenv("Ironcliw_STOP_SQL_ON_SHUTDOWN", "false").lower() == "true"
         if stop_sql_on_shutdown and reconciler:
             logger.info("🗄️ Stopping Cloud SQL (cost optimization)...")
             try:
@@ -4753,7 +4757,7 @@ except Exception as e:
 selected_lifespan = parallel_lifespan if PARALLEL_STARTUP_ENABLED else lifespan
 logger.info(f"Creating FastAPI app (parallel_startup={PARALLEL_STARTUP_ENABLED})...")
 app = FastAPI(
-    title="JARVIS Backend (Optimized)",
+    title="Ironcliw Backend (Optimized)",
     version="13.5.0-parallel-startup",
     lifespan=selected_lifespan,
 )
@@ -4786,13 +4790,13 @@ async def ultra_fast_lock():
             return False
 
     # Platform-specific locking
-    if JARVIS_IS_WINDOWS:
+    if Ironcliw_IS_WINDOWS:
         # Windows: Use rundll32 to lock workstation
         if await run_cmd(["rundll32.exe", "user32.dll,LockWorkStation"]):
             return {"success": True, "method": "windows_lockworkstation", "platform": "windows"}
         return {"success": False, "error": "windows_lock_failed", "platform": "windows"}
     
-    elif JARVIS_IS_LINUX:
+    elif Ironcliw_IS_LINUX:
         # Linux: Try multiple desktop environments
         # Method 1: GNOME
         if shutil.which("gnome-screensaver-command"):
@@ -4808,7 +4812,7 @@ async def ultra_fast_lock():
                 return {"success": True, "method": "xdg_screensaver", "platform": "linux"}
         return {"success": False, "error": "linux_lock_failed", "platform": "linux"}
     
-    elif JARVIS_IS_MACOS:
+    elif Ironcliw_IS_MACOS:
         # macOS: Multiple methods
         # Method 1: AppleScript Cmd+Ctrl+Q (works on all macOS versions)
         if shutil.which("osascript"):
@@ -4841,7 +4845,7 @@ async def ultra_fast_lock():
         return {"success": False, "error": "macos_lock_failed", "platform": "macos"}
     
     else:
-        return {"success": False, "error": "unsupported_platform", "platform": JARVIS_PLATFORM}
+        return {"success": False, "error": "unsupported_platform", "platform": Ironcliw_PLATFORM}
 
 logger.info("✅ Ultra-fast /lock-now endpoint registered (module-level)")
 
@@ -5049,14 +5053,14 @@ async def openai_chat_completions(request: Request):
         )
         serving = await get_model_serving()
 
-        _JARVIS_SYSTEM_PROMPT = (
-            "You are JARVIS (Just A Rather Very Intelligent System), an advanced AI assistant "
+        _Ironcliw_SYSTEM_PROMPT = (
+            "You are Ironcliw (Just A Rather Very Intelligent System), an advanced AI assistant "
             "integrated into a sophisticated home/office automation system. You have access to "
             "screen vision (you can see and analyze the user's current screen via screenshots), "
             "voice interaction, system control, and real-time context awareness. "
             "You run on Windows 11 and can control applications, monitor the display, assist "
             "with tasks, answer questions, and provide proactive assistance. "
-            "Respond concisely and helpfully in the style of JARVIS from Iron Man - "
+            "Respond concisely and helpfully in the style of Ironcliw from Iron Man - "
             "intelligent, efficient, slightly formal but personable. "
             "Address the user as 'Sir' unless instructed otherwise. "
             "When asked about screen content, acknowledge that you have vision capabilities "
@@ -5074,7 +5078,7 @@ async def openai_chat_completions(request: Request):
                 user_messages.append({"role": role, "content": content})
 
         if not system_prompt:
-            system_prompt = _JARVIS_SYSTEM_PROMPT
+            system_prompt = _Ironcliw_SYSTEM_PROMPT
 
         req = ModelRequest(
             messages=user_messages,
@@ -5445,7 +5449,7 @@ class WebSocketOriginMiddleware:
     - Development-friendly origin validation
     - Dynamic port detection
     - IPv4/IPv6 localhost support
-    - Cross-repo compatible (JARVIS + Prime + Reactor Core)
+    - Cross-repo compatible (Ironcliw + Prime + Reactor Core)
     """
 
     def __init__(self, app, allowed_origins: set = None, allow_all_in_dev: bool = True):
@@ -5676,7 +5680,7 @@ try:
 
     # Log config status
     _perf_config = get_config()
-    _profile_status = "ENABLED" if _perf_config.profile_enabled else "disabled (set JARVIS_PROFILE_ENABLED=true to enable)"
+    _profile_status = "ENABLED" if _perf_config.profile_enabled else "disabled (set Ironcliw_PROFILE_ENABLED=true to enable)"
     _cache_status = "ENABLED" if _perf_config.cache_enabled else "disabled"
     logger.info(f"✅ Performance Optimizer attached (Profiling Mode)")
     logger.info(f"   Profiling: {_profile_status}")
@@ -5760,7 +5764,7 @@ except Exception as e:
 
 
 # ═══════════════════════════════════════════════════════════════
-# TRINITY HEALTH API - Monitor JARVIS-Prime and Reactor-Core
+# TRINITY HEALTH API - Monitor Ironcliw-Prime and Reactor-Core
 # ═══════════════════════════════════════════════════════════════
 try:
     from api.trinity_health_api import router as trinity_health_router
@@ -5843,7 +5847,7 @@ async def health_ready():
     Quick readiness probe - confirms key services are OPERATIONALLY READY.
 
     ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: This endpoint determines when JARVIS is ready for USER INTERACTION
+    CRITICAL: This endpoint determines when Ironcliw is ready for USER INTERACTION
     ═══════════════════════════════════════════════════════════════════════════
 
     v95.3: Uses ReadinessStateManager as the PRIMARY source of truth.
@@ -5854,7 +5858,7 @@ async def health_ready():
     2. Legacy checks pass: ML models loaded, Voice system initialized, Core APIs functional
 
     This prevents false positives where the loading page redirects before
-    JARVIS can actually respond to user commands.
+    Ironcliw can actually respond to user commands.
 
     v118.0: Supports HEAD method for efficient health checking.
     """
@@ -5958,9 +5962,22 @@ async def health_ready():
             ml_ready = True
             critical_services_ready.append("ml_models")
         else:
-            details["ml_models_ready"] = False
-            details["ml_models_status"] = "not_started"
-            critical_services_failed.append("ml_models")
+            ecapa_only_ready = False
+            try:
+                from voice_unlock.ml_engine_registry import get_ml_registry_sync
+                _reg = get_ml_registry_sync(auto_create=False)
+                if _reg is not None:
+                    ecapa_only_ready = _reg.is_voice_unlock_ready
+            except Exception:
+                pass
+            if ecapa_only_ready:
+                details["ml_models_ready"] = True
+                details["ml_models_status"] = "ready_via_ecapa"
+                ml_ready = True
+                critical_services_ready.append("ml_models")
+            else:
+                details["ml_models_ready"] = False
+                details["ml_models_status"] = "not_started"
     except ImportError:
         details["ml_models_ready"] = False
         details["ml_models_status"] = "not_available"
@@ -6000,7 +6017,8 @@ async def health_ready():
             critical_services_ready.append("speaker_service")
         else:
             details["speaker_service_ready"] = False
-            critical_services_failed.append("speaker_service")
+            # Speaker service is not a hard blocker — it initializes asynchronously
+            # and degrades gracefully. Do NOT add to critical_services_failed.
     except ImportError:
         details["speaker_service_ready"] = False
     except Exception:
@@ -6176,13 +6194,12 @@ async def health_ready():
         for category in critical_categories:
             cat_stats = ghost_stats["by_category"].get(category, {})
             if cat_stats.get("ready", 0) == 0 and cat_stats.get("total", 0) > 0:
-                # Category has models but none ready
+                # Category has models registered but none are ready yet
                 ghosts_ready = False
                 ghost_details[f"{category}_category"] = "no_models_ready"
             elif cat_stats.get("total", 0) == 0:
-                # Category has no models registered yet
-                ghosts_ready = False
-                ghost_details[f"{category}_category"] = "not_registered"
+                # Category has no proxies registered — not deployed in this environment, skip
+                ghost_details[f"{category}_category"] = "not_deployed"
 
         details["ghost_proxies"] = {
             "ready": ghosts_ready,
@@ -6220,7 +6237,7 @@ async def health_ready():
     # ═══════════════════════════════════════════════════════════════════════════
 
     # v3.1: Calculate startup elapsed time for graceful degradation
-    STARTUP_GRACE_PERIOD = float(os.getenv("JARVIS_STARTUP_GRACE_PERIOD", "45.0"))
+    STARTUP_GRACE_PERIOD = float(os.getenv("Ironcliw_STARTUP_GRACE_PERIOD", "45.0"))
     startup_time = getattr(app.state, '_startup_time', None)
     if startup_time is None:
         # Track startup time on first health check
@@ -6250,7 +6267,23 @@ async def health_ready():
     details["grace_period"] = STARTUP_GRACE_PERIOD
     details["grace_period_exceeded"] = grace_period_exceeded
 
-    voice_operational = ml_ready or speaker_service_ready or voice_ready
+    # In auth bypass mode, voice services are intentionally disabled — not failed.
+    # Treat the bypass itself as "voice operational" so health reports "ready" not "degraded".
+    _health_auth_bypass = (
+        os.getenv("Ironcliw_AUTH_MODE", "none").strip().lower() in ("none", "")
+        or os.getenv("Ironcliw_VOICE_BIOMETRIC_ENABLED", "true").lower()
+        in ("false", "0", "no")
+    )
+    voice_operational = ml_ready or speaker_service_ready or voice_ready or _health_auth_bypass
+
+    # In auth bypass mode, voice ghost proxy failures are expected (ECAPA/speaker stubs disabled).
+    # Remove "ghost_proxies" from critical_services_failed and force ghosts_ready=True so the
+    # health status reaches "ready" without waiting for the 45s grace period.
+    if _health_auth_bypass and "ghost_proxies" in critical_services_failed:
+        critical_services_failed.remove("ghost_proxies")
+        if "ghost_proxies" not in critical_services_ready:
+            critical_services_ready.append("ghost_proxies")
+        ghosts_ready = True
 
     # v2.0: Check ParallelInitializer's interactive_ready state
     interactive_ready = getattr(app.state, 'interactive_ready', False)
@@ -6384,7 +6417,7 @@ async def health_readiness_tier():
         pass
 
     # Also check environment variables (set by supervisor)
-    env_tier = os.getenv("JARVIS_READINESS_TIER", "").upper()
+    env_tier = os.getenv("Ironcliw_READINESS_TIER", "").upper()
     if env_tier and env_tier != tier:
         tier = env_tier
 
@@ -6402,10 +6435,10 @@ async def health_readiness_tier():
         "capabilities": capabilities,
         "details": tier_details,
         "env_vars": {
-            "JARVIS_READINESS_TIER": os.getenv("JARVIS_READINESS_TIER", ""),
-            "JARVIS_READINESS_INTERACTIVE": os.getenv("JARVIS_READINESS_INTERACTIVE", ""),
-            "JARVIS_READINESS_WARMUP": os.getenv("JARVIS_READINESS_WARMUP", ""),
-            "JARVIS_READINESS_FULL": os.getenv("JARVIS_READINESS_FULL", ""),
+            "Ironcliw_READINESS_TIER": os.getenv("Ironcliw_READINESS_TIER", ""),
+            "Ironcliw_READINESS_INTERACTIVE": os.getenv("Ironcliw_READINESS_INTERACTIVE", ""),
+            "Ironcliw_READINESS_WARMUP": os.getenv("Ironcliw_READINESS_WARMUP", ""),
+            "Ironcliw_READINESS_FULL": os.getenv("Ironcliw_READINESS_FULL", ""),
         },
         "version": "v152.0",
     }
@@ -6698,16 +6731,16 @@ async def health_check():
 
     # Platform information
     platform_info = {
-        "platform": JARVIS_PLATFORM,
-        "is_windows": JARVIS_IS_WINDOWS,
-        "is_macos": JARVIS_IS_MACOS,
-        "is_linux": JARVIS_IS_LINUX,
+        "platform": Ironcliw_PLATFORM,
+        "is_windows": Ironcliw_IS_WINDOWS,
+        "is_macos": Ironcliw_IS_MACOS,
+        "is_linux": Ironcliw_IS_LINUX,
     }
-    if JARVIS_PLATFORM_INFO:
+    if Ironcliw_PLATFORM_INFO:
         platform_info.update({
-            "os_release": JARVIS_PLATFORM_INFO.get("release", "unknown"),
-            "architecture": JARVIS_PLATFORM_INFO.get("architecture", "unknown"),
-            "python_version": JARVIS_PLATFORM_INFO.get("python_version", sys.version),
+            "os_release": Ironcliw_PLATFORM_INFO.get("release", "unknown"),
+            "architecture": Ironcliw_PLATFORM_INFO.get("architecture", "unknown"),
+            "python_version": Ironcliw_PLATFORM_INFO.get("python_version", sys.version),
             "has_gpu": False,  # TODO: Implement GPU detection
             "has_directml": False,  # TODO: Implement DirectML detection for Windows
             "has_metal": False,  # TODO: Implement Metal detection for macOS
@@ -6738,25 +6771,25 @@ async def health_bridges():
     """Detailed bridge health status (v238.0).
 
     Returns granular health for all bridge modules that connect
-    JARVIS subsystems. Used by supervisor for degradation detection.
+    Ironcliw subsystems. Used by supervisor for degradation detection.
     """
     return await _collect_bridge_health()
 
 
 # ============================================================================
-# Zero-Touch Update Support: JARVIS Busy State Endpoint
+# Zero-Touch Update Support: Ironcliw Busy State Endpoint
 # ============================================================================
 
 @app.api_route("/health/busy", methods=["GET", "HEAD"])
 async def health_busy():
     """
-    Check if JARVIS is currently busy with active tasks.
+    Check if Ironcliw is currently busy with active tasks.
     
     Used by the Zero-Touch autonomous update system to determine
     if it's safe to apply updates without interrupting active work.
     
     Returns:
-        busy: True if JARVIS is processing tasks
+        busy: True if Ironcliw is processing tasks
         active_tasks: Count of currently running tasks
         active_operations: List of active operation types
         safe_to_update: True if update can proceed safely
@@ -6849,7 +6882,7 @@ async def health_performance():
     Get performance profiling statistics.
 
     Returns latency tracking, cache stats, and connection pool metrics.
-    Enable detailed profiling with: JARVIS_PROFILE_ENABLED=true
+    Enable detailed profiling with: Ironcliw_PROFILE_ENABLED=true
 
     Returns:
         cache: Cache hit rates and eviction stats
@@ -6919,7 +6952,7 @@ async def health_ai_loader():
         _loop = asyncio.get_running_loop()
         stats = await asyncio.wait_for(
             _loop.run_in_executor(None, app.state.ai_manager.get_stats),
-            timeout=float(os.getenv("JARVIS_HEALTH_AI_LOADER_TIMEOUT", "5.0")),
+            timeout=float(os.getenv("Ironcliw_HEALTH_AI_LOADER_TIMEOUT", "5.0")),
         )
 
         return {
@@ -7202,7 +7235,7 @@ async def hybrid_status():
         # Build response
         response = {
             "timestamp": datetime.now().isoformat(),
-            "hybrid_enabled": os.getenv("JARVIS_HYBRID_MODE", "auto") in ["auto", "true", "1"],
+            "hybrid_enabled": os.getenv("Ironcliw_HYBRID_MODE", "auto") in ["auto", "true", "1"],
             "current_location": "gcp" if is_gcp else "local",
             "ram": ram_state,
             "gcp_available": is_gcp or bool(os.getenv("GCP_PROJECT_ID")),
@@ -7287,7 +7320,7 @@ async def trinity_status():
     v80.0: Get PROJECT TRINITY cross-repo status.
 
     Returns comprehensive status of:
-    - JARVIS Body (local backend)
+    - Ironcliw Body (local backend)
     - J-Prime (cognitive layer)
     - Reactor-Core (neural/training layer)
     - Cross-repo health monitoring
@@ -7485,7 +7518,7 @@ async def flywheel_trigger(
 
 @app.get("/flywheel/learning-goals")
 async def flywheel_learning_goals():
-    """Get current learning goals for JARVIS"""
+    """Get current learning goals for Ironcliw"""
     try:
         from pathlib import Path
         import json
@@ -7505,7 +7538,7 @@ async def flywheel_learning_goals():
 
 @app.post("/flywheel/learning-goals/add")
 async def flywheel_add_learning_goal(topic: str, priority: int = 5, urls: list = None):
-    """Add a new learning goal for JARVIS to study"""
+    """Add a new learning goal for Ironcliw to study"""
     try:
         from pathlib import Path
         import json
@@ -7683,9 +7716,9 @@ def mount_routers():
     voice = components.get("voice", {})
     if voice and voice.get("jarvis_available"):
         app.include_router(voice["jarvis_router"], prefix="/voice/jarvis", tags=["jarvis"])
-        logger.info("✅ JARVIS Voice API mounted")
+        logger.info("✅ Ironcliw Voice API mounted")
 
-        # Set JARVIS instance in unified WebSocket pipeline
+        # Set Ironcliw instance in unified WebSocket pipeline
         try:
             from api.unified_websocket import set_jarvis_instance
 
@@ -7693,7 +7726,7 @@ def mount_routers():
             if jarvis_api:
                 set_jarvis_instance(jarvis_api)
         except Exception as e:
-            logger.warning(f"⚠️  Could not set JARVIS in WebSocket pipeline: {e}")
+            logger.warning(f"⚠️  Could not set Ironcliw in WebSocket pipeline: {e}")
 
     if voice and voice.get("enhanced_available"):
         app.include_router(voice["enhanced_router"], prefix="/voice/enhanced", tags=["voice"])
@@ -8052,7 +8085,7 @@ def mount_routers():
                         # Also connect to monitor
                         monitor.vision_analyzer = app.state.vision_analyzer
                         logger.info("   ✅ Vision Navigator connected to Claude Vision")
-                        logger.info("   👁️ JARVIS can now SEE and CLICK UI elements!")
+                        logger.info("   👁️ Ironcliw can now SEE and CLICK UI elements!")
                     else:
                         logger.warning(
                             "   ⚠️ Vision analyzer not available yet (will connect later)"
@@ -8293,7 +8326,7 @@ async def process_command(request: dict):
 async def root():
     """Root endpoint"""
     return {
-        "message": "JARVIS Backend (Optimized) is running",
+        "message": "Ironcliw Backend (Optimized) is running",
         "version": "13.4.0-browser-automation",
         "proactive_vision_enabled": hasattr(app.state, "vision_analyzer"),
         "components": {name: bool(comp) for name, comp in components.items() if comp is not None},
@@ -8563,7 +8596,7 @@ async def get_startup_progress():
 # =============================================================================
 
 _audio_error_log_state: dict = {}  # error_code -> {"count": int, "last_logged": float}
-_AUDIO_ERROR_LOG_INTERVAL = float(os.environ.get("JARVIS_AUDIO_ERROR_LOG_INTERVAL", "300"))  # 5 min
+_AUDIO_ERROR_LOG_INTERVAL = float(os.environ.get("Ironcliw_AUDIO_ERROR_LOG_INTERVAL", "300"))  # 5 min
 
 @app.post("/audio/ml/error")
 async def audio_ml_error(request: dict):
@@ -9000,7 +9033,7 @@ def _get_fallback_api_url() -> str:
     Returns localhost URL as fallback (always available locally).
     """
     import os
-    port = os.getenv("JARVIS_PORT", "8010")
+    port = os.getenv("Ironcliw_PORT", "8010")
     return f"http://localhost:{port}"
 
 
@@ -9083,31 +9116,31 @@ def _get_tts_timeout_seconds(env_var: str, default: float) -> float:
     return default
 
 
-_TTS_JARVIS_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
-    "JARVIS_TTS_JARVIS_TIMEOUT_SECONDS",
+_TTS_Ironcliw_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "Ironcliw_TTS_Ironcliw_TIMEOUT_SECONDS",
     5.0,
 )
 _TTS_ASYNC_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
-    "JARVIS_TTS_ASYNC_TIMEOUT_SECONDS",
+    "Ironcliw_TTS_ASYNC_TIMEOUT_SECONDS",
     7.5,
 )
 _TTS_GLOBAL_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
-    "JARVIS_TTS_GLOBAL_TIMEOUT_SECONDS",
+    "Ironcliw_TTS_GLOBAL_TIMEOUT_SECONDS",
     8.0,
 )
 # Global timeout must cover the slowest candidate timeout plus small scheduling slack.
 _TTS_GLOBAL_TIMEOUT_SECONDS = max(
     _TTS_GLOBAL_TIMEOUT_SECONDS,
-    _TTS_JARVIS_TIMEOUT_SECONDS + 0.5,
+    _TTS_Ironcliw_TIMEOUT_SECONDS + 0.5,
     _TTS_ASYNC_TIMEOUT_SECONDS + 0.5,
 )
 
 
 async def _try_jarvis_api_tts(jarvis_api, request):
-    """v241.0: TTS Strategy 1 — JARVIS Voice API."""
+    """v241.0: TTS Strategy 1 — Ironcliw Voice API."""
     try:
         result = await asyncio.wait_for(
-            jarvis_api.speak(request), timeout=_TTS_JARVIS_TIMEOUT_SECONDS
+            jarvis_api.speak(request), timeout=_TTS_Ironcliw_TIMEOUT_SECONDS
         )
         # v242.0: Inject X-TTS-Status header into response from jarvis_api.speak()
         if result is not None and hasattr(result, 'headers'):
@@ -9116,15 +9149,15 @@ async def _try_jarvis_api_tts(jarvis_api, request):
         return result
     except asyncio.TimeoutError:
         logger.warning(
-            f"[TTS] JARVIS Voice API timed out after {_TTS_JARVIS_TIMEOUT_SECONDS:.1f}s"
+            f"[TTS] Ironcliw Voice API timed out after {_TTS_Ironcliw_TIMEOUT_SECONDS:.1f}s"
         )
         return None
     except asyncio.CancelledError:
-        logger.debug("[TTS] JARVIS Voice API cancelled (race lost)")
+        logger.debug("[TTS] Ironcliw Voice API cancelled (race lost)")
         raise  # Re-raise so asyncio.wait() handles it
     except Exception as e:
         logger.warning(
-            f"[TTS] JARVIS Voice API failed: {type(e).__name__}: {e}"
+            f"[TTS] Ironcliw Voice API failed: {type(e).__name__}: {e}"
         )
         return None
 
@@ -9250,7 +9283,7 @@ async def audio_speak_post(request: dict):
     v241.0: Robust audio speak endpoint with PARALLEL strategy race.
     Never returns 503 - always provides audio response.
 
-    Strategies 1 (JARVIS Voice API) and 2 (Async TTS Handler) race
+    Strategies 1 (Ironcliw Voice API) and 2 (Async TTS Handler) race
     concurrently with a configurable global timeout budget. On failure, returns silent
     audio immediately — frontend falls back to browser speechSynthesis.
     """
@@ -9346,7 +9379,7 @@ async def audio_speak_get(text: str):
 
 
 # ============================================================
-# JARVIS VOICE ENDPOINTS (Frontend Compatibility)
+# Ironcliw VOICE ENDPOINTS (Frontend Compatibility)
 # ============================================================
 # These endpoints are required by the frontend JarvisVoice.js component
 # They provide status and activation for the voice system
@@ -9354,7 +9387,7 @@ async def audio_speak_get(text: str):
 @app.api_route("/voice/jarvis/status", methods=["GET", "HEAD"])
 async def voice_jarvis_status():
     """
-    Get JARVIS voice system status - required by frontend.
+    Get Ironcliw voice system status - required by frontend.
 
     v118.0: Added HEAD support to fix 405 Method Not Allowed error.
     HEAD requests return same headers but empty body (used by health checkers).
@@ -9369,27 +9402,27 @@ async def voice_jarvis_status():
         "listening": False,
         "speaking": False,
         "wake_word_enabled": False,
-        "message": "JARVIS voice system ready"
+        "message": "Ironcliw voice system ready"
     }
 
 
 @app.api_route("/voice/jarvis/activate", methods=["POST", "GET", "HEAD"])
 async def voice_jarvis_activate(request: Optional[dict] = None):
     """
-    Activate JARVIS voice system.
+    Activate Ironcliw voice system.
 
     v118.0: Added GET/HEAD support for health check compatibility.
     """
     return {
         "status": "activated",
-        "message": "JARVIS voice system activated",
+        "message": "Ironcliw voice system activated",
         "listening": True
     }
 
 
 @app.post("/voice/jarvis/speak")
 async def voice_jarvis_speak(request: dict):
-    """Make JARVIS speak text - uses robust TTS with fallback chain"""
+    """Make Ironcliw speak text - uses robust TTS with fallback chain"""
     # Use the robust audio speak implementation which handles all fallbacks
     return await audio_speak_post(request)
 
@@ -9724,23 +9757,23 @@ if __name__ == "__main__":
         _entry_point = _entry_info.get("entry_point", "unknown")
         _parent_entry = _entry_info.get("parent_entry_point", "unknown")
 
-        logger.info(f"[v85.0] JARVIS backend launched - entry: {_entry_point}")
+        logger.info(f"[v85.0] Ironcliw backend launched - entry: {_entry_point}")
 
         # Set environment variables for downstream components
-        if _entry_point == "run_supervisor" or os.environ.get("JARVIS_SUPERVISED") == "1":
-            os.environ["JARVIS_MANAGED_BY_SUPERVISOR"] = "1"
+        if _entry_point == "run_supervisor" or os.environ.get("Ironcliw_SUPERVISED") == "1":
+            os.environ["Ironcliw_MANAGED_BY_SUPERVISOR"] = "1"
             logger.info("[v85.0] Running under supervisor management")
         elif _entry_point == "start_system":
-            os.environ["JARVIS_MANAGED_BY_START_SYSTEM"] = "1"
+            os.environ["Ironcliw_MANAGED_BY_START_SYSTEM"] = "1"
             logger.info("[v85.0] Running via start_system.py")
         elif _entry_point == "main_direct" or _entry_point == "unknown":
-            os.environ["JARVIS_DIRECT_LAUNCH"] = "1"
+            os.environ["Ironcliw_DIRECT_LAUNCH"] = "1"
             logger.info("[v85.0] Direct launch (no coordinator)")
 
         # Check if externally managed (by another coordinator)
-        if os.environ.get("JARVIS_MANAGED_EXTERNALLY") == "1":
-            _manager_pid = os.environ.get("JARVIS_MANAGER_PID", "unknown")
-            _manager_entry = os.environ.get("JARVIS_MANAGER_ENTRY", "unknown")
+        if os.environ.get("Ironcliw_MANAGED_EXTERNALLY") == "1":
+            _manager_pid = os.environ.get("Ironcliw_MANAGER_PID", "unknown")
+            _manager_entry = os.environ.get("Ironcliw_MANAGER_ENTRY", "unknown")
             logger.info(
                 f"[v85.0] Externally managed by {_manager_entry} (PID: {_manager_pid})"
             )
@@ -9773,7 +9806,7 @@ if __name__ == "__main__":
         print("🐍 [RUNTIME] Using standard uvicorn (hyper_runtime not available)")
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="JARVIS Backend Server")
+    parser = argparse.ArgumentParser(description="Ironcliw Backend Server")
     parser.add_argument(
         "--port",
         type=int,
@@ -9783,7 +9816,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Print startup information
-    print(f"\n🚀 Starting JARVIS Backend")
+    print(f"\n🚀 Starting Ironcliw Backend")
     print(f"   HTTP:      http://localhost:{args.port}")
     print(f"   WebSocket: ws://localhost:{args.port}/ws")
     print(f"   API Docs:  http://localhost:{args.port}/docs")

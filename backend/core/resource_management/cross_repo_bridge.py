@@ -1,10 +1,10 @@
-"""
+﻿"""
 Cross-Repository Resource Bridge v1.0
 ======================================
 
 Provides resource coordination and synchronization across the Trinity ecosystem:
-- JARVIS (Body) - Primary interface and execution
-- JARVIS Prime (Mind) - Intelligence and decision making
+- Ironcliw (Body) - Primary interface and execution
+- Ironcliw Prime (Mind) - Intelligence and decision making
 - Reactor Core (Learning) - Training and model updates
 
 Features:
@@ -77,10 +77,10 @@ class ResourceEventType(Enum):
 
 class SyncDirection(Enum):
     """Direction of resource synchronization."""
-    JARVIS_TO_PRIME = auto()
-    PRIME_TO_JARVIS = auto()
-    JARVIS_TO_REACTOR = auto()
-    REACTOR_TO_JARVIS = auto()
+    Ironcliw_TO_PRIME = auto()
+    PRIME_TO_Ironcliw = auto()
+    Ironcliw_TO_REACTOR = auto()
+    REACTOR_TO_Ironcliw = auto()
     PRIME_TO_REACTOR = auto()
     REACTOR_TO_PRIME = auto()
     BIDIRECTIONAL = auto()
@@ -132,8 +132,8 @@ class CrossRepoResourceConfig:
     emergency_threshold_disk: float = float(os.getenv("RESOURCE_EMERGENCY_DISK", "0.95"))
 
     # Repo paths
-    jarvis_path: str = os.getenv("JARVIS_PATH", str(Path.home() / "Documents/repos/JARVIS-AI-Agent"))
-    prime_path: str = os.getenv("PRIME_PATH", str(Path.home() / "Documents/repos/JARVIS-Prime"))
+    jarvis_path: str = os.getenv("Ironcliw_PATH", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent"))
+    prime_path: str = os.getenv("PRIME_PATH", str(Path.home() / "Documents/repos/Ironcliw-Prime"))
     reactor_path: str = os.getenv("REACTOR_PATH", str(Path.home() / "Documents/repos/Reactor-Core"))
 
 
@@ -147,7 +147,7 @@ class ResourceEvent:
     """A resource event for cross-repo communication."""
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     event_type: ResourceEventType = ResourceEventType.HEARTBEAT
-    source_repo: ComponentType = ComponentType.JARVIS_BODY
+    source_repo: ComponentType = ComponentType.Ironcliw_BODY
     target_repo: Optional[ComponentType] = None
     resource_type: ResourceType = ResourceType.MEMORY
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -190,7 +190,7 @@ class ResourceInventory:
 class AllocationRequest:
     """A request for resource allocation."""
     request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    requester: ComponentType = ComponentType.JARVIS_BODY
+    requester: ComponentType = ComponentType.Ironcliw_BODY
     resource_type: ResourceType = ResourceType.MEMORY
     amount_requested: float = 0.0
     priority: int = 1
@@ -432,7 +432,7 @@ class CrossRepoResourceBridge:
         """Initialize the bridge."""
         try:
             # Initialize health status for all repos
-            for component in [ComponentType.JARVIS_BODY, ComponentType.JARVIS_PRIME, ComponentType.REACTOR_CORE]:
+            for component in [ComponentType.Ironcliw_BODY, ComponentType.Ironcliw_PRIME, ComponentType.REACTOR_CORE]:
                 self._health_status[component] = RepoHealthStatus(
                     repo=component,
                     status=RepoStatus.OFFLINE,
@@ -567,7 +567,7 @@ class CrossRepoResourceBridge:
         # Publish grant event
         event = ResourceEvent(
             event_type=ResourceEventType.ALLOCATION_GRANTED,
-            source_repo=ComponentType.JARVIS_BODY,
+            source_repo=ComponentType.Ironcliw_BODY,
             payload={
                 "request_id": request_id,
                 "amount_granted": amount_granted,
@@ -591,7 +591,7 @@ class CrossRepoResourceBridge:
         # Publish denial event
         event = ResourceEvent(
             event_type=ResourceEventType.ALLOCATION_DENIED,
-            source_repo=ComponentType.JARVIS_BODY,
+            source_repo=ComponentType.Ironcliw_BODY,
             payload={
                 "request_id": request_id,
                 "reason": reason,
@@ -729,7 +729,7 @@ class CrossRepoResourceBridge:
 
             # Build inventory
             inventory = ResourceInventory(
-                repo=ComponentType.JARVIS_BODY,
+                repo=ComponentType.Ironcliw_BODY,
                 memory_used_mb=status.get("memory", {}).get("used_mb", 0),
                 memory_available_mb=status.get("memory", {}).get("total_mb", 0) - status.get("memory", {}).get("used_mb", 0),
                 disk_used_gb=status.get("disk", {}).get("used_gb", 0),
@@ -739,7 +739,7 @@ class CrossRepoResourceBridge:
             # Publish sync complete
             event = ResourceEvent(
                 event_type=ResourceEventType.SYNC_COMPLETE,
-                source_repo=ComponentType.JARVIS_BODY,
+                source_repo=ComponentType.Ironcliw_BODY,
                 target_repo=source,
                 payload={"inventory": inventory.__dict__},
             )
@@ -771,10 +771,10 @@ class CrossRepoResourceBridge:
                 await asyncio.sleep(self.config.sync_interval)
 
                 # Request sync from all repos
-                for component in [ComponentType.JARVIS_PRIME, ComponentType.REACTOR_CORE]:
+                for component in [ComponentType.Ironcliw_PRIME, ComponentType.REACTOR_CORE]:
                     event = ResourceEvent(
                         event_type=ResourceEventType.SYNC_REQUEST,
-                        source_repo=ComponentType.JARVIS_BODY,
+                        source_repo=ComponentType.Ironcliw_BODY,
                         target_repo=component,
                     )
                     await self.event_bus.publish(event)
@@ -793,7 +793,7 @@ class CrossRepoResourceBridge:
                 # Send heartbeat
                 event = ResourceEvent(
                     event_type=ResourceEventType.HEARTBEAT,
-                    source_repo=ComponentType.JARVIS_BODY,
+                    source_repo=ComponentType.Ironcliw_BODY,
                     payload={
                         "timestamp": time.time(),
                     },

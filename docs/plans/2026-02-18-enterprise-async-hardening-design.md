@@ -1,4 +1,4 @@
-# Enterprise Async & Resilience Hardening Design
+﻿# Enterprise Async & Resilience Hardening Design
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -12,7 +12,7 @@
 
 ## Problem Statement
 
-Deep audit of the JARVIS codebase revealed 5 systemic failure categories:
+Deep audit of the Ironcliw codebase revealed 5 systemic failure categories:
 
 | Category | Count | Risk | Root Cause |
 |----------|-------|------|------------|
@@ -208,7 +208,7 @@ async def coordination_flag(name: str, value: str = "true"):
     Guaranteed cleanup via finally block — no manual pop() needed.
 
     Usage:
-        async with coordination_flag("JARVIS_INVINCIBLE_NODE_BOOTING"):
+        async with coordination_flag("Ironcliw_INVINCIBLE_NODE_BOOTING"):
             await boot_invincible_node()
         # Flag automatically cleared on exit, error, or cancellation
     """

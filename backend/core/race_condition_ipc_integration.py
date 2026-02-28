@@ -1,4 +1,4 @@
-"""
+﻿"""
 Race Condition Prevention - Trinity IPC Integration v1.0
 =========================================================
 
@@ -42,7 +42,7 @@ Usage:
     # Validate startup order
     await validate_startup_order()
 
-Author: JARVIS Trinity v1.0 - Race Condition IPC Integration
+Author: Ironcliw Trinity v1.0 - Race Condition IPC Integration
 """
 
 from __future__ import annotations
@@ -870,17 +870,17 @@ async def validate_startup_order() -> List[str]:
             dependencies=[],
         )
 
-        # JARVIS Prime depends on Reactor Core
+        # Ironcliw Prime depends on Reactor Core
         validator.register_component(
             name="jarvis_prime",
-            component_type=ComponentType.JARVIS_PRIME,
+            component_type=ComponentType.Ironcliw_PRIME,
             dependencies=["reactor_core"],
         )
 
-        # JARVIS Body depends on both
+        # Ironcliw Body depends on both
         validator.register_component(
             name="jarvis_body",
-            component_type=ComponentType.JARVIS_BODY,
+            component_type=ComponentType.Ironcliw_BODY,
             dependencies=["reactor_core", "jarvis_prime"],
         )
 

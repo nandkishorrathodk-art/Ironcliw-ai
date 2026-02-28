@@ -1,4 +1,4 @@
-# 📊 Excel & Database Export Guide
+﻿# 📊 Excel & Database Export Guide
 
 Complete guide for exporting voice unlock metrics to **Excel** and **SQLite/CloudSQL Database**.
 
@@ -10,7 +10,7 @@ Complete guide for exporting voice unlock metrics to **Excel** and **SQLite/Clou
 
 ```bash
 # Export today's metrics to Excel
-cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock
+cd ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock
 ./export_to_excel.sh
 
 # Export and automatically open in Excel
@@ -241,14 +241,14 @@ Create a cron job to export daily:
 crontab -e
 
 # Add this line (exports at 11:59 PM daily)
-59 23 * * * cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock && ./export_to_excel.sh --date $(date +\%Y-\%m-\%d) >> ~/jarvis_export.log 2>&1
+59 23 * * * cd ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock && ./export_to_excel.sh --date $(date +\%Y-\%m-\%d) >> ~/jarvis_export.log 2>&1
 ```
 
 ### Weekly Comprehensive Export
 
 ```bash
 # Export all data every Sunday at midnight
-0 0 * * 0 cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock && ./export_to_excel.sh --all >> ~/jarvis_export.log 2>&1
+0 0 * * 0 cd ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock && ./export_to_excel.sh --all >> ~/jarvis_export.log 2>&1
 ```
 
 ---
@@ -294,7 +294,7 @@ Tables:
 # Python packages for Excel export
 pip install pandas openpyxl
 
-# These are already included in JARVIS requirements.txt
+# These are already included in Ironcliw requirements.txt
 # But install manually if needed:
 pip install aiofiles asyncio
 ```

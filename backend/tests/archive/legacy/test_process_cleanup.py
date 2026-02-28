@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test the enhanced process cleanup manager with code change detection."""
 
 import asyncio
@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from process_cleanup_manager import ProcessCleanupManager, ensure_fresh_jarvis_instance
 
 def find_jarvis_processes():
-    """Find all JARVIS processes."""
+    """Find all Ironcliw processes."""
     jarvis_procs = []
     for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
         try:
@@ -47,14 +47,14 @@ async def test_cleanup_manager():
     
     manager = ProcessCleanupManager()
     
-    # 1. Check current JARVIS processes
-    print("\n1️⃣  Current JARVIS processes:")
+    # 1. Check current Ironcliw processes
+    print("\n1️⃣  Current Ironcliw processes:")
     processes = find_jarvis_processes()
     if processes:
         for p in processes:
             print(f"   PID {p['pid']}: Port {p['port']}, Age {p['age']:.1f} minutes")
     else:
-        print("   No JARVIS processes found")
+        print("   No Ironcliw processes found")
     
     # 2. Check for code changes
     print("\n2️⃣  Checking for code changes...")
@@ -116,7 +116,7 @@ async def test_cleanup_manager():
     print("• Single instance enforcement per port")
     print("• System health monitoring and recommendations")
     print("• Process cleanup with graceful termination")
-    print("\n💡 This ensures you'll never run an old JARVIS instance again!")
+    print("\n💡 This ensures you'll never run an old Ironcliw instance again!")
     print("=" * 70)
 
 if __name__ == "__main__":

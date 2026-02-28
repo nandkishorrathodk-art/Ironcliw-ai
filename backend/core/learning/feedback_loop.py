@@ -1,4 +1,4 @@
-"""
+﻿"""
 User Feedback Learning Loop
 Learns from user interactions to improve notification relevance and timing.
 
@@ -10,7 +10,7 @@ Philosophy:
 
 Design Principles:
 - Privacy-first: All learning happens locally
-- Transparent: User can see what JARVIS learned
+- Transparent: User can see what Ironcliw learned
 - Reversible: User can reset learned patterns
 - Graceful: Degrades to defaults if no data
 """

@@ -1,7 +1,7 @@
-"""
+﻿"""
 v67.0 CEREBRO PROTOCOL - System-Wide App Awareness
 
-This module provides JARVIS with dynamic, real-time awareness of all installed
+This module provides Ironcliw with dynamic, real-time awareness of all installed
 applications on macOS using Spotlight integration (mdfind).
 
 FEATURES:
@@ -16,8 +16,8 @@ FEATURES:
 ROOT CAUSE FIX:
 Instead of maintaining a static alias list that needs manual updates,
 we query the macOS Metadata Server directly. This means:
-- Install new app → JARVIS knows it instantly
-- Rename app → JARVIS adapts automatically
+- Install new app → Ironcliw knows it instantly
+- Rename app → Ironcliw adapts automatically
 - Zero maintenance required
 
 USAGE:
@@ -92,7 +92,7 @@ class AppLibrary:
     """
     v67.0 CEREBRO PROTOCOL: Dynamic App Awareness via Spotlight Integration.
 
-    This singleton provides JARVIS with real-time knowledge of all installed
+    This singleton provides Ironcliw with real-time knowledge of all installed
     applications on macOS without any hardcoding.
 
     Architecture:

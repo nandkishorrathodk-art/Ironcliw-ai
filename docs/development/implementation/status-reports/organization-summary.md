@@ -1,8 +1,8 @@
-# 📁 Project Organization Summary
+﻿# 📁 Project Organization Summary
 
 ## ✅ Completed Reorganization
 
-The JARVIS project has been reorganized for better maintainability and clarity.
+The Ironcliw project has been reorganized for better maintainability and clarity.
 
 ### 📚 Documentation Structure
 
@@ -17,9 +17,9 @@ docs/
 │   ├── CLAUDE_SETUP_STATUS.md
 │   └── QUICK_START.md
 ├── guides/                # Feature guides
-│   ├── JARVIS_FULL_COMPREHENSION_GUIDE.md
-│   ├── JARVIS_INTERFACE.md
-│   ├── JARVIS_VOICE_SYSTEM.md
+│   ├── Ironcliw_FULL_COMPREHENSION_GUIDE.md
+│   ├── Ironcliw_INTERFACE.md
+│   ├── Ironcliw_VOICE_SYSTEM.md
 │   └── fix_microphone.md
 ├── updates/               # Version updates
 │   ├── UPDATE_NOTES.md

@@ -1,5 +1,5 @@
-"""
-Intelligent Error Reporter - Root Cause Diagnosis for JARVIS Surveillance
+﻿"""
+Intelligent Error Reporter - Root Cause Diagnosis for Ironcliw Surveillance
 ==========================================================================
 
 Fixes the "I hit a snag" problem by:
@@ -18,7 +18,7 @@ Architecture:
     │  └── ActionableMessageBuilder (user-friendly + technical)           │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS v11.1 - Intelligent Error Reporting
+Author: Ironcliw v11.1 - Intelligent Error Reporting
 """
 
 from __future__ import annotations
@@ -848,7 +848,7 @@ class IntelligentErrorReporter:
             ],
             ErrorCategory.SCREEN_RECORDING_DENIED: [
                 "Go to System Settings > Privacy & Security > Screen Recording",
-                "Enable access for Terminal, Python, or the JARVIS application",
+                "Enable access for Terminal, Python, or the Ironcliw application",
             ],
             ErrorCategory.WINDOW_NOT_FOUND: [
                 f"Open {context.get('app_name', 'the target application')} first",

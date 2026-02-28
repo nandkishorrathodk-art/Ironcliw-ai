@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Agent Registry
+﻿"""
+Ironcliw Neural Mesh - Agent Registry
 
 Service discovery and health monitoring for all agents with:
 - Dynamic registration and deregistration

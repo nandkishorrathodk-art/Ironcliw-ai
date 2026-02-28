@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test smart Toronto navigation"""
 
 import asyncio
@@ -24,9 +24,9 @@ async def test_smart_navigation():
     if success:
         print("\n✅ Successfully navigated to Toronto!")
         
-        # Now test with JARVIS
-        print("\nTesting with JARVIS...")
-        from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+        # Now test with Ironcliw
+        print("\nTesting with Ironcliw...")
+        from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
         from api.jarvis_factory import set_app_state
         from system_control.weather_system_config import initialize_weather_system
         from types import SimpleNamespace
@@ -38,23 +38,23 @@ async def test_smart_navigation():
         )
         set_app_state(app_state)
         
-        jarvis_api = JARVISVoiceAPI()
+        jarvis_api = IroncliwVoiceAPI()
         
-        command = JARVISCommand(text="What's the weather for today?")
+        command = IroncliwCommand(text="What's the weather for today?")
         result = await jarvis_api.process_command(command)
         
         response = result.get('response', '')
-        print(f"\nJARVIS says: {response}")
+        print(f"\nIroncliw says: {response}")
         
         if 'toronto' in response.lower():
-            print("\n🎉 SUCCESS! JARVIS is reading Toronto weather!")
+            print("\n🎉 SUCCESS! Ironcliw is reading Toronto weather!")
         else:
-            print("\n⚠️ JARVIS is not reading Toronto weather yet")
+            print("\n⚠️ Ironcliw is not reading Toronto weather yet")
     else:
         print("\n❌ Failed to navigate to Toronto")
     
     print("\n" + "="*60)
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_smart_navigation())

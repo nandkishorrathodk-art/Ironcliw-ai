@@ -1,15 +1,15 @@
-"""
+﻿"""
 Reactor-Core Auto-Deploy Watcher
 ================================
 
 Watches the reactor-core output directory for newly trained models and
-automatically deploys them to JARVIS-Prime (local or Cloud Run).
+automatically deploys them to Ironcliw-Prime (local or Cloud Run).
 
 Features:
 - File system watching with debouncing
 - Automatic model validation
 - GCS upload for Cloud Run deployment
-- Hot-swap notification to running JARVIS-Prime instances
+- Hot-swap notification to running Ironcliw-Prime instances
 - Rollback support if new model fails health checks
 
 Architecture:
@@ -31,13 +31,13 @@ Architecture:
     │  │               Deploy Orchestrator                          │  │
     │  │  - Upload to GCS (Cloud Run)                               │  │
     │  │  - Copy to local models dir                                │  │
-    │  │  - Notify JARVIS-Prime for hot-swap                        │  │
+    │  │  - Notify Ironcliw-Prime for hot-swap                        │  │
     │  │  - Health check verification                               │  │
     │  └──────────────────────────────────────────────────────────┘  │
     └─────────────────────────────────────────────────────────────────┘
 
 Version: 1.0.0
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations
@@ -72,10 +72,10 @@ class ReactorCoreConfig:
         ))
     )
 
-    # Local JARVIS-Prime models directory
+    # Local Ironcliw-Prime models directory
     local_models_dir: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_MODELS_DIR",
+            "Ironcliw_PRIME_MODELS_DIR",
             str(Path.home() / "Documents" / "repos" / "jarvis-prime" / "models")
         ))
     )
@@ -83,7 +83,7 @@ class ReactorCoreConfig:
     # GCS bucket for Cloud Run models
     gcs_bucket: str = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_MODELS_GCS_BUCKET",
+            "Ironcliw_MODELS_GCS_BUCKET",
             "gs://jarvis-473803-deployments/models"
         )
     )
@@ -93,7 +93,7 @@ class ReactorCoreConfig:
         default_factory=lambda: os.getenv("REACTOR_CORE_GCS_UPLOAD", "true").lower() == "true"
     )
 
-    # Deploy to local JARVIS-Prime
+    # Deploy to local Ironcliw-Prime
     deploy_local: bool = field(
         default_factory=lambda: os.getenv("REACTOR_CORE_LOCAL_DEPLOY", "true").lower() == "true"
     )
@@ -116,13 +116,13 @@ class ReactorCoreConfig:
         default_factory=lambda: os.getenv("REACTOR_CORE_AUTO_ACTIVATE", "true").lower() == "true"
     )
 
-    # JARVIS-Prime endpoints for hot-swap notification
+    # Ironcliw-Prime endpoints for hot-swap notification
     jarvis_prime_local_url: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_LOCAL_URL", "http://127.0.0.1:8002")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_LOCAL_URL", "http://127.0.0.1:8002")
     )
     jarvis_prime_cloud_url: str = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_PRIME_CLOUD_RUN_URL",
+            "Ironcliw_PRIME_CLOUD_RUN_URL",
             "https://jarvis-prime-dev-888774109345.us-central1.run.app"
         )
     )
@@ -412,7 +412,7 @@ class ReactorCoreWatcher:
                 else:
                     result.error = str(e)
 
-        # Notify JARVIS-Prime for hot-swap
+        # Notify Ironcliw-Prime for hot-swap
         if result.local_deployed or result.gcs_uploaded:
             try:
                 hot_swap_ok = await self._notify_hot_swap(model_path.name, result.gcs_path)
@@ -431,7 +431,7 @@ class ReactorCoreWatcher:
         return result
 
     async def _deploy_local(self, model_path: Path) -> bool:
-        """Deploy model to local JARVIS-Prime models directory."""
+        """Deploy model to local Ironcliw-Prime models directory."""
         target_dir = self.config.local_models_dir
         target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -474,7 +474,7 @@ class ReactorCoreWatcher:
         return gcs_path
 
     async def _notify_hot_swap(self, model_name: str, gcs_path: Optional[str]) -> bool:
-        """Notify JARVIS-Prime to hot-swap to new model."""
+        """Notify Ironcliw-Prime to hot-swap to new model."""
         client = await self._get_http_client()
         if client is None:
             return False

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Async Startup Barrier - Layer 2 of Distributed Proxy System
 
 Provides:
@@ -8,7 +8,7 @@ Provides:
 - CloudSQL barrier that blocks dependent components until verified ready
 - v117.0: Unified credential management via SecretManager
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.1.0 (v117.0)
 """
 
@@ -130,7 +130,7 @@ class _LazyCredentialProvider:
 
             # Fallback to environment variables (check all aliases)
             for env_var in [
-                "JARVIS_DB_USER",
+                "Ironcliw_DB_USER",
                 "CLOUDSQL_DB_USER",
                 "DB_USER",
                 "CLOUD_SQL_USER",
@@ -170,7 +170,7 @@ class _LazyCredentialProvider:
 
             # Fallback to environment variables (check all aliases)
             for env_var in [
-                "JARVIS_DB_PASSWORD",
+                "Ironcliw_DB_PASSWORD",
                 "CLOUDSQL_DB_PASSWORD",
                 "DB_PASSWORD",
                 "CLOUD_SQL_PASSWORD",
@@ -183,7 +183,7 @@ class _LazyCredentialProvider:
 
             # Empty password (will likely fail auth, but we don't crash)
             logger.warning(
-                "No database password found! Set JARVIS_DB_PASSWORD or configure "
+                "No database password found! Set Ironcliw_DB_PASSWORD or configure "
                 "SecretManager. Authentication will likely fail."
             )
             self._db_password = ""
@@ -246,13 +246,13 @@ class BarrierConfig:
 
     # Database settings (non-credential)
     # v117.1: Dynamic database configuration with intelligent fallbacks
-    # Priority: CLOUDSQL_DB_NAME → JARVIS_DB_NAME → postgres (always exists)
+    # Priority: CLOUDSQL_DB_NAME → Ironcliw_DB_NAME → postgres (always exists)
     DB_HOST: Final[str] = os.getenv("CLOUDSQL_PROXY_HOST", "127.0.0.1")
     DB_PORT: Final[int] = int(os.getenv("CLOUDSQL_PROXY_PORT", "5432"))
     DB_NAME: Final[str] = os.getenv(
         "CLOUDSQL_DB_NAME",
         os.getenv(
-            "JARVIS_DB_NAME",
+            "Ironcliw_DB_NAME",
             "postgres"  # v117.1: Always exists in PostgreSQL, safe fallback
         )
     )
@@ -653,7 +653,7 @@ class VerificationPipeline:
                 error_str = str(last_error) if last_error else "Unknown error"
                 if "password" in error_str.lower() or "authentication" in error_str.lower():
                     error_type = "authentication_failed"
-                    suggestion = "Check JARVIS_DB_PASSWORD or database user credentials"
+                    suggestion = "Check Ironcliw_DB_PASSWORD or database user credentials"
                 elif "does not exist" in error_str.lower():
                     error_type = "all_databases_unavailable"
                     suggestion = "No database accessible. Create jarvis_db or grant access to postgres/template1"
@@ -1199,7 +1199,7 @@ class AsyncStartupBarrier:
         else:
             # Fallback if component contract not available
             is_required = os.getenv("CLOUDSQL_REQUIRED", "").lower() in ("true", "1", "yes")
-            is_production = os.getenv("JARVIS_ENV", "").lower() == "production"
+            is_production = os.getenv("Ironcliw_ENV", "").lower() == "production"
             failure_level = logging.WARNING if (is_required or is_production) else logging.DEBUG
             registry = None
         

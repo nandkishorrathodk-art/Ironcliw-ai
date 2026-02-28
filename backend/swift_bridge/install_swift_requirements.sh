@@ -1,7 +1,7 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
 # Installation script for Swift requirements
-# Helps set up Swift development environment for JARVIS
+# Helps set up Swift development environment for Ironcliw
 #
 
 set -e
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 BOLD='\033[1m'
 
-echo -e "${BOLD}🛠️  JARVIS Swift Classifier - Installation Helper${NC}"
+echo -e "${BOLD}🛠️  Ironcliw Swift Classifier - Installation Helper${NC}"
 echo "=================================================="
 
 # Check current Swift status
@@ -62,7 +62,7 @@ echo "2. This may provide the necessary frameworks"
 
 echo -e "\n${BOLD}Option 3: Continue with Python Fallback${NC}"
 echo "The Python fallback classifier is already working!"
-echo "You can use JARVIS with intelligent routing right now."
+echo "You can use Ironcliw with intelligent routing right now."
 
 # Try alternative Swift installation
 echo -e "\n${BOLD}Checking for alternative Swift installations...${NC}"
@@ -81,13 +81,13 @@ fi
 # Provide workaround
 echo -e "\n${BOLD}Temporary Workaround:${NC}"
 echo "========================"
-echo "While Xcode is downloading/installing, JARVIS will automatically"
+echo "While Xcode is downloading/installing, Ironcliw will automatically"
 echo "use the Python fallback classifier which provides:"
 echo "• Intelligent command routing"
 echo "• Learning capabilities"
 echo "• No hardcoded patterns"
 echo ""
-echo "Once Xcode is installed, JARVIS will automatically switch to"
+echo "Once Xcode is installed, Ironcliw will automatically switch to"
 echo "the Swift classifier for even better performance!"
 
 # Test current capability
@@ -115,4 +115,4 @@ echo -e "\n${CYAN}After installing Xcode, run:${NC}"
 echo "  cd backend/swift_bridge"
 echo "  ./build.sh"
 echo ""
-echo -e "${GREEN}JARVIS is ready to use with intelligent routing!${NC}"
+echo -e "${GREEN}Ironcliw is ready to use with intelligent routing!${NC}"

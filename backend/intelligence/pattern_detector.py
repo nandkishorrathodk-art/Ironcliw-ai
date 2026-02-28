@@ -1,4 +1,4 @@
-"""
+﻿"""
 Pattern Detector v1.0 - Design Pattern Recognition System
 =========================================================
 
@@ -39,7 +39,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -86,7 +86,7 @@ class PatternDetectorConfig:
     WARN_ON_VIOLATION: bool = get_env_bool("PATTERN_WARN_VIOLATION", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    Ironcliw_REPO: Path = Path(get_env_str("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
     PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
     REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
@@ -1152,7 +1152,7 @@ class CrossRepoPatternDetector:
 
     def __init__(self):
         self._repos: Dict[str, Path] = {
-            "jarvis": PatternDetectorConfig.JARVIS_REPO,
+            "jarvis": PatternDetectorConfig.Ironcliw_REPO,
             "prime": PatternDetectorConfig.PRIME_REPO,
             "reactor": PatternDetectorConfig.REACTOR_REPO,
         }

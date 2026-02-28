@@ -1,9 +1,9 @@
-"""
+﻿"""
 Cross-Repository Refactoring Coordinator v1.0
 ==============================================
 
 Coordinates refactoring operations across the Trinity ecosystem:
-JARVIS, JARVIS-Prime, and Reactor-Core repositories.
+Ironcliw, Ironcliw-Prime, and Reactor-Core repositories.
 
 Features:
 - Atomic cross-repo transactions
@@ -12,7 +12,7 @@ Features:
 - Distributed locking
 - Rollback coordination
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -66,8 +66,8 @@ class CrossRepoConfig:
     PARALLEL_REPOS: bool = get_env_bool("REFACTORING_PARALLEL_REPOS", True)
 
     # Repository paths
-    JARVIS_REPO: Path = _get_env_path("JARVIS_REPO_PATH", "~/Documents/repos/JARVIS-AI-Agent")
-    PRIME_REPO: Path = _get_env_path("JARVIS_PRIME_REPO_PATH", "~/Documents/repos/jarvis-prime")
+    Ironcliw_REPO: Path = _get_env_path("Ironcliw_REPO_PATH", "~/Documents/repos/Ironcliw-AI-Agent")
+    PRIME_REPO: Path = _get_env_path("Ironcliw_PRIME_REPO_PATH", "~/Documents/repos/jarvis-prime")
     REACTOR_REPO: Path = _get_env_path("REACTOR_CORE_REPO_PATH", "~/Documents/repos/reactor-core")
 
     # Event bus
@@ -140,7 +140,7 @@ class RefactoringEvent:
     event_id: str = field(default_factory=lambda: str(uuid4()))
     event_type: RefactoringEventType = RefactoringEventType.REFACTORING_STARTED
     operation_id: str = ""
-    source_repo: RepoType = RepoType.JARVIS
+    source_repo: RepoType = RepoType.Ironcliw
     target_repos: List[RepoType] = field(default_factory=list)
     payload: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
@@ -166,7 +166,7 @@ class RefactoringEventBus:
     Event bus integration for cross-repo refactoring.
 
     Emits events to the Trinity event bus for coordination
-    between JARVIS, JARVIS-Prime, and Reactor-Core.
+    between Ironcliw, Ironcliw-Prime, and Reactor-Core.
     """
 
     def __init__(self, config: Optional[CrossRepoConfig] = None):
@@ -305,7 +305,7 @@ class CrossRepoRefactoringCoordinator:
         elif "reactor-core" in path_str.lower():
             return RepoType.REACTOR
         else:
-            return RepoType.JARVIS
+            return RepoType.Ironcliw
 
     async def refactor_across_repos(
         self,
@@ -360,7 +360,7 @@ class CrossRepoRefactoringCoordinator:
 
             # Group references by repository
             refs_by_repo: Dict[RepoType, List[Reference]] = {
-                RepoType.JARVIS: [],
+                RepoType.Ironcliw: [],
                 RepoType.PRIME: [],
                 RepoType.REACTOR: [],
             }

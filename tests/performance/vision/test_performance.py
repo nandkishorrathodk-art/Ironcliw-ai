@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Performance Testing Suite for JARVIS Multi-Window Intelligence
+Performance Testing Suite for Ironcliw Multi-Window Intelligence
 Tests response time, resource usage, and scalability
 """
 
@@ -16,7 +16,7 @@ import numpy as np
 # Add the backend directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 from backend.vision.workspace_analyzer import WorkspaceAnalyzer
 from backend.vision.multi_window_capture import MultiWindowCapture
 from backend.vision.window_detector import WindowDetector
@@ -29,10 +29,10 @@ from test_utils import (
 
 
 class PerformanceTestSuite:
-    """Performance testing for JARVIS workspace intelligence"""
+    """Performance testing for Ironcliw workspace intelligence"""
     
     def __init__(self):
-        self.jarvis = JARVISWorkspaceIntelligence()
+        self.jarvis = IroncliwWorkspaceIntelligence()
         self.results: List[TestResult] = []
         self.api_tracker = MockAPITracker()
         

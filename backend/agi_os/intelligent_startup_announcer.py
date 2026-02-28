@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS AGI OS - Intelligent Dynamic Startup Announcer
+Ironcliw AGI OS - Intelligent Dynamic Startup Announcer
 ======================================================
 
 A highly dynamic, context-aware startup announcement system that generates
@@ -464,20 +464,20 @@ class StatusComponent(PhraseComponent):
 
 
 class OnlinePhrase(PhraseComponent):
-    """Generates 'JARVIS online' style phrases."""
+    """Generates 'Ironcliw online' style phrases."""
 
     def get_variations(self, ctx: FullContext, tone: AnnouncementTone) -> List[str]:
         if tone == AnnouncementTone.FORMAL:
             return [
-                "JARVIS online.",
-                "JARVIS systems initialized.",
-                "JARVIS at your service.",
+                "Ironcliw online.",
+                "Ironcliw systems initialized.",
+                "Ironcliw at your service.",
             ]
         elif tone == AnnouncementTone.FRIENDLY:
             return [
-                "JARVIS here!",
-                "JARVIS reporting for duty!",
-                "JARVIS online and ready!",
+                "Ironcliw here!",
+                "Ironcliw reporting for duty!",
+                "Ironcliw online and ready!",
             ]
         elif tone == AnnouncementTone.EFFICIENT:
             return [
@@ -486,17 +486,17 @@ class OnlinePhrase(PhraseComponent):
             ]
         elif tone == AnnouncementTone.CONFIDENT:
             return [
-                "JARVIS online. Let's get to work.",
-                "JARVIS initialized. What's the mission?",
+                "Ironcliw online. Let's get to work.",
+                "Ironcliw initialized. What's the mission?",
             ]
         elif tone == AnnouncementTone.WITTY:
             return [
-                "JARVIS online. Miss me?",
+                "Ironcliw online. Miss me?",
                 "The AI has landed.",
-                "JARVIS initialized. Your digital butler awaits.",
+                "Ironcliw initialized. Your digital butler awaits.",
             ]
         else:
-            return ["JARVIS online."]
+            return ["Ironcliw online."]
 
 
 class CalendarAddition(PhraseComponent):
@@ -814,7 +814,7 @@ class MessageSynthesizer:
 
         The message is composed of:
         1. Time-appropriate greeting
-        2. JARVIS online phrase (sometimes)
+        2. Ironcliw online phrase (sometimes)
         3. System status (if include_status)
         4. Calendar addition (if include_calendar and relevant)
         5. Ready phrase (if include_ready)
@@ -865,7 +865,7 @@ class MessageSynthesizer:
     def _combine_fluently(self, parts: List[str], tone: AnnouncementTone) -> str:
         """Combine parts into a natural-sounding message."""
         if not parts:
-            return "JARVIS online."
+            return "Ironcliw online."
 
         # Join with appropriate spacing
         message = " ".join(parts)

@@ -1,17 +1,17 @@
-"""
+﻿"""
 Unified Data Flywheel Orchestrator
 ===================================
 
-Connects JARVIS-AI-Agent, JARVIS-Prime, and reactor-core into a
+Connects Ironcliw-AI-Agent, Ironcliw-Prime, and reactor-core into a
 continuous self-improving learning loop.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
-    │                     JARVIS UNIFIED DATA FLYWHEEL                         │
+    │                     Ironcliw UNIFIED DATA FLYWHEEL                         │
     │  ┌─────────────────────────────────────────────────────────────────────┐│
     │  │                        DATA SOURCES                                  ││
     │  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ││
-    │  │  │  JARVISConnector │  │  SafeScout       │  │  ChromaDB Memory │  ││
+    │  │  │  IroncliwConnector │  │  SafeScout       │  │  ChromaDB Memory │  ││
     │  │  │  (Experiences)   │  │  (Web Docs)      │  │  (Context)       │  ││
     │  │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  ││
     │  └───────────┼─────────────────────┼─────────────────────┼────────────┘│
@@ -41,7 +41,7 @@ Architecture:
     │                                  ▼                                      │
     │  ┌─────────────────────────────────────────────────────────────────────┐│
     │  │                  REACTOR-CORE WATCHER                                ││
-    │  │  - Auto-deploy to local JARVIS-Prime                                ││
+    │  │  - Auto-deploy to local Ironcliw-Prime                                ││
     │  │  - Upload to GCS for Cloud Run                                      ││
     │  │  - Hot-swap notification                                            ││
     │  └───────────────────────────────┬─────────────────────────────────────┘│
@@ -101,7 +101,7 @@ class FlywheelStage(Enum):
 
 class DataSourceType(Enum):
     """Types of data sources."""
-    JARVIS_EXPERIENCES = "jarvis_experiences"
+    Ironcliw_EXPERIENCES = "jarvis_experiences"
     WEB_DOCUMENTATION = "web_documentation"
     CHROMADB_MEMORY = "chromadb_memory"
     MANUAL_UPLOAD = "manual_upload"
@@ -114,13 +114,13 @@ class FlywheelConfig:
     # Repository paths
     jarvis_repo: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_AI_AGENT_PATH",
-            Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent"
+            "Ironcliw_AI_AGENT_PATH",
+            Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent"
         ))
     )
     jarvis_prime_repo: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             Path.home() / "Documents" / "repos" / "jarvis-prime"
         ))
     )
@@ -133,12 +133,12 @@ class FlywheelConfig:
 
     # SQLite Training Database (v9.0)
     training_db_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TRAINING_DB_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TRAINING_DB_ENABLED", "true").lower() == "true"
     )
     training_db_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_TRAINING_DB",
-            Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent" / "data" / "training_db" / "jarvis_training.db"
+            "Ironcliw_TRAINING_DB",
+            Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent" / "data" / "training_db" / "jarvis_training.db"
         ))
     )
 
@@ -172,7 +172,7 @@ class FlywheelConfig:
     # GCS settings
     gcs_bucket: str = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_MODELS_GCS_BUCKET",
+            "Ironcliw_MODELS_GCS_BUCKET",
             "gs://jarvis-473803-deployments/models"
         )
     )
@@ -281,7 +281,7 @@ UNIFIED_SCHEMA = """
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Experiences table: Records of JARVIS interactions
+    -- Experiences table: Records of Ironcliw interactions
     CREATE TABLE IF NOT EXISTS experiences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp REAL NOT NULL,
@@ -611,12 +611,12 @@ async def run_schema_migrations_async(conn) -> bool:
 
 class UnifiedDataFlywheel:
     """
-    Orchestrates the complete data flywheel across all JARVIS repositories.
+    Orchestrates the complete data flywheel across all Ironcliw repositories.
 
     Connects:
-    - JARVIS-AI-Agent (experience telemetry, observability)
+    - Ironcliw-AI-Agent (experience telemetry, observability)
     - reactor-core (Scout scraping, training, GGUF export)
-    - JARVIS-Prime (model deployment, inference)
+    - Ironcliw-Prime (model deployment, inference)
     """
 
     def __init__(self, config: Optional[FlywheelConfig] = None):
@@ -687,18 +687,18 @@ class UnifiedDataFlywheel:
         # Import reactor-core components
         try:
             from reactor_core.integration.jarvis_connector import (
-                JARVISConnector,
-                JARVISConnectorConfig,
+                IroncliwConnector,
+                IroncliwConnectorConfig,
             )
-            self._jarvis_connector = JARVISConnector(
-                JARVISConnectorConfig(
+            self._jarvis_connector = IroncliwConnector(
+                IroncliwConnectorConfig(
                     jarvis_repo_path=self.config.jarvis_repo,
                     lookback_hours=self.config.experience_lookback_hours,
                 )
             )
-            logger.info("[Flywheel] JARVISConnector initialized")
+            logger.info("[Flywheel] IroncliwConnector initialized")
         except ImportError as e:
-            logger.warning(f"[Flywheel] JARVISConnector not available: {e}")
+            logger.warning(f"[Flywheel] IroncliwConnector not available: {e}")
 
         try:
             from reactor_core.scout.safe_scout_orchestrator import (
@@ -748,7 +748,7 @@ class UnifiedDataFlywheel:
         v10.0: Initialize SQLite training database with intelligent schema migration.
 
         The training database stores:
-        - Experiences from JARVIS interactions
+        - Experiences from Ironcliw interactions
         - Scraped web content
         - Learning goals and topics
         - Training run history
@@ -818,7 +818,7 @@ class UnifiedDataFlywheel:
         Args:
             source: Source of the experience (voice, text, api, automation)
             input_text: User's input
-            output_text: JARVIS's response
+            output_text: Ironcliw's response
             context: Additional context (JSON serializable)
             quality_score: Quality score (0.0 to 1.0)
 
@@ -1046,7 +1046,7 @@ class UnifiedDataFlywheel:
         Args:
             source: Source of the experience (voice, text, api, automation)
             input_text: User's input
-            output_text: JARVIS's response
+            output_text: Ironcliw's response
             context: Additional context (JSON serializable)
             quality_score: Quality score (0.0 to 1.0)
             feedback: User feedback (positive, negative, corrected)
@@ -1781,7 +1781,7 @@ class UnifiedDataFlywheel:
             if self._watcher:
                 await self._watcher.start()
 
-            # Phase 1: Collect experiences from JARVIS
+            # Phase 1: Collect experiences from Ironcliw
             self._update_stage(FlywheelStage.COLLECTING_EXPERIENCES)
             experiences = await self._collect_experiences()
 
@@ -1898,9 +1898,9 @@ class UnifiedDataFlywheel:
     # =========================================================================
 
     async def _collect_experiences(self) -> List[Dict[str, Any]]:
-        """Collect experiences from JARVIS-AI-Agent logs."""
+        """Collect experiences from Ironcliw-AI-Agent logs."""
         if not self._jarvis_connector:
-            logger.warning("[Flywheel] JARVISConnector not available")
+            logger.warning("[Flywheel] IroncliwConnector not available")
             return []
 
         try:
@@ -2007,12 +2007,12 @@ class UnifiedDataFlywheel:
                 if example.get("context"):
                     messages.append({
                         "role": "system",
-                        "content": f"You are JARVIS, an intelligent AI assistant. Context: {example['context']}"
+                        "content": f"You are Ironcliw, an intelligent AI assistant. Context: {example['context']}"
                     })
                 else:
                     messages.append({
                         "role": "system",
-                        "content": "You are JARVIS, an intelligent AI assistant."
+                        "content": "You are Ironcliw, an intelligent AI assistant."
                     })
 
                 # Add user message

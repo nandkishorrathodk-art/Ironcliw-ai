@@ -1,4 +1,4 @@
-"""
+﻿"""
 Cloud SQL Proxy Detector - Intelligent proxy availability detection
 
 This module provides intelligent detection of Cloud SQL Proxy availability before
@@ -65,7 +65,7 @@ class ProxyDetectionConfig:
         self.max_retry_delay = float(os.getenv('CLOUD_SQL_MAX_RETRY_DELAY', str(self.max_retry_delay)))
 
         # Environment detection
-        env = os.getenv('JARVIS_ENV', 'development').lower()
+        env = os.getenv('Ironcliw_ENV', 'development').lower()
         self.assume_local_dev = env in ('development', 'dev', 'local')
 
         # Require proxy in production

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Intelligent Diagnostic & Remediation System for PAVA/VIBA Integration
 ====================================================================
@@ -479,7 +479,7 @@ class IntelligentDiagnosticSystem:
                     remediation_steps=[{
                         "type": RemediationType.ENROLL.value,
                         "description": "Complete voice enrollment",
-                        "command": "Say 'JARVIS, learn my voice' or run: python backend/voice/enroll_voice.py",
+                        "command": "Say 'Ironcliw, learn my voice' or run: python backend/voice/enroll_voice.py",
                         "auto_remediable": False,
                     }],
                 )
@@ -731,18 +731,18 @@ class IntelligentDiagnosticSystem:
         
         # Check environment variables
         env_vars_to_check = [
-            "JARVIS_ML_ENABLE_ECAPA",
-            "JARVIS_CLOUD_FALLBACK",
-            "JARVIS_SKIP_MODEL_PREWARM",
+            "Ironcliw_ML_ENABLE_ECAPA",
+            "Ironcliw_CLOUD_FALLBACK",
+            "Ironcliw_SKIP_MODEL_PREWARM",
         ]
         
         for var in env_vars_to_check:
             value = os.getenv(var)
             details[var] = value
             
-            if var == "JARVIS_ML_ENABLE_ECAPA" and value == "false":
+            if var == "Ironcliw_ML_ENABLE_ECAPA" and value == "false":
                 issues.append("ECAPA explicitly disabled")
-            if var == "JARVIS_SKIP_MODEL_PREWARM" and value == "true":
+            if var == "Ironcliw_SKIP_MODEL_PREWARM" and value == "true":
                 issues.append("Model prewarm skipped (may cause delays)")
         
         if issues:
@@ -920,7 +920,7 @@ class IntelligentDiagnosticSystem:
             "user_home": str(Path.home()),
             "environment_vars": {
                 k: v for k, v in os.environ.items()
-                if k.startswith("JARVIS_") or k.startswith("DIAGNOSTIC_")
+                if k.startswith("Ironcliw_") or k.startswith("DIAGNOSTIC_")
             },
         }
     

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Locked Screen Scenario with Enhanced Context
 ================================================
@@ -59,10 +59,10 @@ async def simulate_locked_screen_scenario():
     websocket = TestWebSocket()
     
     # Step 3: Send the command
-    test_command = "JARVIS, open Safari and search for dogs"
+    test_command = "Ironcliw, open Safari and search for dogs"
     print(f"\n3️⃣ Sending command: '{test_command}'")
     print("   Expected flow:")
-    print("   - JARVIS detects locked screen")
+    print("   - Ironcliw detects locked screen")
     print("   - Sends feedback: 'I see your screen is locked. I'll unlock it now...'")
     print("   - Attempts to unlock screen")
     print("   - Executes command after unlock")

@@ -1,8 +1,8 @@
-"""
-JARVIS Voice Unlock Integration Helper
+﻿"""
+Ironcliw Voice Unlock Integration Helper
 =====================================
 
-Integrates voice unlock with the main JARVIS system startup.
+Integrates voice unlock with the main Ironcliw system startup.
 """
 
 import os
@@ -68,21 +68,21 @@ def check_voice_unlock_requirements() -> Dict[str, bool]:
 
 
 def integrate_with_jarvis_startup():
-    """Add voice unlock to JARVIS startup sequence"""
+    """Add voice unlock to Ironcliw startup sequence"""
     startup_code = '''
 # Voice Unlock Integration
 try:
     from backend.voice_unlock.jarvis_integration import setup_voice_unlock
     
     # Check if voice unlock should be enabled
-    if os.getenv('JARVIS_VOICE_UNLOCK', 'true').lower() == 'true':
+    if os.getenv('Ironcliw_VOICE_UNLOCK', 'true').lower() == 'true':
         print(f"\\n{Colors.BLUE}Initializing Voice Unlock...{Colors.ENDC}")
         
         voice_status = setup_voice_unlock()
         
         if voice_status['enabled']:
             print(f"{Colors.GREEN}✓ Voice Unlock ready{Colors.ENDC}")
-            print(f"  • Say 'Hey JARVIS, unlock my Mac'")
+            print(f"  • Say 'Hey Ironcliw, unlock my Mac'")
             if voice_status.get('apple_watch'):
                 print(f"  • Apple Watch proximity enabled")
         else:
@@ -96,7 +96,7 @@ except Exception as e:
 
 
 def setup_voice_unlock() -> Dict[str, Any]:
-    """Setup voice unlock for JARVIS"""
+    """Setup voice unlock for Ironcliw"""
     result = {
         'enabled': False,
         'reason': None,
@@ -160,7 +160,7 @@ async def _start_voice_unlock_async(system):
 
 
 def add_voice_commands_to_jarvis():
-    """Add voice unlock commands to JARVIS command system"""
+    """Add voice unlock commands to Ironcliw command system"""
     commands = {
         'unlock_mac': {
             'patterns': [

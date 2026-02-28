@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Update speaker profile thresholds to 75% for proper security testing.
 """
 import asyncio
 import sys
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent')
 
 async def update_thresholds():
     from backend.intelligence.learning_database import get_learning_database

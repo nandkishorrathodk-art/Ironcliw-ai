@@ -1,4 +1,4 @@
-# Screen Monitoring Activation & macOS Purple Indicator System
+﻿# Screen Monitoring Activation & macOS Purple Indicator System
 
 ## Implementation Summary (v13.3.0)
 
@@ -69,7 +69,7 @@ This document summarizes the implementation of the intelligent screen monitoring
 3. **User receives**:
    - Purple indicator appears in menu bar
    - UI shows "Vision: connected"
-   - JARVIS responds: "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar."
+   - Ironcliw responds: "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar."
 
 ### Technical Implementation Details
 

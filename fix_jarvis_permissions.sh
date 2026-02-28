@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🔧 JARVIS Screen Recording Permission Fix Script"
+echo "🔧 Ironcliw Screen Recording Permission Fix Script"
 echo "================================================"
 echo ""
 
@@ -45,8 +45,8 @@ echo ""
 swift test_swift_permission.swift
 echo ""
 
-# Step 4: Test if JARVIS backend can now use Swift capture
-echo "5️⃣  Testing JARVIS Swift integration..."
+# Step 4: Test if Ironcliw backend can now use Swift capture
+echo "5️⃣  Testing Ironcliw Swift integration..."
 python3 -c "
 import asyncio
 import sys
@@ -60,7 +60,7 @@ async def test_swift():
         # Check permission
         result = await bridge.check_permission()
         if result.get('permissionStatus') == 'authorized':
-            print('✅ JARVIS can now use Swift video capture!')
+            print('✅ Ironcliw can now use Swift video capture!')
             return True
         else:
             print('❌ Swift still needs permission')
@@ -79,8 +79,8 @@ if [ $? -eq 0 ]; then
     echo "✅ SUCCESS! Swift permissions are configured correctly"
     echo ""
     echo "6️⃣  Next steps:"
-    echo "   1. Restart JARVIS: ./restart_jarvis_intelligent.sh"
-    echo "   2. Try the command again: 'Hey JARVIS, start monitoring my screen'"
+    echo "   1. Restart Ironcliw: ./restart_jarvis_intelligent.sh"
+    echo "   2. Try the command again: 'Hey Ironcliw, start monitoring my screen'"
 else
     echo ""
     echo "⚠️  Swift permissions still need to be configured"
@@ -98,7 +98,7 @@ else
     echo "   b. Press ⌘ + Shift + G and enter: /usr/bin/"
     echo "   c. Look for 'swift' and add it"
     echo ""
-    echo "5. After adding/checking Swift, restart JARVIS"
+    echo "5. After adding/checking Swift, restart Ironcliw"
 fi
 
 # Cleanup

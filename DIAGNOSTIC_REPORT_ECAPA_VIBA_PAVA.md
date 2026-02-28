@@ -1,4 +1,4 @@
-# Diagnostic Report: ECAPA, VIBA, and PAVA Integration Analysis
+﻿# Diagnostic Report: ECAPA, VIBA, and PAVA Integration Analysis
 
 **Date:** Generated from actual runtime diagnostics  
 **Status:** 🔴 **CRITICAL ISSUES CONFIRMED**
@@ -97,9 +97,9 @@ Based on `ml_engine_registry.py` analysis, ECAPA can fail to load for several re
    - numpy not installed (confirmed)
 
 4. **Configuration Issues**
-   - `JARVIS_ML_ENABLE_ECAPA=false` would disable it
-   - `JARVIS_SKIP_MODEL_PREWARM=true` would skip loading
-   - Cloud fallback disabled (`JARVIS_CLOUD_FALLBACK=false`)
+   - `Ironcliw_ML_ENABLE_ECAPA=false` would disable it
+   - `Ironcliw_SKIP_MODEL_PREWARM=true` would skip loading
+   - Cloud fallback disabled (`Ironcliw_CLOUD_FALLBACK=false`)
 
 5. **Initialization Failure**
    - Model load times out (default 120s)
@@ -181,7 +181,7 @@ vm_stat  # macOS
 free -h  # Linux
 
 # Enable cloud fallback
-export JARVIS_CLOUD_FALLBACK=true
+export Ironcliw_CLOUD_FALLBACK=true
 ```
 
 #### Cause 4: Configuration Disabled (LOW PROBABILITY)
@@ -192,8 +192,8 @@ ECAPA explicitly disabled via environment variable
 **Fix:**
 ```bash
 # Ensure ECAPA is enabled
-export JARVIS_ML_ENABLE_ECAPA=true
-export JARVIS_SKIP_MODEL_PREWARM=false
+export Ironcliw_ML_ENABLE_ECAPA=true
+export Ironcliw_SKIP_MODEL_PREWARM=false
 ```
 
 ### Question B: Why Can't PAVA Compensate When ECAPA Fails?
@@ -406,8 +406,8 @@ asyncio.run(test_ecapa())
 # Option 1: Use enrollment script
 python backend/voice/enroll_voice.py --speaker "Your Name" --samples 25
 
-# Option 2: Use voice command (if JARVIS is running)
-"Hey JARVIS, learn my voice"
+# Option 2: Use voice command (if Ironcliw is running)
+"Hey Ironcliw, learn my voice"
 ```
 
 ### Step 4: Verify System Status

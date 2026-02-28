@@ -1,9 +1,9 @@
-# Desktop Space ValueError Fix
+﻿# Desktop Space ValueError Fix
 
 ## Problem
-When asking "What's happening across my desktop spaces?", JARVIS was encountering a `ValueError` and displaying the message:
+When asking "What's happening across my desktop spaces?", Ironcliw was encountering a `ValueError` and displaying the message:
 ```
-JARVIS: I encountered an error analyzing your screen: ValueError. Please try again.
+Ironcliw: I encountered an error analyzing your screen: ValueError. Please try again.
 ```
 
 ## Root Cause
@@ -47,7 +47,7 @@ The error occurred when multi-space screenshot capture failed or returned an emp
 
 ## Testing
 To test the fix:
-1. Ask JARVIS: "What's happening across my desktop spaces?"
+1. Ask Ironcliw: "What's happening across my desktop spaces?"
 2. Instead of a generic ValueError, you should now receive either:
    - A basic workspace overview from window data (if Yabai is available)
    - A clear message about enabling Screen Recording permissions

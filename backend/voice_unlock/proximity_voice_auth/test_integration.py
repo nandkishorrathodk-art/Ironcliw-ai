@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Integration Test for Proximity + Voice Auth
 ==========================================
@@ -232,7 +232,7 @@ class IntegrationTester:
     
     async def run_all_tests(self):
         """Run all integration tests."""
-        print("🧪 JARVIS Proximity + Voice Auth Integration Tests")
+        print("🧪 Ironcliw Proximity + Voice Auth Integration Tests")
         print("=" * 50)
         
         results = {

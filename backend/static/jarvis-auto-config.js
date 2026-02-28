@@ -1,5 +1,5 @@
-/**
- * JARVIS Auto Configuration Client
+﻿/**
+ * Ironcliw Auto Configuration Client
  * Automatically discovers and configures API endpoints
  * Include this script in your frontend to enable auto-configuration
  * 
@@ -17,8 +17,8 @@
     const DEFAULT_PORTS = [8000, 8010, 8080, 5000];
     const DISCOVERY_TIMEOUT = 2000; // 2 seconds
     
-    // JARVIS API Configuration object
-    window.JARVIS_API = {
+    // Ironcliw API Configuration object
+    window.Ironcliw_API = {
         discovered: false,
         baseUrl: null,
         wsUrl: null,
@@ -26,7 +26,7 @@
         
         // Auto-discovery function
         discoverBackend: async function() {
-            console.log('🔍 JARVIS Auto-Config: Starting backend discovery...');
+            console.log('🔍 Ironcliw Auto-Config: Starting backend discovery...');
             
             // Try each port
             for (const port of DEFAULT_PORTS) {
@@ -44,7 +44,7 @@
                     
                     if (response.ok) {
                         const config = await response.json();
-                        console.log(`✅ JARVIS Backend found on port ${port}!`, config);
+                        console.log(`✅ Ironcliw Backend found on port ${port}!`, config);
                         
                         // Configure API
                         this.discovered = true;
@@ -79,7 +79,7 @@
                 }
             }
             
-            console.error('❌ JARVIS Backend not found on any port:', DEFAULT_PORTS);
+            console.error('❌ Ironcliw Backend not found on any port:', DEFAULT_PORTS);
             return false;
         },
         
@@ -155,12 +155,12 @@
             
             // Use cache if less than 1 hour old
             if (age < 3600000) {
-                console.log('📦 Using cached JARVIS configuration');
-                window.JARVIS_API.discovered = true;
-                window.JARVIS_API.baseUrl = config.baseUrl;
-                window.JARVIS_API.wsUrl = config.wsUrl;
-                window.JARVIS_API.endpoints = config.endpoints;
-                window.JARVIS_API.updateFrameworkConfig();
+                console.log('📦 Using cached Ironcliw configuration');
+                window.Ironcliw_API.discovered = true;
+                window.Ironcliw_API.baseUrl = config.baseUrl;
+                window.Ironcliw_API.wsUrl = config.wsUrl;
+                window.Ironcliw_API.endpoints = config.endpoints;
+                window.Ironcliw_API.updateFrameworkConfig();
                 return;
             }
         } catch (e) {
@@ -171,19 +171,19 @@
     // Auto-discover on load
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', async () => {
-            await window.JARVIS_API.discoverBackend();
-            window.JARVIS_API.updateFrameworkConfig();
+            await window.Ironcliw_API.discoverBackend();
+            window.Ironcliw_API.updateFrameworkConfig();
         });
     } else {
         // DOM already loaded
-        window.JARVIS_API.discoverBackend().then(() => {
-            window.JARVIS_API.updateFrameworkConfig();
+        window.Ironcliw_API.discoverBackend().then(() => {
+            window.Ironcliw_API.updateFrameworkConfig();
         });
     }
     
     // Export for module systems
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = window.JARVIS_API;
+        module.exports = window.Ironcliw_API;
     }
     
 })();

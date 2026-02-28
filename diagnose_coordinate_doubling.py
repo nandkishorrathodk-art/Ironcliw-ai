@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive diagnostic for coordinate doubling issue
 This will help identify exactly where and why coordinates are being doubled
@@ -99,7 +99,7 @@ print(f"\n7. SAVING DIAGNOSTIC LOG...")
 log_path = "/tmp/jarvis_coordinate_diagnostic.log"
 with open(log_path, "w") as f:
     f.write("="*80 + "\n")
-    f.write("JARVIS COORDINATE DOUBLING DIAGNOSTIC\n")
+    f.write("Ironcliw COORDINATE DOUBLING DIAGNOSTIC\n")
     f.write("="*80 + "\n\n")
     f.write(f"Platform: {sys.platform}\n")
     f.write(f"Backing Scale: {backing_scale}x\n")

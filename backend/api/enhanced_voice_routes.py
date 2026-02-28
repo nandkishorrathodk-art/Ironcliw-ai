@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enhanced Voice Routes with Rust Acceleration
 Eliminates 503 errors by offloading heavy processing to Rust
 Zero hardcoding - all behavior ML-driven
@@ -69,7 +69,7 @@ async def get_rust_processor() -> RustVoiceProcessor:
 @router.post("/voice/jarvis/activate")
 async def activate_jarvis(request: Request, background_tasks: BackgroundTasks):
     """
-    Activate JARVIS voice system with Rust acceleration
+    Activate Ironcliw voice system with Rust acceleration
     Prevents 503 errors by intelligent load management
     """
     start_time = time.time()
@@ -129,7 +129,7 @@ async def activate_jarvis(request: Request, background_tasks: BackgroundTasks):
                 "status": "partial_activation",
                 "error": str(e),
                 "fallback_mode": True,
-                "message": "JARVIS activated with limited features",
+                "message": "Ironcliw activated with limited features",
             },
             status_code=200,  # Return 200 to prevent client-side errors
         )
@@ -201,7 +201,7 @@ async def _update_ml_models(
 
 @router.get("/voice/jarvis/status")
 async def jarvis_status():
-    """Get JARVIS system status with performance metrics"""
+    """Get Ironcliw system status with performance metrics"""
     try:
         audio_handler = await get_audio_handler()
 
@@ -238,7 +238,7 @@ async def jarvis_status():
 
     except Exception as e:
         logger.error(f"Error getting status: {e}")
-        # Return 'offline' status instead of 'error' to avoid frontend displaying "JARVIS ERROR"
+        # Return 'offline' status instead of 'error' to avoid frontend displaying "Ironcliw ERROR"
         return JSONResponse(
             content={
                 "status": "offline",

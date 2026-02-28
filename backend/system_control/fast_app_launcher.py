@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Fast App Launcher for JARVIS
+Fast App Launcher for Ironcliw
 Optimized for quick app launching without complex routing.
 
 Cross-platform: supports macOS (open -a / osascript) and

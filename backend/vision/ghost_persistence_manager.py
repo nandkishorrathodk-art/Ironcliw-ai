@@ -1,9 +1,9 @@
-"""
+﻿"""
 Ghost Persistence Manager - Crash Recovery for Window Teleportation
 ====================================================================
 
 Fixes the "Amnesia" Risk:
-- If JARVIS crashes while windows are on the Ghost Display, the in-memory
+- If Ironcliw crashes while windows are on the Ghost Display, the in-memory
   geometry cache is lost. Windows become "stranded" with no way to return.
 
 Solution:
@@ -42,7 +42,7 @@ Format:
     }
 }
 
-Author: JARVIS v27.0 - Crash Recovery
+Author: Ironcliw v27.0 - Crash Recovery
 """
 
 from __future__ import annotations

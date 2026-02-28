@@ -1,4 +1,4 @@
-# Voice Auth ↔ Audio Pipeline Unification
+﻿# Voice Auth ↔ Audio Pipeline Unification
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -33,7 +33,7 @@
 **Out of scope:**
 - New files (all changes go into existing files)
 - Voice unlock module internals (we use its public API)
-- Cross-repo changes (JARVIS Prime, Reactor Core)
+- Cross-repo changes (Ironcliw Prime, Reactor Core)
 - Audio capture refactoring inside voice_unlock/audio_capture.py
 
 ---
@@ -257,7 +257,7 @@ Add the following methods after `_on_conversation_done()` (after line 268):
 
             # 3. Capture audio for verification (2.5 seconds of AEC-cleaned audio)
             capture_duration = float(
-                os.getenv("JARVIS_BIOMETRIC_CAPTURE_DURATION", "2.5")
+                os.getenv("Ironcliw_BIOMETRIC_CAPTURE_DURATION", "2.5")
             )
             await asyncio.sleep(capture_duration)
 
@@ -322,7 +322,7 @@ Add the following methods after `_on_conversation_done()` (after line 268):
                             "aec_cleaned": True,
                         },
                     ),
-                    timeout=float(os.getenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "25")),
+                    timeout=float(os.getenv("Ironcliw_BIOMETRIC_AUTH_TIMEOUT", "25")),
                 )
                 return result
             except asyncio.TimeoutError:
@@ -334,7 +334,7 @@ Add the following methods after `_on_conversation_done()` (after line 268):
         # Fallback: TieredVBIAAdapter
         if self._vbia_adapter is not None:
             try:
-                threshold = float(os.getenv("JARVIS_BIOMETRIC_THRESHOLD", "0.85"))
+                threshold = float(os.getenv("Ironcliw_BIOMETRIC_THRESHOLD", "0.85"))
                 passed, confidence = await self._vbia_adapter.verify_speaker(threshold)
                 return {
                     "success": passed,
@@ -466,10 +466,10 @@ In `ModeDispatcher.__init__()`, after the biometric state fields added in Task 2
         self._speaker_audio_consumer: Optional[Callable] = None
         self._last_speaker_confidence: float = 0.0
         self._speaker_verification_interval = float(
-            os.getenv("JARVIS_SPEAKER_VERIFY_INTERVAL", "15")
+            os.getenv("Ironcliw_SPEAKER_VERIFY_INTERVAL", "15")
         )
         self._speaker_confidence_threshold = float(
-            os.getenv("JARVIS_SPEAKER_CONFIDENCE_THRESHOLD", "0.70")
+            os.getenv("Ironcliw_SPEAKER_CONFIDENCE_THRESHOLD", "0.70")
         )
 ```
 

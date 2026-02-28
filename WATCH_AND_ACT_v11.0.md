@@ -1,4 +1,4 @@
-# Watch & Act - VMSI v11.0 🎯
+﻿# Watch & Act - VMSI v11.0 🎯
 
 ## The Autonomous Loop is Complete!
 
@@ -47,9 +47,9 @@ result = await visual_monitor_agent.watch_and_alert(
 ```
 
 **What happens**:
-1. JARVIS watches Terminal for "Build Complete"
-2. When detected, JARVIS switches to Terminal
-3. JARVIS executes "Click the Deploy button" via Computer Use
+1. Ironcliw watches Terminal for "Build Complete"
+2. When detected, Ironcliw switches to Terminal
+3. Ironcliw executes "Click the Deploy button" via Computer Use
 4. Voice narration: "Build complete detected. Clicking Deploy button..."
 5. Success notification
 
@@ -100,7 +100,7 @@ result = await visual_monitor_agent.watch_and_alert(
 ```
 
 **What happens**:
-1. JARVIS watches Terminal for any trigger
+1. Ironcliw watches Terminal for any trigger
 2. When "Error" detected → Clicks Retry
 3. When "Success" detected → Clicks Deploy
 4. When "Warning" detected → Clicks Continue Anyway
@@ -138,7 +138,7 @@ result = await visual_monitor_agent.watch_and_alert(
 ```
 
 **What happens**:
-1. JARVIS watches Chrome for "Application Submitted"
+1. Ironcliw watches Chrome for "Application Submitted"
 2. When detected, delegates to `AgenticTaskRunner` for complex workflow
 3. AgenticTaskRunner:
    - Switches to Mail.app
@@ -319,12 +319,12 @@ await visual_monitor_agent.watch_and_alert(
 ### Environment Variables (v11.0 additions)
 ```bash
 # Action execution
-export JARVIS_VMSI_ACTION_EXECUTION=true     # Enable Watch & Act
-export JARVIS_VMSI_COMPUTER_USE=true         # Use Computer Use
-export JARVIS_VMSI_AGENTIC_RUNNER=true       # Use AgenticTaskRunner
-export JARVIS_VMSI_ACTION_TIMEOUT=60         # Default action timeout
-export JARVIS_VMSI_REQUIRE_CONFIRMATION=false # Auto-execute without asking
-export JARVIS_VMSI_AUTO_SWITCH_WINDOW=true   # Auto-switch before acting
+export Ironcliw_VMSI_ACTION_EXECUTION=true     # Enable Watch & Act
+export Ironcliw_VMSI_COMPUTER_USE=true         # Use Computer Use
+export Ironcliw_VMSI_AGENTIC_RUNNER=true       # Use AgenticTaskRunner
+export Ironcliw_VMSI_ACTION_TIMEOUT=60         # Default action timeout
+export Ironcliw_VMSI_REQUIRE_CONFIRMATION=false # Auto-execute without asking
+export Ironcliw_VMSI_AUTO_SWITCH_WINDOW=true   # Auto-switch before acting
 ```
 
 ### VisualMonitorConfig (v11.0)
@@ -433,7 +433,7 @@ You: "Watch Terminal for 'Build Complete', then click Deploy"
                     MISSION COMPLETE! ✅
 
 You stayed focused on your work the ENTIRE time.
-JARVIS handled everything autonomously.
+Ironcliw handled everything autonomously.
 ```
 
 ---
@@ -570,7 +570,7 @@ action_config = ActionConfig(
 ```python
 action_config = ActionConfig(
     ...,
-    narrate=True  # Always enable for monitoring what JARVIS does
+    narrate=True  # Always enable for monitoring what Ironcliw does
 )
 ```
 
@@ -635,12 +635,12 @@ action_config = ActionConfig(
 **VMSI v11.0 "Watch & Act"** completes the autonomous loop:
 
 **Before (v10.6)**:
-- ❌ JARVIS watches, you act
+- ❌ Ironcliw watches, you act
 - ❌ Interrupts your workflow
 - ❌ Manual context switching
 
 **After (v11.0)**:
-- ✅ JARVIS watches AND acts
+- ✅ Ironcliw watches AND acts
 - ✅ Zero interruptions
 - ✅ Complete automation
 - ✅ True autonomous operation
@@ -650,9 +650,9 @@ action_config = ActionConfig(
 - "If Error click Retry, if Success click Deploy"
 - "Watch Chrome for Submitted, verify email, notify Slack"
 
-**And JARVIS will do it ALL automatically!**
+**And Ironcliw will do it ALL automatically!**
 
-The autonomous loop is complete. JARVIS has eyes, proprioception, and now... hands. 🚀
+The autonomous loop is complete. Ironcliw has eyes, proprioception, and now... hands. 🚀
 
 ---
 
@@ -669,5 +669,5 @@ The autonomous loop is complete. JARVIS has eyes, proprioception, and now... han
 **Version**: 11.0
 **Status**: Production Ready
 **Autonomous Loop**: ✅ COMPLETE
-**Author**: JARVIS AI System
+**Author**: Ironcliw AI System
 **Date**: 2025-12-28

@@ -1,4 +1,4 @@
-# Dynamic Voice Unlock - Changes Summary
+﻿# Dynamic Voice Unlock - Changes Summary
 
 ## What Changed
 
@@ -244,7 +244,7 @@ python test_voice_biometric_unlock_e2e.py
 
 ### Test with Real Voice
 ```bash
-# Say to JARVIS:
+# Say to Ironcliw:
 "Jarvis, unlock my screen"
 
 # Expected behavior:
@@ -322,7 +322,7 @@ context["verified_speaker_name"] = await _get_owner_name()                      
 ✅ **System works for any device owner**
 ✅ **All tests pass (7/7)**
 
-🎯 **Result:** JARVIS now recognizes YOUR voice, compares it to YOUR enrolled biometric data, and unlocks YOUR screen using YOUR name - all dynamically with zero hardcoding!
+🎯 **Result:** Ironcliw now recognizes YOUR voice, compares it to YOUR enrolled biometric data, and unlocks YOUR screen using YOUR name - all dynamically with zero hardcoding!
 
 ---
 

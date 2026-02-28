@@ -1,4 +1,4 @@
-# JARVIS Proximity + Voice Authentication - Implementation Plan
+﻿# Ironcliw Proximity + Voice Authentication - Implementation Plan
 
 ## Overview
 This document outlines the technical implementation plan for the dual-factor authentication system combining Apple Watch proximity detection with voice biometric authentication.
@@ -104,7 +104,7 @@ backend/voice_unlock/proximity_voice_auth/
 
 ## Phase 3: Integration & Polish (Weeks 5-6)
 
-### 3.1 JARVIS Integration
+### 3.1 Ironcliw Integration
 ```
 backend/api/
 ├── proximity_voice_integration.py
@@ -309,7 +309,7 @@ learning:
 ### Integration Tests
 - Swift-Python communication
 - End-to-end authentication flow
-- JARVIS command integration
+- Ironcliw command integration
 - Performance benchmarks
 
 ### Security Tests
@@ -358,4 +358,4 @@ learning:
 - User satisfaction score
 - Support ticket volume
 
-This implementation plan provides a clear roadmap for building the JARVIS Proximity + Voice Authentication System with all the advanced features outlined in the PRD.
+This implementation plan provides a clear roadmap for building the Ironcliw Proximity + Voice Authentication System with all the advanced features outlined in the PRD.

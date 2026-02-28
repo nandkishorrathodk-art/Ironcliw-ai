@@ -1,5 +1,5 @@
-"""
-JARVIS Structured Logging System v1.0
+﻿"""
+Ironcliw Structured Logging System v1.0
 ======================================
 
 Production-grade structured logging with:
@@ -99,30 +99,30 @@ class LoggingConfig:
         """Load configuration from environment variables."""
         config = LoggingConfig()
 
-        if log_dir := os.getenv("JARVIS_LOG_DIR"):
+        if log_dir := os.getenv("Ironcliw_LOG_DIR"):
             config.log_dir = Path(log_dir)
 
-        if max_bytes := os.getenv("JARVIS_LOG_MAX_BYTES"):
+        if max_bytes := os.getenv("Ironcliw_LOG_MAX_BYTES"):
             config.max_bytes = int(max_bytes)
 
-        if backup_count := os.getenv("JARVIS_LOG_BACKUP_COUNT"):
+        if backup_count := os.getenv("Ironcliw_LOG_BACKUP_COUNT"):
             config.backup_count = int(backup_count)
 
-        if default_level := os.getenv("JARVIS_LOG_LEVEL"):
+        if default_level := os.getenv("Ironcliw_LOG_LEVEL"):
             config.default_level = default_level.upper()
 
-        if console_level := os.getenv("JARVIS_LOG_CONSOLE_LEVEL"):
+        if console_level := os.getenv("Ironcliw_LOG_CONSOLE_LEVEL"):
             config.console_level = console_level.upper()
 
-        if file_level := os.getenv("JARVIS_LOG_FILE_LEVEL"):
+        if file_level := os.getenv("Ironcliw_LOG_FILE_LEVEL"):
             config.file_level = file_level.upper()
 
         config.enable_error_aggregation = os.getenv(
-            "JARVIS_LOG_ERROR_AGGREGATION", "true"
+            "Ironcliw_LOG_ERROR_AGGREGATION", "true"
         ).lower() == "true"
 
         config.enable_performance_tracking = os.getenv(
-            "JARVIS_LOG_PERFORMANCE_TRACKING", "true"
+            "Ironcliw_LOG_PERFORMANCE_TRACKING", "true"
         ).lower() == "true"
 
         return config

@@ -1,14 +1,14 @@
-# JARVIS Vision Integration Guide
+﻿# Ironcliw Vision Integration Guide
 
 ## Overview
 
-This guide explains how to properly integrate the Claude Vision Analyzer with JARVIS to enable screen understanding capabilities.
+This guide explains how to properly integrate the Claude Vision Analyzer with Ironcliw to enable screen understanding capabilities.
 
 ## The Problem
 
-JARVIS was unable to use vision because:
+Ironcliw was unable to use vision because:
 1. The import path was incorrect (`vision.claude_vision_analyzer` vs `vision.claude_vision_analyzer_main`)
-2. The analyzer returns a tuple `(result, metrics)` but JARVIS expected just the result dict
+2. The analyzer returns a tuple `(result, metrics)` but Ironcliw expected just the result dict
 3. The vision analysis was commented out in the autonomous behaviors
 
 ## The Solution
@@ -19,7 +19,7 @@ Created `claude_vision_analyzer.py` wrapper that:
 - Adds helpful methods like `get_screen_context()`
 - Handles errors gracefully
 
-## How to Use Vision in JARVIS
+## How to Use Vision in Ironcliw
 
 ### 1. Basic Import and Setup
 ```python
@@ -133,10 +133,10 @@ python diagnose_vision_capture.py
 3. **Use Specific Prompts**: More specific prompts = better results
 4. **Batch Analysis**: Analyze multiple elements in one call when possible
 
-## Example: Making JARVIS See and Respond
+## Example: Making Ironcliw See and Respond
 
 ```python
-# In your JARVIS command handler
+# In your Ironcliw command handler
 async def handle_visual_command(self, command: str):
     """Handle commands that require visual understanding"""
     
@@ -170,7 +170,7 @@ async def handle_visual_command(self, command: str):
 
 ## Conclusion
 
-With this wrapper and integration guide, JARVIS can now:
+With this wrapper and integration guide, Ironcliw can now:
 - ✅ See and understand what's on screen
 - ✅ Extract text and identify UI elements
 - ✅ Understand context for commands

@@ -1,9 +1,9 @@
-"""
+﻿"""
 Centralized Embedding Service v1.0 - Enterprise-Grade Embedding Management
 ============================================================================
 
 This module provides a SINGLE, CENTRALIZED SentenceTransformer instance that is
-shared across the entire JARVIS codebase. This eliminates the semaphore leak
+shared across the entire Ironcliw codebase. This eliminates the semaphore leak
 caused by multiple SentenceTransformer instances creating independent
 torch.multiprocessing pools.
 
@@ -39,7 +39,7 @@ Usage:
     from backend.core.embedding_service import encode_texts
     embeddings = await encode_texts(["text1", "text2"])
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

@@ -1,5 +1,5 @@
-"""
-System Control Module for JARVIS AI Agent
+﻿"""
+System Control Module for Ironcliw AI Agent
 """
 
 from .macos_controller import MacOSController, CommandCategory, SafetyLevel

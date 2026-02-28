@@ -1,5 +1,5 @@
-"""
-Memory Manager - Resource Controller for JARVIS
+﻿"""
+Memory Manager - Resource Controller for Ironcliw
 Real-time memory monitoring with predictive loading/unloading
 """
 

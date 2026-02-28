@@ -1,4 +1,4 @@
-# GCP Spot VM Auto-Creation System - Implementation Complete ✅
+﻿# GCP Spot VM Auto-Creation System - Implementation Complete ✅
 
 ## Overview
 
@@ -38,15 +38,15 @@ Successfully implemented a **comprehensive, advanced, robust, async, and dynamic
 - `cleanup_all_vms()` - Cleanup on shutdown
 
 #### `backend/core/gcp_vm_startup.sh` (NEW)
-**VM startup script for automated JARVIS backend deployment**
+**VM startup script for automated Ironcliw backend deployment**
 
 **Features:**
 - ✅ Installs system dependencies (Python 3.10, git, build tools)
-- ✅ Clones JARVIS repository (or uses pre-baked image)
+- ✅ Clones Ironcliw repository (or uses pre-baked image)
 - ✅ Installs Python dependencies
 - ✅ Configures environment for cloud operation
 - ✅ Starts Cloud SQL Proxy for database access
-- ✅ Launches JARVIS backend on port 8010
+- ✅ Launches Ironcliw backend on port 8010
 - ✅ Health checks with retry logic
 - ✅ Logging and monitoring setup
 
@@ -209,7 +209,7 @@ python3 core/gcp_vm_status.py --costs
 6. **`gcp_vm_manager.should_create_vm()`** checks budget/limits
 7. If approved:
    - **`gcp_vm_manager.create_vm()`** creates Spot VM
-   - **Startup script** installs and configures JARVIS
+   - **Startup script** installs and configures Ironcliw
    - **Cost tracker** records VM creation
    - **Health monitoring** begins
 8. **Heavy components** (VISION, CHATBOTS) offload to GCP VM
@@ -274,7 +274,7 @@ export GCP_VM_ENABLED=true
 export GCP_VM_DAILY_BUDGET=5.0
 
 # Start backend with monitoring
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend
 python3 main.py --port 8000
 ```
 

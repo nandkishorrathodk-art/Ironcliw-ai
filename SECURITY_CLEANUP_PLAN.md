@@ -1,4 +1,4 @@
-# 🚨 SECURITY CLEANUP PLAN - JARVIS Repository
+﻿# 🚨 SECURITY CLEANUP PLAN - Ironcliw Repository
 
 ## CRITICAL: Exposed Secrets Found in Git History
 
@@ -36,7 +36,7 @@ gcloud sql users set-password jarvis \
 
 # C. Update .env files with new password
 # Edit .env and backend/.env:
-# JARVIS_DB_PASSWORD=NEW_SECURE_PASSWORD_HERE
+# Ironcliw_DB_PASSWORD=NEW_SECURE_PASSWORD_HERE
 ```
 
 ### 2️⃣ CLEAN GIT HISTORY (Before Public Push)
@@ -223,12 +223,12 @@ Instead of hardcoding in docs, use:
 
 ```markdown
 # Bad
-JARVIS_DB_PASSWORD=JarvisSecure2025!
+Ironcliw_DB_PASSWORD=JarvisSecure2025!
 
 # Good
-JARVIS_DB_PASSWORD=your_secure_password_here
-JARVIS_DB_PASSWORD=${JARVIS_DB_PASSWORD}
-JARVIS_DB_PASSWORD=$(gcloud secrets versions access latest --secret="jarvis-db-password")
+Ironcliw_DB_PASSWORD=your_secure_password_here
+Ironcliw_DB_PASSWORD=${Ironcliw_DB_PASSWORD}
+Ironcliw_DB_PASSWORD=$(gcloud secrets versions access latest --secret="jarvis-db-password")
 ```
 
 ---
@@ -237,4 +237,4 @@ JARVIS_DB_PASSWORD=$(gcloud secrets versions access latest --secret="jarvis-db-p
 
 **Time Estimate**: 30-45 minutes
 
-**Risk if Ignored**: Full compromise of JARVIS infrastructure
+**Risk if Ignored**: Full compromise of Ironcliw infrastructure

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Unified Async Microphone Manager
 ================================
 
-A robust, production-grade microphone management system for JARVIS voice operations.
+A robust, production-grade microphone management system for Ironcliw voice operations.
 
 Features:
 - Async-first design with full asyncio integration
@@ -305,70 +305,70 @@ class MicrophoneConfig:
 
     # Audio settings from environment
     sample_rate: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_SAMPLE_RATE", "16000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_SAMPLE_RATE", "16000"))
     )
     channels: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_CHANNELS", "1"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_CHANNELS", "1"))
     )
     chunk_duration_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_CHUNK_MS", "30"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_CHUNK_MS", "30"))
     )
     dtype: str = field(
-        default_factory=lambda: os.getenv("JARVIS_MIC_DTYPE", "float32")
+        default_factory=lambda: os.getenv("Ironcliw_MIC_DTYPE", "float32")
     )
 
     # Device selection
     preferred_device: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_MIC_DEVICE")
+        default_factory=lambda: os.getenv("Ironcliw_MIC_DEVICE")
     )
     device_index: Optional[int] = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_DEVICE_INDEX", "-1")) if os.getenv("JARVIS_MIC_DEVICE_INDEX") else None
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_DEVICE_INDEX", "-1")) if os.getenv("Ironcliw_MIC_DEVICE_INDEX") else None
     )
 
     # Backend preference
     preferred_backend: str = field(
-        default_factory=lambda: os.getenv("JARVIS_MIC_BACKEND", "sounddevice")
+        default_factory=lambda: os.getenv("Ironcliw_MIC_BACKEND", "sounddevice")
     )
     enable_fallback: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MIC_ENABLE_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MIC_ENABLE_FALLBACK", "true").lower() == "true"
     )
 
     # Error recovery
     max_retries: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_MAX_RETRIES", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_MAX_RETRIES", "5"))
     )
     initial_retry_delay_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_RETRY_DELAY_MS", "100"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_RETRY_DELAY_MS", "100"))
     )
     max_retry_delay_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MIC_MAX_RETRY_DELAY_MS", "5000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MIC_MAX_RETRY_DELAY_MS", "5000"))
     )
 
     # Health monitoring
     health_check_interval_s: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIC_HEALTH_INTERVAL_S", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIC_HEALTH_INTERVAL_S", "5.0"))
     )
     auto_recovery_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MIC_AUTO_RECOVERY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MIC_AUTO_RECOVERY", "true").lower() == "true"
     )
 
     # Audio quality
     noise_calibration_duration_s: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIC_NOISE_CALIBRATION_S", "1.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIC_NOISE_CALIBRATION_S", "1.0"))
     )
     min_snr_db: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIC_MIN_SNR_DB", "10.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIC_MIN_SNR_DB", "10.0"))
     )
 
     # VAD (Voice Activity Detection)
     vad_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MIC_VAD_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MIC_VAD_ENABLED", "true").lower() == "true"
     )
     vad_energy_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIC_VAD_THRESHOLD", "0.02"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIC_VAD_THRESHOLD", "0.02"))
     )
     vad_silence_duration_s: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MIC_VAD_SILENCE_S", "1.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MIC_VAD_SILENCE_S", "1.5"))
     )
 
     @property
@@ -1528,7 +1528,7 @@ class MicrophoneErrorClassifier:
 
 class MicrophoneManager:
     """
-    Unified singleton microphone manager for JARVIS.
+    Unified singleton microphone manager for Ironcliw.
 
     Provides:
     - Centralized microphone access control

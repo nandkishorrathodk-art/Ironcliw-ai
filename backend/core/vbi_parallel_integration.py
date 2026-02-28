@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 VBI Parallel Integration v1.0.0
 ===============================
 
-Integrates the ParallelVBIOrchestrator with existing JARVIS voice unlock systems.
+Integrates the ParallelVBIOrchestrator with existing Ironcliw voice unlock systems.
 
 This module provides:
 1. Drop-in replacement for existing VBI verification
@@ -139,7 +139,7 @@ class EnhancedVerificationResult:
 
 class VBIParallelIntegration:
     """
-    Integration layer between ParallelVBIOrchestrator and existing JARVIS systems.
+    Integration layer between ParallelVBIOrchestrator and existing Ironcliw systems.
     
     Features:
     - Backward compatible with existing VBI API

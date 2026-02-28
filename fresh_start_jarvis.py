@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Fresh start wrapper for JARVIS
+Fresh start wrapper for Ironcliw
 Ensures all modules are loaded fresh with no caching
 """
 
@@ -10,7 +10,7 @@ import subprocess
 import shutil
 from pathlib import Path
 
-print("🧹 JARVIS Fresh Start - Ensuring all fixes are loaded...")
+print("🧹 Ironcliw Fresh Start - Ensuring all fixes are loaded...")
 
 # 1. Set environment to prevent bytecode generation
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
@@ -38,8 +38,8 @@ for pyc in pyc_files:
 
 print(f"\n✅ Cleared {len(pycache_dirs)} cache directories and {len(pyc_files)} .pyc files")
 
-# 4. Start JARVIS with subprocess - completely fresh Python interpreter
-print("\n🚀 Starting JARVIS with completely fresh modules...")
+# 4. Start Ironcliw with subprocess - completely fresh Python interpreter
+print("\n🚀 Starting Ironcliw with completely fresh modules...")
 print("   All vision fixes will be active!")
 print("   Multi-space queries will work!\n")
 
@@ -56,5 +56,5 @@ try:
     proc = subprocess.run(cmd, env=env)
     sys.exit(proc.returncode)
 except KeyboardInterrupt:
-    print("\n👋 JARVIS shutdown requested")
+    print("\n👋 Ironcliw shutdown requested")
     sys.exit(0)

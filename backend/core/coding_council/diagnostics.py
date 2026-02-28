@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: Comprehensive Diagnostics & Pre-Flight Checks
 =====================================================
 
@@ -16,7 +16,7 @@ This module can be run standalone:
 Or imported for programmatic checks:
     from backend.core.coding_council.diagnostics import run_preflight_checks
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 1.0.0
 """
 
@@ -54,7 +54,7 @@ def _get_trinity_repos() -> Dict[str, Path]:
     except ImportError:
         # Fallback if config not available
         return {
-            "jarvis": Path(os.getenv("JARVIS_REPO", Path(__file__).parent.parent.parent.parent)),
+            "jarvis": Path(os.getenv("Ironcliw_REPO", Path(__file__).parent.parent.parent.parent)),
             "j_prime": Path(os.getenv("J_PRIME_REPO", Path.home() / "Documents/repos/jarvis-prime")),
             "reactor_core": Path(os.getenv("REACTOR_CORE_REPO", Path.home() / "Documents/repos/reactor-core")),
         }
@@ -72,7 +72,7 @@ def _get_required_ports() -> Dict[str, int]:
         }
     except ImportError:
         return {
-            "jarvis_api": int(os.getenv("JARVIS_PORT", "8010")),
+            "jarvis_api": int(os.getenv("Ironcliw_PORT", "8010")),
             "lsp_server": int(os.getenv("LSP_SERVER_PORT", "9257")),
             "websocket": int(os.getenv("IDE_WEBSOCKET_PORT", "9258")),
         }
@@ -273,7 +273,7 @@ class PortChecker:
         Check a port and return a diagnostic result.
 
         v109.1: Enhanced with intelligent service detection.
-        If port is in use by a healthy JARVIS service, returns PASS (already running).
+        If port is in use by a healthy Ironcliw service, returns PASS (already running).
         """
         start = time.time()
 
@@ -288,7 +288,7 @@ class PortChecker:
         else:
             user = PortChecker.get_port_user(port)
 
-            # v109.1: Check if it's our own healthy JARVIS service
+            # v109.1: Check if it's our own healthy Ironcliw service
             # If so, no need to report as failure - service is already running
             if await PortChecker._is_healthy_jarvis_service(port, name):
                 return CheckResult(
@@ -313,7 +313,7 @@ class PortChecker:
     @staticmethod
     async def _is_healthy_jarvis_service(port: int, expected_name: str) -> bool:
         """
-        v109.2: Check if port is used by a healthy JARVIS service.
+        v109.2: Check if port is used by a healthy Ironcliw service.
 
         This prevents false "port in use" errors when the service is already
         running and healthy from a previous startup or parallel process.
@@ -727,7 +727,7 @@ class RuntimeChecker:
         Test Anthropic API connectivity.
 
         v109.1: Enhanced with offline mode detection and better error handling.
-        - Respects JARVIS_OFFLINE_MODE environment variable
+        - Respects Ironcliw_OFFLINE_MODE environment variable
         - Provides specific error details (timeout, connection refused, etc.)
         - Returns PASS when offline mode is intentionally enabled
         """
@@ -735,7 +735,7 @@ class RuntimeChecker:
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
         # v109.1: Check for offline mode - AI features intentionally disabled
-        offline_mode = os.getenv("JARVIS_OFFLINE_MODE", "").lower() in ("true", "1", "yes")
+        offline_mode = os.getenv("Ironcliw_OFFLINE_MODE", "").lower() in ("true", "1", "yes")
         if offline_mode:
             return CheckResult(
                 name="Anthropic API",
@@ -1008,7 +1008,7 @@ class PreFlightChecker:
         r = report or self.report
 
         print("\n" + "=" * 70)
-        print("JARVIS v77.3 - Unified Coding Council Diagnostics")
+        print("Ironcliw v77.3 - Unified Coding Council Diagnostics")
         print("=" * 70)
 
         # Summary
@@ -1344,7 +1344,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="JARVIS Coding Council Diagnostics"
+        description="Ironcliw Coding Council Diagnostics"
     )
     parser.add_argument(
         "--json",

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test PRD Complete Features for JARVIS Multi-Window Intelligence
+Test PRD Complete Features for Ironcliw Multi-Window Intelligence
 Tests all features required by the Product Requirements Document
 """
 
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from backend.vision.meeting_preparation import MeetingPreparationSystem
 from backend.vision.workflow_learning import WorkflowLearningSystem
 from backend.vision.privacy_controls import PrivacyControlSystem
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
 
 async def test_meeting_preparation():
@@ -72,7 +72,7 @@ async def test_message_monitoring():
     print("💬 STORY 3: MESSAGE MONITORING TEST")
     print("="*60)
     
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     print("\n✅ Acceptance Criteria Check:")
     
@@ -166,7 +166,7 @@ async def test_use_cases():
     print("🎯 USE CASE TESTS")
     print("="*60)
     
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     # Use Case 1: Cross-Application Debugging
     print("\n📝 Use Case 1: Cross-Application Debugging")
@@ -186,12 +186,12 @@ async def test_use_cases():
 
 
 async def test_jarvis_integration():
-    """Test complete JARVIS integration"""
+    """Test complete Ironcliw integration"""
     print("\n" + "="*60)
-    print("🤖 JARVIS INTEGRATION TEST")
+    print("🤖 Ironcliw INTEGRATION TEST")
     print("="*60)
     
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     # Test new commands
     test_commands = [
@@ -241,9 +241,9 @@ async def main():
     result = await test_use_cases()
     test_results.append(("PRD Use Cases", result))
     
-    # JARVIS Integration
+    # Ironcliw Integration
     result = await test_jarvis_integration()
-    test_results.append(("JARVIS Integration", result))
+    test_results.append(("Ironcliw Integration", result))
     
     # Summary
     print("\n" + "="*60)
@@ -260,7 +260,7 @@ async def main():
     print("\n" + "="*60)
     if all_passed:
         print("✅ ALL PRD REQUIREMENTS COMPLETED!")
-        print("\nJARVIS now includes:")
+        print("\nIroncliw now includes:")
         print("• Multi-Window Awareness across 50+ windows")
         print("• Window Relationship Detection")
         print("• Smart Query Routing")

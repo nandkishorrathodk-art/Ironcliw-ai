@@ -1,11 +1,11 @@
-/**
- * JARVISWebSocketBridge.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwWebSocketBridge.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of WebSocket communication bridge.
  */
 
-#import "JARVISWebSocketBridge.h"
+#import "IroncliwWebSocketBridge.h"
 #import <os/log.h>
 
 // Define SRWebSocket interface for NSURLSession-based implementation
@@ -106,10 +106,10 @@
 @end
 
 // Message implementation
-@implementation JARVISWebSocketMessage
+@implementation IroncliwWebSocketMessage
 
-+ (instancetype)messageWithType:(JARVISMessageType)type payload:(NSDictionary *)payload {
-    JARVISWebSocketMessage *message = [[JARVISWebSocketMessage alloc] init];
++ (instancetype)messageWithType:(IroncliwMessageType)type payload:(NSDictionary *)payload {
+    IroncliwWebSocketMessage *message = [[IroncliwWebSocketMessage alloc] init];
     message.type = type;
     message.payload = payload;
     message.timestamp = [NSDate date];
@@ -119,13 +119,13 @@
 
 - (NSString *)typeString {
     switch (self.type) {
-        case JARVISMessageTypeCommand: return @"command";
-        case JARVISMessageTypeStatus: return @"status";
-        case JARVISMessageTypeAudio: return @"audio";
-        case JARVISMessageTypeAuthentication: return @"authentication";
-        case JARVISMessageTypeScreenState: return @"screen_state";
-        case JARVISMessageTypeConfiguration: return @"configuration";
-        case JARVISMessageTypeHeartbeat: return @"heartbeat";
+        case IroncliwMessageTypeCommand: return @"command";
+        case IroncliwMessageTypeStatus: return @"status";
+        case IroncliwMessageTypeAudio: return @"audio";
+        case IroncliwMessageTypeAuthentication: return @"authentication";
+        case IroncliwMessageTypeScreenState: return @"screen_state";
+        case IroncliwMessageTypeConfiguration: return @"configuration";
+        case IroncliwMessageTypeHeartbeat: return @"heartbeat";
     }
 }
 
@@ -176,7 +176,7 @@
 @end
 
 // Main bridge implementation
-@interface JARVISWebSocketBridge () <SRWebSocketDelegate>
+@interface IroncliwWebSocketBridge () <SRWebSocketDelegate>
 
 @property (nonatomic, strong) SRWebSocket *webSocket;
 @property (nonatomic, strong) dispatch_queue_t socketQueue;
@@ -184,7 +184,7 @@
 @property (nonatomic, strong) NSTimer *reconnectTimer;
 @property (nonatomic, strong) os_log_t logger;
 
-@property (nonatomic, readwrite) JARVISWebSocketState connectionState;
+@property (nonatomic, readwrite) IroncliwWebSocketState connectionState;
 @property (nonatomic, readwrite) NSUInteger reconnectAttempts;
 
 @property (nonatomic, strong) NSMutableDictionary<NSString *, void (^)(NSDictionary *, NSError *)> *pendingCallbacks;
@@ -192,7 +192,7 @@
 
 @end
 
-@implementation JARVISWebSocketBridge
+@implementation IroncliwWebSocketBridge
 
 - (instancetype)init {
     self = [super init];
@@ -209,7 +209,7 @@
         _maxReconnectAttempts = 10;
         _heartbeatInterval = 30.0;
         
-        _connectionState = JARVISWebSocketStateDisconnected;
+        _connectionState = IroncliwWebSocketStateDisconnected;
     }
     return self;
 }
@@ -232,12 +232,12 @@
 }
 
 - (void)connect {
-    if (self.connectionState == JARVISWebSocketStateConnected ||
-        self.connectionState == JARVISWebSocketStateConnecting) {
+    if (self.connectionState == IroncliwWebSocketStateConnected ||
+        self.connectionState == IroncliwWebSocketStateConnecting) {
         return;
     }
     
-    self.connectionState = JARVISWebSocketStateConnecting;
+    self.connectionState = IroncliwWebSocketStateConnecting;
     
     dispatch_async(self.socketQueue, ^{
         NSString *urlString = [NSString stringWithFormat:@"ws://%@:%lu/voice-unlock",
@@ -250,7 +250,7 @@
         request.timeoutInterval = 10.0;
         
         // Add headers
-        [request setValue:@"JARVIS-VoiceUnlock/1.0" forHTTPHeaderField:@"User-Agent"];
+        [request setValue:@"Ironcliw-VoiceUnlock/1.0" forHTTPHeaderField:@"User-Agent"];
         [request setValue:@"objc-daemon" forHTTPHeaderField:@"X-Client-Type"];
         
         self.webSocket = [[SRWebSocket alloc] initWithURLRequest:request];
@@ -269,7 +269,7 @@
     [self.reconnectTimer invalidate];
     self.reconnectTimer = nil;
     
-    self.connectionState = JARVISWebSocketStateDisconnecting;
+    self.connectionState = IroncliwWebSocketStateDisconnecting;
     
     if (self.webSocket) {
         [self.webSocket close];
@@ -287,7 +287,7 @@
     
     if (self.reconnectAttempts >= self.maxReconnectAttempts) {
         os_log_error(self.logger, "Max reconnection attempts reached");
-        self.connectionState = JARVISWebSocketStateError;
+        self.connectionState = IroncliwWebSocketStateError;
         return;
     }
     
@@ -305,13 +305,13 @@
 
 #pragma mark - Messaging
 
-- (BOOL)sendMessage:(JARVISWebSocketMessage *)message {
+- (BOOL)sendMessage:(IroncliwWebSocketMessage *)message {
     if (!self.isConnected) {
         os_log_error(self.logger, "Cannot send message - not connected");
         return NO;
     }
     
-    if (message.type == JARVISMessageTypeAudio && message.binaryData) {
+    if (message.type == IroncliwMessageTypeAudio && message.binaryData) {
         // Send binary data
         NSData *data = [message toBinaryData];
         [self.webSocket sendData:data error:nil];
@@ -330,7 +330,7 @@
 }
 
 - (BOOL)sendJSON:(NSDictionary *)json {
-    JARVISWebSocketMessage *message = [JARVISWebSocketMessage messageWithType:JARVISMessageTypeCommand
+    IroncliwWebSocketMessage *message = [IroncliwWebSocketMessage messageWithType:IroncliwMessageTypeCommand
                                                                        payload:json];
     return [self sendMessage:message];
 }
@@ -352,7 +352,7 @@
         payload[@"parameters"] = parameters;
     }
     
-    JARVISWebSocketMessage *message = [JARVISWebSocketMessage messageWithType:JARVISMessageTypeCommand
+    IroncliwWebSocketMessage *message = [IroncliwWebSocketMessage messageWithType:IroncliwMessageTypeCommand
                                                                        payload:payload];
     return [self sendMessage:message];
 }
@@ -382,8 +382,8 @@
         return NO;
     }
     
-    JARVISWebSocketMessage *message = [[JARVISWebSocketMessage alloc] init];
-    message.type = JARVISMessageTypeAudio;
+    IroncliwWebSocketMessage *message = [[IroncliwWebSocketMessage alloc] init];
+    message.type = IroncliwMessageTypeAudio;
     message.identifier = [[NSUUID UUID] UUIDString];
     message.timestamp = [NSDate date];
     message.binaryData = audioData;
@@ -394,7 +394,7 @@
 #pragma mark - Status
 
 - (BOOL)isConnected {
-    return self.connectionState == JARVISWebSocketStateConnected;
+    return self.connectionState == IroncliwWebSocketStateConnected;
 }
 
 - (void)requestStatus {
@@ -424,7 +424,7 @@
 }
 
 - (void)sendHeartbeat {
-    JARVISWebSocketMessage *message = [JARVISWebSocketMessage messageWithType:JARVISMessageTypeHeartbeat
+    IroncliwWebSocketMessage *message = [IroncliwWebSocketMessage messageWithType:IroncliwMessageTypeHeartbeat
                                                                        payload:@{@"timestamp": @([[NSDate date] timeIntervalSince1970])}];
     [self sendMessage:message];
 }
@@ -434,7 +434,7 @@
 - (void)webSocketDidOpen:(SRWebSocket *)webSocket {
     os_log_info(self.logger, "WebSocket connected");
     
-    self.connectionState = JARVISWebSocketStateConnected;
+    self.connectionState = IroncliwWebSocketStateConnected;
     self.reconnectAttempts = 0;
     
     // Start heartbeat
@@ -462,7 +462,7 @@
 - (void)webSocket:(SRWebSocket *)webSocket didFailWithError:(NSError *)error {
     os_log_error(self.logger, "WebSocket failed with error: %@", error);
     
-    self.connectionState = JARVISWebSocketStateError;
+    self.connectionState = IroncliwWebSocketStateError;
     
     if ([self.delegate respondsToSelector:@selector(webSocketDidDisconnect:)]) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -486,7 +486,7 @@
     os_log_info(self.logger, "WebSocket closed - code: %ld, reason: %@, clean: %d",
                 (long)code, reason ?: @"none", wasClean);
     
-    self.connectionState = JARVISWebSocketStateDisconnected;
+    self.connectionState = IroncliwWebSocketStateDisconnected;
     
     [self.heartbeatTimer invalidate];
     self.heartbeatTimer = nil;
@@ -532,10 +532,10 @@
     
     uint8_t type = ((uint8_t *)data.bytes)[0];
     
-    if (type == JARVISMessageTypeAudio) {
+    if (type == IroncliwMessageTypeAudio) {
         // Audio response
-        JARVISWebSocketMessage *message = [[JARVISWebSocketMessage alloc] init];
-        message.type = JARVISMessageTypeAudio;
+        IroncliwWebSocketMessage *message = [[IroncliwWebSocketMessage alloc] init];
+        message.type = IroncliwMessageTypeAudio;
         message.binaryData = [data subdataWithRange:NSMakeRange(1, data.length - 1)];
         message.timestamp = [NSDate date];
         
@@ -562,7 +562,7 @@
             NSError *error = nil;
             if ([json[@"error"] isKindOfClass:[NSDictionary class]]) {
                 NSDictionary *errorInfo = json[@"error"];
-                error = [NSError errorWithDomain:@"JARVISWebSocket"
+                error = [NSError errorWithDomain:@"IroncliwWebSocket"
                                            code:[errorInfo[@"code"] integerValue]
                                        userInfo:@{NSLocalizedDescriptionKey: errorInfo[@"message"] ?: @"Unknown error"}];
             }
@@ -576,24 +576,24 @@
     }
     
     // Create message object
-    JARVISWebSocketMessage *message = [[JARVISWebSocketMessage alloc] init];
+    IroncliwWebSocketMessage *message = [[IroncliwWebSocketMessage alloc] init];
     message.identifier = messageId ?: [[NSUUID UUID] UUIDString];
     message.payload = payload;
     message.timestamp = [NSDate date];
     
     // Map type
     if ([type isEqualToString:@"command"]) {
-        message.type = JARVISMessageTypeCommand;
+        message.type = IroncliwMessageTypeCommand;
     } else if ([type isEqualToString:@"status"]) {
-        message.type = JARVISMessageTypeStatus;
+        message.type = IroncliwMessageTypeStatus;
     } else if ([type isEqualToString:@"authentication"]) {
-        message.type = JARVISMessageTypeAuthentication;
+        message.type = IroncliwMessageTypeAuthentication;
     } else if ([type isEqualToString:@"screen_state"]) {
-        message.type = JARVISMessageTypeScreenState;
+        message.type = IroncliwMessageTypeScreenState;
     } else if ([type isEqualToString:@"configuration"]) {
-        message.type = JARVISMessageTypeConfiguration;
+        message.type = IroncliwMessageTypeConfiguration;
     } else if ([type isEqualToString:@"heartbeat"]) {
-        message.type = JARVISMessageTypeHeartbeat;
+        message.type = IroncliwMessageTypeHeartbeat;
     }
     
     // Notify delegate
@@ -616,7 +616,7 @@
 
 #pragma mark - Python Bridge Extension
 
-@implementation JARVISWebSocketBridge (PythonBridge)
+@implementation IroncliwWebSocketBridge (PythonBridge)
 
 - (void)sendPythonCommand:(NSString *)command
                arguments:(nullable NSArray *)arguments
@@ -629,7 +629,7 @@
         parameters[@"args"] = arguments;
     }
     
-    JARVISWebSocketMessage *message = [JARVISWebSocketMessage messageWithType:JARVISMessageTypeCommand
+    IroncliwWebSocketMessage *message = [IroncliwWebSocketMessage messageWithType:IroncliwMessageTypeCommand
                                                                        payload:parameters];
     
     if (completion) {

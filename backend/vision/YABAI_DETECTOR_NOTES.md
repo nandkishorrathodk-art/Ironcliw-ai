@@ -1,4 +1,4 @@
-# Yabai Space Detector - Important Notes
+﻿# Yabai Space Detector - Important Notes
 
 ## ⚠️ Auto-Formatter Issues
 
@@ -86,13 +86,13 @@ description = await detector.describe_workspace_async()
 
 The original sync methods use `subprocess.run()` which blocks the event loop:
 ```python
-# BLOCKING - Freezes JARVIS while waiting
+# BLOCKING - Freezes Ironcliw while waiting
 result = subprocess.run(["yabai", "-m", "query", "--spaces"], ...)
 ```
 
 The new async methods run subprocess calls in a thread pool:
 ```python
-# NON-BLOCKING - JARVIS stays responsive
+# NON-BLOCKING - Ironcliw stays responsive
 result = await run_subprocess_async(["yabai", "-m", "query", "--spaces"], timeout=5.0)
 ```
 

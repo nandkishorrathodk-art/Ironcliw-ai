@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Vision Capture Implementation
+﻿"""
+Ironcliw Windows Vision Capture Implementation
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows implementation of screen capture using C# ScreenCapture DLL with GDI+.
@@ -18,7 +18,7 @@ C# DLL Methods Used:
     - ScreenCaptureEngine.GetMonitorLayout()
     - ScreenCaptureEngine.CaptureMonitor(monitorId)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations

@@ -1,5 +1,5 @@
-"""
-Rust acceleration API endpoints for JARVIS.
+﻿"""
+Rust acceleration API endpoints for Ironcliw.
 Provides status, benchmarks, and management capabilities.
 """
 
@@ -264,7 +264,7 @@ async def optimize_for_system():
     
     # Optimize memory pool size
     total_ram_gb = psutil.virtual_memory().total / (1024**3)
-    optimal_pool_size = int(total_ram_gb * 1024 * 0.4 * 0.5)  # 50% of JARVIS allocation
+    optimal_pool_size = int(total_ram_gb * 1024 * 0.4 * 0.5)  # 50% of Ironcliw allocation
     
     optimizations.append({
         'component': 'memory_pool',

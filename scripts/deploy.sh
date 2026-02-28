@@ -1,12 +1,12 @@
-#!/bin/bash
+﻿#!/bin/bash
 # =============================================================================
-# JARVIS Unified Deployment Script v9.4
+# Ironcliw Unified Deployment Script v9.4
 # =============================================================================
 #
-# Deploys the complete JARVIS stack to Docker (local) or Cloud Run (GCP).
+# Deploys the complete Ironcliw stack to Docker (local) or Cloud Run (GCP).
 #
 # Features:
-# - Multi-repo integration (JARVIS, JARVIS-Prime, Reactor-Core)
+# - Multi-repo integration (Ironcliw, Ironcliw-Prime, Reactor-Core)
 # - Docker Compose for local development
 # - Terraform for Cloud Run production
 # - Automatic image building and pushing
@@ -38,10 +38,10 @@ TERRAFORM_DIR="$PROJECT_ROOT/terraform"
 # GCP Configuration
 PROJECT_ID="${GCP_PROJECT_ID:-jarvis-473803}"
 REGION="${GCP_REGION:-us-central1}"
-JARVIS_VERSION="${JARVIS_VERSION:-9.4.0}"
+Ironcliw_VERSION="${Ironcliw_VERSION:-9.4.0}"
 
 # Repository paths
-JARVIS_PRIME_PATH="${JARVIS_PRIME_PATH:-$PROJECT_ROOT/../jarvis-prime}"
+Ironcliw_PRIME_PATH="${Ironcliw_PRIME_PATH:-$PROJECT_ROOT/../jarvis-prime}"
 REACTOR_CORE_PATH="${REACTOR_CORE_PATH:-$PROJECT_ROOT/../reactor-core}"
 
 # Colors
@@ -58,19 +58,19 @@ NC='\033[0m' # No Color
 # =============================================================================
 
 log_info() {
-    echo -e "${BLUE}[JARVIS]${NC} $1"
+    echo -e "${BLUE}[Ironcliw]${NC} $1"
 }
 
 log_success() {
-    echo -e "${GREEN}[JARVIS]${NC} $1"
+    echo -e "${GREEN}[Ironcliw]${NC} $1"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[JARVIS]${NC} WARNING: $1"
+    echo -e "${YELLOW}[Ironcliw]${NC} WARNING: $1"
 }
 
 log_error() {
-    echo -e "${RED}[JARVIS]${NC} ERROR: $1"
+    echo -e "${RED}[Ironcliw]${NC} ERROR: $1"
 }
 
 log_step() {
@@ -130,11 +130,11 @@ check_env_file() {
 }
 
 check_repo_paths() {
-    if [[ ! -d "$JARVIS_PRIME_PATH" ]]; then
-        log_warning "JARVIS-Prime not found at $JARVIS_PRIME_PATH"
-        log_info "Some features may be limited. Set JARVIS_PRIME_PATH to correct location."
+    if [[ ! -d "$Ironcliw_PRIME_PATH" ]]; then
+        log_warning "Ironcliw-Prime not found at $Ironcliw_PRIME_PATH"
+        log_info "Some features may be limited. Set Ironcliw_PRIME_PATH to correct location."
     else
-        log_success "JARVIS-Prime found: $JARVIS_PRIME_PATH"
+        log_success "Ironcliw-Prime found: $Ironcliw_PRIME_PATH"
     fi
 
     if [[ ! -d "$REACTOR_CORE_PATH" ]]; then
@@ -152,14 +152,14 @@ check_repo_paths() {
 deploy_local() {
     local profile="${1:-default}"
 
-    log_step "Deploying JARVIS Stack Locally (Profile: $profile)"
+    log_step "Deploying Ironcliw Stack Locally (Profile: $profile)"
 
     cd "$DOCKER_DIR"
     check_env_file
 
     # Set environment for Docker Compose
-    export JARVIS_VERSION="$JARVIS_VERSION"
-    export JARVIS_PRIME_PATH="$JARVIS_PRIME_PATH"
+    export Ironcliw_VERSION="$Ironcliw_VERSION"
+    export Ironcliw_PRIME_PATH="$Ironcliw_PRIME_PATH"
     export REACTOR_CORE_PATH="$REACTOR_CORE_PATH"
 
     # Build images
@@ -256,7 +256,7 @@ destroy_local() {
 deploy_cloud() {
     local mode="${1:-backend}"
 
-    log_step "Deploying JARVIS to Cloud Run (Mode: $mode)"
+    log_step "Deploying Ironcliw to Cloud Run (Mode: $mode)"
 
     # Check GCP authentication
     log_info "Checking GCP authentication..."
@@ -301,15 +301,15 @@ deploy_cloud() {
 }
 
 build_and_push_backend() {
-    log_info "Building JARVIS Backend image..."
+    log_info "Building Ironcliw Backend image..."
 
-    local image="$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-backend/jarvis-backend:$JARVIS_VERSION"
+    local image="$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-backend/jarvis-backend:$Ironcliw_VERSION"
 
     cd "$PROJECT_ROOT"
     docker build -f docker/Dockerfile.backend -t "$image" .
     docker tag "$image" "$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-backend/jarvis-backend:latest"
 
-    log_info "Pushing JARVIS Backend image..."
+    log_info "Pushing Ironcliw Backend image..."
     docker push "$image"
     docker push "$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-backend/jarvis-backend:latest"
 
@@ -317,20 +317,20 @@ build_and_push_backend() {
 }
 
 build_and_push_prime() {
-    if [[ ! -d "$JARVIS_PRIME_PATH" ]]; then
-        log_error "JARVIS-Prime not found at $JARVIS_PRIME_PATH"
+    if [[ ! -d "$Ironcliw_PRIME_PATH" ]]; then
+        log_error "Ironcliw-Prime not found at $Ironcliw_PRIME_PATH"
         exit 1
     fi
 
-    log_info "Building JARVIS-Prime image..."
+    log_info "Building Ironcliw-Prime image..."
 
-    local image="$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-prime/jarvis-prime:$JARVIS_VERSION"
+    local image="$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-prime/jarvis-prime:$Ironcliw_VERSION"
 
-    cd "$JARVIS_PRIME_PATH"
+    cd "$Ironcliw_PRIME_PATH"
     docker build -t "$image" .
     docker tag "$image" "$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-prime/jarvis-prime:latest"
 
-    log_info "Pushing JARVIS-Prime image..."
+    log_info "Pushing Ironcliw-Prime image..."
     docker push "$image"
     docker push "$REGION-docker.pkg.dev/$PROJECT_ID/jarvis-prime/jarvis-prime:latest"
 
@@ -393,7 +393,7 @@ show_cloud_status() {
 # =============================================================================
 
 show_status() {
-    log_step "JARVIS Deployment Status"
+    log_step "Ironcliw Deployment Status"
 
     echo -e "${CYAN}Local Docker Status:${NC}"
     cd "$DOCKER_DIR" 2>/dev/null && docker compose ps 2>/dev/null || echo "  Not running"
@@ -409,7 +409,7 @@ show_status() {
 
 show_help() {
     cat << EOF
-${PURPLE}JARVIS Unified Deployment Script v9.4${NC}
+${PURPLE}Ironcliw Unified Deployment Script v9.4${NC}
 
 ${CYAN}Usage:${NC}
   ./scripts/deploy.sh <command> [options]
@@ -442,8 +442,8 @@ ${CYAN}Examples:${NC}
 ${CYAN}Environment Variables:${NC}
   GCP_PROJECT_ID        GCP project ID (default: jarvis-473803)
   GCP_REGION            GCP region (default: us-central1)
-  JARVIS_VERSION        Docker image version (default: 9.4.0)
-  JARVIS_PRIME_PATH     Path to jarvis-prime repo
+  Ironcliw_VERSION        Docker image version (default: 9.4.0)
+  Ironcliw_PRIME_PATH     Path to jarvis-prime repo
   REACTOR_CORE_PATH     Path to reactor-core repo
 
 ${CYAN}Configuration:${NC}
@@ -460,7 +460,7 @@ EOF
 main() {
     echo -e "${PURPLE}"
     echo "  ╔═══════════════════════════════════════════════════════════════╗"
-    echo "  ║        JARVIS Unified Deployment Script v9.4                  ║"
+    echo "  ║        Ironcliw Unified Deployment Script v9.4                  ║"
     echo "  ║        Multi-Repo Docker + Cloud Run Integration              ║"
     echo "  ╚═══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Circuit Breaker - Gap #9
 ================================
 
@@ -9,7 +9,7 @@ Circuit breaker pattern for fault tolerance:
 - Fallback support
 - Per-service circuit breakers
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

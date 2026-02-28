@@ -1,14 +1,14 @@
-"""
+﻿"""
 Comprehensive Computer Use Integration Test
 ============================================
 
 Tests:
 1. Action Chaining (calculator 2+2 test)
 2. Cross-repo event flow (Reactor Core ingestion)
-3. JARVIS Prime delegation
+3. Ironcliw Prime delegation
 4. Optimization metrics tracking
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.1.0
 """
 
@@ -135,18 +135,18 @@ async def test_2_cross_repo_events():
         connector = ComputerUseConnector()
         print(f"\n✅ Reactor Core Computer Use Connector initialized")
 
-        # Check for JARVIS state
+        # Check for Ironcliw state
         jarvis_state = await connector.get_jarvis_state()
         if jarvis_state:
-            print(f"\n📡 JARVIS Computer Use State Detected:")
+            print(f"\n📡 Ironcliw Computer Use State Detected:")
             print(f"   Session ID: {jarvis_state.get('session_id', 'N/A')}")
             print(f"   Total Actions: {jarvis_state.get('total_actions', 0)}")
             print(f"   Total Batches: {jarvis_state.get('total_batches', 0)}")
             print(f"   Action Chaining: {jarvis_state.get('action_chaining_enabled', False)}")
             print(f"   OmniParser: {jarvis_state.get('omniparser_enabled', False)}")
         else:
-            print(f"\n⚠️  No JARVIS state found yet")
-            print(f"   This is normal if JARVIS hasn't run Computer Use tasks")
+            print(f"\n⚠️  No Ironcliw state found yet")
+            print(f"   This is normal if Ironcliw hasn't run Computer Use tasks")
 
         # Get recent events
         print(f"\n📥 Fetching recent Computer Use events...")
@@ -206,16 +206,16 @@ async def test_2_cross_repo_events():
 
 
 async def test_3_jarvis_prime_delegation():
-    """Test 3: JARVIS Prime Delegation"""
+    """Test 3: Ironcliw Prime Delegation"""
     print("\n" + "="*70)
-    print("TEST 3: JARVIS Prime Delegation")
+    print("TEST 3: Ironcliw Prime Delegation")
     print("="*70)
 
     try:
-        # Check if JARVIS Prime is available
+        # Check if Ironcliw Prime is available
         prime_path = Path.home() / "Documents" / "repos" / "jarvis-prime"
         if not prime_path.exists():
-            print(f"\n⚠️  JARVIS Prime not found at {prime_path}")
+            print(f"\n⚠️  Ironcliw Prime not found at {prime_path}")
             print(f"   Skipping delegation test")
             return True
 
@@ -232,29 +232,29 @@ async def test_3_jarvis_prime_delegation():
             enable_omniparser=False,
         )
 
-        print(f"\n✅ JARVIS Prime Computer Use Delegate initialized")
+        print(f"\n✅ Ironcliw Prime Computer Use Delegate initialized")
 
-        # Check JARVIS availability
-        print(f"\n🔍 Checking JARVIS availability...")
+        # Check Ironcliw availability
+        print(f"\n🔍 Checking Ironcliw availability...")
         available = await delegate.check_jarvis_availability()
 
         if not available:
-            print(f"\n⚠️  JARVIS Computer Use not available")
-            print(f"   This is expected if JARVIS is not running")
+            print(f"\n⚠️  Ironcliw Computer Use not available")
+            print(f"   This is expected if Ironcliw is not running")
             print(f"   Skipping delegation test")
             return True
 
-        print(f"✅ JARVIS Computer Use is available!")
+        print(f"✅ Ironcliw Computer Use is available!")
 
         # Get capabilities
         capabilities = await delegate.get_jarvis_capabilities()
-        print(f"\n📊 JARVIS Capabilities:")
+        print(f"\n📊 Ironcliw Capabilities:")
         print(f"   Available: {capabilities['available']}")
         print(f"   Action Chaining: {capabilities['action_chaining_enabled']}")
         print(f"   OmniParser: {capabilities['omniparser_enabled']}")
 
         # Delegate a simple task
-        print(f"\n🚀 Delegating task to JARVIS...")
+        print(f"\n🚀 Delegating task to Ironcliw...")
         print(f"   Task: Open System Preferences")
         print(f"   Timeout: 30s")
 
@@ -273,7 +273,7 @@ async def test_3_jarvis_prime_delegation():
         if result.success:
             print(f"   Time Saved: {result.time_saved_ms:.0f}ms")
             print(f"   Tokens Saved: {result.tokens_saved}")
-            print(f"\n✅ TEST 3 PASSED: JARVIS Prime delegation working!")
+            print(f"\n✅ TEST 3 PASSED: Ironcliw Prime delegation working!")
         else:
             print(f"   Error: {result.error_message}")
             print(f"\n⚠️  TEST 3 PARTIAL: Delegation failed but framework is working")
@@ -288,7 +288,7 @@ async def test_3_jarvis_prime_delegation():
         return True
 
     except ImportError as e:
-        print(f"\n⚠️  JARVIS Prime integration not available: {e}")
+        print(f"\n⚠️  Ironcliw Prime integration not available: {e}")
         print(f"   This is expected if jarvis-prime is not installed")
         return True  # Not a failure, just skipped
     except Exception as e:
@@ -384,7 +384,7 @@ async def main():
     results['cross_repo_events'] = await test_2_cross_repo_events()
     await asyncio.sleep(1)
 
-    # Test 3: JARVIS Prime Delegation
+    # Test 3: Ironcliw Prime Delegation
     results['jarvis_prime_delegation'] = await test_3_jarvis_prime_delegation()
     await asyncio.sleep(1)
 

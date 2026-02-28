@@ -1,9 +1,9 @@
-"""
+﻿"""
 Cross-Repository Reference Finder - Advanced Refactoring Engine v1.0
 ====================================================================
 
 Enterprise-grade reference finder that locates ALL references to a symbol
-across multiple repositories in the Trinity ecosystem (JARVIS, JARVIS-Prime,
+across multiple repositories in the Trinity ecosystem (Ironcliw, Ironcliw-Prime,
 Reactor-Core).
 
 Features:
@@ -20,7 +20,7 @@ Architecture:
     ├─────────────────────────────────────────────────────────────────┤
     │                                                                  │
     │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐          │
-    │   │  JARVIS     │   │ JARVIS-Prime│   │ Reactor-Core│          │
+    │   │  Ironcliw     │   │ Ironcliw-Prime│   │ Reactor-Core│          │
     │   │  Indexer    │   │  Indexer    │   │  Indexer    │          │
     │   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘          │
     │          │                 │                 │                  │
@@ -37,7 +37,7 @@ Architecture:
     │                                                                  │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -96,8 +96,8 @@ class ReferenceFinderConfig:
     """Configuration for reference finding."""
 
     # Repository paths
-    JARVIS_REPO: Path = _get_env_path("JARVIS_REPO_PATH", "~/Documents/repos/JARVIS-AI-Agent")
-    PRIME_REPO: Path = _get_env_path("JARVIS_PRIME_REPO_PATH", "~/Documents/repos/jarvis-prime")
+    Ironcliw_REPO: Path = _get_env_path("Ironcliw_REPO_PATH", "~/Documents/repos/Ironcliw-AI-Agent")
+    PRIME_REPO: Path = _get_env_path("Ironcliw_PRIME_REPO_PATH", "~/Documents/repos/jarvis-prime")
     REACTOR_REPO: Path = _get_env_path("REACTOR_CORE_REPO_PATH", "~/Documents/repos/reactor-core")
 
     # Search settings
@@ -154,7 +154,7 @@ class ReferenceType(str, Enum):
 
 class RepoType(str, Enum):
     """Repository types."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     PRIME = "prime"
     REACTOR = "reactor"
     UNKNOWN = "unknown"
@@ -331,7 +331,7 @@ class FileScanner:
     async def scan_all_repositories(self) -> List[Tuple[Path, RepoType]]:
         """Scan all configured repositories."""
         repos = [
-            (self.config.JARVIS_REPO, RepoType.JARVIS),
+            (self.config.Ironcliw_REPO, RepoType.Ironcliw),
             (self.config.PRIME_REPO, RepoType.PRIME),
             (self.config.REACTOR_REPO, RepoType.REACTOR),
         ]
@@ -580,7 +580,7 @@ class CrossRepoReferenceFinder:
     Finds ALL references to a symbol across multiple repositories.
 
     Uses parallel async processing for efficient searching across
-    JARVIS, JARVIS-Prime, and Reactor-Core repositories.
+    Ironcliw, Ironcliw-Prime, and Reactor-Core repositories.
     """
 
     def __init__(self, config: Optional[ReferenceFinderConfig] = None):
@@ -708,7 +708,7 @@ class CrossRepoReferenceFinder:
             references=unique_refs,
             call_sites=unique_calls,
             search_time_ms=search_time_ms,
-            repositories_searched=[RepoType.JARVIS, RepoType.PRIME, RepoType.REACTOR],
+            repositories_searched=[RepoType.Ironcliw, RepoType.PRIME, RepoType.REACTOR],
             files_searched=len(python_files),
             errors=errors,
         )

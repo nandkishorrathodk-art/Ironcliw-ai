@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Deadlock Prevention - Gaps #23, #26
 ==========================================
 
@@ -9,7 +9,7 @@ Comprehensive deadlock prevention:
 - Async-safe lock primitives
 - Decorator-based timeout management
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# VM Cleanup Bug - FIXED ✅
+﻿# VM Cleanup Bug - FIXED ✅
 **Date:** 2025-10-25 02:10 AM
 **Status:** ✅ **RESOLVED**
 **Branch:** `test-spot-vm-deployment`
@@ -8,7 +8,7 @@
 
 ## 🐛 Bug Description
 
-**Critical Issue:** Spot VMs created but never deleted on JARVIS shutdown → orphaned VMs → cost leak
+**Critical Issue:** Spot VMs created but never deleted on Ironcliw shutdown → orphaned VMs → cost leak
 
 **Discovered During:** Priority 1 Spot VM testing
 **Impact:** Every VM created would remain running indefinitely
@@ -46,7 +46,7 @@ if self.workload_router.gcp_active and self.workload_router.gcp_instance_id:
     await self.workload_router._cleanup_gcp_instance(...)
 ```
 
-**VM exists in GCP but JARVIS doesn't know about it!**
+**VM exists in GCP but Ironcliw doesn't know about it!**
 
 ---
 
@@ -79,10 +79,10 @@ ready = await self._wait_for_gcp_ready(deployment["instance_id"], timeout=300)
 ## 🧪 Test Results
 
 ### Test Setup:
-- Started JARVIS
+- Started Ironcliw
 - RAM hit 83% → triggered VM creation
 - VM created: `jarvis-auto-1761372472`
-- Stopped JARVIS with `kill -TERM`
+- Stopped Ironcliw with `kill -TERM`
 
 ### Logs BEFORE Fix:
 ```
@@ -279,7 +279,7 @@ logger.info(f"📝 Tracking GCP instance for cleanup: {self.gcp_instance_id}")
 
 **Status:** 🎉 **BUG FIXED AND VERIFIED**
 
-The VM cleanup bug has been successfully resolved. All VMs now delete properly on JARVIS shutdown, eliminating the cost leak and manual cleanup burden.
+The VM cleanup bug has been successfully resolved. All VMs now delete properly on Ironcliw shutdown, eliminating the cost leak and manual cleanup burden.
 
 **Testing shows:**
 - ✅ VM creation works

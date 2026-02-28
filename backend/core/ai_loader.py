@@ -1,5 +1,5 @@
-"""
-JARVIS Hyper-Speed AI Loader v1.0
+﻿"""
+Ironcliw Hyper-Speed AI Loader v1.0
 =================================
 
 Advanced model loading system that decouples server startup from model initialization
@@ -137,30 +137,30 @@ class AILoaderConfig:
     Dynamic AI loader configuration.
 
     All values can be overridden via environment variables:
-        JARVIS_AI_MAX_WORKERS: Max concurrent model loads (default: 3)
-        JARVIS_AI_QUANTIZE_DEFAULT: Default quantization (default: true)
-        JARVIS_AI_QUEUE_TIMEOUT: Request queue timeout seconds (default: 30)
-        JARVIS_AI_WARMUP_RETRIES: Retry count for warmup calls (default: 3)
-        JARVIS_AI_SAFETENSORS_PREFER: Prefer safetensors format (default: true)
-        JARVIS_AI_LAZY_QUANTIZE: Quantize lazily on first use (default: false)
+        Ironcliw_AI_MAX_WORKERS: Max concurrent model loads (default: 3)
+        Ironcliw_AI_QUANTIZE_DEFAULT: Default quantization (default: true)
+        Ironcliw_AI_QUEUE_TIMEOUT: Request queue timeout seconds (default: 30)
+        Ironcliw_AI_WARMUP_RETRIES: Retry count for warmup calls (default: 3)
+        Ironcliw_AI_SAFETENSORS_PREFER: Prefer safetensors format (default: true)
+        Ironcliw_AI_LAZY_QUANTIZE: Quantize lazily on first use (default: false)
     """
     max_workers: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_AI_MAX_WORKERS", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_AI_MAX_WORKERS", "3"))
     )
     quantize_default: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_AI_QUANTIZE_DEFAULT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_AI_QUANTIZE_DEFAULT", "true").lower() == "true"
     )
     queue_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_AI_QUEUE_TIMEOUT", "30"))
+        default_factory=lambda: float(os.getenv("Ironcliw_AI_QUEUE_TIMEOUT", "30"))
     )
     warmup_retries: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_AI_WARMUP_RETRIES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_AI_WARMUP_RETRIES", "3"))
     )
     safetensors_prefer: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_AI_SAFETENSORS_PREFER", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_AI_SAFETENSORS_PREFER", "true").lower() == "true"
     )
     lazy_quantize: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_AI_LAZY_QUANTIZE", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_AI_LAZY_QUANTIZE", "false").lower() == "true"
     )
 
 

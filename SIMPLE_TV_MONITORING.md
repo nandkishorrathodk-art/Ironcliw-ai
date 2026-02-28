@@ -1,4 +1,4 @@
-# 📺 Simple Living Room TV Monitoring
+﻿# 📺 Simple Living Room TV Monitoring
 
 ## Overview
 
@@ -24,13 +24,13 @@ python3 start_tv_monitoring.py
 You'll see:
 ```
 ======================================================================
-🖥️  JARVIS Living Room TV Monitor
+🖥️  Ironcliw Living Room TV Monitor
 ======================================================================
 
 📺 Monitoring for: Living Room TV
 ⏰ Check interval: Every 10 seconds
 
-When your TV becomes available, JARVIS will prompt you to connect.
+When your TV becomes available, Ironcliw will prompt you to connect.
 Press Ctrl+C to stop monitoring.
 
 ======================================================================
@@ -47,8 +47,8 @@ When your Living Room TV turns on and connects to WiFi, the monitor will detect 
 
 ### 3. Say Yes or No
 
-- **Say "Yes"**: JARVIS connects to the TV
-- **Say "No"**: JARVIS won't ask again for 60 minutes
+- **Say "Yes"**: Ironcliw connects to the TV
+- **Say "No"**: Ironcliw won't ask again for 60 minutes
 
 ## How It Works
 
@@ -66,7 +66,7 @@ When your Living Room TV turns on and connects to WiFi, the monitor will detect 
                                  │
                                  ▼
                           ┌──────────────┐
-                          │    JARVIS    │
+                          │    Ironcliw    │
                           │   prompts    │
                           └──────────────┘
                                  │
@@ -119,11 +119,11 @@ async def _generate_prompt(self):
     # Customize this message
 ```
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
 ### Automatic Startup
 
-To start TV monitoring automatically with JARVIS, add to `backend/main.py`:
+To start TV monitoring automatically with Ironcliw, add to `backend/main.py`:
 
 ```python
 # In startup event
@@ -137,7 +137,7 @@ logger.info("✅ Living Room TV monitoring started")
 
 ### Voice Command Integration
 
-The monitor integrates with JARVIS voice commands:
+The monitor integrates with Ironcliw voice commands:
 
 ```python
 # When user says "yes" to prompt

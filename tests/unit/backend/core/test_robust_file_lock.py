@@ -1,4 +1,4 @@
-# tests/unit/backend/core/test_robust_file_lock.py
+﻿# tests/unit/backend/core/test_robust_file_lock.py
 """Tests for RobustFileLock - OS-level file locking."""
 
 import asyncio
@@ -22,7 +22,7 @@ def temp_lock_dir():
 @pytest.mark.asyncio
 async def test_acquire_and_release(temp_lock_dir, monkeypatch):
     """Test basic lock acquire and release."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("test_lock", source="test")
 
@@ -40,7 +40,7 @@ async def test_acquire_and_release(temp_lock_dir, monkeypatch):
 @pytest.mark.asyncio
 async def test_lock_is_exclusive(temp_lock_dir, monkeypatch):
     """Test that lock is exclusive - second acquire of same name raises reentrancy error."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock1 = RobustFileLock("exclusive_test", source="test1")
     lock2 = RobustFileLock("exclusive_test", source="test2")
@@ -61,7 +61,7 @@ async def test_lock_is_exclusive(temp_lock_dir, monkeypatch):
 @pytest.mark.asyncio
 async def test_different_locks_independent(temp_lock_dir, monkeypatch):
     """Test that differently named locks are independent."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock1 = RobustFileLock("lock_a", source="test1")
     lock2 = RobustFileLock("lock_b", source="test2")
@@ -80,7 +80,7 @@ async def test_different_locks_independent(temp_lock_dir, monkeypatch):
 @pytest.mark.asyncio
 async def test_reentrancy_raises_error(temp_lock_dir, monkeypatch):
     """Test that re-acquiring same lock raises RuntimeError."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("reentrant_test", source="test")
 
@@ -96,7 +96,7 @@ async def test_reentrancy_raises_error(temp_lock_dir, monkeypatch):
 async def test_lock_creates_directory(temp_lock_dir, monkeypatch):
     """Test that lock creates directory if missing."""
     nested_dir = temp_lock_dir / "nested" / "locks"
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(nested_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(nested_dir))
 
     lock = RobustFileLock("nested_test", source="test")
 
@@ -112,7 +112,7 @@ async def test_metadata_written(temp_lock_dir, monkeypatch):
     """Test that lock metadata is written for debugging."""
     import json
 
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("metadata_test", source="jarvis")
 
@@ -134,7 +134,7 @@ async def test_cross_process_exclusivity(temp_lock_dir, monkeypatch):
     import subprocess
     import sys
 
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("cross_process_test", source="parent")
 
@@ -147,7 +147,7 @@ async def test_cross_process_exclusivity(temp_lock_dir, monkeypatch):
 import asyncio
 import sys
 import os
-os.environ["JARVIS_LOCK_DIR"] = "{temp_lock_dir}"
+os.environ["Ironcliw_LOCK_DIR"] = "{temp_lock_dir}"
 sys.path.insert(0, "{os.getcwd()}")
 
 from backend.core.robust_file_lock import RobustFileLock
@@ -174,7 +174,7 @@ asyncio.run(main())
 import asyncio
 import sys
 import os
-os.environ["JARVIS_LOCK_DIR"] = "{temp_lock_dir}"
+os.environ["Ironcliw_LOCK_DIR"] = "{temp_lock_dir}"
 sys.path.insert(0, "{os.getcwd()}")
 
 from backend.core.robust_file_lock import RobustFileLock
@@ -204,7 +204,7 @@ async def test_lock_auto_releases_on_process_death(temp_lock_dir, monkeypatch):
     import sys
     import signal
 
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     # Start a subprocess that holds the lock and waits to be killed
     subprocess_code = f'''
@@ -212,7 +212,7 @@ import asyncio
 import sys
 import os
 import time
-os.environ["JARVIS_LOCK_DIR"] = "{temp_lock_dir}"
+os.environ["Ironcliw_LOCK_DIR"] = "{temp_lock_dir}"
 sys.path.insert(0, "{os.getcwd()}")
 
 from backend.core.robust_file_lock import RobustFileLock
@@ -264,7 +264,7 @@ asyncio.run(main())
 @pytest.mark.asyncio
 async def test_multiple_release_safe(temp_lock_dir, monkeypatch):
     """Test that calling release multiple times is safe."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("multi_release_test", source="test")
 
@@ -280,7 +280,7 @@ async def test_multiple_release_safe(temp_lock_dir, monkeypatch):
 @pytest.mark.asyncio
 async def test_release_without_acquire_safe(temp_lock_dir, monkeypatch):
     """Test that release without acquire is safe."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("no_acquire_test", source="test")
 

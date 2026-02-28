@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ghost Hands Platform Abstraction Layer
 ═══════════════════════════════════════
 
@@ -22,7 +22,7 @@ Usage:
     await engine.click(100, 200)
     await engine.type_text("Hello")
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 8)
 """
 from __future__ import annotations

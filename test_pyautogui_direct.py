@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test PyAutoGUI directly to see if coordinates get doubled
 """
@@ -69,8 +69,8 @@ for target_x, target_y, name in test_coords:
 
 print("\n" + "="*80)
 
-# Now test if importing from JARVIS changes behavior
-print("\nTesting after importing JARVIS modules...")
+# Now test if importing from Ironcliw changes behavior
+print("\nTesting after importing Ironcliw modules...")
 print("-"*80 + "\n")
 
 sys.path.insert(0, os.path.dirname(__file__))

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: Inline Suggestion Engine
 ================================
 
@@ -27,7 +27,7 @@ Architecture:
     │              └─────────────────────────┘                            │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 """
 
 from __future__ import annotations

@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Voice Demo: JARVIS Lock/Unlock with Speech
+Voice Demo: Ironcliw Lock/Unlock with Speech
 ==========================================
 
-Demonstrates JARVIS speaking the lock detection feedback
+Demonstrates Ironcliw speaking the lock detection feedback
 """
 
 import asyncio
@@ -33,7 +33,7 @@ class VoiceWebSocket:
             speak = data.get('speak', False)
             
             if text:
-                print(f"\n💬 JARVIS: {text}")
+                print(f"\n💬 Ironcliw: {text}")
                 
                 if speak:
                     print("   🔊 [SPEAKING NOW]")
@@ -41,7 +41,7 @@ class VoiceWebSocket:
                     self.spoken_count += 1
     
     async def _speak_text(self, text):
-        """Call JARVIS TTS API"""
+        """Call Ironcliw TTS API"""
         try:
             async with aiohttp.ClientSession() as session:
                 url = "http://localhost:8888/api/jarvis/speak"
@@ -61,10 +61,10 @@ async def run_voice_demo():
     """Run the voice demonstration"""
     
     print("\n" + "="*70)
-    print("🎤 JARVIS VOICE FEEDBACK DEMO")
+    print("🎤 Ironcliw VOICE FEEDBACK DEMO")
     print("="*70)
     
-    print("\n📢 This demo shows JARVIS speaking the lock detection feedback")
+    print("\n📢 This demo shows Ironcliw speaking the lock detection feedback")
     print("   Make sure your speakers are on!")
     
     print("\n⏳ Starting in 3 seconds...")
@@ -84,16 +84,16 @@ async def run_voice_demo():
     print("⏳ Waiting 3 seconds...")
     await asyncio.sleep(3)
     
-    # Step 2: Create JARVIS
+    # Step 2: Create Ironcliw
     print("\n" + "-"*50)
-    print("📍 Step 2: Setting up JARVIS")
+    print("📍 Step 2: Setting up Ironcliw")
     print("-"*50)
     
     processor = UnifiedCommandProcessor()
     handler = wrap_with_enhanced_context(processor)
     websocket = VoiceWebSocket()
     
-    print("✅ JARVIS ready with voice feedback")
+    print("✅ Ironcliw ready with voice feedback")
     
     # Step 3: Send command
     print("\n" + "-"*50)
@@ -102,7 +102,7 @@ async def run_voice_demo():
     
     command = "open Safari and search for dogs"
     print(f"🎤 Command: '{command}'")
-    print("\n👂 LISTEN FOR JARVIS TO SPEAK...")
+    print("\n👂 LISTEN FOR Ironcliw TO SPEAK...")
     
     # Process command
     try:
@@ -119,7 +119,7 @@ async def run_voice_demo():
         print(f"🔊 Messages spoken: {websocket.spoken_count}")
         
         if websocket.spoken_count > 0:
-            print("\n🎉 SUCCESS! JARVIS spoke the feedback messages!")
+            print("\n🎉 SUCCESS! Ironcliw spoke the feedback messages!")
             
             # Show what was spoken
             print("\n📝 Spoken messages:")
@@ -142,7 +142,7 @@ async def quick_voice_test():
     print("🔊 Testing Text-to-Speech")
     print("-"*50)
     
-    test_message = "Hello, this is JARVIS. Your voice feedback system is working correctly."
+    test_message = "Hello, this is Ironcliw. Your voice feedback system is working correctly."
     print(f"\nTest message: '{test_message}'")
     print("Speaking...")
     
@@ -161,14 +161,14 @@ async def quick_voice_test():
         print(f"❌ Could not test TTS: {e}")
 
 if __name__ == "__main__":
-    print("🚀 JARVIS Voice Lock/Unlock Demo")
+    print("🚀 Ironcliw Voice Lock/Unlock Demo")
     print("\nThis demo will:")
     print("  1. Lock your screen")
-    print("  2. Have JARVIS speak the lock detection message")
+    print("  2. Have Ironcliw speak the lock detection message")
     print("  3. Unlock and execute the command")
     
     print("\n⚠️  Requirements:")
-    print("  • JARVIS must be running (python main.py)")
+    print("  • Ironcliw must be running (python main.py)")
     print("  • Your speakers must be on")
     print("  • Your password must be stored")
     

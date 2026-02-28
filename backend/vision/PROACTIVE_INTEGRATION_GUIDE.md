@@ -1,4 +1,4 @@
-# Integrating Proactive Vision Intelligence into ClaudeVisionAnalyzer
+﻿# Integrating Proactive Vision Intelligence into ClaudeVisionAnalyzer
 
 ## Overview
 
@@ -172,7 +172,7 @@ python test_proactive_cursor_update.py
 # Or use the analyzer directly
 analyzer = ClaudeVisionAnalyzer(api_key, enable_proactive=True)
 await analyzer.start_continuous_monitoring()
-# JARVIS now proactively monitors!
+# Ironcliw now proactively monitors!
 ```
 
 ## Migration Path

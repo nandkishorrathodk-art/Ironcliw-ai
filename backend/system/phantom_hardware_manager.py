@@ -1,7 +1,7 @@
-"""
+﻿"""
 v68.0 PHANTOM HARDWARE PROTOCOL - Software-Defined Ghost Display
 
-This module provides JARVIS with kernel-level virtual display management using
+This module provides Ironcliw with kernel-level virtual display management using
 BetterDisplay, eliminating the need for physical HDMI dummy plugs.
 
 FEATURES:
@@ -108,9 +108,9 @@ class PhantomHardwareManager:
         self._initialized = True
 
         # Configuration from environment
-        self.ghost_display_name = os.getenv("JARVIS_GHOST_DISPLAY_NAME", "JARVIS_GHOST")
-        self.preferred_resolution = os.getenv("JARVIS_GHOST_RESOLUTION", "1920x1080")
-        self.preferred_aspect = os.getenv("JARVIS_GHOST_ASPECT", "16:9")
+        self.ghost_display_name = os.getenv("Ironcliw_GHOST_DISPLAY_NAME", "Ironcliw_GHOST")
+        self.preferred_resolution = os.getenv("Ironcliw_GHOST_RESOLUTION", "1920x1080")
+        self.preferred_aspect = os.getenv("Ironcliw_GHOST_ASPECT", "16:9")
 
         # CLI discovery paths (in priority order)
         self._cli_search_paths = [
@@ -133,13 +133,13 @@ class PhantomHardwareManager:
         self._last_registration_state: Dict[str, Any] = {}
         self._registration_latency_ema: Optional[float] = None
         self._registration_latency_alpha = float(
-            os.getenv("JARVIS_GHOST_REGISTRATION_EMA_ALPHA", "0.35")
+            os.getenv("Ironcliw_GHOST_REGISTRATION_EMA_ALPHA", "0.35")
         )
         self._registration_wait_cap_seconds = float(
-            os.getenv("JARVIS_GHOST_REGISTRATION_WAIT_CAP_SECONDS", "45.0")
+            os.getenv("Ironcliw_GHOST_REGISTRATION_WAIT_CAP_SECONDS", "45.0")
         )
         self._registration_stabilization_seconds = float(
-            os.getenv("JARVIS_GHOST_REGISTRATION_STABILIZATION_SECONDS", "4.0")
+            os.getenv("Ironcliw_GHOST_REGISTRATION_STABILIZATION_SECONDS", "4.0")
         )
 
         # Stats
@@ -227,12 +227,12 @@ class PhantomHardwareManager:
         max_wait_seconds: float = 15.0
     ) -> Tuple[bool, Optional[str]]:
         """
-        v68.0: Ensure a virtual Ghost Display exists for JARVIS operations.
+        v68.0: Ensure a virtual Ghost Display exists for Ironcliw operations.
 
         This is the primary entry point. It will:
         1. Verify BetterDisplay CLI is available
         2. Check if BetterDisplay.app is running
-        3. Check if JARVIS_GHOST display already exists
+        3. Check if Ironcliw_GHOST display already exists
         4. Create display if needed
         5. Wait for kernel registration
 
@@ -552,7 +552,7 @@ class PhantomHardwareManager:
         self,
         cli_path: Optional[str] = None
     ) -> Optional[VirtualDisplayInfo]:
-        """Check if JARVIS Ghost Display already exists.
+        """Check if Ironcliw Ghost Display already exists.
 
         v251.2: Uses two detection strategies:
         1. BetterDisplay CLI ``get -nameLike=... -list`` (requires CLI
@@ -619,7 +619,7 @@ class PhantomHardwareManager:
                 return None
 
             output = stdout.decode()
-            # Match "JARVIS_GHOST" as "jarvis ghost" or "jarvis_ghost"
+            # Match "Ironcliw_GHOST" as "jarvis ghost" or "jarvis_ghost"
             # in display names (system_profiler uses spaces)
             search_variants = [
                 self.ghost_display_name.lower(),
@@ -938,7 +938,7 @@ class PhantomHardwareManager:
 
     async def destroy_ghost_display_async(self) -> Tuple[bool, Optional[str]]:
         """
-        v68.0: Remove the JARVIS Ghost Display.
+        v68.0: Remove the Ironcliw Ghost Display.
 
         Use this when cleaning up or when user wants to disable virtual display.
         """

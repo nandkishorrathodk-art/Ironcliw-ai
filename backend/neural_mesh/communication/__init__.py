@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Communication Module
+﻿"""
+Ironcliw Neural Mesh - Communication Module
 
 This module provides the Agent Communication Bus for ultra-fast
 async message passing between agents.

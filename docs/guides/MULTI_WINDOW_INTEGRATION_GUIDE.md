@@ -1,12 +1,12 @@
-# 🖥️ JARVIS Multi-Window Integration Guide
+﻿# 🖥️ Ironcliw Multi-Window Integration Guide
 
 ## Overview
 
-JARVIS now has **Multi-Window Awareness** - the ability to see and understand your entire workspace, not just a single window. This guide explains how to use the new Phase 1 features.
+Ironcliw now has **Multi-Window Awareness** - the ability to see and understand your entire workspace, not just a single window. This guide explains how to use the new Phase 1 features.
 
 ## 🚀 Quick Start
 
-### 1. Start JARVIS with Multi-Window Support
+### 1. Start Ironcliw with Multi-Window Support
 
 ```bash
 python start_system.py
@@ -17,9 +17,9 @@ The system will automatically detect and initialize the workspace intelligence m
 ### 2. Try These Commands
 
 #### Basic Workspace Queries
-- **"Hey JARVIS, what am I working on?"**
+- **"Hey Ironcliw, what am I working on?"**
   - Response: Analyzes your focused window and related context
-  - Example: "Sir, you're working on start_system.py in the JARVIS-AI-Agent project..."
+  - Example: "Sir, you're working on start_system.py in the Ironcliw-AI-Agent project..."
 
 - **"What windows do I have open?"**
   - Response: Lists all open applications and window count
@@ -27,7 +27,7 @@ The system will automatically detect and initialize the workspace intelligence m
 
 - **"Describe my workspace"**
   - Response: Provides overall workspace context
-  - Example: "Sir, your workspace shows active development on JARVIS-AI-Agent..."
+  - Example: "Sir, your workspace shows active development on Ironcliw-AI-Agent..."
 
 #### Specific Queries
 - **"Do I have any messages?"**
@@ -60,7 +60,7 @@ The system will automatically detect and initialize the workspace intelligence m
 
 ### Architecture
 ```
-Voice Command → JARVIS Agent → Workspace Intelligence
+Voice Command → Ironcliw Agent → Workspace Intelligence
                                       ↓
                               Window Detection
                                       ↓
@@ -82,7 +82,7 @@ Voice Command → JARVIS Agent → Workspace Intelligence
 ### Development Workflow
 ```
 You: "What am I working on?"
-JARVIS: "Sir, you're working on start_system.py in the JARVIS-AI-Agent project. 
+Ironcliw: "Sir, you're working on start_system.py in the Ironcliw-AI-Agent project. 
          I can see you have the Problems panel open showing several issues to resolve, 
          and Chrome windows with relevant documentation."
 ```
@@ -90,27 +90,27 @@ JARVIS: "Sir, you're working on start_system.py in the JARVIS-AI-Agent project.
 ### Communication Check
 ```
 You: "Any messages?"
-JARVIS: "I don't see Discord or Slack open, but you have WhatsApp in the background. 
+Ironcliw: "I don't see Discord or Slack open, but you have WhatsApp in the background. 
          Would you like me to check for other communication apps?"
 ```
 
 ### Error Detection
 ```
 You: "Any errors I should look at?"
-JARVIS: "Sir, I can see error indicators in your Terminal window. 
+Ironcliw: "Sir, I can see error indicators in your Terminal window. 
          The Problems panel in Cursor shows 5 issues that need attention."
 ```
 
 ## 🛠️ Troubleshooting
 
-### If JARVIS says "I'm having trouble analyzing your workspace"
+### If Ironcliw says "I'm having trouble analyzing your workspace"
 1. Check that screen recording permission is granted
 2. Verify Claude API key is set in `backend/.env`
 3. Try reducing the number of open windows
 
 ### If window detection seems slow
 - Close unnecessary system windows
-- Restart JARVIS to refresh the window cache
+- Restart Ironcliw to refresh the window cache
 
 ### If capture quality is poor
 - Ensure your display resolution is standard (not scaled)
@@ -128,9 +128,9 @@ JARVIS: "Sir, I can see error indicators in your Terminal window.
 ### Available Commands
 ```python
 # In your code, you can use:
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
-workspace = JARVISWorkspaceIntelligence()
+workspace = IroncliwWorkspaceIntelligence()
 response = await workspace.handle_workspace_command("What am I working on?")
 ```
 
@@ -150,10 +150,10 @@ class WindowInfo:
 
 ## 🎉 Summary
 
-JARVIS can now:
+Ironcliw can now:
 - See all your open windows
 - Understand what you're working on
 - Provide context-aware assistance
 - Track your workspace in real-time
 
-This makes JARVIS the first AI assistant with true **Workspace Intelligence**!
+This makes Ironcliw the first AI assistant with true **Workspace Intelligence**!

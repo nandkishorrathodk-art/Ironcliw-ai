@@ -1,4 +1,4 @@
-"""
+﻿"""
 Graceful Shutdown Coordination for Distributed Systems
 ======================================================
 
@@ -2544,10 +2544,10 @@ def _register_semaphore_cleanup_atexit():
     # backend.core.resilience.graceful_shutdown and core.resilience.graceful_shutdown
     # are separate sys.modules entries with separate _semaphore_cleanup_registered flags.
     # Without this env var guard, each registers its own atexit handler → 2x cleanup.
-    if os.environ.get("_JARVIS_SEMAPHORE_CLEANUP_REGISTERED"):
+    if os.environ.get("_Ironcliw_SEMAPHORE_CLEANUP_REGISTERED"):
         _semaphore_cleanup_registered = True
         return
-    os.environ["_JARVIS_SEMAPHORE_CLEANUP_REGISTERED"] = "1"
+    os.environ["_Ironcliw_SEMAPHORE_CLEANUP_REGISTERED"] = "1"
     _semaphore_cleanup_registered = True
 
     import atexit

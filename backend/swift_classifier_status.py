@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick status check for Swift classifier integration
 """
@@ -19,7 +19,7 @@ class Colors:
     ENDC = '\033[0m'
 
 async def check_status():
-    print(f"{Colors.BOLD}🚀 JARVIS Swift Classifier Status{Colors.ENDC}")
+    print(f"{Colors.BOLD}🚀 Ironcliw Swift Classifier Status{Colors.ENDC}")
     print("=" * 40)
     
     # Check Swift availability
@@ -82,7 +82,7 @@ async def check_status():
     
     print(f"\n{Colors.BOLD}Summary:{Colors.ENDC}")
     print("=" * 40)
-    print(f"{Colors.GREEN}✅ JARVIS intelligent routing is active{Colors.ENDC}")
+    print(f"{Colors.GREEN}✅ Ironcliw intelligent routing is active{Colors.ENDC}")
     print(f"{Colors.GREEN}✅ No hardcoded patterns{Colors.ENDC}")
     print(f"{Colors.GREEN}✅ Learning capabilities enabled{Colors.ENDC}")
     

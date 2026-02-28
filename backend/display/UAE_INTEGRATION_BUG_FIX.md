@@ -1,4 +1,4 @@
-# UAE Integration Bug Fix - Living Room TV Connection Issue
+﻿# UAE Integration Bug Fix - Living Room TV Connection Issue
 
 **Date:** October 21, 2025
 **Severity:** Critical
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-JARVIS was experiencing a critical bug when connecting to "Living Room TV" where it would:
+Ironcliw was experiencing a critical bug when connecting to "Living Room TV" where it would:
 1. Click the device 3 times (connect → disconnect → connect)
 2. Click the wrong UI element (WiFi icon instead of Living Room TV)
 3. Not properly detect when already connected

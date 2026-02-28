@@ -1,4 +1,4 @@
-"""
+﻿"""
 Async Lock Wrapper for RobustFileLock with Startup Executor
 ============================================================
 
@@ -60,16 +60,16 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Maximum allowed lock timeout (prevents excessive waits)
-MAX_LOCK_TIMEOUT = float(os.environ.get("JARVIS_MAX_LOCK_TIMEOUT", "300.0"))
+MAX_LOCK_TIMEOUT = float(os.environ.get("Ironcliw_MAX_LOCK_TIMEOUT", "300.0"))
 
 # Minimum allowed lock timeout (prevents spin-lock behavior)
-MIN_LOCK_TIMEOUT = float(os.environ.get("JARVIS_MIN_LOCK_TIMEOUT", "0.1"))
+MIN_LOCK_TIMEOUT = float(os.environ.get("Ironcliw_MIN_LOCK_TIMEOUT", "0.1"))
 
 # Default lock timeout for StartupFileLock
-DEFAULT_LOCK_TIMEOUT = float(os.environ.get("JARVIS_DEFAULT_LOCK_TIMEOUT", "5.0"))
+DEFAULT_LOCK_TIMEOUT = float(os.environ.get("Ironcliw_DEFAULT_LOCK_TIMEOUT", "5.0"))
 
 # How long to wait when retrying after stale lock removal
-STALE_LOCK_RETRY_TIMEOUT = float(os.environ.get("JARVIS_STALE_LOCK_RETRY_TIMEOUT", "1.0"))
+STALE_LOCK_RETRY_TIMEOUT = float(os.environ.get("Ironcliw_STALE_LOCK_RETRY_TIMEOUT", "1.0"))
 
 
 # =============================================================================
@@ -162,7 +162,7 @@ class StartupFileLock:
     3. Validates timeouts against configurable bounds
     4. Detects and cleans up stale locks (dead process holders)
 
-    The wrapper is designed for use during JARVIS startup where we need:
+    The wrapper is designed for use during Ironcliw startup where we need:
     - Predictable executor usage (bounded thread pool)
     - Recovery from crashed processes that left locks behind
     - Reasonable timeout bounds to prevent hangs
@@ -199,7 +199,7 @@ class StartupFileLock:
         self._acquired = False
 
         # Compute lock file path (same logic as RobustFileLock)
-        lock_dir_raw = os.environ.get("JARVIS_LOCK_DIR", "~/.jarvis/cross_repo/locks")
+        lock_dir_raw = os.environ.get("Ironcliw_LOCK_DIR", "~/.jarvis/cross_repo/locks")
         self._lock_dir = Path(os.path.expanduser(os.path.expandvars(lock_dir_raw)))
         self._lock_file = self._lock_dir / f"{lock_name}.lock"
 
@@ -300,7 +300,7 @@ class StartupFileLock:
         If the initial acquire times out, checks for stale locks and retries once.
 
         Args:
-            timeout_s: Timeout in seconds. Defaults to JARVIS_DEFAULT_LOCK_TIMEOUT.
+            timeout_s: Timeout in seconds. Defaults to Ironcliw_DEFAULT_LOCK_TIMEOUT.
                        Must be between MIN_LOCK_TIMEOUT and MAX_LOCK_TIMEOUT.
 
         Returns:

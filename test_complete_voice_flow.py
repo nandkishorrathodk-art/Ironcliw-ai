@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test complete voice sample storage and retrieval flow."""
 
 import asyncio
@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend'))
 
-from backend.intelligence.learning_database import JARVISLearningDatabase
+from backend.intelligence.learning_database import IroncliwLearningDatabase
 from backend.intelligence.cloud_database_adapter import CloudDatabaseAdapter, DatabaseConfig
 import numpy as np
 
@@ -25,7 +25,7 @@ async def test_complete_flow():
     adapter = CloudDatabaseAdapter(config)
     await adapter.initialize()
 
-    db = JARVISLearningDatabase()
+    db = IroncliwLearningDatabase()
     db.adapter = adapter  # Use Cloud SQL adapter
     await db.initialize()
 

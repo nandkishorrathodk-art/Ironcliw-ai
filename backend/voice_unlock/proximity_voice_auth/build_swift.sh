@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
 # Build Swift Proximity Service
 #
@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SWIFT_DIR="$SCRIPT_DIR/swift"
 
-echo "🔨 Building JARVIS Proximity Service..."
+echo "🔨 Building Ironcliw Proximity Service..."
 
 # Check if Swift is installed
 if ! command -v swift &> /dev/null; then

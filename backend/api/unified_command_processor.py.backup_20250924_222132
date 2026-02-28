@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Command Processor - Dynamic command interpretation with zero hardcoding
 Learns from the system and adapts to any environment
 """
@@ -85,7 +85,7 @@ class DynamicPatternLearner:
 
 
 class CommandType(Enum):
-    """Types of commands JARVIS can handle"""
+    """Types of commands Ironcliw can handle"""
     VISION = "vision"
     SYSTEM = "system"
     WEATHER = "weather"

@@ -1,4 +1,4 @@
-# 🟣 Purple Indicator Fix - Complete Solution
+﻿# 🟣 Purple Indicator Fix - Complete Solution
 
 ## Problem
 The macOS purple recording indicator was only appearing for a few seconds instead of staying on continuously during screen monitoring.
@@ -37,13 +37,13 @@ swift vision/persistent_capture.swift --start
 # Press Ctrl+C to stop
 ```
 
-### JARVIS Integration Test
+### Ironcliw Integration Test
 ```bash
-# Start JARVIS
+# Start Ironcliw
 python start_system.py
 
 # In another terminal, test the command
-# Say: "Hey JARVIS, start monitoring my screen"
+# Say: "Hey Ironcliw, start monitoring my screen"
 # Purple indicator should appear and stay on until you say "stop monitoring"
 ```
 
@@ -62,7 +62,7 @@ python start_system.py
 
 ## How It Works Now
 1. User: "start monitoring my screen"
-2. JARVIS routes to vision chatbot
+2. Ironcliw routes to vision chatbot
 3. Vision chatbot starts video streaming
 4. Video streaming uses direct_swift capture method
 5. Swift persistent_capture.swift runs with AVCaptureSession

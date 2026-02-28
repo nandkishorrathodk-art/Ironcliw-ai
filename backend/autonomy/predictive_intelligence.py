@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Predictive Intelligence Module for JARVIS
+Advanced Predictive Intelligence Module for Ironcliw
 Provides sophisticated prediction capabilities using dynamic learning and Anthropic API
 """
 
@@ -170,7 +170,7 @@ class PredictiveIntelligenceEngine:
                 max_tokens=1000,
                 messages=[{
                     "role": "user",
-                    "content": f"""As JARVIS's predictive intelligence, analyze this context and identify:
+                    "content": f"""As Ironcliw's predictive intelligence, analyze this context and identify:
 1. What the user is likely trying to accomplish
 2. What they'll need in the next 5-30 minutes
 3. Potential friction points or interruptions
@@ -573,14 +573,14 @@ Provide: estimated_minutes, bottlenecks[], next_steps[]"""
             opportunities.append({
                 'type': 'click_automation',
                 'description': 'Automate repetitive clicking patterns',
-                'tool': 'Macro recorder or JARVIS automation'
+                'tool': 'Macro recorder or Ironcliw automation'
             })
         
         if high_switches:
             opportunities.append({
                 'type': 'workflow_automation',
                 'description': 'Create workflow to reduce app switching',
-                'tool': 'JARVIS workflow builder'
+                'tool': 'Ironcliw workflow builder'
             })
         
         return DynamicPrediction(

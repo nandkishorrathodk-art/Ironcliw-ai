@@ -1,5 +1,5 @@
-/**
- * Fast Screen Capture Engine for JARVIS Vision System
+﻿/**
+ * Fast Screen Capture Engine for Ironcliw Vision System
  * High-performance C++ extension for real-time screen capture on macOS
  * 
  * Design Principles:
@@ -9,8 +9,8 @@
  * - Extensible: Easy to add new capture methods
  */
 
-#ifndef JARVIS_FAST_CAPTURE_H
-#define JARVIS_FAST_CAPTURE_H
+#ifndef Ironcliw_FAST_CAPTURE_H
+#define Ironcliw_FAST_CAPTURE_H
 
 #include <vector>
 #include <string>
@@ -254,4 +254,4 @@ std::function<bool(const WindowInfo&)> create_visibility_filter();
 } // namespace vision
 } // namespace jarvis
 
-#endif // JARVIS_FAST_CAPTURE_H
+#endif // Ironcliw_FAST_CAPTURE_H

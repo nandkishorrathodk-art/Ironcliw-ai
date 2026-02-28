@@ -1,4 +1,4 @@
-# JARVIS Microphone Fix Guide
+﻿# Ironcliw Microphone Fix Guide
 
 ## Quick Fix
 
@@ -31,7 +31,7 @@ This script will:
 - Restarts Core Audio service
 - Browser-specific fixes
 - Tests microphone with sox
-- Offers to start JARVIS after fixing
+- Offers to start Ironcliw after fixing
 
 ### 3. **Browser Test Page** (`frontend/public/microphone-test.html`)
 - Test browser compatibility
@@ -119,7 +119,7 @@ If issues persist after running fixes:
 3. **System Reset**:
    - Restart your Mac
    - First app to open should be your browser
-   - Test JARVIS immediately
+   - Test Ironcliw immediately
 
 4. **Check Logs**:
    ```bash
@@ -130,7 +130,7 @@ If issues persist after running fixes:
 
 To avoid microphone issues:
 
-1. Close communication apps before using JARVIS
+1. Close communication apps before using Ironcliw
 2. Use Chrome or Edge for best compatibility
 3. Don't use microphone in multiple browser tabs
 4. Grant permissions immediately when prompted

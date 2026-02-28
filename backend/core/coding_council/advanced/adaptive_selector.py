@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.1: Adaptive Framework Selector - ML-Based
 ==============================================
 
@@ -25,7 +25,7 @@ Features:
     - Thompson sampling for selection
     - Online learning with feedback
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations

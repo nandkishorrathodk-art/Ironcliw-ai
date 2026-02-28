@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration tests for TrinityHealthMonitor.
 
 Tests verify:
@@ -107,7 +107,7 @@ class TestTrinityHealthMonitorHTTP:
     """HTTP-based health checks via the mock_health_server fixture."""
 
     async def test_healthy_component_http_200(self, mock_health_server, tmp_path):
-        """HTTP 200 from the mock server -> JARVIS Body status healthy."""
+        """HTTP 200 from the mock server -> Ironcliw Body status healthy."""
         srv = mock_health_server
         srv["set_response"](
             "/health/ready",
@@ -123,7 +123,7 @@ class TestTrinityHealthMonitorHTTP:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mock_reactor, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mock_council:
             mock_prime.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME,
+                component=TrinityComponent.Ironcliw_PRIME,
                 status=ComponentStatus.OPTIONAL_OFFLINE,
             )
             mock_reactor.return_value = ComponentHealthStatus(
@@ -137,7 +137,7 @@ class TestTrinityHealthMonitorHTTP:
 
             snapshot = await monitor.check_health()
 
-        body = snapshot.components[TrinityComponent.JARVIS_BODY]
+        body = snapshot.components[TrinityComponent.Ironcliw_BODY]
         assert body.status == ComponentStatus.HEALTHY
         assert body.http_response_time_ms is not None
         assert body.http_response_time_ms > 0
@@ -146,7 +146,7 @@ class TestTrinityHealthMonitorHTTP:
         await monitor.stop()
 
     async def test_unhealthy_component_http_500(self, mock_health_server, tmp_path):
-        """HTTP 500 -> JARVIS Body treated as degraded / unhealthy."""
+        """HTTP 500 -> Ironcliw Body treated as degraded / unhealthy."""
         srv = mock_health_server
         srv["set_response"](
             "/health/ready",
@@ -161,7 +161,7 @@ class TestTrinityHealthMonitorHTTP:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mp.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME,
+                component=TrinityComponent.Ironcliw_PRIME,
                 status=ComponentStatus.OPTIONAL_OFFLINE,
             )
             mr.return_value = ComponentHealthStatus(
@@ -175,7 +175,7 @@ class TestTrinityHealthMonitorHTTP:
 
             snapshot = await monitor.check_health()
 
-        body = snapshot.components[TrinityComponent.JARVIS_BODY]
+        body = snapshot.components[TrinityComponent.Ironcliw_BODY]
         # With consecutive_failures=1 and the first real failure, status should
         # be UNHEALTHY (>= threshold) or at least non-healthy.
         assert body.status in (ComponentStatus.UNHEALTHY, ComponentStatus.DEGRADED)
@@ -193,7 +193,7 @@ class TestTrinityHealthMonitorHTTP:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mp.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME,
+                component=TrinityComponent.Ironcliw_PRIME,
                 status=ComponentStatus.OPTIONAL_OFFLINE,
             )
             mr.return_value = ComponentHealthStatus(
@@ -207,7 +207,7 @@ class TestTrinityHealthMonitorHTTP:
 
             snapshot = await monitor.check_health()
 
-        body = snapshot.components[TrinityComponent.JARVIS_BODY]
+        body = snapshot.components[TrinityComponent.Ironcliw_BODY]
         assert body.status in (ComponentStatus.UNHEALTHY, ComponentStatus.DEGRADED)
         assert body.last_error is not None
         # Error should mention connection issue
@@ -232,7 +232,7 @@ class TestTrinityHealthMonitorHTTP:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mp.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME,
+                component=TrinityComponent.Ironcliw_PRIME,
                 status=ComponentStatus.OPTIONAL_OFFLINE,
             )
             mr.return_value = ComponentHealthStatus(
@@ -248,7 +248,7 @@ class TestTrinityHealthMonitorHTTP:
             snapshot = await monitor.check_health()
             elapsed = time.monotonic() - start
 
-        body = snapshot.components[TrinityComponent.JARVIS_BODY]
+        body = snapshot.components[TrinityComponent.Ironcliw_BODY]
         # Should have timed out rather than waiting the full 5s
         assert elapsed < 4.0, f"Should have timed out quickly, took {elapsed:.1f}s"
         # Status should not be HEALTHY since we timed out
@@ -269,14 +269,14 @@ class TestTrinityHealthMonitorHTTP:
         with patch.object(monitor, "_check_jarvis_prime", new_callable=AsyncMock) as mp, \
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
-            mp.return_value = await _stub_offline(TrinityComponent.JARVIS_PRIME)
+            mp.return_value = await _stub_offline(TrinityComponent.Ironcliw_PRIME)
             mr.return_value = await _stub_offline(TrinityComponent.REACTOR_CORE)
             mc.return_value = await _stub_offline(TrinityComponent.CODING_COUNCIL)
 
             # Phase 1: unhealthy
             srv["set_response"]("/health/ready", status=500, body={"error": "down"})
             snap1 = await monitor.check_health()
-            status1 = snap1.components[TrinityComponent.JARVIS_BODY].status
+            status1 = snap1.components[TrinityComponent.Ironcliw_BODY].status
             assert status1 != ComponentStatus.HEALTHY
 
             # Phase 2: recover
@@ -286,7 +286,7 @@ class TestTrinityHealthMonitorHTTP:
                 body={"phase": "healthy", "ready": True, "uptime_seconds": 10},
             )
             snap2 = await monitor.check_health()
-            status2 = snap2.components[TrinityComponent.JARVIS_BODY].status
+            status2 = snap2.components[TrinityComponent.Ironcliw_BODY].status
             assert status2 == ComponentStatus.HEALTHY
 
         await monitor.stop()
@@ -314,8 +314,8 @@ class TestTrinityHealthMonitorHTTP:
         # If they ran serially, the HTTP check alone would be >= 0.3s,
         # plus heartbeat checks. Parallel should keep total under 1.5s.
         assert elapsed < 2.0, f"Checks took {elapsed:.1f}s, expected parallel execution"
-        # We should have results for at least JARVIS_BODY
-        assert TrinityComponent.JARVIS_BODY in snapshot.components
+        # We should have results for at least Ironcliw_BODY
+        assert TrinityComponent.Ironcliw_BODY in snapshot.components
 
         await monitor.stop()
 
@@ -341,7 +341,7 @@ class TestTrinityHealthMonitorHeartbeat:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.HEALTHY
             )
             mr.return_value = ComponentHealthStatus(
                 component=TrinityComponent.REACTOR_CORE, status=ComponentStatus.OPTIONAL_OFFLINE
@@ -352,7 +352,7 @@ class TestTrinityHealthMonitorHeartbeat:
 
             snapshot = await monitor.check_health()
 
-        prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+        prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
         assert prime.status == ComponentStatus.HEALTHY
         assert prime.heartbeat_age_seconds is not None
         assert prime.heartbeat_age_seconds < 30.0
@@ -375,7 +375,7 @@ class TestTrinityHealthMonitorHeartbeat:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.HEALTHY
             )
             mr.return_value = ComponentHealthStatus(
                 component=TrinityComponent.REACTOR_CORE, status=ComponentStatus.OPTIONAL_OFFLINE
@@ -386,7 +386,7 @@ class TestTrinityHealthMonitorHeartbeat:
 
             snapshot = await monitor.check_health()
 
-        prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+        prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
         assert prime.status == ComponentStatus.UNHEALTHY
         assert prime.last_error is not None
         assert "stale" in prime.last_error.lower() or ">" in prime.last_error
@@ -404,7 +404,7 @@ class TestTrinityHealthMonitorHeartbeat:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.HEALTHY
             )
             mr.return_value = ComponentHealthStatus(
                 component=TrinityComponent.REACTOR_CORE, status=ComponentStatus.OPTIONAL_OFFLINE
@@ -415,7 +415,7 @@ class TestTrinityHealthMonitorHeartbeat:
 
             snapshot = await monitor.check_health()
 
-        prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+        prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
         # v125.0: never-seen heartbeat -> OPTIONAL_OFFLINE
         assert prime.status == ComponentStatus.OPTIONAL_OFFLINE
 
@@ -429,7 +429,7 @@ class TestTrinityHealthMonitorHeartbeat:
         _write_heartbeat(config.trinity_dir, "jarvis_prime", age_seconds=200.0)
 
         # Record startup so grace period is active
-        config.record_component_startup(TrinityComponent.JARVIS_PRIME)
+        config.record_component_startup(TrinityComponent.Ironcliw_PRIME)
 
         monitor = TrinityHealthMonitor(config=config)
 
@@ -440,7 +440,7 @@ class TestTrinityHealthMonitorHeartbeat:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.HEALTHY
             )
             mr.return_value = ComponentHealthStatus(
                 component=TrinityComponent.REACTOR_CORE, status=ComponentStatus.OPTIONAL_OFFLINE
@@ -451,7 +451,7 @@ class TestTrinityHealthMonitorHeartbeat:
 
             snapshot = await monitor.check_health()
 
-        prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+        prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
         # During grace period the monitor must NOT mark as UNHEALTHY
         assert prime.status == ComponentStatus.STARTING
         assert "grace period" in (prime.last_error or "").lower()
@@ -478,10 +478,10 @@ class TestTrinityHealthSnapshot:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.HEALTHY
             )
             mp.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_PRIME, status=ComponentStatus.HEALTHY
             )
             mr.return_value = ComponentHealthStatus(
                 component=TrinityComponent.REACTOR_CORE, status=ComponentStatus.HEALTHY
@@ -506,12 +506,12 @@ class TestTrinityHealthSnapshot:
              patch.object(monitor, "_check_jarvis_prime", new_callable=AsyncMock) as mp, \
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
-            # JARVIS Body is unhealthy -- the critical component
+            # Ironcliw Body is unhealthy -- the critical component
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.UNHEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.UNHEALTHY
             )
             mp.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_PRIME, status=ComponentStatus.HEALTHY
             )
             mr.return_value = ComponentHealthStatus(
                 component=TrinityComponent.REACTOR_CORE, status=ComponentStatus.HEALTHY
@@ -522,7 +522,7 @@ class TestTrinityHealthSnapshot:
 
             snapshot = await monitor.check_health()
 
-        # JARVIS Body unhealthy -> overall UNHEALTHY (critical component)
+        # Ironcliw Body unhealthy -> overall UNHEALTHY (critical component)
         assert snapshot.overall_status == ComponentStatus.UNHEALTHY
 
         await monitor.stop()
@@ -537,10 +537,10 @@ class TestTrinityHealthSnapshot:
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
             mb.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_BODY, status=ComponentStatus.HEALTHY
+                component=TrinityComponent.Ironcliw_BODY, status=ComponentStatus.HEALTHY
             )
             mp.return_value = ComponentHealthStatus(
-                component=TrinityComponent.JARVIS_PRIME, status=ComponentStatus.DEGRADED,
+                component=TrinityComponent.Ironcliw_PRIME, status=ComponentStatus.DEGRADED,
                 last_error="voice model loading",
             )
             mr.return_value = ComponentHealthStatus(
@@ -596,8 +596,8 @@ class TestHealthMonitorCallbacks:
              patch.object(monitor, "_check_jarvis_prime", new_callable=AsyncMock) as mp, \
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
-            mb.return_value = await _stub(TrinityComponent.JARVIS_BODY, ComponentStatus.HEALTHY)
-            mp.return_value = await _stub(TrinityComponent.JARVIS_PRIME, ComponentStatus.HEALTHY)
+            mb.return_value = await _stub(TrinityComponent.Ironcliw_BODY, ComponentStatus.HEALTHY)
+            mp.return_value = await _stub(TrinityComponent.Ironcliw_PRIME, ComponentStatus.HEALTHY)
             mr.return_value = await _stub(TrinityComponent.REACTOR_CORE, ComponentStatus.HEALTHY)
             mc.return_value = await _stub(TrinityComponent.CODING_COUNCIL, ComponentStatus.HEALTHY)
 
@@ -605,23 +605,23 @@ class TestHealthMonitorCallbacks:
 
         # All should have transitioned from UNKNOWN -> HEALTHY
         assert len(transitions) >= 1  # at least one transition fired
-        # Verify at least JARVIS_BODY transitioned
+        # Verify at least Ironcliw_BODY transitioned
         body_transitions = [
             (old, new) for comp, old, new in transitions
-            if comp == TrinityComponent.JARVIS_BODY
+            if comp == TrinityComponent.Ironcliw_BODY
         ]
         assert len(body_transitions) == 1
         assert body_transitions[0] == (ComponentStatus.UNKNOWN, ComponentStatus.HEALTHY)
 
-        # Second check: change JARVIS_BODY to UNHEALTHY
+        # Second check: change Ironcliw_BODY to UNHEALTHY
         transitions.clear()
 
         with patch.object(monitor, "_check_jarvis_body", new_callable=AsyncMock) as mb, \
              patch.object(monitor, "_check_jarvis_prime", new_callable=AsyncMock) as mp, \
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
-            mb.return_value = await _stub(TrinityComponent.JARVIS_BODY, ComponentStatus.UNHEALTHY)
-            mp.return_value = await _stub(TrinityComponent.JARVIS_PRIME, ComponentStatus.HEALTHY)
+            mb.return_value = await _stub(TrinityComponent.Ironcliw_BODY, ComponentStatus.UNHEALTHY)
+            mp.return_value = await _stub(TrinityComponent.Ironcliw_PRIME, ComponentStatus.HEALTHY)
             mr.return_value = await _stub(TrinityComponent.REACTOR_CORE, ComponentStatus.HEALTHY)
             mc.return_value = await _stub(TrinityComponent.CODING_COUNCIL, ComponentStatus.HEALTHY)
 
@@ -629,7 +629,7 @@ class TestHealthMonitorCallbacks:
 
         body_transitions = [
             (old, new) for comp, old, new in transitions
-            if comp == TrinityComponent.JARVIS_BODY
+            if comp == TrinityComponent.Ironcliw_BODY
         ]
         assert len(body_transitions) == 1
         assert body_transitions[0] == (ComponentStatus.HEALTHY, ComponentStatus.UNHEALTHY)
@@ -648,9 +648,9 @@ class TestHealthMonitorCallbacks:
              patch.object(monitor, "_check_jarvis_prime", new_callable=AsyncMock) as mp, \
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
-            mb.return_value = await _stub(TrinityComponent.JARVIS_BODY, ComponentStatus.HEALTHY)
+            mb.return_value = await _stub(TrinityComponent.Ironcliw_BODY, ComponentStatus.HEALTHY)
             # J-Prime and Reactor-Core are optional and offline
-            mp.return_value = await _stub(TrinityComponent.JARVIS_PRIME, ComponentStatus.OPTIONAL_OFFLINE)
+            mp.return_value = await _stub(TrinityComponent.Ironcliw_PRIME, ComponentStatus.OPTIONAL_OFFLINE)
             mr.return_value = await _stub(TrinityComponent.REACTOR_CORE, ComponentStatus.OPTIONAL_OFFLINE)
             mc.return_value = await _stub(TrinityComponent.CODING_COUNCIL, ComponentStatus.OPTIONAL_OFFLINE)
 
@@ -667,8 +667,8 @@ class TestHealthMonitorCallbacks:
     async def test_health_score_calculation(self, tmp_path):
         """Weighted health score correctly computed across components."""
         weights = {
-            TrinityComponent.JARVIS_BODY: 1.0,
-            TrinityComponent.JARVIS_PRIME: 0.7,
+            TrinityComponent.Ironcliw_BODY: 1.0,
+            TrinityComponent.Ironcliw_PRIME: 0.7,
             TrinityComponent.REACTOR_CORE: 0.7,
             TrinityComponent.CODING_COUNCIL: 0.5,
             TrinityComponent.TRINITY_SYNC: 0.8,
@@ -683,8 +683,8 @@ class TestHealthMonitorCallbacks:
              patch.object(monitor, "_check_jarvis_prime", new_callable=AsyncMock) as mp, \
              patch.object(monitor, "_check_reactor_core", new_callable=AsyncMock) as mr, \
              patch.object(monitor, "_check_coding_council", new_callable=AsyncMock) as mc:
-            mb.return_value = await _stub(TrinityComponent.JARVIS_BODY, ComponentStatus.HEALTHY)
-            mp.return_value = await _stub(TrinityComponent.JARVIS_PRIME, ComponentStatus.HEALTHY)
+            mb.return_value = await _stub(TrinityComponent.Ironcliw_BODY, ComponentStatus.HEALTHY)
+            mp.return_value = await _stub(TrinityComponent.Ironcliw_PRIME, ComponentStatus.HEALTHY)
             mr.return_value = await _stub(TrinityComponent.REACTOR_CORE, ComponentStatus.DEGRADED)
             mc.return_value = await _stub(TrinityComponent.CODING_COUNCIL, ComponentStatus.UNHEALTHY)
 

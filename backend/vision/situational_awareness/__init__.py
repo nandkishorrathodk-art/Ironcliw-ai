@@ -1,8 +1,8 @@
-"""
+﻿"""
 Situational Awareness Intelligence (SAI) Module
 ================================================
 
-Production-grade environmental awareness system for JARVIS.
+Production-grade environmental awareness system for Ironcliw.
 
 Enables real-time perception and adaptation to dynamic UI changes.
 """

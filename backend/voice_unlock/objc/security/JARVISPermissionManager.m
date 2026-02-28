@@ -1,11 +1,11 @@
-/**
- * JARVISPermissionManager.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwPermissionManager.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of macOS permission management.
  */
 
-#import "JARVISPermissionManager.h"
+#import "IroncliwPermissionManager.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Carbon/Carbon.h>
 #import <IOKit/IOKitLib.h>
@@ -13,20 +13,20 @@
 #import <os/log.h>
 
 // Permission info implementation
-@implementation JARVISPermissionInfo
+@implementation IroncliwPermissionInfo
 @end
 
 // Main implementation
-@interface JARVISPermissionManager ()
+@interface IroncliwPermissionManager ()
 
-@property (nonatomic, strong) NSMutableDictionary<NSNumber *, JARVISPermissionInfo *> *permissionInfoCache;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, IroncliwPermissionInfo *> *permissionInfoCache;
 @property (nonatomic, strong) NSTimer *monitoringTimer;
 @property (nonatomic, strong) os_log_t logger;
 @property (nonatomic, assign) BOOL isMonitoring;
 
 @end
 
-@implementation JARVISPermissionManager
+@implementation IroncliwPermissionManager
 
 - (instancetype)init {
     self = [super init];
@@ -48,136 +48,136 @@
 
 - (void)setupPermissionInfo {
     // Microphone
-    JARVISPermissionInfo *mic = [[JARVISPermissionInfo alloc] init];
-    mic.type = JARVISPermissionTypeMicrophone;
+    IroncliwPermissionInfo *mic = [[IroncliwPermissionInfo alloc] init];
+    mic.type = IroncliwPermissionTypeMicrophone;
     mic.displayName = @"Microphone";
     mic.explanation = @"Required to capture voice commands for unlocking your Mac";
     mic.isRequired = YES;
     mic.canRequestInApp = YES;
-    self.permissionInfoCache[@(JARVISPermissionTypeMicrophone)] = mic;
+    self.permissionInfoCache[@(IroncliwPermissionTypeMicrophone)] = mic;
     
     // Accessibility
-    JARVISPermissionInfo *accessibility = [[JARVISPermissionInfo alloc] init];
-    accessibility.type = JARVISPermissionTypeAccessibility;
+    IroncliwPermissionInfo *accessibility = [[IroncliwPermissionInfo alloc] init];
+    accessibility.type = IroncliwPermissionTypeAccessibility;
     accessibility.displayName = @"Accessibility";
     accessibility.explanation = @"Required to simulate keyboard input for unlocking the screen";
     accessibility.isRequired = YES;
     accessibility.canRequestInApp = YES;
-    self.permissionInfoCache[@(JARVISPermissionTypeAccessibility)] = accessibility;
+    self.permissionInfoCache[@(IroncliwPermissionTypeAccessibility)] = accessibility;
     
     // Screen Recording
-    JARVISPermissionInfo *screenRecording = [[JARVISPermissionInfo alloc] init];
-    screenRecording.type = JARVISPermissionTypeScreenRecording;
+    IroncliwPermissionInfo *screenRecording = [[IroncliwPermissionInfo alloc] init];
+    screenRecording.type = IroncliwPermissionTypeScreenRecording;
     screenRecording.displayName = @"Screen Recording";
     screenRecording.explanation = @"Optional - Allows detection of screen lock state";
     screenRecording.isRequired = NO;
     screenRecording.canRequestInApp = NO;
-    self.permissionInfoCache[@(JARVISPermissionTypeScreenRecording)] = screenRecording;
+    self.permissionInfoCache[@(IroncliwPermissionTypeScreenRecording)] = screenRecording;
     
     // Full Disk Access
-    JARVISPermissionInfo *fullDisk = [[JARVISPermissionInfo alloc] init];
-    fullDisk.type = JARVISPermissionTypeFullDiskAccess;
+    IroncliwPermissionInfo *fullDisk = [[IroncliwPermissionInfo alloc] init];
+    fullDisk.type = IroncliwPermissionTypeFullDiskAccess;
     fullDisk.displayName = @"Full Disk Access";
     fullDisk.explanation = @"Optional - Allows access to voice training data";
     fullDisk.isRequired = NO;
     fullDisk.canRequestInApp = NO;
-    self.permissionInfoCache[@(JARVISPermissionTypeFullDiskAccess)] = fullDisk;
+    self.permissionInfoCache[@(IroncliwPermissionTypeFullDiskAccess)] = fullDisk;
     
     // Input Monitoring
-    JARVISPermissionInfo *inputMonitoring = [[JARVISPermissionInfo alloc] init];
-    inputMonitoring.type = JARVISPermissionTypeInputMonitoring;
+    IroncliwPermissionInfo *inputMonitoring = [[IroncliwPermissionInfo alloc] init];
+    inputMonitoring.type = IroncliwPermissionTypeInputMonitoring;
     inputMonitoring.displayName = @"Input Monitoring";
     inputMonitoring.explanation = @"Optional - Enhances security by detecting unauthorized access attempts";
     inputMonitoring.isRequired = NO;
     inputMonitoring.canRequestInApp = NO;
-    self.permissionInfoCache[@(JARVISPermissionTypeInputMonitoring)] = inputMonitoring;
+    self.permissionInfoCache[@(IroncliwPermissionTypeInputMonitoring)] = inputMonitoring;
     
     // System Events
-    JARVISPermissionInfo *systemEvents = [[JARVISPermissionInfo alloc] init];
-    systemEvents.type = JARVISPermissionTypeSystemEvents;
+    IroncliwPermissionInfo *systemEvents = [[IroncliwPermissionInfo alloc] init];
+    systemEvents.type = IroncliwPermissionTypeSystemEvents;
     systemEvents.displayName = @"System Events";
     systemEvents.explanation = @"Optional - Enhanced interaction with the lock screen";
     systemEvents.isRequired = NO;  // Make optional for now
     systemEvents.canRequestInApp = NO;
-    self.permissionInfoCache[@(JARVISPermissionTypeSystemEvents)] = systemEvents;
+    self.permissionInfoCache[@(IroncliwPermissionTypeSystemEvents)] = systemEvents;
     
     // Keychain
-    JARVISPermissionInfo *keychain = [[JARVISPermissionInfo alloc] init];
-    keychain.type = JARVISPermissionTypeKeychain;
+    IroncliwPermissionInfo *keychain = [[IroncliwPermissionInfo alloc] init];
+    keychain.type = IroncliwPermissionTypeKeychain;
     keychain.displayName = @"Keychain Access";
     keychain.explanation = @"Required to securely store authentication tokens";
     keychain.isRequired = YES;
     keychain.canRequestInApp = YES;
-    self.permissionInfoCache[@(JARVISPermissionTypeKeychain)] = keychain;
+    self.permissionInfoCache[@(IroncliwPermissionTypeKeychain)] = keychain;
 }
 
 - (void)checkInitialPermissions {
-    for (JARVISPermissionInfo *info in self.permissionInfoCache.allValues) {
+    for (IroncliwPermissionInfo *info in self.permissionInfoCache.allValues) {
         info.status = [self checkPermissionStatus:info.type];
     }
 }
 
 #pragma mark - Permission Checking
 
-- (JARVISPermissionStatus)statusForPermission:(JARVISPermissionType)permission {
-    JARVISPermissionInfo *info = self.permissionInfoCache[@(permission)];
+- (IroncliwPermissionStatus)statusForPermission:(IroncliwPermissionType)permission {
+    IroncliwPermissionInfo *info = self.permissionInfoCache[@(permission)];
     if (info) {
         info.status = [self checkPermissionStatus:permission];
         return info.status;
     }
-    return JARVISPermissionStatusNotDetermined;
+    return IroncliwPermissionStatusNotDetermined;
 }
 
-- (JARVISPermissionStatus)checkPermissionStatus:(JARVISPermissionType)permission {
+- (IroncliwPermissionStatus)checkPermissionStatus:(IroncliwPermissionType)permission {
     switch (permission) {
-        case JARVISPermissionTypeMicrophone:
+        case IroncliwPermissionTypeMicrophone:
             return [self checkMicrophonePermission];
             
-        case JARVISPermissionTypeAccessibility:
+        case IroncliwPermissionTypeAccessibility:
             return [self checkAccessibilityPermission];
             
-        case JARVISPermissionTypeScreenRecording:
+        case IroncliwPermissionTypeScreenRecording:
             return [self checkScreenRecordingPermission];
             
-        case JARVISPermissionTypeFullDiskAccess:
+        case IroncliwPermissionTypeFullDiskAccess:
             return [self checkFullDiskAccessPermission];
             
-        case JARVISPermissionTypeInputMonitoring:
+        case IroncliwPermissionTypeInputMonitoring:
             return [self checkInputMonitoringPermission];
             
-        case JARVISPermissionTypeSystemEvents:
+        case IroncliwPermissionTypeSystemEvents:
             return [self checkSystemEventsPermission];
             
-        case JARVISPermissionTypeKeychain:
+        case IroncliwPermissionTypeKeychain:
             return [self checkKeychainPermission];
     }
 }
 
-- (JARVISPermissionStatus)checkMicrophonePermission {
+- (IroncliwPermissionStatus)checkMicrophonePermission {
     if (@available(macOS 10.14, *)) {
         AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
         switch (status) {
             case AVAuthorizationStatusAuthorized:
-                return JARVISPermissionStatusAuthorized;
+                return IroncliwPermissionStatusAuthorized;
             case AVAuthorizationStatusDenied:
-                return JARVISPermissionStatusDenied;
+                return IroncliwPermissionStatusDenied;
             case AVAuthorizationStatusRestricted:
-                return JARVISPermissionStatusRestricted;
+                return IroncliwPermissionStatusRestricted;
             case AVAuthorizationStatusNotDetermined:
-                return JARVISPermissionStatusNotDetermined;
+                return IroncliwPermissionStatusNotDetermined;
         }
     }
-    return JARVISPermissionStatusAuthorized; // Pre-10.14 doesn't require permission
+    return IroncliwPermissionStatusAuthorized; // Pre-10.14 doesn't require permission
 }
 
-- (JARVISPermissionStatus)checkAccessibilityPermission {
+- (IroncliwPermissionStatus)checkAccessibilityPermission {
     if (AXIsProcessTrusted()) {
-        return JARVISPermissionStatusAuthorized;
+        return IroncliwPermissionStatusAuthorized;
     }
-    return JARVISPermissionStatusDenied;
+    return IroncliwPermissionStatusDenied;
 }
 
-- (JARVISPermissionStatus)checkScreenRecordingPermission {
+- (IroncliwPermissionStatus)checkScreenRecordingPermission {
     if (@available(macOS 10.15, *)) {
         // Check if we can access screen content
         // This is a simple check - actual screen recording would need ScreenCaptureKit
@@ -189,31 +189,31 @@
             // If we can get window info with real content, we have permission
             // Without permission, the count would be very limited
             if (count > 0) {
-                return JARVISPermissionStatusAuthorized;
+                return IroncliwPermissionStatusAuthorized;
             }
         }
-        return JARVISPermissionStatusDenied;
+        return IroncliwPermissionStatusDenied;
     }
-    return JARVISPermissionStatusAuthorized;
+    return IroncliwPermissionStatusAuthorized;
 }
 
-- (JARVISPermissionStatus)checkFullDiskAccessPermission {
+- (IroncliwPermissionStatus)checkFullDiskAccessPermission {
     // Check if we can access a protected location
     NSString *testPath = [@"~/Library/Safari/Bookmarks.plist" stringByExpandingTildeInPath];
     if ([[NSFileManager defaultManager] isReadableFileAtPath:testPath]) {
-        return JARVISPermissionStatusAuthorized;
+        return IroncliwPermissionStatusAuthorized;
     }
     
     // Try to read TCC database
     NSString *tccPath = @"/Library/Application Support/com.apple.TCC/TCC.db";
     if ([[NSFileManager defaultManager] isReadableFileAtPath:tccPath]) {
-        return JARVISPermissionStatusAuthorized;
+        return IroncliwPermissionStatusAuthorized;
     }
     
-    return JARVISPermissionStatusDenied;
+    return IroncliwPermissionStatusDenied;
 }
 
-- (JARVISPermissionStatus)checkInputMonitoringPermission {
+- (IroncliwPermissionStatus)checkInputMonitoringPermission {
     // Check if we can monitor global events
     if (@available(macOS 10.15, *)) {
         // Try to create an event tap
@@ -224,14 +224,14 @@
                                                   NULL, NULL);
         if (eventTap) {
             CFRelease(eventTap);
-            return JARVISPermissionStatusAuthorized;
+            return IroncliwPermissionStatusAuthorized;
         }
-        return JARVISPermissionStatusDenied;
+        return IroncliwPermissionStatusDenied;
     }
-    return JARVISPermissionStatusAuthorized;
+    return IroncliwPermissionStatusAuthorized;
 }
 
-- (JARVISPermissionStatus)checkSystemEventsPermission {
+- (IroncliwPermissionStatus)checkSystemEventsPermission {
     // Check if we can send Apple Events to System Events
     NSAppleEventDescriptor *targetDescriptor = [NSAppleEventDescriptor descriptorWithBundleIdentifier:@"com.apple.systemevents"];
     
@@ -249,15 +249,15 @@
     }
     
     if (status == noErr) {
-        return JARVISPermissionStatusAuthorized;
+        return IroncliwPermissionStatusAuthorized;
     } else if (status == -1743) { // errAEEventNotPermitted
-        return JARVISPermissionStatusDenied;
+        return IroncliwPermissionStatusDenied;
     }
     
-    return JARVISPermissionStatusNotDetermined;
+    return IroncliwPermissionStatusNotDetermined;
 }
 
-- (JARVISPermissionStatus)checkKeychainPermission {
+- (IroncliwPermissionStatus)checkKeychainPermission {
     // Keychain access is generally available on macOS
     // Try a simple keychain operation to verify access
     NSDictionary *query = @{
@@ -272,22 +272,22 @@
     // errSecItemNotFound is fine - it means we can access keychain but item doesn't exist
     // errSecInteractionNotAllowed or other errors mean we don't have access
     if (status == errSecSuccess || status == errSecItemNotFound) {
-        return JARVISPermissionStatusAuthorized;
+        return IroncliwPermissionStatusAuthorized;
     }
     
-    return JARVISPermissionStatusDenied;
+    return IroncliwPermissionStatusDenied;
 }
 
 #pragma mark - Permission Requests
 
 - (BOOL)checkAndRequestPermissions:(NSError **)error {
-    NSMutableArray<JARVISPermissionInfo *> *missingRequired = [NSMutableArray array];
+    NSMutableArray<IroncliwPermissionInfo *> *missingRequired = [NSMutableArray array];
     
     // Check all permissions
-    for (JARVISPermissionInfo *info in self.permissionInfoCache.allValues) {
+    for (IroncliwPermissionInfo *info in self.permissionInfoCache.allValues) {
         info.status = [self checkPermissionStatus:info.type];
         
-        if (info.isRequired && info.status != JARVISPermissionStatusAuthorized) {
+        if (info.isRequired && info.status != IroncliwPermissionStatusAuthorized) {
             [missingRequired addObject:info];
         }
     }
@@ -301,14 +301,14 @@
     }
     
     // Request permissions that can be requested in-app
-    for (JARVISPermissionInfo *info in missingRequired) {
-        if (info.canRequestInApp && info.status == JARVISPermissionStatusNotDetermined) {
+    for (IroncliwPermissionInfo *info in missingRequired) {
+        if (info.canRequestInApp && info.status == IroncliwPermissionStatusNotDetermined) {
             switch (info.type) {
-                case JARVISPermissionTypeMicrophone:
+                case IroncliwPermissionTypeMicrophone:
                     [self requestMicrophonePermission:nil];
                     break;
                     
-                case JARVISPermissionTypeAccessibility:
+                case IroncliwPermissionTypeAccessibility:
                     [self requestAccessibilityPermission];
                     break;
                     
@@ -325,7 +325,7 @@
     
     if (error) {
         NSString *missingList = [[missingRequired valueForKey:@"displayName"] componentsJoinedByString:@", "];
-        *error = [NSError errorWithDomain:@"JARVISPermissions"
+        *error = [NSError errorWithDomain:@"IroncliwPermissions"
                                      code:1001
                                  userInfo:@{
             NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Missing required permissions: %@", missingList]
@@ -335,15 +335,15 @@
     return NO;
 }
 
-- (void)checkAllPermissionsWithCompletion:(void (^)(BOOL, NSArray<JARVISPermissionInfo *> *))completion {
+- (void)checkAllPermissionsWithCompletion:(void (^)(BOOL, NSArray<IroncliwPermissionInfo *> *))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSMutableArray<JARVISPermissionInfo *> *missing = [NSMutableArray array];
+        NSMutableArray<IroncliwPermissionInfo *> *missing = [NSMutableArray array];
         BOOL allGranted = YES;
         
-        for (JARVISPermissionInfo *info in self.permissionInfoCache.allValues) {
+        for (IroncliwPermissionInfo *info in self.permissionInfoCache.allValues) {
             info.status = [self checkPermissionStatus:info.type];
             
-            if (info.isRequired && info.status != JARVISPermissionStatusAuthorized) {
+            if (info.isRequired && info.status != IroncliwPermissionStatusAuthorized) {
                 [missing addObject:info];
                 allGranted = NO;
             }
@@ -363,12 +363,12 @@
     if (@available(macOS 10.14, *)) {
         [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio 
                                  completionHandler:^(BOOL granted) {
-            JARVISPermissionInfo *info = self.permissionInfoCache[@(JARVISPermissionTypeMicrophone)];
-            info.status = granted ? JARVISPermissionStatusAuthorized : JARVISPermissionStatusDenied;
+            IroncliwPermissionInfo *info = self.permissionInfoCache[@(IroncliwPermissionTypeMicrophone)];
+            info.status = granted ? IroncliwPermissionStatusAuthorized : IroncliwPermissionStatusDenied;
             
             dispatch_async(dispatch_get_main_queue(), ^{
                 if ([self.delegate respondsToSelector:@selector(permissionStatusChanged:status:)]) {
-                    [self.delegate permissionStatusChanged:JARVISPermissionTypeMicrophone 
+                    [self.delegate permissionStatusChanged:IroncliwPermissionTypeMicrophone 
                                                     status:info.status];
                 }
                 
@@ -388,11 +388,11 @@
     NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
     BOOL trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
     
-    JARVISPermissionInfo *info = self.permissionInfoCache[@(JARVISPermissionTypeAccessibility)];
-    info.status = trusted ? JARVISPermissionStatusAuthorized : JARVISPermissionStatusDenied;
+    IroncliwPermissionInfo *info = self.permissionInfoCache[@(IroncliwPermissionTypeAccessibility)];
+    info.status = trusted ? IroncliwPermissionStatusAuthorized : IroncliwPermissionStatusDenied;
     
     if ([self.delegate respondsToSelector:@selector(permissionStatusChanged:status:)]) {
-        [self.delegate permissionStatusChanged:JARVISPermissionTypeAccessibility 
+        [self.delegate permissionStatusChanged:IroncliwPermissionTypeAccessibility 
                                         status:info.status];
     }
     
@@ -402,55 +402,55 @@
 - (BOOL)requestScreenRecordingPermission {
     // Screen recording permission cannot be requested programmatically
     // Open system preferences instead
-    [self openSystemPreferencesForPermission:JARVISPermissionTypeScreenRecording];
+    [self openSystemPreferencesForPermission:IroncliwPermissionTypeScreenRecording];
     return NO;
 }
 
 - (BOOL)requestFullDiskAccessPermission {
     // Full disk access cannot be requested programmatically
-    [self openSystemPreferencesForPermission:JARVISPermissionTypeFullDiskAccess];
+    [self openSystemPreferencesForPermission:IroncliwPermissionTypeFullDiskAccess];
     return NO;
 }
 
 - (BOOL)requestInputMonitoringPermission {
     // Input monitoring permission cannot be requested programmatically
-    [self openSystemPreferencesForPermission:JARVISPermissionTypeInputMonitoring];
+    [self openSystemPreferencesForPermission:IroncliwPermissionTypeInputMonitoring];
     return NO;
 }
 
 #pragma mark - System Preferences
 
-- (void)openSystemPreferencesForPermission:(JARVISPermissionType)permission {
+- (void)openSystemPreferencesForPermission:(IroncliwPermissionType)permission {
     NSString *prefPane = nil;
     
     switch (permission) {
-        case JARVISPermissionTypeMicrophone:
+        case IroncliwPermissionTypeMicrophone:
             prefPane = @"x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
             break;
             
-        case JARVISPermissionTypeAccessibility:
+        case IroncliwPermissionTypeAccessibility:
             prefPane = @"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
             break;
             
-        case JARVISPermissionTypeScreenRecording:
+        case IroncliwPermissionTypeScreenRecording:
             if (@available(macOS 10.15, *)) {
                 prefPane = @"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
             }
             break;
             
-        case JARVISPermissionTypeFullDiskAccess:
+        case IroncliwPermissionTypeFullDiskAccess:
             if (@available(macOS 10.14, *)) {
                 prefPane = @"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
             }
             break;
             
-        case JARVISPermissionTypeInputMonitoring:
+        case IroncliwPermissionTypeInputMonitoring:
             if (@available(macOS 10.15, *)) {
                 prefPane = @"x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
             }
             break;
             
-        case JARVISPermissionTypeSystemEvents:
+        case IroncliwPermissionTypeSystemEvents:
             prefPane = @"x-apple.systempreferences:com.apple.preference.security?Privacy_Automation";
             break;
             
@@ -481,35 +481,35 @@
 
 #pragma mark - Explanations
 
-- (NSString *)explanationForPermission:(JARVISPermissionType)permission {
-    JARVISPermissionInfo *info = self.permissionInfoCache[@(permission)];
-    return info ? info.explanation : @"This permission is required for JARVIS Voice Unlock to function properly.";
+- (NSString *)explanationForPermission:(IroncliwPermissionType)permission {
+    IroncliwPermissionInfo *info = self.permissionInfoCache[@(permission)];
+    return info ? info.explanation : @"This permission is required for Ironcliw Voice Unlock to function properly.";
 }
 
-- (NSString *)instructionsForPermission:(JARVISPermissionType)permission {
+- (NSString *)instructionsForPermission:(IroncliwPermissionType)permission {
     switch (permission) {
-        case JARVISPermissionTypeMicrophone:
+        case IroncliwPermissionTypeMicrophone:
             return @"Click 'OK' when prompted to grant microphone access.";
             
-        case JARVISPermissionTypeAccessibility:
+        case IroncliwPermissionTypeAccessibility:
             return @"1. Click 'Open System Preferences' when prompted\n"
                    @"2. Click the lock icon to make changes\n"
-                   @"3. Check the box next to JARVIS Voice Unlock\n"
+                   @"3. Check the box next to Ironcliw Voice Unlock\n"
                    @"4. Close System Preferences";
             
-        case JARVISPermissionTypeScreenRecording:
+        case IroncliwPermissionTypeScreenRecording:
             return @"1. Open System Preferences > Security & Privacy > Privacy\n"
                    @"2. Select 'Screen Recording' from the list\n"
                    @"3. Click the lock icon to make changes\n"
-                   @"4. Check the box next to JARVIS Voice Unlock\n"
-                   @"5. Restart JARVIS Voice Unlock";
+                   @"4. Check the box next to Ironcliw Voice Unlock\n"
+                   @"5. Restart Ironcliw Voice Unlock";
             
-        case JARVISPermissionTypeFullDiskAccess:
+        case IroncliwPermissionTypeFullDiskAccess:
             return @"1. Open System Preferences > Security & Privacy > Privacy\n"
                    @"2. Select 'Full Disk Access' from the list\n"
                    @"3. Click the lock icon to make changes\n"
-                   @"4. Click '+' and add JARVIS Voice Unlock\n"
-                   @"5. Restart JARVIS Voice Unlock";
+                   @"4. Click '+' and add Ironcliw Voice Unlock\n"
+                   @"5. Restart Ironcliw Voice Unlock";
             
         default:
             return @"Please grant the requested permission in System Preferences.";
@@ -543,9 +543,9 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         BOOL changesDetected = NO;
         
-        for (JARVISPermissionInfo *info in self.permissionInfoCache.allValues) {
-            JARVISPermissionStatus oldStatus = info.status;
-            JARVISPermissionStatus newStatus = [self checkPermissionStatus:info.type];
+        for (IroncliwPermissionInfo *info in self.permissionInfoCache.allValues) {
+            IroncliwPermissionStatus oldStatus = info.status;
+            IroncliwPermissionStatus newStatus = [self checkPermissionStatus:info.type];
             
             if (oldStatus != newStatus) {
                 info.status = newStatus;
@@ -571,16 +571,16 @@
 #pragma mark - Properties
 
 - (BOOL)hasAllRequiredPermissions {
-    for (JARVISPermissionInfo *info in self.permissionInfoCache.allValues) {
-        if (info.isRequired && info.status != JARVISPermissionStatusAuthorized) {
+    for (IroncliwPermissionInfo *info in self.permissionInfoCache.allValues) {
+        if (info.isRequired && info.status != IroncliwPermissionStatusAuthorized) {
             return NO;
         }
     }
     return YES;
 }
 
-- (NSArray<JARVISPermissionInfo *> *)allPermissions {
-    return [self.permissionInfoCache.allValues sortedArrayUsingComparator:^NSComparisonResult(JARVISPermissionInfo *a, JARVISPermissionInfo *b) {
+- (NSArray<IroncliwPermissionInfo *> *)allPermissions {
+    return [self.permissionInfoCache.allValues sortedArrayUsingComparator:^NSComparisonResult(IroncliwPermissionInfo *a, IroncliwPermissionInfo *b) {
         if (a.isRequired != b.isRequired) {
             return a.isRequired ? NSOrderedAscending : NSOrderedDescending;
         }
@@ -588,16 +588,16 @@
     }];
 }
 
-- (NSArray<JARVISPermissionInfo *> *)missingPermissions {
+- (NSArray<IroncliwPermissionInfo *> *)missingPermissions {
     NSMutableArray *missing = [NSMutableArray array];
     
-    for (JARVISPermissionInfo *info in self.permissionInfoCache.allValues) {
-        if (info.status != JARVISPermissionStatusAuthorized) {
+    for (IroncliwPermissionInfo *info in self.permissionInfoCache.allValues) {
+        if (info.status != IroncliwPermissionStatusAuthorized) {
             [missing addObject:info];
         }
     }
     
-    return [missing sortedArrayUsingComparator:^NSComparisonResult(JARVISPermissionInfo *a, JARVISPermissionInfo *b) {
+    return [missing sortedArrayUsingComparator:^NSComparisonResult(IroncliwPermissionInfo *a, IroncliwPermissionInfo *b) {
         if (a.isRequired != b.isRequired) {
             return a.isRequired ? NSOrderedAscending : NSOrderedDescending;
         }

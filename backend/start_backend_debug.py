@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Debug backend startup issues
 """
@@ -8,7 +8,7 @@ import sys
 import subprocess
 import time
 
-print("🔍 JARVIS Backend Debug Tool")
+print("🔍 Ironcliw Backend Debug Tool")
 print("=" * 50)
 
 # Check environment

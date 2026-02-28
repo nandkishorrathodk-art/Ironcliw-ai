@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Smart Screenshot Caching System for JARVIS Multi-Space Awareness
+Smart Screenshot Caching System for Ironcliw Multi-Space Awareness
 Implements predictive caching, pattern learning, and confidence scoring
 """
 

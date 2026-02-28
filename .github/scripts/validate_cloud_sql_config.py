@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Validate Cloud SQL configuration in codebase.
 
@@ -39,7 +39,7 @@ def check_hardcoded_ips(repo_root: Path) -> list:
                 errors.append(
                     f"Hardcoded Cloud SQL IP found in {rel_path}: {', '.join(set(matches))}"
                 )
-                errors.append(f"  → Use JARVIS_DB_HOST environment variable instead")
+                errors.append(f"  → Use Ironcliw_DB_HOST environment variable instead")
 
         except Exception:
             continue
@@ -64,10 +64,10 @@ def check_proxy_usage(repo_root: Path) -> list:
 
         content = file_path.read_text()
 
-        # Check if it uses JARVIS_DB_HOST env var
-        if "JARVIS_DB_HOST" not in content:
+        # Check if it uses Ironcliw_DB_HOST env var
+        if "Ironcliw_DB_HOST" not in content:
             rel_path = file_path.relative_to(repo_root)
-            warnings.append(f"{rel_path} may not be using JARVIS_DB_HOST environment variable")
+            warnings.append(f"{rel_path} may not be using Ironcliw_DB_HOST environment variable")
 
         # Check for direct connections (not through proxy)
         if re.search(r'host\s*=\s*["\'](?!127\.0\.0\.1|localhost)', content):
@@ -83,11 +83,11 @@ def check_env_var_consistency(repo_root: Path) -> list:
 
     # Required env vars
     required_vars = [
-        "JARVIS_DB_TYPE",
-        "JARVIS_DB_CONNECTION_NAME",
-        "JARVIS_DB_HOST",
-        "JARVIS_DB_PORT",
-        "JARVIS_DB_PASSWORD",
+        "Ironcliw_DB_TYPE",
+        "Ironcliw_DB_CONNECTION_NAME",
+        "Ironcliw_DB_HOST",
+        "Ironcliw_DB_PORT",
+        "Ironcliw_DB_PASSWORD",
     ]
 
     start_system = repo_root / "start_system.py"

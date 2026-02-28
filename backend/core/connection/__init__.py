@@ -1,5 +1,5 @@
-"""
-JARVIS Connection Management Package
+﻿"""
+Ironcliw Connection Management Package
 =====================================
 
 Enterprise-grade connection management with:
@@ -10,7 +10,7 @@ Enterprise-grade connection management with:
 - Cross-repo coordination support
 - Factory functions for common FSM patterns
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 

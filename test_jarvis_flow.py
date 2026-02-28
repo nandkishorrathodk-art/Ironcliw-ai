@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test the exact flow JARVIS uses when connecting to Living Room TV
-This simulates what happens when you say "living room tv" to JARVIS
+Test the exact flow Ironcliw uses when connecting to Living Room TV
+This simulates what happens when you say "living room tv" to Ironcliw
 """
 import sys
 import os
@@ -18,13 +18,13 @@ logging.basicConfig(
 )
 
 async def test_jarvis_flow():
-    """Test the exact flow used by JARVIS"""
+    """Test the exact flow used by Ironcliw"""
     print("\n" + "="*80)
-    print("TESTING JARVIS DISPLAY CONNECTION FLOW")
+    print("TESTING Ironcliw DISPLAY CONNECTION FLOW")
     print("This simulates: User says 'living room tv'")
     print("="*80 + "\n")
 
-    # Import the advanced display monitor (what JARVIS uses)
+    # Import the advanced display monitor (what Ironcliw uses)
     from backend.display.advanced_display_monitor import AdvancedDisplayMonitor
 
     # Create monitor instance
@@ -51,9 +51,9 @@ async def test_jarvis_flow():
         print("Available displays:", [d['display_name'] for d in displays])
         return
 
-    # Now connect (this is what happens when JARVIS processes "living room tv")
+    # Now connect (this is what happens when Ironcliw processes "living room tv")
     print("\n" + "-"*80)
-    print("EXECUTING CONNECTION (same as JARVIS voice command)")
+    print("EXECUTING CONNECTION (same as Ironcliw voice command)")
     print("-"*80 + "\n")
 
     result = await monitor.connect_display(living_room_id)

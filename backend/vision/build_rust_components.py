@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Build and verify Rust components for JARVIS vision system.
+Build and verify Rust components for Ironcliw vision system.
 This script handles the complete Rust integration setup with parallel compilation.
 """
 
@@ -623,7 +623,7 @@ print("\n✓ All tests passed!")
         
         # Print system info
         logger.info("=" * 70)
-        logger.info("🦀 JARVIS Rust Component Builder - Parallel Edition")
+        logger.info("🦀 Ironcliw Rust Component Builder - Parallel Edition")
         logger.info("=" * 70)
         logger.info(f"Platform: {platform.system()} {platform.machine()}")
         logger.info(f"Python: {sys.version}")
@@ -694,7 +694,7 @@ print("\n✓ All tests passed!")
         logger.info("\n📝 Next steps:")
         logger.info("  1. Run: python test_rust_components.py")
         logger.info("  2. Rust acceleration is now enabled automatically")
-        logger.info("  3. Monitor performance in JARVIS dashboard")
+        logger.info("  3. Monitor performance in Ironcliw dashboard")
         
         # Save build info
         await self._save_build_info(build_time)

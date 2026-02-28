@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration Tests for TemporalQueryHandler v3.0
 
 Tests end-to-end functionality:
@@ -20,7 +20,7 @@ from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch
 
 import sys
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from context_intelligence.handlers.temporal_query_handler import (
     TemporalQueryHandler,

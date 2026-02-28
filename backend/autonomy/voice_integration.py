@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Comprehensive Voice Integration System for JARVIS
+Comprehensive Voice Integration System for Ironcliw
 
 This module provides intelligent voice announcements, natural conversation capabilities,
-and voice-based approval systems for the JARVIS AI assistant. It integrates with
+and voice-based approval systems for the Ironcliw AI assistant. It integrates with
 Claude API for dynamic natural language generation and supports multiple voice
 interaction types including announcements, conversations, and approval requests.
 
@@ -12,7 +12,7 @@ The system features:
 - Natural conversational AI with memory and context
 - Voice-based approval workflows for autonomous actions
 - Intelligent model selection for optimal response generation
-- Integration with JARVIS core systems (notifications, decisions, monitoring)
+- Integration with Ironcliw core systems (notifications, decisions, monitoring)
 
 Example:
     >>> voice_system = VoiceIntegrationSystem(api_key="your_api_key")
@@ -37,13 +37,13 @@ import threading
 import queue
 import time
 
-# Import existing JARVIS components
+# Import existing Ironcliw components
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Voice system imports
 from engines.voice_engine import VoiceAssistant, VoiceConfig, TTSEngine, VoiceCommand
-from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality
+from voice.jarvis_voice import EnhancedIroncliwVoiceAssistant, EnhancedIroncliwPersonality
 from voice.macos_voice import MacOSVoice
 
 # Autonomy system imports
@@ -455,7 +455,7 @@ class VoiceAnnouncementSystem:
             }
 
             # Create prompt
-            prompt = f"""You are JARVIS, Tony Stark's AI assistant. Generate a natural voice announcement.
+            prompt = f"""You are Ironcliw, Tony Stark's AI assistant. Generate a natural voice announcement.
 
 Context: {announcement.context}
 Original content: {announcement.content}
@@ -512,7 +512,7 @@ Generate the announcement:"""
             str: Generated announcement text with natural language
             
         Uses intelligent model selection when available, falls back to direct
-        Claude API calls. Includes context awareness and JARVIS personality.
+        Claude API calls. Includes context awareness and Ironcliw personality.
         """
 
         # Try intelligent selection first
@@ -527,7 +527,7 @@ Generate the announcement:"""
         context_info = await self._build_announcement_context(announcement)
 
         # Create prompt for natural announcement generation
-        prompt = f"""You are JARVIS, Tony Stark's AI assistant. Generate a natural voice announcement.
+        prompt = f"""You are Ironcliw, Tony Stark's AI assistant. Generate a natural voice announcement.
 
 Context: {announcement.context}
 Original content: {announcement.content}
@@ -834,7 +834,7 @@ class NaturalVoiceCommunication:
             }
 
             # Create prompt
-            prompt = f"""You are JARVIS, Tony Stark's AI assistant, engaged in natural conversation.
+            prompt = f"""You are Ironcliw, Tony Stark's AI assistant, engaged in natural conversation.
 
 Current context: {context_info}
 Voice confidence: {confidence:.2f}

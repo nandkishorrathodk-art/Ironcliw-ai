@@ -1,4 +1,4 @@
-# JARVIS Multi-Agent System (MAS) - Comprehensive Documentation
+﻿# Ironcliw Multi-Agent System (MAS) - Comprehensive Documentation
 
 **Author:** Derek J. Russell
 **Date:** October 21, 2025
@@ -23,7 +23,7 @@
 
 ## Executive Summary
 
-JARVIS is a sophisticated **Hierarchical Multi-Agent System (MAS)** comprising **60+ specialized AI agents** working collaboratively to provide autonomous, intelligent assistance. The system implements a three-tier architecture where:
+Ironcliw is a sophisticated **Hierarchical Multi-Agent System (MAS)** comprising **60+ specialized AI agents** working collaboratively to provide autonomous, intelligent assistance. The system implements a three-tier architecture where:
 
 - **Tier 1** (Master Intelligence): 2 orchestration agents coordinate all system intelligence
 - **Tier 2** (Core Domains): 28 specialized agents handle specific functional areas
@@ -369,7 +369,7 @@ JARVIS is a sophisticated **Hierarchical Multi-Agent System (MAS)** comprising *
 
 ### B. Voice & Audio Domain (6 Agents)
 
-#### 12. **JARVIS Agent Voice**
+#### 12. **Ironcliw Agent Voice**
 **File:** `backend/voice/jarvis_agent_voice.py`
 **Status:** ✅ **ACTIVE**
 **Purpose:** Primary voice command processing agent
@@ -398,7 +398,7 @@ JARVIS is a sophisticated **Hierarchical Multi-Agent System (MAS)** comprising *
 **Purpose:** Machine learning-based voice recognition
 
 **Responsibilities:**
-- Wake word detection ("Hey JARVIS")
+- Wake word detection ("Hey Ironcliw")
 - Voice activity detection (VAD)
 - Personalized voice recognition
 - Hybrid ML/Picovoice processing
@@ -1114,7 +1114,7 @@ JARVIS is a sophisticated **Hierarchical Multi-Agent System (MAS)** comprising *
 USER COMMAND
      │
      ▼
-[JARVIS Agent Voice] ──► [Unified Command Processor]
+[Ironcliw Agent Voice] ──► [Unified Command Processor]
      │                            │
      │                            ▼
      │                    [Adaptive Intent Classifier]
@@ -1635,7 +1635,7 @@ class HierarchicalRLController:
 
 #### 14. **Distributed Multi-Device Intelligence Mesh**
 **Status:** Infrastructure-heavy - Requires multi-device coordination
-**Impact:** JARVIS operates across iPhone, MacBook, iPad, Apple TV seamlessly
+**Impact:** Ironcliw operates across iPhone, MacBook, iPad, Apple TV seamlessly
 
 **Architecture:**
 ```python
@@ -1760,14 +1760,14 @@ class NeuralArchitectureSearch:
 
 #### 16. **Causal Inference Engine for Explainable Autonomy**
 **Status:** AI Safety critical - Transparency requirement
-**Impact:** JARVIS explains *why* it made autonomous decisions
+**Impact:** Ironcliw explains *why* it made autonomous decisions
 
 **Architecture:**
 ```python
 class CausalInferenceEngine:
     """
     Builds causal models of agent decisions:
-    - Why did JARVIS auto-connect to TV?
+    - Why did Ironcliw auto-connect to TV?
     - What factors influenced the decision?
     - What would happen if I had been in a meeting?
     """
@@ -1822,7 +1822,7 @@ class CausalInferenceEngine:
 
 #### 17. **Lifelong Learning with Catastrophic Forgetting Prevention**
 **Status:** Advanced ML - Continual learning research
-**Impact:** JARVIS improves continuously without forgetting old skills
+**Impact:** Ironcliw improves continuously without forgetting old skills
 
 **Architecture:**
 ```python
@@ -1945,13 +1945,13 @@ class MultiAgentDebate:
 
 #### 19. **Semantic Code Analysis for Self-Modification**
 **Status:** Advanced - Requires code understanding
-**Impact:** JARVIS can improve its own codebase
+**Impact:** Ironcliw can improve its own codebase
 
 **Architecture:**
 ```python
 class SelfModificationEngine:
     """
-    Analyzes JARVIS codebase to suggest improvements:
+    Analyzes Ironcliw codebase to suggest improvements:
     - "Goal Inference System is unused → Integrate with Autonomous Decision Engine"
     - "Control Center Clicker has 7 methods but only uses 2 → Optimize"
     - "Memory leak detected in Vision Pipeline → Auto-patch"
@@ -2268,7 +2268,7 @@ class QuantumInspiredScheduler:
 ### Most Active Agents (Daily)
 
 1. **Unified Command Processor** - 100-500 commands/day
-2. **JARVIS Agent Voice** - 100-500 voice commands/day
+2. **Ironcliw Agent Voice** - 100-500 voice commands/day
 3. **Claude Vision Analyzer** - 50-200 API calls/day
 4. **Adaptive Control Center Clicker** - 10-50 clicks/day
 5. **Display Monitor** - Continuous monitoring
@@ -2327,7 +2327,7 @@ class QuantumInspiredScheduler:
 
 ## Conclusion
 
-JARVIS's Multi-Agent System architecture provides a solid foundation for autonomous, intelligent assistance. With **53% of agents currently active** and **12 advanced integrations identified**, there's significant opportunity to enhance capabilities through both activation of dormant agents and implementation of cutting-edge multi-agent coordination techniques.
+Ironcliw's Multi-Agent System architecture provides a solid foundation for autonomous, intelligent assistance. With **53% of agents currently active** and **12 advanced integrations identified**, there's significant opportunity to enhance capabilities through both activation of dormant agents and implementation of cutting-edge multi-agent coordination techniques.
 
 ### Current State vs. Future Potential
 
@@ -2397,11 +2397,11 @@ This documentation identifies **12 novel integration patterns** for multi-agent 
 11. **Self-Modification Engine** - Code-aware self-improvement
 12. **Quantum-Inspired Scheduler** - Optimal resource allocation
 
-These patterns are applicable beyond JARVIS to any complex multi-agent system.
+These patterns are applicable beyond Ironcliw to any complex multi-agent system.
 
 ### Final Thoughts
 
-**Key Takeaway:** JARVIS has evolved from a voice assistant into a **60-agent hierarchical multi-agent system**. Current utilization is only ~50%, but with strategic activation of dormant agents and implementation of advanced coordination patterns, JARVIS could achieve:
+**Key Takeaway:** Ironcliw has evolved from a voice assistant into a **60-agent hierarchical multi-agent system**. Current utilization is only ~50%, but with strategic activation of dormant agents and implementation of advanced coordination patterns, Ironcliw could achieve:
 
 - **3-5x** improvement in autonomous capabilities
 - **10x** faster perceived latency for common actions
@@ -2411,7 +2411,7 @@ These patterns are applicable beyond JARVIS to any complex multi-agent system.
 
 The path from current state to this vision is well-defined through the **4-phase implementation roadmap**, with clear metrics, dependencies, and research requirements.
 
-JARVIS represents a case study in **practical multi-agent AI system design** - balancing immediate utility with long-term research objectives, user privacy with personalization, and autonomy with transparency.
+Ironcliw represents a case study in **practical multi-agent AI system design** - balancing immediate utility with long-term research objectives, user privacy with personalization, and autonomy with transparency.
 
 ---
 

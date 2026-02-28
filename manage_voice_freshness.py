@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-🎤 Advanced Voice Sample Freshness Manager for JARVIS
+🎤 Advanced Voice Sample Freshness Manager for Ironcliw
 
 A comprehensive, async, dynamic voice sample management system with:
 - Intelligent aging and archival strategies
@@ -823,7 +823,7 @@ class VoiceFreshnessManager:
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Advanced Voice Sample Freshness Manager for JARVIS",
+        description="Advanced Voice Sample Freshness Manager for Ironcliw",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

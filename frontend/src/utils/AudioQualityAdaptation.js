@@ -1,5 +1,5 @@
-/**
- * 🎚️ JARVIS Audio Quality Adaptation System
+﻿/**
+ * 🎚️ Ironcliw Audio Quality Adaptation System
  *
  * Advanced audio quality enhancement and compensation for extreme microphone and signal challenges
  *

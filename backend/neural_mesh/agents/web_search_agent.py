@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Web Search Agent
+﻿"""
+Ironcliw Neural Mesh - Web Search Agent
 
 Provides structured internet research capabilities:
 - Search live web results
@@ -54,7 +54,7 @@ class WebSearchAgent(BaseNeuralMeshAgent):
         )
         self._service = get_web_research_service()
         self._history: List[Dict[str, Any]] = []
-        self._history_limit = _env_int("JARVIS_WEBSEARCH_AGENT_HISTORY_LIMIT", 200, minimum=20)
+        self._history_limit = _env_int("Ironcliw_WEBSEARCH_AGENT_HISTORY_LIMIT", 200, minimum=20)
 
     async def on_initialize(self, **kwargs) -> None:
         await self._service.initialize()

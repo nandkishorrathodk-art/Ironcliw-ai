@@ -1,4 +1,4 @@
-"""
+﻿"""
 Context Intelligence Configuration
 ==================================
 
@@ -132,7 +132,7 @@ class ContextConfig:
             
         Example:
             >>> import os
-            >>> os.environ['JARVIS_CONTEXT_VERBOSE'] = 'true'
+            >>> os.environ['Ironcliw_CONTEXT_VERBOSE'] = 'true'
             >>> config = ContextConfig.from_env()
             >>> config.verbose_logging
             True
@@ -140,13 +140,13 @@ class ContextConfig:
         config = cls()
         
         # Override from environment if set
-        if os.getenv("JARVIS_CONTEXT_VERBOSE"):
-            config.verbose_logging = os.getenv("JARVIS_CONTEXT_VERBOSE", "").lower() == "true"
+        if os.getenv("Ironcliw_CONTEXT_VERBOSE"):
+            config.verbose_logging = os.getenv("Ironcliw_CONTEXT_VERBOSE", "").lower() == "true"
             
-        if os.getenv("JARVIS_SCREEN_LOCK_CHECK_INTERVAL"):
-            config.screen_lock_check_interval = float(os.getenv("JARVIS_SCREEN_LOCK_CHECK_INTERVAL"))
+        if os.getenv("Ironcliw_SCREEN_LOCK_CHECK_INTERVAL"):
+            config.screen_lock_check_interval = float(os.getenv("Ironcliw_SCREEN_LOCK_CHECK_INTERVAL"))
             
-        if os.getenv("JARVIS_DISABLE_SCREEN_LOCK_DETECTION"):
+        if os.getenv("Ironcliw_DISABLE_SCREEN_LOCK_DETECTION"):
             config.enable_screen_lock_detection = False
             
         return config

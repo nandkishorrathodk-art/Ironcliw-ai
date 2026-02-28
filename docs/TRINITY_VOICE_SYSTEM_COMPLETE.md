@@ -1,7 +1,7 @@
-# Trinity Voice System - Ultra-Robust Implementation ✅
+﻿# Trinity Voice System - Ultra-Robust Implementation ✅
 
 **Version:** 1.0 COMPLETE
-**Author:** JARVIS Trinity System
+**Author:** Ironcliw Trinity System
 **Last Updated:** 2025-01-10
 **Status:** ✅ Production Ready
 
@@ -37,15 +37,15 @@ The Trinity Voice System is now a **world-class, ultra-robust, zero-hardcoding, 
 
 ---
 
-## 🎙️ UK Daniel - JARVIS's Signature Voice ⭐
+## 🎙️ UK Daniel - Ironcliw's Signature Voice ⭐
 
-**PRIORITY 1: UK Daniel is JARVIS's canonical voice**
+**PRIORITY 1: UK Daniel is Ironcliw's canonical voice**
 
 The system is hardened to ensure UK Daniel is ALWAYS used when available:
 
 ```python
 # Priority order (NON-NEGOTIABLE):
-1. Daniel (UK Male) ⭐ - JARVIS signature voice
+1. Daniel (UK Male) ⭐ - Ironcliw signature voice
 2. Samantha (US Female) - Clear fallback
 3. Alex (US Male) - macOS default
 4. Other voices - Emergency fallback
@@ -57,7 +57,7 @@ def _detect_best_voice(self) -> str:
     # ⭐ Check for Daniel FIRST before anything else
     for voice_line in available_voices:
         if "daniel" in voice_line.lower():
-            logger.info("✅ Using JARVIS signature voice: Daniel (UK Male)")
+            logger.info("✅ Using Ironcliw signature voice: Daniel (UK Male)")
             return "Daniel"
 
     # If Daniel not found, WARN USER
@@ -82,7 +82,7 @@ System Voice → Download 'Daniel (United Kingdom)'
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    Trinity Voice Coordinator                        │
-│                    (JARVIS Body - Central Hub)                      │
+│                    (Ironcliw Body - Central Hub)                      │
 │                    UK Daniel Voice ⭐                                │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
@@ -116,7 +116,7 @@ System Voice → Download 'Daniel (United Kingdom)'
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │  Cross-Repo Integration                                      │  │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐                   │  │
-│  │  │  JARVIS  │  │ J-Prime  │  │ Reactor  │                   │  │
+│  │  │  Ironcliw  │  │ J-Prime  │  │ Reactor  │                   │  │
 │  │  │  (Body)  │  │ (Brain)  │  │ (Learn)  │                   │  │
 │  │  └──────────┘  └──────────┘  └──────────┘                   │  │
 │  │       │             │             │                           │  │
@@ -141,13 +141,13 @@ When you run `python3 run_supervisor.py`:
 
 2. **Initial Announcement** (UK Daniel, STARTUP context):
    ```
-   "Trinity Voice Coordinator initialized. JARVIS systems online."
+   "Trinity Voice Coordinator initialized. Ironcliw systems online."
    ```
 
 3. **Component Detection**:
    - If J-Prime detected (TRINITY context):
      ```
-     "JARVIS Prime intelligence layer ready for local inference."
+     "Ironcliw Prime intelligence layer ready for local inference."
      ```
    - If Reactor Core detected (TRINITY context):
      ```
@@ -156,7 +156,7 @@ When you run `python3 run_supervisor.py`:
 
 4. **Backend Startup** (`startup_voice_api.py`):
    ```
-   "JARVIS is online. Ready for your command."
+   "Ironcliw is online. Ready for your command."
    ```
    - Uses Trinity coordinator
    - Multi-engine fallback
@@ -204,12 +204,12 @@ When you run `python3 run_supervisor.py`:
 
 ### 6. **Cross-Repo Integrated** ✅
 
-**JARVIS Body:**
+**Ironcliw Body:**
 - `startup_voice_api.py` - Startup announcements
 - `unified_voice_orchestrator.py` - v3.0 integration
 - `run_supervisor.py` - Supervisor announcements
 
-**JARVIS-Prime:**
+**Ironcliw-Prime:**
 - `model_manager.py` - Model load/failure announcements
 - `voice_integration.py` - J-Prime bridge
 
@@ -224,20 +224,20 @@ When you run `python3 run_supervisor.py`:
 ### UK Daniel Voice Configuration
 
 ```bash
-# ⭐ JARVIS Signature Voice (UK Daniel)
+# ⭐ Ironcliw Signature Voice (UK Daniel)
 # Leave unset to use auto-detection (will find Daniel automatically)
 # Or explicitly set:
-JARVIS_STARTUP_VOICE_NAME="Daniel"
-JARVIS_NARRATOR_VOICE_NAME="Daniel"
-JARVIS_RUNTIME_VOICE_NAME="Daniel"
-JARVIS_ALERT_VOICE_NAME="Daniel"
-JARVIS_SUCCESS_VOICE_NAME="Daniel"
-JARVIS_TRINITY_VOICE_NAME="Daniel"
+Ironcliw_STARTUP_VOICE_NAME="Daniel"
+Ironcliw_NARRATOR_VOICE_NAME="Daniel"
+Ironcliw_RUNTIME_VOICE_NAME="Daniel"
+Ironcliw_ALERT_VOICE_NAME="Daniel"
+Ironcliw_SUCCESS_VOICE_NAME="Daniel"
+Ironcliw_TRINITY_VOICE_NAME="Daniel"
 
-# UK Daniel Settings (matches JARVIS professional tone)
-JARVIS_STARTUP_VOICE_RATE=175  # Professional pace
-JARVIS_NARRATOR_VOICE_RATE=180  # Slightly faster for progress
-JARVIS_ALERT_VOICE_RATE=190     # Faster for urgency
+# UK Daniel Settings (matches Ironcliw professional tone)
+Ironcliw_STARTUP_VOICE_RATE=175  # Professional pace
+Ironcliw_NARRATOR_VOICE_RATE=180  # Slightly faster for progress
+Ironcliw_ALERT_VOICE_RATE=190     # Faster for urgency
 ```
 
 ### Full Configuration Reference
@@ -250,14 +250,14 @@ See `docs/TRINITY_VOICE_CONFIGURATION.md` for complete 48-variable reference.
 
 ### Startup (UK Daniel, STARTUP context, rate 175):
 ```
-"Trinity Voice Coordinator initialized. JARVIS systems online."
-"JARVIS Prime intelligence layer ready for local inference."
-"JARVIS is online. Ready for your command."
+"Trinity Voice Coordinator initialized. Ironcliw systems online."
+"Ironcliw Prime intelligence layer ready for local inference."
+"Ironcliw is online. Ready for your command."
 ```
 
 ### J-Prime Model Load (UK Daniel, TRINITY context, rate 175):
 ```
-"JARVIS Prime model jarvis-prime-v1.1 loaded successfully in 3.2 seconds.
+"Ironcliw Prime model jarvis-prime-v1.1 loaded successfully in 3.2 seconds.
 Ready for local inference."
 ```
 
@@ -275,7 +275,7 @@ New model ready for deployment."
 
 ### Shutdown (UK Daniel, RUNTIME context, rate 170):
 ```
-"JARVIS systems shutting down. Goodbye."
+"Ironcliw systems shutting down. Goodbye."
 ```
 
 ---
@@ -351,7 +351,7 @@ Install via: System Settings → Accessibility → Spoken Content
 5. Find **Daniel (United Kingdom)** in the list
 6. Click **Download** button next to it
 7. Wait for download to complete
-8. Restart JARVIS: `python3 run_supervisor.py`
+8. Restart Ironcliw: `python3 run_supervisor.py`
 
 **Verification:**
 ```bash
@@ -372,7 +372,7 @@ curl http://localhost:8010/api/trinity-voice/status
 
 **Check 2: Environment Variables**
 ```bash
-echo $JARVIS_VOICE_ENABLED
+echo $Ironcliw_VOICE_ENABLED
 echo $JPRIME_VOICE_ENABLED
 echo $REACTOR_VOICE_ENABLED
 ```
@@ -398,9 +398,9 @@ Should return: `"Daniel"`
 
 **Force UK Daniel:**
 ```bash
-export JARVIS_STARTUP_VOICE_NAME="Daniel"
-export JARVIS_NARRATOR_VOICE_NAME="Daniel"
-export JARVIS_RUNTIME_VOICE_NAME="Daniel"
+export Ironcliw_STARTUP_VOICE_NAME="Daniel"
+export Ironcliw_NARRATOR_VOICE_NAME="Daniel"
+export Ironcliw_RUNTIME_VOICE_NAME="Daniel"
 python3 run_supervisor.py
 ```
 
@@ -465,17 +465,17 @@ python3 run_supervisor.py
 
 ### Custom Voice Per Context:
 ```bash
-export JARVIS_STARTUP_VOICE_NAME="Daniel"     # Professional
-export JARVIS_NARRATOR_VOICE_NAME="Daniel"    # Clear
-export JARVIS_RUNTIME_VOICE_NAME="Daniel"     # Friendly
-export JARVIS_ALERT_VOICE_NAME="Victoria"     # Female UK (urgent)
-export JARVIS_SUCCESS_VOICE_NAME="Tom"        # Male US (upbeat)
+export Ironcliw_STARTUP_VOICE_NAME="Daniel"     # Professional
+export Ironcliw_NARRATOR_VOICE_NAME="Daniel"    # Clear
+export Ironcliw_RUNTIME_VOICE_NAME="Daniel"     # Friendly
+export Ironcliw_ALERT_VOICE_NAME="Victoria"     # Female UK (urgent)
+export Ironcliw_SUCCESS_VOICE_NAME="Tom"        # Male US (upbeat)
 ```
 
 ### Adjust Speech Rate:
 ```bash
-export JARVIS_STARTUP_VOICE_RATE=180  # Faster startup
-export JARVIS_ALERT_VOICE_RATE=200    # Very fast alerts
+export Ironcliw_STARTUP_VOICE_RATE=180  # Faster startup
+export Ironcliw_ALERT_VOICE_RATE=200    # Very fast alerts
 ```
 
 ### Disable Specific Announcements:
@@ -486,7 +486,7 @@ export REACTOR_VOICE_EXPORT=false       # Don't announce exports
 
 ### Silent Mode:
 ```bash
-export JARVIS_VOICE_ENABLED=false
+export Ironcliw_VOICE_ENABLED=false
 export JPRIME_VOICE_ENABLED=false
 export REACTOR_VOICE_ENABLED=false
 ```
@@ -500,7 +500,7 @@ export REACTOR_VOICE_ENABLED=false
 | **Lines of Code** | ~2,800 (coordinator + integrations) |
 | **Files Modified** | 8 |
 | **Files Created** | 5 |
-| **Repos Integrated** | 3 (JARVIS, J-Prime, Reactor) |
+| **Repos Integrated** | 3 (Ironcliw, J-Prime, Reactor) |
 | **Voice Engines** | 3 (MacOS Say, pyttsx3, Edge TTS) |
 | **Voice Personalities** | 6 (startup, narrator, runtime, alert, success, trinity) |
 | **API Endpoints** | 2 (status, test) |
@@ -515,7 +515,7 @@ export REACTOR_VOICE_ENABLED=false
 
 ## ✅ Verification Checklist
 
-- [x] UK Daniel is JARVIS's signature voice ⭐
+- [x] UK Daniel is Ironcliw's signature voice ⭐
 - [x] Auto-detection finds Daniel first
 - [x] Fallback chain works if Daniel unavailable
 - [x] Multi-engine TTS implemented
@@ -524,7 +524,7 @@ export REACTOR_VOICE_ENABLED=false
 - [x] Deduplication prevents duplicates
 - [x] Rate limiting prevents spam
 - [x] Health-based engine selection
-- [x] Cross-repo integration (JARVIS, J-Prime, Reactor)
+- [x] Cross-repo integration (Ironcliw, J-Prime, Reactor)
 - [x] Supervisor integration complete
 - [x] Graceful shutdown implemented
 - [x] API endpoints functional
@@ -538,27 +538,27 @@ export REACTOR_VOICE_ENABLED=false
 
 The Trinity Voice System is a **world-class voice coordination platform** that:
 
-✅ **Uses UK Daniel as JARVIS's canonical voice**
+✅ **Uses UK Daniel as Ironcliw's canonical voice**
 ✅ **Has zero hardcoded values** (fully environment-driven)
 ✅ **Is ultra-robust** (3-engine fallback, health monitoring)
 ✅ **Is async & parallel** (background worker, non-blocking)
 ✅ **Is intelligent** (priority queue, deduplication, rate limiting)
 ✅ **Is dynamic** (real-time adaptation, health scoring)
-✅ **Integrates across all repos** (JARVIS, J-Prime, Reactor)
+✅ **Integrates across all repos** (Ironcliw, J-Prime, Reactor)
 ✅ **Is production-ready** (full metrics, monitoring, documentation)
 
 **All 19 critical gaps from the original analysis have been resolved.**
 
 ---
 
-**Start JARVIS and hear UK Daniel's voice:**
+**Start Ironcliw and hear UK Daniel's voice:**
 ```bash
 python3 run_supervisor.py
 ```
 
 **Expected first announcement (UK Daniel):**
 ```
-"Trinity Voice Coordinator initialized. JARVIS systems online."
+"Trinity Voice Coordinator initialized. Ironcliw systems online."
 ```
 
 🎉 **Implementation Complete!**

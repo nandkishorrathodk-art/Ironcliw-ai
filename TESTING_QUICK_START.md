@@ -1,4 +1,4 @@
-# 🚀 Quick Start: Testing Feedback Learning & Command Safety
+﻿# 🚀 Quick Start: Testing Feedback Learning & Command Safety
 
 **5-minute verification that everything works**
 
@@ -7,7 +7,7 @@
 ## Step 1: Run Automated Tests (2 minutes)
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 
 # Run the live test suite
 python -m backend.examples.live_feedback_test
@@ -111,9 +111,9 @@ asyncio.run(test())
 
 ---
 
-## What to Test with Live JARVIS
+## What to Test with Live Ironcliw
 
-**Once JARVIS is running:**
+**Once Ironcliw is running:**
 
 ### 1. Trigger a Terminal Error
 ```bash
@@ -121,14 +121,14 @@ asyncio.run(test())
 python -c "import nonexistent_module"
 ```
 
-**Expected:** JARVIS detects error, offers help
+**Expected:** Ironcliw detects error, offers help
 
-### 2. Respond to JARVIS
+### 2. Respond to Ironcliw
 ```
 You: "yes" or "what does it say?"
 ```
 
-**Expected:** JARVIS suggests `pip install nonexistent_module` with safety warning
+**Expected:** Ironcliw suggests `pip install nonexistent_module` with safety warning
 
 ### 3. Check Feedback Was Recorded
 ```bash
@@ -158,7 +158,7 @@ cat ~/.jarvis/learning/feedback.json | python -m json.tool | tail -20
 ### "Module not found" error
 ```bash
 # Make sure you're in the right directory
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 
 # Check Python path
 export PYTHONPATH="${PWD}:${PYTHONPATH}"
@@ -187,7 +187,7 @@ Once verified working:
    - `docs/MANUAL_TESTING_GUIDE.md` (detailed testing)
    - `docs/INTEGRATION_GUIDE_FEEDBACK_AND_SAFETY.md` (how to integrate)
 
-2. ✅ **Integrate with JARVIS:**
+2. ✅ **Integrate with Ironcliw:**
    - Follow integration guide
    - Add to `main.py` initialization
    - Test with live terminal errors

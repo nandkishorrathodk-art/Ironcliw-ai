@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Voice Unlock Direct
 ========================
@@ -74,7 +74,7 @@ async def check_daemon_log():
     import subprocess
     import os
     
-    log_path = os.path.expanduser("~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/objc/server/websocket_server.log")
+    log_path = os.path.expanduser("~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock/objc/server/websocket_server.log")
     
     if os.path.exists(log_path):
         # Get last 20 lines

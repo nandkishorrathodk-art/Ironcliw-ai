@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Debug Weather Issue - Diagnose why JARVIS gets stuck
+Debug Weather Issue - Diagnose why Ironcliw gets stuck
 """
 
 import asyncio
@@ -171,18 +171,18 @@ async def debug_weather_components():
 
 
 async def test_jarvis_handler():
-    """Test JARVIS weather handler directly"""
-    print("\n\n🤖 Testing JARVIS Weather Handler Directly")
+    """Test Ironcliw weather handler directly"""
+    print("\n\n🤖 Testing Ironcliw Weather Handler Directly")
     print("=" * 60)
     
     try:
-        from voice.jarvis_agent_voice import JARVISAgentVoice
+        from voice.jarvis_agent_voice import IroncliwAgentVoice
         from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzerMain
         
         # Initialize
         api_key = os.getenv("ANTHROPIC_API_KEY")
         vision_analyzer = ClaudeVisionAnalyzerMain(api_key)
-        jarvis = JARVISAgentVoice(user_name="Sir", vision_analyzer=vision_analyzer)
+        jarvis = IroncliwAgentVoice(user_name="Sir", vision_analyzer=vision_analyzer)
         
         # Test weather handler with timeout
         print("Testing _handle_weather_command with 15s timeout...")
@@ -200,10 +200,10 @@ async def test_jarvis_handler():
             
         except asyncio.TimeoutError:
             print("❌ Handler timed out after 15 seconds!")
-            print("This is likely where JARVIS gets stuck.")
+            print("This is likely where Ironcliw gets stuck.")
             
     except Exception as e:
-        print(f"❌ JARVIS handler error: {e}")
+        print(f"❌ Ironcliw handler error: {e}")
         import traceback
         traceback.print_exc()
 

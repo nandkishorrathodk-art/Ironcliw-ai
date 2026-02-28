@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Notification Intelligence System for JARVIS
+Notification Intelligence System for Ironcliw
 Uses vision system to detect and intelligently announce notifications
 """
 

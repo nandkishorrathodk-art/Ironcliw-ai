@@ -1,8 +1,8 @@
-"""
+﻿"""
 Read-Write Lock v2.0 -- Concurrent readers, exclusive writers.
 =============================================================
 
-Production-grade RWLock for the JARVIS ecosystem supporting both async
+Production-grade RWLock for the Ironcliw ecosystem supporting both async
 and synchronous contexts. Designed for read-heavy shared state (config,
 health status, metrics) where writes are infrequent.
 
@@ -50,7 +50,7 @@ Usage:
     with slock.write_lock():
         shared_state["key"] = new_value
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0 (February 2026)
 """
 from __future__ import annotations
@@ -180,7 +180,7 @@ class AsyncRWLock:
         writer_priority: When True (default), pending writers block new readers.
         contention_warn_threshold_s: Log a warning with stack trace if a write
             acquire waits longer than this many seconds.  Sourced from
-            ``JARVIS_RWLOCK_CONTENTION_WARN_S`` env var when not provided.
+            ``Ironcliw_RWLOCK_CONTENTION_WARN_S`` env var when not provided.
     """
 
     def __init__(
@@ -194,7 +194,7 @@ class AsyncRWLock:
         self._contention_warn_s = (
             contention_warn_threshold_s
             if contention_warn_threshold_s is not None
-            else _env_float("JARVIS_RWLOCK_CONTENTION_WARN_S", 1.0)
+            else _env_float("Ironcliw_RWLOCK_CONTENTION_WARN_S", 1.0)
         )
 
         # Internal state -- protected by _cond
@@ -521,7 +521,7 @@ class SyncRWLock:
         self._contention_warn_s = (
             contention_warn_threshold_s
             if contention_warn_threshold_s is not None
-            else _env_float("JARVIS_RWLOCK_CONTENTION_WARN_S", 1.0)
+            else _env_float("Ironcliw_RWLOCK_CONTENTION_WARN_S", 1.0)
         )
 
         self._lock = threading.Lock()
@@ -849,7 +849,7 @@ def create_async_rwlock(
     Returns:
         A configured :class:`AsyncRWLock` instance.
     """
-    wp = writer_priority if not _env_bool("JARVIS_RWLOCK_DISABLE_WRITER_PRIORITY", False) else False
+    wp = writer_priority if not _env_bool("Ironcliw_RWLOCK_DISABLE_WRITER_PRIORITY", False) else False
     return AsyncRWLock(
         name=name,
         writer_priority=wp,
@@ -872,7 +872,7 @@ def create_sync_rwlock(
     Returns:
         A configured :class:`SyncRWLock` instance.
     """
-    wp = writer_priority if not _env_bool("JARVIS_RWLOCK_DISABLE_WRITER_PRIORITY", False) else False
+    wp = writer_priority if not _env_bool("Ironcliw_RWLOCK_DISABLE_WRITER_PRIORITY", False) else False
     return SyncRWLock(
         name=name,
         writer_priority=wp,

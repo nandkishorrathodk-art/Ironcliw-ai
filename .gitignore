@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 __pycache__/
 **/__pycache__/
@@ -75,7 +75,7 @@ backend/faiss_index/
 backend/chroma_db/
 backend/knowledge_base/
 prd/
-Notes (JARVIS)
+Notes (Ironcliw)
 
 # Archived local model files (no longer used)
 backend/chatbots/_archived_local_models/
@@ -343,7 +343,7 @@ postman/environments/*-secrets.json
 postman/environments/*-production.json
 postman/environments/*-staging.json
 # Keep local development environment in git
-!postman/environments/JARVIS_Environment.postman_environment.json
+!postman/environments/Ironcliw_Environment.postman_environment.json
 
 # Newman reports and output
 newman/

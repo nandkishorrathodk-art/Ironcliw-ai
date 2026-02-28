@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligence Learning Coordinator - RAG + RLHF + Multi-Factor Intelligence
 
 Integrates learning database with multi-factor authentication intelligence for:
@@ -32,7 +32,7 @@ Architecture:
             Enhanced Auth Decision
             (Context + Learning)
 
-Author: JARVIS AI Agent
+Author: Ironcliw AI Agent
 Version: 5.0.0
 """
 
@@ -166,7 +166,7 @@ class IntelligenceLearningCoordinator:
         self.adaptive_target_false_negative_rate = self.config.get('target_fnr', 0.05)  # 5% FNR
 
         # Storage
-        data_dir = Path(os.getenv('JARVIS_DATA_DIR', Path.home() / '.jarvis')) / 'intelligence'
+        data_dir = Path(os.getenv('Ironcliw_DATA_DIR', Path.home() / '.jarvis')) / 'intelligence'
         data_dir.mkdir(parents=True, exist_ok=True)
         self.learning_file = data_dir / 'authentication_learning.json'
 
@@ -767,10 +767,8 @@ async def get_learning_coordinator(config: Optional[Dict] = None) -> Intelligenc
 async def get_learning_database():
     """Get learning database instance."""
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
-        db = JARVISLearningDatabase()
-        await db.initialize()
-        return db
+        from intelligence.learning_database import get_learning_database as _get_ldb
+        return await _get_ldb()
     except Exception as e:
         logger.error(f"Error loading learning database: {e}")
         return None
@@ -790,7 +788,7 @@ if __name__ == "__main__":
         coordinator = await get_learning_coordinator()
 
         print("\n" + "="*80)
-        print("JARVIS Intelligence Learning Coordinator - Test")
+        print("Ironcliw Intelligence Learning Coordinator - Test")
         print("="*80 + "\n")
 
         # Simulate authentication

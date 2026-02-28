@@ -1,4 +1,4 @@
-# Phase 9: Frontend Integration & Testing - Windows Edition
+﻿# Phase 9: Frontend Integration & Testing - Windows Edition
 **Status**: In Progress  
 **Date**: 2026-02-22  
 **Platform**: Windows 11 (Acer Swift Neo, 16GB RAM, 512GB SSD)
@@ -76,7 +76,7 @@ REACT_APP_FEATURE_CLOUD_FALLBACK=true
 - No Windows path errors
 - React app compiles without errors
 - Browser auto-opens to localhost:3000
-- JARVIS UI loads correctly
+- Ironcliw UI loads correctly
 
 **Test Command**:
 ```powershell
@@ -141,7 +141,7 @@ window.wsClient?.connectionState  // Should be "connected" or "ONLINE"
 - Commands sent over WebSocket first
 - Fallback to REST API if WebSocket down
 - Response displayed in UI within 2 seconds
-- No "Not connected to JARVIS" errors (if backend up)
+- No "Not connected to Ironcliw" errors (if backend up)
 
 ---
 

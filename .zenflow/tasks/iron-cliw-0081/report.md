@@ -1,8 +1,8 @@
-# JARVIS Windows Port - Release Report
+﻿# Ironcliw Windows Port - Release Report
 
 ## Executive Summary
 
-**Project**: Port JARVIS AI Assistant from macOS to Windows 10/11  
+**Project**: Port Ironcliw AI Assistant from macOS to Windows 10/11  
 **Hardware**: Acer Swift Neo (512GB SSD, 16GB RAM)  
 **Complexity**: **HARD**  
 **Status**: **Phase 1-5 Complete (45% of total project)**  
@@ -15,7 +15,7 @@
 
 ### Phase 1: Foundation & Platform Abstraction ✅
 
-**Goal**: Create a cross-platform foundation that allows JARVIS to detect and use Windows-specific implementations at runtime.
+**Goal**: Create a cross-platform foundation that allows Ironcliw to detect and use Windows-specific implementations at runtime.
 
 **Deliverables**:
 - **Platform abstraction layer** (`backend/platform/`)
@@ -179,7 +179,7 @@ Python (Orchestration) ← C# (Windows APIs) + Rust (Performance)
 - **macOS**: `_generate_launchd_plist()` → `launchctl load`
 - **Windows**: `_generate_windows_task_xml()` → `schtasks /Create`
 - **Linux**: Systemd stub (prints instructions, not yet implemented)
-- Task name: `JARVIS\Supervisor`
+- Task name: `Ironcliw\Supervisor`
 - Auto-restart on boot and crash events
 
 **3. Loading Server Path Fixes**:
@@ -196,7 +196,7 @@ Python (Orchestration) ← C# (Windows APIs) + Rust (Performance)
 **Verification Tests**:
 ```bash
 $ python unified_supervisor.py --version
-JARVIS Unified System Kernel v1.0.0
+Ironcliw Unified System Kernel v1.0.0
 Exit Code: 0 ✅
 
 $ python -c "from backend.platform import get_platform; print(get_platform())"
@@ -251,7 +251,7 @@ python unified_supervisor.py --test       # ⏸️ Requires backend deps
 **Not Yet Tested** (Phases 6-11):
 - Backend FastAPI server startup
 - WebSocket connections
-- Trinity coordination (JARVIS-Prime + Reactor-Core)
+- Trinity coordination (Ironcliw-Prime + Reactor-Core)
 - GCP cloud inference routing
 - Vision system end-to-end
 - Ghost Hands automation
@@ -356,7 +356,7 @@ cd backend\windows_native
 
 ### Trinity Coordination Untested
 
-**What**: Cross-repo startup (JARVIS-Prime + Reactor-Core)  
+**What**: Cross-repo startup (Ironcliw-Prime + Reactor-Core)  
 **Why Not Tested**: Requires cloning and configuring additional repositories  
 **Expected**: Should work without modification (GCP integration is cross-platform)
 
@@ -463,7 +463,7 @@ cd backend\windows_native
 
 ### Challenge 1: Polyglot Stack Complexity
 
-**Problem**: JARVIS uses Python, Swift, Rust, C#, JavaScript/TypeScript across 200+ files  
+**Problem**: Ironcliw uses Python, Swift, Rust, C#, JavaScript/TypeScript across 200+ files  
 **Impact**: Required understanding of 5 programming languages and their interop mechanisms  
 **Solution**:
 - Created platform abstraction layer for clean separation
@@ -501,7 +501,7 @@ cd backend\windows_native
 **Problem**: macOS voice biometric authentication uses 80+ files, ECAPA-TDNN model, Keychain integration, AppleScript  
 **Impact**: Full port would add 4-6 weeks to project timeline  
 **Solution**:
-- Implemented bypass mode for MVP (environment variable: `JARVIS_SKIP_VOICE_AUTH=true`)
+- Implemented bypass mode for MVP (environment variable: `Ironcliw_SKIP_VOICE_AUTH=true`)
 - Deferred Windows Hello integration to post-MVP phase
 - Created architecture for future authentication plug-ins
 

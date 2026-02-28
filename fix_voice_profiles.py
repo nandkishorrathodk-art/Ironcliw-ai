@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Fix voice profile issues - consolidate and update embeddings."""
 
 import asyncio
@@ -169,7 +169,7 @@ async def fix_voice_profiles():
         print("✅ PROFILE FIX COMPLETE!")
         print("="*80)
         print("\nNext steps:")
-        print("1. Restart JARVIS to reload profiles")
+        print("1. Restart Ironcliw to reload profiles")
         print("2. Try voice unlock again")
         print("3. If still low confidence, run voice re-enrollment")
 

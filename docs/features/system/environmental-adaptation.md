@@ -1,4 +1,4 @@
-# 🌍 JARVIS Environmental Adaptation System
+﻿# 🌍 Ironcliw Environmental Adaptation System
 
 ## Overview
 
@@ -723,7 +723,7 @@ environmentalAdaptation.resetProfiles();
 
 ### Impact
 
-The Environmental Adaptation System transforms JARVIS from a **quiet-room-only** assistant to a **robust, any-environment** assistant that works reliably in:
+The Environmental Adaptation System transforms Ironcliw from a **quiet-room-only** assistant to a **robust, any-environment** assistant that works reliably in:
 - Noisy offices
 - Living rooms with TV
 - Large echoey rooms

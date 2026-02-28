@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Unified Database Driver Manager v1.0
 =====================================
@@ -33,7 +33,7 @@ Architecture:
 │           └───────────────────────┘                             │
 └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

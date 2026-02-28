@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Cross-Repo Synchronization - Gaps #5-7
 ==============================================
 
@@ -8,11 +8,11 @@ Manages state synchronization across Trinity repositories:
 - Gap #7: Graceful degradation on component failure
 
 Repositories:
-- JARVIS (Body): Main execution layer
+- Ironcliw (Body): Main execution layer
 - J-Prime (Mind): Cognitive layer
 - Reactor-Core (Nerves): Training layer
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class SyncStatus(Enum):
 
 class RepoType(Enum):
     """Trinity repository types."""
-    JARVIS = "jarvis"        # Body
+    Ironcliw = "jarvis"        # Body
     J_PRIME = "j_prime"      # Mind
     REACTOR_CORE = "reactor_core"  # Nerves
 
@@ -103,7 +103,7 @@ class CrossRepoSync:
 
     # Default repo paths (can be overridden via environment)
     DEFAULT_PATHS = {
-        RepoType.JARVIS: Path.home() / "Documents/repos/JARVIS-AI-Agent",
+        RepoType.Ironcliw: Path.home() / "Documents/repos/Ironcliw-AI-Agent",
         RepoType.J_PRIME: Path.home() / "Documents/repos/jarvis-prime",
         RepoType.REACTOR_CORE: Path.home() / "Documents/repos/reactor-core",
     }
@@ -143,7 +143,7 @@ class CrossRepoSync:
         self._running = True
 
         # Initial discovery (with timeout — git subprocesses can hang)
-        _discovery_timeout = float(os.getenv("JARVIS_CROSS_REPO_DISCOVERY_TIMEOUT", "30"))
+        _discovery_timeout = float(os.getenv("Ironcliw_CROSS_REPO_DISCOVERY_TIMEOUT", "30"))
         try:
             await asyncio.wait_for(self._discover_repos(), timeout=_discovery_timeout)
         except asyncio.TimeoutError:
@@ -258,7 +258,7 @@ class CrossRepoSync:
             repo_path = repo.repo_path
 
             # Check for specific capability markers
-            if repo_type == RepoType.JARVIS:
+            if repo_type == RepoType.Ironcliw:
                 if (repo_path / "backend/voice").exists():
                     capabilities.add("voice")
                 if (repo_path / "backend/vision").exists():
@@ -329,7 +329,7 @@ class CrossRepoSync:
         v253.7: Added per-command timeout to prevent startup stall if git hangs
         (e.g., lock file contention, credential helper, slow filesystem).
         """
-        _git_timeout = float(os.getenv("JARVIS_GIT_SUBPROCESS_TIMEOUT", "10"))
+        _git_timeout = float(os.getenv("Ironcliw_GIT_SUBPROCESS_TIMEOUT", "10"))
 
         try:
             # Get current branch
@@ -682,7 +682,7 @@ class CrossRepoSync:
             fallbacks["training"] = "disabled"
             fallbacks["evaluation"] = "basic_metrics"
 
-        elif failed_repo == RepoType.JARVIS:
+        elif failed_repo == RepoType.Ironcliw:
             # Body failed - this is critical, notify other components
             fallbacks["execution"] = "emergency_mode"
 

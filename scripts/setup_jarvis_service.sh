@@ -1,14 +1,14 @@
-#!/bin/bash
-# Setup JARVIS backend as a systemd service with Cloud SQL support
+﻿#!/bin/bash
+# Setup Ironcliw backend as a systemd service with Cloud SQL support
 
 set -e
 
-echo "🔧 Setting up JARVIS Backend systemd service..."
+echo "🔧 Setting up Ironcliw Backend systemd service..."
 
 # Create systemd service file
 sudo tee /etc/systemd/system/jarvis-backend.service > /dev/null << EOF
 [Unit]
-Description=JARVIS AI Backend
+Description=Ironcliw AI Backend
 After=network.target cloud-sql-proxy.service
 Requires=cloud-sql-proxy.service
 
@@ -37,10 +37,10 @@ sudo systemctl restart jarvis-backend
 # Check status
 sleep 5
 if sudo systemctl is-active --quiet jarvis-backend; then
-    echo "✅ JARVIS Backend service is running"
+    echo "✅ Ironcliw Backend service is running"
     sudo systemctl status jarvis-backend --no-pager | head -15
 else
-    echo "❌ JARVIS Backend service failed to start"
+    echo "❌ Ironcliw Backend service failed to start"
     sudo journalctl -u jarvis-backend -n 50 --no-pager
     exit 1
 fi

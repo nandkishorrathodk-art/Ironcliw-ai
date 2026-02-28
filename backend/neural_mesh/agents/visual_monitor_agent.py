@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Visual Monitor Agent v14.0 (v28.2 Window Validation)
+﻿"""
+Ironcliw Neural Mesh - Visual Monitor Agent v14.0 (v28.2 Window Validation)
 ==========================================================================
 
 The "Watcher & Actor" of Video Multi-Space Intelligence (VMSI) - Ferrari Engine Edition.
@@ -13,7 +13,7 @@ This agent provides GPU-ACCELERATED visual surveillance capabilities:
 - Execute Computer Use actions in response to visual triggers
 - Support conditional branching (if Error -> Retry, if Success -> Deploy)
 - Integrate with SpatialAwarenessAgent for window location
-- Share state across repos (JARVIS ↔ JARVIS Prime ↔ Reactor Core)
+- Share state across repos (Ironcliw ↔ Ironcliw Prime ↔ Reactor Core)
 - 👻 Ghost Hands: Cross-space actions without focus stealing (v13.0)
 - 🗣️ Working Out Loud: Real-time narration during monitoring (v14.0)
 
@@ -31,7 +31,7 @@ v14.0 WORKING OUT LOUD - TRANSPARENT CO-PILOT MODE:
 - Activity narration: Announce significant screen changes
 - Intelligent debouncing: Prevents spam with rate limiting and content similarity checks
 - Configurable verbosity: minimal, normal, verbose, debug
-- Environment variable control: JARVIS_WORKING_OUT_LOUD, JARVIS_HEARTBEAT_INTERVAL, etc.
+- Environment variable control: Ironcliw_WORKING_OUT_LOUD, Ironcliw_HEARTBEAT_INTERVAL, etc.
 
 v13.0 GHOST HANDS INTEGRATION:
 - Cross-space action execution via YabaiAwareActuator
@@ -65,13 +65,13 @@ Usage from voice:
     "Watch Chrome for 'Application Submitted' and Terminal for 'Error'"
 
     Working Out Loud (v14.0):
-    JARVIS will periodically narrate: "Still watching Chrome for 'Build Complete'. 45 seconds in."
-    JARVIS will announce near-misses: "I see 'Build Started' but waiting for 'Build Complete'."
+    Ironcliw will periodically narrate: "Still watching Chrome for 'Build Complete'. 45 seconds in."
+    Ironcliw will announce near-misses: "I see 'Build Started' but waiting for 'Build Complete'."
 
-This is JARVIS's "60 FPS eyes AND autonomous hands" - GPU-accelerated surveillance
+This is Ironcliw's "60 FPS eyes AND autonomous hands" - GPU-accelerated surveillance
 with intelligent action execution and transparent co-pilot narration. Clinical-grade engineering.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 14.0 - Working Out Loud (Transparent Co-Pilot Mode)
 """
 
@@ -363,39 +363,39 @@ class VisualMonitorConfig:
     auto_switch_to_window: bool = True  # Automatically switch to target window
 
     # v14.0: "Working Out Loud" - Transparent Co-Pilot Mode
-    # Turns JARVIS from a silent sentinel into an active co-pilot
+    # Turns Ironcliw from a silent sentinel into an active co-pilot
     working_out_loud_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_WORKING_OUT_LOUD", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_WORKING_OUT_LOUD", "true").lower() == "true"
     )
     # Heartbeat: Regular status updates during monitoring
     heartbeat_narration_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "30"))
+        default_factory=lambda: float(os.getenv("Ironcliw_HEARTBEAT_INTERVAL", "30"))
     )
     # v15.0: First heartbeat comes earlier for immediate feedback
     first_heartbeat_delay_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_FIRST_HEARTBEAT_DELAY", "10"))
+        default_factory=lambda: float(os.getenv("Ironcliw_FIRST_HEARTBEAT_DELAY", "10"))
     )
     # Near-miss: When we see interesting text but not the trigger
     near_miss_narration_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NEAR_MISS_NARRATION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NEAR_MISS_NARRATION", "true").lower() == "true"
     )
     near_miss_cooldown_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_NEAR_MISS_COOLDOWN", "60"))
+        default_factory=lambda: float(os.getenv("Ironcliw_NEAR_MISS_COOLDOWN", "60"))
     )
     # Activity: When significant screen changes are detected
     activity_narration_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_ACTIVITY_NARRATION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_ACTIVITY_NARRATION", "true").lower() == "true"
     )
     activity_cooldown_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_ACTIVITY_COOLDOWN", "15"))
+        default_factory=lambda: float(os.getenv("Ironcliw_ACTIVITY_COOLDOWN", "15"))
     )
     # Verbosity levels: minimal, normal, verbose, debug
     narration_verbosity: str = field(
-        default_factory=lambda: os.getenv("JARVIS_NARRATION_VERBOSITY", "normal")
+        default_factory=lambda: os.getenv("Ironcliw_NARRATION_VERBOSITY", "normal")
     )
     # Max narrations per minute (spam protection)
     max_narrations_per_minute: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MAX_NARRATIONS_PER_MIN", "6"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MAX_NARRATIONS_PER_MIN", "6"))
     )
 
     # =========================================================================
@@ -407,31 +407,31 @@ class VisualMonitorConfig:
 
     # Base timeout for watcher startup (per watcher)
     progressive_startup_base_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PROGRESSIVE_BASE_TIMEOUT", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PROGRESSIVE_BASE_TIMEOUT", "5.0"))
     )
     # Additional timeout per window (scales with window count)
     progressive_startup_per_window_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PROGRESSIVE_PER_WINDOW", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PROGRESSIVE_PER_WINDOW", "2.0"))
     )
     # Maximum total timeout (cap to prevent excessive waits)
     progressive_startup_max_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PROGRESSIVE_MAX_TIMEOUT", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PROGRESSIVE_MAX_TIMEOUT", "60.0"))
     )
     # Minimum watchers required before returning (percentage of total)
     progressive_startup_min_active_ratio: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PROGRESSIVE_MIN_RATIO", "0.3"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PROGRESSIVE_MIN_RATIO", "0.3"))
     )
     # Max parallel watcher spawns (throttle to avoid system overload)
     progressive_startup_max_parallel_spawns: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PROGRESSIVE_MAX_PARALLEL", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PROGRESSIVE_MAX_PARALLEL", "5"))
     )
     # Max parallel rescue operations (window teleportation)
     progressive_rescue_max_parallel: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_RESCUE_MAX_PARALLEL", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_RESCUE_MAX_PARALLEL", "5"))
     )
     # Enable optimistic acknowledgment (return immediately, verify in background)
     progressive_startup_optimistic: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PROGRESSIVE_OPTIMISTIC", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PROGRESSIVE_OPTIMISTIC", "true").lower() == "true"
     )
 
     # =========================================================================
@@ -443,19 +443,19 @@ class VisualMonitorConfig:
 
     # Enable Mosaic mode (O(1) efficiency instead of O(N))
     mosaic_mode_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MOSAIC_MODE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MOSAIC_MODE", "true").lower() == "true"
     )
     # Minimum window count to trigger Mosaic mode (use per-window for small counts)
     mosaic_mode_min_windows: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MOSAIC_MIN_WINDOWS", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MOSAIC_MIN_WINDOWS", "3"))
     )
     # FPS for Mosaic capture (lower than per-window since single stream)
     mosaic_fps: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MOSAIC_FPS", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MOSAIC_FPS", "5"))
     )
     # Enable spatial intelligence (map OCR matches back to specific windows)
     mosaic_spatial_intelligence: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MOSAIC_SPATIAL", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MOSAIC_SPATIAL", "true").lower() == "true"
     )
 
 
@@ -938,7 +938,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # Cross-repo state
         self._state_sync_task: Optional[asyncio.Task] = None
 
-        # Purple indicator session (for visual feedback that JARVIS is watching)
+        # Purple indicator session (for visual feedback that Ironcliw is watching)
         self._indicator_session = None
 
         # v14.0: "Working Out Loud" - Narration state per watcher
@@ -970,7 +970,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # - Watchers queue up and wait their turn
         # - Prevents memory explosion during multi-window surveillance
         # =====================================================================
-        self._ocr_max_concurrent = int(os.getenv('JARVIS_OCR_MAX_CONCURRENT', '2'))
+        self._ocr_max_concurrent = int(os.getenv('Ironcliw_OCR_MAX_CONCURRENT', '2'))
         self._ocr_semaphore: Optional[asyncio.Semaphore] = None  # Lazy-init in async context
 
     # =========================================================================
@@ -995,7 +995,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         Three-tier fallback:
         1. GhostDisplayManager._ghost_info.yabai_display_index (live)
-        2. JARVIS_SHADOW_DISPLAY env var (operator override, stores yabai index)
+        2. Ironcliw_SHADOW_DISPLAY env var (operator override, stores yabai index)
         3. Conservative default: 2
         """
         # Tier 1: Live query from GhostDisplayManager
@@ -1010,7 +1010,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 pass
 
         # Tier 2: Env var override
-        env_val = os.getenv("JARVIS_SHADOW_DISPLAY")
+        env_val = os.getenv("Ironcliw_SHADOW_DISPLAY")
         if env_val:
             try:
                 return int(env_val)
@@ -1029,8 +1029,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         Four-tier fallback:
         1. GhostDisplayManager.ghost_display_id (now stores CGDirectDisplayID)
-        2. JARVIS_GHOST_CG_DISPLAY_ID env var (direct override)
-        3. Resolve JARVIS_SHADOW_DISPLAY yabai index → CGDirectDisplayID
+        2. Ironcliw_GHOST_CG_DISPLAY_ID env var (direct override)
+        3. Resolve Ironcliw_SHADOW_DISPLAY yabai index → CGDirectDisplayID
         4. Raw yabai index with warning (matches old broken behavior)
         """
         # Tier 1: GhostDisplayManager (now returns CGDirectDisplayID after v242.0 fix)
@@ -1045,7 +1045,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 pass
 
         # Tier 2: Direct CGDirectDisplayID override
-        env_cg = os.getenv("JARVIS_GHOST_CG_DISPLAY_ID")
+        env_cg = os.getenv("Ironcliw_GHOST_CG_DISPLAY_ID")
         if env_cg:
             try:
                 return int(env_cg)
@@ -1079,7 +1079,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         Three-tier fallback:
         1. GhostDisplayManager.ghost_display_dimensions (only if _ghost_info is populated)
-        2. JARVIS_GHOST_WIDTH / JARVIS_GHOST_HEIGHT env vars
+        2. Ironcliw_GHOST_WIDTH / Ironcliw_GHOST_HEIGHT env vars
         3. Conservative default: (1920, 1080)
         """
         # Tier 1: Live query from GhostDisplayManager
@@ -1095,8 +1095,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         # Tier 2: Env var override
         try:
-            w = int(os.getenv('JARVIS_GHOST_WIDTH', '0'))
-            h = int(os.getenv('JARVIS_GHOST_HEIGHT', '0'))
+            w = int(os.getenv('Ironcliw_GHOST_WIDTH', '0'))
+            h = int(os.getenv('Ironcliw_GHOST_HEIGHT', '0'))
             if w > 0 and h > 0:
                 return (w, h)
         except (ValueError, TypeError):
@@ -1219,7 +1219,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     # Wait for new watcher to produce its first frame before swapping.
                     # Old watcher continues serving frames to the detection loop.
                     _validation_timeout = float(os.environ.get(
-                        "JARVIS_MOSAIC_SWAP_VALIDATION_TIMEOUT", "3.0"
+                        "Ironcliw_MOSAIC_SWAP_VALIDATION_TIMEOUT", "3.0"
                     ))
                     first_frame = await new_watcher.wait_for_first_frame(
                         timeout=_validation_timeout
@@ -1290,7 +1290,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         traditional screen recording APIs.
 
         This creates a UX problem: the user says "Watch Chrome" but sees no visual
-        confirmation that JARVIS is actually watching.
+        confirmation that Ironcliw is actually watching.
 
         CRITICAL INSIGHT:
         An empty AVCaptureSession WITHOUT input won't trigger the purple icon!
@@ -1391,7 +1391,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     return None
 
             # Run in executor with timeout (AVFoundation init can be slow)
-            indicator_timeout = float(os.getenv('JARVIS_INDICATOR_TIMEOUT', '5.0'))
+            indicator_timeout = float(os.getenv('Ironcliw_INDICATOR_TIMEOUT', '5.0'))
 
             try:
                 # v89.0: Use asyncio.to_thread() for proper event loop handling
@@ -1401,7 +1401,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 )
 
                 if self._indicator_session:
-                    logger.info("🟣 Purple Video Indicator ACTIVATED - JARVIS is watching!")
+                    logger.info("🟣 Purple Video Indicator ACTIVATED - Ironcliw is watching!")
                     return True
                 else:
                     logger.debug("Purple indicator not available (AVFoundation/permissions may be missing)")
@@ -1465,12 +1465,12 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # ThreadPoolExecutor threads try to access the event loop
 
         # Configurable timeouts from environment (no hardcoding)
-        ferrari_init_timeout = float(os.getenv('JARVIS_FERRARI_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
-        watcher_mgr_init_timeout = float(os.getenv('JARVIS_WATCHER_MGR_INIT_TIMEOUT', '5.0'))  # v78.1: Increased from 3s
-        detector_init_timeout = float(os.getenv('JARVIS_DETECTOR_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
-        computer_use_init_timeout = float(os.getenv('JARVIS_COMPUTER_USE_INIT_TIMEOUT', '5.0'))  # v78.1: Increased from 3s
-        agentic_runner_init_timeout = float(os.getenv('JARVIS_AGENTIC_RUNNER_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 3s
-        spatial_agent_init_timeout = float(os.getenv('JARVIS_SPATIAL_AGENT_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
+        ferrari_init_timeout = float(os.getenv('Ironcliw_FERRARI_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
+        watcher_mgr_init_timeout = float(os.getenv('Ironcliw_WATCHER_MGR_INIT_TIMEOUT', '5.0'))  # v78.1: Increased from 3s
+        detector_init_timeout = float(os.getenv('Ironcliw_DETECTOR_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
+        computer_use_init_timeout = float(os.getenv('Ironcliw_COMPUTER_USE_INIT_TIMEOUT', '5.0'))  # v78.1: Increased from 3s
+        agentic_runner_init_timeout = float(os.getenv('Ironcliw_AGENTIC_RUNNER_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 3s
+        spatial_agent_init_timeout = float(os.getenv('Ironcliw_SPATIAL_AGENT_INIT_TIMEOUT', '15.0'))  # v78.1: Increased from 5s
 
         # v78.1: Smart parallel timeout - max of individual timeouts + 5s buffer
         individual_timeouts = [
@@ -1478,7 +1478,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             computer_use_init_timeout, agentic_runner_init_timeout, spatial_agent_init_timeout
         ]
         default_parallel_timeout = max(individual_timeouts) + 5.0
-        parallel_timeout = float(os.getenv('JARVIS_PARALLEL_INIT_TIMEOUT', str(default_parallel_timeout)))
+        parallel_timeout = float(os.getenv('Ironcliw_PARALLEL_INIT_TIMEOUT', str(default_parallel_timeout)))
 
         # Track component status for final report
         component_status = {
@@ -2010,7 +2010,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # =====================================================================
 
             # Step 1: Find window using SpatialAwarenessAgent (with timeout protection)
-            find_window_timeout = float(os.getenv("JARVIS_FIND_WINDOW_TIMEOUT", "5"))
+            find_window_timeout = float(os.getenv("Ironcliw_FIND_WINDOW_TIMEOUT", "5"))
 
             try:
                 window_info = await asyncio.wait_for(
@@ -2565,11 +2565,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # v40.0.0: Robust Timeout Configuration
         # =========================================================================
         # OUTER timeout must be > INNER timeout to prevent cascade failures
-        # Inner: JARVIS_WORKSPACE_QUERY_TIMEOUT (default 4s) - parallel yabai query
-        # Outer: JARVIS_FIND_WINDOW_TIMEOUT (default 6s) - overall window discovery
+        # Inner: Ironcliw_WORKSPACE_QUERY_TIMEOUT (default 4s) - parallel yabai query
+        # Outer: Ironcliw_FIND_WINDOW_TIMEOUT (default 6s) - overall window discovery
         # The parallel query uses circuit breaker + cache, so failures are graceful
         # =========================================================================
-        find_window_timeout = float(os.getenv("JARVIS_FIND_WINDOW_TIMEOUT", "6"))
+        find_window_timeout = float(os.getenv("Ironcliw_FIND_WINDOW_TIMEOUT", "6"))
 
         try:
             windows = await asyncio.wait_for(
@@ -2733,12 +2733,12 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # - Old order: Filter → Teleport (hidden windows already removed!)
         # - New order: Teleport → Filter (teleported windows pass filter!)
         #
-        # This enables JARVIS to autonomously move windows from ANY space
+        # This enables Ironcliw to autonomously move windows from ANY space
         # to the Ghost Display, then successfully watch them.
         # =====================================================================
         teleported_windows = []
         teleported_ghost_space = None  # v41.6: Track Ghost Display space at higher scope
-        auto_handoff_enabled = bool(os.getenv('JARVIS_AUTO_HANDOFF', '1') == '1')
+        auto_handoff_enabled = bool(os.getenv('Ironcliw_AUTO_HANDOFF', '1') == '1')
 
         if windows and auto_handoff_enabled and MULTI_SPACE_AVAILABLE:
             try:
@@ -2755,7 +2755,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # causing "Processing..." freeze when Yabai is slow/unresponsive.
                 # SOLUTION: Wrap each operation in asyncio.wait_for with 3s timeout.
                 # =====================================================================
-                yabai_timeout = float(os.getenv('JARVIS_YABAI_OPERATION_TIMEOUT', '3.0'))
+                yabai_timeout = float(os.getenv('Ironcliw_YABAI_OPERATION_TIMEOUT', '3.0'))
 
                 try:
                     ghost_space = await asyncio.wait_for(
@@ -2922,7 +2922,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     windows_on_hidden = []
                     windows_on_user_space = []
                     windows_already_good = []
-                    windows_self_preserved = []  # v41.5: Track skipped JARVIS windows
+                    windows_self_preserved = []  # v41.5: Track skipped Ironcliw windows
 
                     for w in windows:
                         window_id = w.get('window_id')
@@ -2934,13 +2934,13 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         # v41.5: SELF-PRESERVATION PROTOCOL
                         # ==========================================================
                         # ROOT CAUSE FIX: With v41.0's aggressive orphan recovery,
-                        # JARVIS might find its own UI and try to teleport it,
+                        # Ironcliw might find its own UI and try to teleport it,
                         # causing the "Self-Kidnapping" loop.
                         #
                         # SOLUTION: Intelligent title-based filtering to preserve:
-                        # - JARVIS Control Panel / Dashboard
+                        # - Ironcliw Control Panel / Dashboard
                         # - localhost development windows
-                        # - Any window serving the JARVIS interface
+                        # - Any window serving the Ironcliw interface
                         #
                         # This is NOT hardcoding - it's semantic protection of the
                         # control interface that should NEVER be moved.
@@ -2960,9 +2960,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         )
                         
                         if is_jarvis_ui:
-                            # Never teleport the JARVIS Control Panel!
+                            # Never teleport the Ironcliw Control Panel!
                             logger.info(
-                                f"[God Mode v41.5] 🛡️ SELF-PRESERVATION: Skipping JARVIS UI "
+                                f"[God Mode v41.5] 🛡️ SELF-PRESERVATION: Skipping Ironcliw UI "
                                 f"(Window {window_id}: '{window_title[:40]}...')"
                             )
                             windows_self_preserved.append(w)
@@ -2999,7 +2999,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     if windows_self_preserved:
                         logger.info(
                             f"[God Mode v41.5] 🛡️ Self-Preservation: Protected "
-                            f"{len(windows_self_preserved)} JARVIS UI window(s) from teleportation"
+                            f"{len(windows_self_preserved)} Ironcliw UI window(s) from teleportation"
                         )
 
                     # =========================================================
@@ -3035,7 +3035,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         if GHOST_MANAGER_AVAILABLE:
                             try:
                                 # v19.0: Timeout protection for Ghost Manager operations
-                                ghost_mgr_timeout = float(os.getenv('JARVIS_GHOST_MANAGER_TIMEOUT', '5.0'))
+                                ghost_mgr_timeout = float(os.getenv('Ironcliw_GHOST_MANAGER_TIMEOUT', '5.0'))
 
                                 ghost_manager = get_ghost_manager()
 
@@ -3060,7 +3060,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                                         logger.warning(f"[God Mode] ⚠️ Health monitoring start timed out")
 
                                     # v25.0: Preserve window geometry before teleportation (with timeout per window)
-                                    geometry_timeout = float(os.getenv('JARVIS_GEOMETRY_TIMEOUT', '2.0'))
+                                    geometry_timeout = float(os.getenv('Ironcliw_GEOMETRY_TIMEOUT', '2.0'))
                                     preserved_count = 0
                                     for w in windows_to_teleport:
                                         window_id = w.get("window_id")
@@ -3134,7 +3134,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         # v19.0: Added timeout protection to prevent "Processing..." hang
                         # v44.2: QUANTUM MECHANICS - Pass None to force fresh topology query
                         # =========================================================
-                        rescue_timeout = float(os.getenv('JARVIS_RESCUE_TIMEOUT', '15.0'))
+                        rescue_timeout = float(os.getenv('Ironcliw_RESCUE_TIMEOUT', '15.0'))
 
                         # v44.2: TOPOLOGY INTEGRITY CHECK
                         # Pass ghost_space=None to force rescue_windows_to_ghost_async to
@@ -3217,7 +3217,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                                             # - Voice command ("bring back my windows")
                                             # - Timeout (configurable auto-return)
                                             try:
-                                                auto_return_timeout = float(os.getenv('JARVIS_BOOMERANG_TIMEOUT', '0'))
+                                                auto_return_timeout = float(os.getenv('Ironcliw_BOOMERANG_TIMEOUT', '0'))
                                                 await yabai.boomerang_register_exile_async(
                                                     window_id=w.get("window_id"),
                                                     app_name=w.get("app", app_name),
@@ -3374,7 +3374,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                             #
                             # SOLUTION: Brief settling delay before validation/spawning
                             # ==========================================================
-                            settling_delay_ms = float(os.getenv('JARVIS_TELEPORT_SETTLING_DELAY_MS', '500'))
+                            settling_delay_ms = float(os.getenv('Ironcliw_TELEPORT_SETTLING_DELAY_MS', '500'))
                             logger.debug(
                                 f"[God Mode v41.6] ⏱️ Waiting {settling_delay_ms:.0f}ms for windows "
                                 f"to settle on Ghost Display..."
@@ -3425,7 +3425,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
                 try:
                     yabai_detector = get_yabai_detector()
-                    yabai_timeout = float(os.getenv('JARVIS_YABAI_OPERATION_TIMEOUT', '3.0'))
+                    yabai_timeout = float(os.getenv('Ironcliw_YABAI_OPERATION_TIMEOUT', '3.0'))
                     ghost_display_space = await asyncio.wait_for(
                         asyncio.get_event_loop().run_in_executor(
                             None, yabai_detector.get_ghost_display_space
@@ -3507,7 +3507,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
                 # Try to use skipped_windows for capture anyway
                 # ScreenCaptureKit might be able to capture them even on hidden spaces
-                in_place_capture_enabled = bool(os.getenv('JARVIS_IN_PLACE_CAPTURE', '1') == '1')
+                in_place_capture_enabled = bool(os.getenv('Ironcliw_IN_PLACE_CAPTURE', '1') == '1')
 
                 if in_place_capture_enabled and skipped_windows:
                     logger.info(
@@ -3598,7 +3598,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         #
         # SOLUTION: Validate each window BEFORE spawning watcher
         # =====================================================================
-        validation_enabled = os.getenv('JARVIS_PRECAPTURE_VALIDATION', '1') == '1'
+        validation_enabled = os.getenv('Ironcliw_PRECAPTURE_VALIDATION', '1') == '1'
 
         if validation_enabled and windows:
             logger.info(f"[God Mode] 🔍 Pre-capture validation for {len(windows)} windows...")
@@ -3628,7 +3628,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 valid_windows, invalid_windows = await self._validate_windows_batch(
                     windows,
                     ghost_space=validation_ghost_space,
-                    max_concurrent=int(os.getenv('JARVIS_VALIDATION_CONCURRENCY', '5'))
+                    max_concurrent=int(os.getenv('Ironcliw_VALIDATION_CONCURRENCY', '5'))
                 )
 
                 # Log validation results
@@ -4099,7 +4099,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # then return optimistically. Full verification continues in background.
             # This prevents the "operation timed out" error for the user.
             # =====================================================================
-            OPTIMISTIC_STARTUP_WAIT = float(os.getenv("JARVIS_OPTIMISTIC_STARTUP_WAIT", "3.0"))
+            OPTIMISTIC_STARTUP_WAIT = float(os.getenv("Ironcliw_OPTIMISTIC_STARTUP_WAIT", "3.0"))
             
             start_wait_time = datetime.now()
             new_watchers_active = 0
@@ -4726,7 +4726,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             #
             # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
             # =====================================================================
-            ferrari_spawn_timeout = float(os.getenv('JARVIS_FERRARI_SPAWN_TIMEOUT', '8.0'))
+            ferrari_spawn_timeout = float(os.getenv('Ironcliw_FERRARI_SPAWN_TIMEOUT', '8.0'))
 
             try:
                 watcher = await asyncio.wait_for(
@@ -5436,7 +5436,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # v25.0: WINDOW RETURN POLICY
         # =====================================================================
         # Return windows to their original spaces after monitoring ends
-        # (if configured via JARVIS_RETURN_WINDOWS=true)
+        # (if configured via Ironcliw_RETURN_WINDOWS=true)
         # =====================================================================
         windows_returned = 0
         if GHOST_MANAGER_AVAILABLE and hasattr(self, '_ghost_managers') and app_name:
@@ -5667,7 +5667,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # =====================================================================
 
                 # Get configurable timeout from environment (default 4s, must fit within outer 5s)
-                workspace_query_timeout = float(os.getenv("JARVIS_WORKSPACE_QUERY_TIMEOUT", "4.0"))
+                workspace_query_timeout = float(os.getenv("Ironcliw_WORKSPACE_QUERY_TIMEOUT", "4.0"))
 
                 detector = MultiSpaceWindowDetector()
 
@@ -5686,7 +5686,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # Filter for matching app across ALL spaces
                 app_name_lower = app_name.lower()
                 matching_windows = []
-                jarvis_ui_skipped = 0  # v41.5: Track skipped JARVIS windows
+                jarvis_ui_skipped = 0  # v41.5: Track skipped Ironcliw windows
 
                 # v41.5: Self-Preservation keywords (semantic, not hardcoded URLs)
                 self_preservation_keywords = [
@@ -5708,7 +5708,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     # ==========================================================
                     # v41.5: SELF-PRESERVATION PROTOCOL (Defense-in-Depth Layer 1)
                     # ==========================================================
-                    # Filter out JARVIS UI windows at discovery time, before they
+                    # Filter out Ironcliw UI windows at discovery time, before they
                     # even reach the teleportation phase. This is a second layer
                     # of protection in case the teleportation filter is bypassed.
                     # ==========================================================
@@ -5720,7 +5720,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     if is_jarvis_ui:
                         jarvis_ui_skipped += 1
                         logger.debug(
-                            f"[v41.5] 🛡️ Discovery Self-Preservation: Skipping JARVIS UI "
+                            f"[v41.5] 🛡️ Discovery Self-Preservation: Skipping Ironcliw UI "
                             f"(Window {window_obj.window_id}: '{window_title[:30]}...')"
                         )
                         continue
@@ -5760,7 +5760,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 if jarvis_ui_skipped > 0:
                     logger.info(
                         f"[v41.5] 🛡️ Discovery Self-Preservation: Filtered out "
-                        f"{jarvis_ui_skipped} JARVIS UI window(s)"
+                        f"{jarvis_ui_skipped} Ironcliw UI window(s)"
                     )
 
                 if matching_windows:
@@ -5971,14 +5971,14 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # =====================================================================
         # Read from environment for flexibility without code changes
         if max_retries is None:
-            max_retries = int(os.getenv('JARVIS_VALIDATION_MAX_RETRIES', '6'))
+            max_retries = int(os.getenv('Ironcliw_VALIDATION_MAX_RETRIES', '6'))
         if retry_delay_ms is None:
-            retry_delay_ms = float(os.getenv('JARVIS_VALIDATION_INITIAL_DELAY_MS', '200'))
+            retry_delay_ms = float(os.getenv('Ironcliw_VALIDATION_INITIAL_DELAY_MS', '200'))
 
         # Backoff multiplier: each retry waits multiplier × previous delay
-        backoff_multiplier = float(os.getenv('JARVIS_VALIDATION_BACKOFF_MULTIPLIER', '1.5'))
+        backoff_multiplier = float(os.getenv('Ironcliw_VALIDATION_BACKOFF_MULTIPLIER', '1.5'))
         # Maximum single delay cap (prevents waiting forever on one attempt)
-        max_single_delay_ms = float(os.getenv('JARVIS_VALIDATION_MAX_DELAY_MS', '2000'))
+        max_single_delay_ms = float(os.getenv('Ironcliw_VALIDATION_MAX_DELAY_MS', '2000'))
 
         window_id = window.get('window_id')
         if not window_id:
@@ -6956,7 +6956,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         try:
             # Use _find_window with find_all=True to get all matching windows
-            find_timeout = float(os.getenv('JARVIS_FIND_REPLACEMENT_TIMEOUT', '5'))
+            find_timeout = float(os.getenv('Ironcliw_FIND_REPLACEMENT_TIMEOUT', '5'))
 
             matching_windows = await asyncio.wait_for(
                 self._find_window(app_name, find_all=True),
@@ -7229,9 +7229,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # If too many consecutive failures, the watcher has likely crashed
         # =====================================================================
         consecutive_frame_failures = 0
-        max_consecutive_failures = int(os.getenv('JARVIS_MAX_FRAME_FAILURES', '30'))
+        max_consecutive_failures = int(os.getenv('Ironcliw_MAX_FRAME_FAILURES', '30'))
         last_health_check_time = start_time
-        health_check_interval = float(os.getenv('JARVIS_HEALTH_CHECK_INTERVAL', '10.0'))
+        health_check_interval = float(os.getenv('Ironcliw_HEALTH_CHECK_INTERVAL', '10.0'))
         watcher_health_verified = True  # Assume healthy initially
 
         # =====================================================================
@@ -7575,7 +7575,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
                     try:
                         # Wait for OCR slot with timeout to prevent deadlock
-                        ocr_timeout = float(os.getenv('JARVIS_OCR_ACQUIRE_TIMEOUT', '5.0'))
+                        ocr_timeout = float(os.getenv('Ironcliw_OCR_ACQUIRE_TIMEOUT', '5.0'))
 
                         # Python 3.9 compatible (asyncio.timeout is 3.11+)
                         async def _ocr_with_semaphore():
@@ -7683,7 +7683,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
                     # ═══════════════════════════════════════════════════════════════
                     # v32.3: ACTIVE MONITORING COMMUNICATION
-                    # User needs to know JARVIS is actively scanning
+                    # User needs to know Ironcliw is actively scanning
                     # ═══════════════════════════════════════════════════════════════
                     
                     # Log periodic progress with detected text
@@ -7812,11 +7812,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         last_health_check = start_time
         last_layout_refresh = start_time
         last_status_report = start_time  # v42.0: Periodic status reporting
-        health_check_interval = float(os.getenv('JARVIS_MOSAIC_HEALTH_INTERVAL', '10.0'))
-        layout_refresh_interval = float(os.getenv('JARVIS_MOSAIC_LAYOUT_INTERVAL', '30.0'))
-        status_report_interval = float(os.getenv('JARVIS_STATUS_REPORT_INTERVAL', '30.0'))  # v42.0
+        health_check_interval = float(os.getenv('Ironcliw_MOSAIC_HEALTH_INTERVAL', '10.0'))
+        layout_refresh_interval = float(os.getenv('Ironcliw_MOSAIC_LAYOUT_INTERVAL', '30.0'))
+        status_report_interval = float(os.getenv('Ironcliw_STATUS_REPORT_INTERVAL', '30.0'))  # v42.0
         black_screen_count = 0
-        max_black_screen_retries = int(os.getenv('JARVIS_MOSAIC_BLACK_RETRIES', '5'))
+        max_black_screen_retries = int(os.getenv('Ironcliw_MOSAIC_BLACK_RETRIES', '5'))
         last_ocr_sample = ""  # v42.0: Track last OCR result for status reporting
 
         watcher_id = getattr(watcher, 'watcher_id', f"mosaic_{id(watcher)}")
@@ -7961,11 +7961,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # v42.0: PERIODIC STATUS REPORTING
                 # ==========================================================
                 # ROOT CAUSE FIX: Users feel left in the dark during monitoring.
-                # JARVIS should periodically report what it's seeing so the user
+                # Ironcliw should periodically report what it's seeing so the user
                 # knows the system is actively working.
                 #
-                # CONFIGURABLE: Set JARVIS_STATUS_REPORT_INTERVAL to control
-                # how often JARVIS announces status (default: 30 seconds)
+                # CONFIGURABLE: Set Ironcliw_STATUS_REPORT_INTERVAL to control
+                # how often Ironcliw announces status (default: 30 seconds)
                 # ==========================================================
                 if current_time - last_status_report > status_report_interval:
                     last_status_report = current_time
@@ -8060,7 +8060,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 )
                 
                 # v42.0: Update last OCR sample for status reporting
-                # This lets us report what JARVIS is "seeing" to the user
+                # This lets us report what Ironcliw is "seeing" to the user
                 if ocr_context and ocr_context.get('full_text'):
                     last_ocr_sample = ocr_context.get('full_text', '')[:200]  # Limit to 200 chars
                 elif detected_text:
@@ -8746,9 +8746,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # - GPU/Metal initialization hangs
             #
             # SOLUTION: Wrap in asyncio.wait_for with configurable timeout
-            # CONFIGURABLE: JARVIS_WATCHER_START_TIMEOUT env var (default 10s)
+            # CONFIGURABLE: Ironcliw_WATCHER_START_TIMEOUT env var (default 10s)
             # =====================================================================
-            watcher_start_timeout = float(os.getenv('JARVIS_WATCHER_START_TIMEOUT', '10.0'))
+            watcher_start_timeout = float(os.getenv('Ironcliw_WATCHER_START_TIMEOUT', '10.0'))
 
             try:
                 success = await asyncio.wait_for(
@@ -8865,7 +8865,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             self._watcher_lifecycle[watcher_id]['verification_stage'] = 'status_verified'
 
             # Stage 2: Verify frame flow (wait for first frame)
-            frame_flow_timeout = float(os.getenv('JARVIS_FIRST_FRAME_TIMEOUT', '5.0'))
+            frame_flow_timeout = float(os.getenv('Ironcliw_FIRST_FRAME_TIMEOUT', '5.0'))
             first_frame_received = False
 
             logger.debug(
@@ -8934,7 +8934,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # v6.1.0: Activate Purple Indicator for Visual Confirmation
             # =====================================================================
             # WHY: ScreenCaptureKit doesn't trigger the macOS purple indicator.
-            # Users need visual confirmation that JARVIS is actively watching.
+            # Users need visual confirmation that Ironcliw is actively watching.
             # This starts a lightweight AVCaptureSession purely for the icon.
             # =====================================================================
             await self._ensure_purple_indicator()
@@ -9122,16 +9122,16 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # v42.0: AUTOMATIC WINDOW RETURN AFTER DETECTION
                 # ==========================================================
                 # ROOT CAUSE FIX: User should see the windows after detection
-                # is complete. JARVIS brings windows back from Ghost Display
+                # is complete. Ironcliw brings windows back from Ghost Display
                 # to the main workspace so the user can see what was detected.
                 #
-                # This is the "mission complete" action - JARVIS autonomously:
+                # This is the "mission complete" action - Ironcliw autonomously:
                 # 1. Monitored windows in the background (Ghost Display)
                 # 2. Detected the trigger text
                 # 3. Notified the user
                 # 4. NOW: Returns windows so user can see the result
                 # ==========================================================
-                auto_return_enabled = os.getenv('JARVIS_AUTO_RETURN_AFTER_DETECTION', '1') == '1'
+                auto_return_enabled = os.getenv('Ironcliw_AUTO_RETURN_AFTER_DETECTION', '1') == '1'
                 
                 if auto_return_enabled:
                     try:
@@ -9368,7 +9368,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # Load configurable notification templates
                 import os
                 detection_template = os.getenv(
-                    "JARVIS_DETECTION_TTS_TEMPLATE",
+                    "Ironcliw_DETECTION_TTS_TEMPLATE",
                     "I found {trigger} in {app_name}"
                 )
 
@@ -9551,7 +9551,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         v42.0: Return windows from Ghost Display to main workspace after detection.
         
         This is the "mission complete" action that brings windows back so the user
-        can see what was detected. JARVIS narrates the entire process.
+        can see what was detected. Ironcliw narrates the entire process.
         
         Args:
             app_name: Application name (e.g., "Chrome")
@@ -10093,9 +10093,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         trigger_text: str,
         space_id: int
     ):
-        """Send voice alert via JARVIS Voice API."""
+        """Send voice alert via Ironcliw Voice API."""
         try:
-            # TODO: Integrate with JARVIS Voice API
+            # TODO: Integrate with Ironcliw Voice API
             # For now, log the alert
             narration = f"{trigger_text} detected on {app_name}, Space {space_id}"
             logger.info(f"🔊 Voice Alert: {narration}")
@@ -10117,7 +10117,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # Use osascript for macOS notification
             import subprocess
 
-            title = f"JARVIS - {app_name}"
+            title = f"Ironcliw - {app_name}"
             message = f"{trigger_text} (Space {space_id})"
 
             # Non-blocking notification (run in thread pool)
@@ -10493,7 +10493,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
     # v13.0 GHOST HANDS: Zero-Focus Cross-Space Execution
     # =========================================================================
     # This is THE KEY INNOVATION: Execute actions on windows in OTHER Spaces
-    # without EVER switching the user's focus. JARVIS becomes invisible.
+    # without EVER switching the user's focus. Ironcliw becomes invisible.
     # =========================================================================
 
     async def _execute_ghost_hands(
@@ -10509,7 +10509,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         """
         Execute action via Ghost Hands - ZERO FOCUS STEALING.
 
-        This is the surgical, cross-space action execution that makes JARVIS
+        This is the surgical, cross-space action execution that makes Ironcliw
         truly invisible. The user NEVER sees their focus change.
 
         Flow:
@@ -10736,7 +10736,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         "space_id": info['space_id'],
                         "started_at": info['started_at'],
                         "status": "watching",
-                        "repo": "JARVIS-AI-Agent"
+                        "repo": "Ironcliw-AI-Agent"
                     }
                     for watcher_id, info in self._active_watchers.items()
                 ],

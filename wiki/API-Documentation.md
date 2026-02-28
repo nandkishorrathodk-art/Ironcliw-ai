@@ -1,6 +1,6 @@
-# API Documentation
+﻿# API Documentation
 
-Complete API reference for JARVIS AI Agent including REST endpoints, WebSocket API, Voice commands, and Intelligence system APIs.
+Complete API reference for Ironcliw AI Agent including REST endpoints, WebSocket API, Voice commands, and Intelligence system APIs.
 
 ---
 
@@ -433,7 +433,7 @@ Connect to WebSocket for real-time communication:
 const ws = new WebSocket('ws://localhost:8010/ws');
 
 ws.onopen = () => {
-  console.log('Connected to JARVIS');
+  console.log('Connected to Ironcliw');
 };
 
 ws.onmessage = (event) => {
@@ -508,12 +508,12 @@ ws.onmessage = (event) => {
 
 ### Natural Language Commands
 
-JARVIS supports natural language voice commands:
+Ironcliw supports natural language voice commands:
 
 #### Screen Unlock
 ```
-"Hey JARVIS, unlock my screen"
-"JARVIS, unlock"
+"Hey Ironcliw, unlock my screen"
+"Ironcliw, unlock"
 "Unlock my Mac"
 ```
 
@@ -542,7 +542,7 @@ JARVIS supports natural language voice commands:
 
 #### Conversation
 ```
-"Hey JARVIS, let's chat"
+"Hey Ironcliw, let's chat"
 "What were we talking about?"
 "Remember this for later"
 ```
@@ -620,9 +620,9 @@ intent = await cai.predict_intent("unlock my screen")
 
 **Pattern Learning:**
 ```python
-from database.learning_database import JARVISLearningDatabase
+from database.learning_database import IroncliwLearningDatabase
 
-db = JARVISLearningDatabase()
+db = IroncliwLearningDatabase()
 patterns = db.get_command_patterns(limit=10)
 # Returns: List of most common command patterns
 ```
@@ -724,7 +724,7 @@ else:
 const ws = new WebSocket('ws://localhost:8010/ws');
 
 ws.onopen = () => {
-  console.log('✅ Connected to JARVIS');
+  console.log('✅ Connected to Ironcliw');
 
   // Send voice command
   ws.send(JSON.stringify({
@@ -739,7 +739,7 @@ ws.onmessage = (event) => {
 
   switch (message.type) {
     case 'voice_response':
-      console.log(`JARVIS: ${message.response}`);
+      console.log(`Ironcliw: ${message.response}`);
       break;
 
     case 'status_update':

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligent Continuous Scraper
 ==============================
 
@@ -6,7 +6,7 @@ v9.4: Advanced continuous web scraping system that runs beyond the 3 AM schedule
 This scraper intelligently discovers and prioritizes learning topics based on:
 - User interactions and failed queries
 - Trending topics in the tech space
-- Gaps in JARVIS's knowledge base
+- Gaps in Ironcliw's knowledge base
 - Auto-discovered learning goals
 
 Architecture:
@@ -156,8 +156,8 @@ class ScrapingConfig:
     # Database
     training_db_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_TRAINING_DB",
-            Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent" / "data" / "training_db" / "jarvis_training.db"
+            "Ironcliw_TRAINING_DB",
+            Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent" / "data" / "training_db" / "jarvis_training.db"
         ))
     )
 
@@ -220,7 +220,7 @@ class IntelligentContinuousScraper:
     Features:
     - Adaptive scheduling based on system load and time of day
     - Topic priority queue with automatic discovery
-    - Integration with JARVIS learning goals
+    - Integration with Ironcliw learning goals
     - Rate limiting and quality filtering
     - Safe Scout integration from reactor-core
     """

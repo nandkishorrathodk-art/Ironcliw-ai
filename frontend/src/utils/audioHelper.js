@@ -1,5 +1,5 @@
-/**
- * Audio helper utilities for JARVIS voice output
+﻿/**
+ * Audio helper utilities for Ironcliw voice output
  */
 
 class AudioHelper {

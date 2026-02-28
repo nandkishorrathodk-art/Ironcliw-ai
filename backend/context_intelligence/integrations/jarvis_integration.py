@@ -1,8 +1,8 @@
-"""
-JARVIS Integration Module
+﻿"""
+Ironcliw Integration Module
 ========================
 
-Integrates the new Context Intelligence System with existing JARVIS components.
+Integrates the new Context Intelligence System with existing Ironcliw components.
 """
 
 import asyncio
@@ -17,13 +17,13 @@ from ..analyzers.intent_analyzer import get_intent_analyzer
 logger = logging.getLogger(__name__)
 
 
-class JARVISContextIntegration:
+class IroncliwContextIntegration:
     """
-    Integration layer between JARVIS and the Context Intelligence System
+    Integration layer between Ironcliw and the Context Intelligence System
     """
     
     def __init__(self):
-        """Initialize JARVIS integration"""
+        """Initialize Ironcliw integration"""
         self.context_manager = get_context_manager()
         self.intent_analyzer = get_intent_analyzer()
         
@@ -41,13 +41,13 @@ class JARVISContextIntegration:
         if self.initialized:
             return
             
-        logger.info("Initializing JARVIS Context Integration...")
+        logger.info("Initializing Ironcliw Context Integration...")
         
         # Initialize context manager
         await self.context_manager.initialize()
         
         self.initialized = True
-        logger.info("JARVIS Context Integration initialized")
+        logger.info("Ironcliw Context Integration initialized")
         
     def _register_callbacks(self):
         """Register callbacks with context manager"""
@@ -105,7 +105,7 @@ class JARVISContextIntegration:
 
             # Check if this is an action query - handle differently (priority)
             if intent.type.value == "action_query":
-                logger.info(f"[JARVIS-INTEGRATION] Routing action query to specialized handler")
+                logger.info(f"[Ironcliw-INTEGRATION] Routing action query to specialized handler")
                 from ..handlers.context_aware_handler import get_context_aware_handler
                 handler = get_context_aware_handler()
                 result = await handler.handle_command_with_context(
@@ -124,7 +124,7 @@ class JARVISContextIntegration:
 
             # Check if this is a predictive query - handle differently
             if intent.type.value == "predictive_query":
-                logger.info(f"[JARVIS-INTEGRATION] Routing predictive query to specialized handler")
+                logger.info(f"[Ironcliw-INTEGRATION] Routing predictive query to specialized handler")
                 from ..handlers.context_aware_handler import get_context_aware_handler
                 handler = get_context_aware_handler()
                 result = await handler.handle_command_with_context(
@@ -332,14 +332,14 @@ class JARVISContextIntegration:
 
 
 # Global integration instance
-_integration: Optional[JARVISContextIntegration] = None
+_integration: Optional[IroncliwContextIntegration] = None
 
 
-def get_jarvis_integration() -> JARVISContextIntegration:
-    """Get or create JARVIS integration"""
+def get_jarvis_integration() -> IroncliwContextIntegration:
+    """Get or create Ironcliw integration"""
     global _integration
     if _integration is None:
-        _integration = JARVISContextIntegration()
+        _integration = IroncliwContextIntegration()
     return _integration
 
 

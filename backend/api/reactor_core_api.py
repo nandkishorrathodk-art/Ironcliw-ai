@@ -1,22 +1,22 @@
-"""
+﻿"""
 Reactor-Core Feedback API - Real-Time Training Status Receiver
 ===============================================================
 
 This module provides the receiver endpoint for Reactor-Core to push
-real-time training status updates back to JARVIS.
+real-time training status updates back to Ironcliw.
 
 Architecture:
     ┌────────────────────────────────────────────────────────────────┐
     │                      Reactor-Core                               │
     │  ┌──────────────┐   ┌──────────────────┐   ┌───────────────┐   │
     │  │   Training   │ → │  Status          │ → │   HTTP POST   │   │
-    │  │   Pipeline   │   │  Broadcaster     │   │   to JARVIS   │   │
+    │  │   Pipeline   │   │  Broadcaster     │   │   to Ironcliw   │   │
     │  └──────────────┘   └──────────────────┘   └───────────────┘   │
     └────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
     ┌────────────────────────────────────────────────────────────────┐
-    │                     JARVIS-AI-Agent                            │
+    │                     Ironcliw-AI-Agent                            │
     │  ┌──────────────┐   ┌──────────────────┐   ┌───────────────┐  │
     │  │   This API   │ → │  Status Hub      │ → │   TTS Voice   │  │
     │  │   Receiver   │   │  & Logging       │   │   Announce    │  │
@@ -35,7 +35,7 @@ Features:
 - Cross-repo event bridge integration
 - Intelligent progress tracking with history
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 (Feedback Loop)
 """
 
@@ -509,7 +509,7 @@ async def receive_training_status(
     Receive training status update from Reactor-Core.
 
     This endpoint is called by Reactor-Core's training pipeline
-    to push real-time progress updates to JARVIS.
+    to push real-time progress updates to Ironcliw.
 
     The update will:
     1. Be logged clearly to the console

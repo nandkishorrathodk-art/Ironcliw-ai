@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration Tests for ErrorRecoveryManager v2.0
 
 Tests end-to-end functionality:
@@ -6,7 +6,7 @@ Tests end-to-end functionality:
 2. Auto-recovery workflows
 3. Cross-component error tracking
 4. Real-world error scenarios
-5. Integration with JARVIS components
+5. Integration with Ironcliw components
 """
 
 import pytest
@@ -16,7 +16,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from collections import deque
 
 import sys
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from autonomy.error_recovery import (
     ErrorRecoveryManager,

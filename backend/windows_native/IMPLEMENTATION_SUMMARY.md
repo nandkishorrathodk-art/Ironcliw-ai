@@ -1,8 +1,8 @@
-# Phase 2: Windows Native Layer - Implementation Summary
+﻿# Phase 2: Windows Native Layer - Implementation Summary
 
 ## Overview
 
-This phase implements the Windows Native Layer using C# to replace the Swift bridge functionality that JARVIS uses on macOS. The layer provides Windows API access through three main components.
+This phase implements the Windows Native Layer using C# to replace the Swift bridge functionality that Ironcliw uses on macOS. The layer provides Windows API access through three main components.
 
 ## What Was Implemented
 

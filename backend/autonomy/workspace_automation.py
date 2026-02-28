@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Intelligent Workspace Automation for JARVIS
+Intelligent Workspace Automation for Ironcliw
 Provides autonomous workflow execution and cross-application automation
 """
 

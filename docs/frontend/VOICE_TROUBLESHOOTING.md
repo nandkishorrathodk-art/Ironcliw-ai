@@ -1,4 +1,4 @@
-# JARVIS Voice Frontend Troubleshooting
+﻿# Ironcliw Voice Frontend Troubleshooting
 
 ## Current Status
 ✅ Voice synthesis working (210 voices available)
@@ -32,16 +32,16 @@
    - Ensure it's allowed for localhost:3000
 
 2. **Test Wake Word**
-   - Say clearly: "Hey JARVIS"
+   - Say clearly: "Hey Ironcliw"
    - Wait for the activation response
    - Speak your command
 
 3. **Example Commands**
    ```
-   "Hey JARVIS, what's the weather?"
-   "Hey JARVIS, open Chrome"
-   "Hey JARVIS, set volume to 50%"
-   "Hey JARVIS, tell me a joke"
+   "Hey Ironcliw, what's the weather?"
+   "Hey Ironcliw, open Chrome"
+   "Hey Ironcliw, set volume to 50%"
+   "Hey Ironcliw, tell me a joke"
    ```
 
 ## Verify Backend Connection
@@ -73,7 +73,7 @@
 
 ## Voice Quality Tips
 
-1. **Speak Clearly**: Enunciate "Hey JARVIS" distinctly
+1. **Speak Clearly**: Enunciate "Hey Ironcliw" distinctly
 2. **Quiet Environment**: Reduce background noise
 3. **Microphone Distance**: Stay 6-12 inches from mic
 4. **Consistent Volume**: Don't whisper or shout

@@ -1,4 +1,4 @@
-# Hybrid Cost Optimization Setup Guide
+﻿# Hybrid Cost Optimization Setup Guide
 
 **Complete Documentation: From Testing to Production**
 
@@ -67,7 +67,7 @@ python test_hybrid_system.py
 
 ### Phase 2: Normal Operation Validation
 
-**Test:** Verify JARVIS runs locally without creating GCP VMs when RAM < 85%
+**Test:** Verify Ironcliw runs locally without creating GCP VMs when RAM < 85%
 
 **Execution:**
 ```bash
@@ -78,7 +78,7 @@ gcloud compute instances list --project=jarvis-473803
 ```
 
 **Results:**
-- ✅ JARVIS ran locally (RAM: 80-81%)
+- ✅ Ironcliw ran locally (RAM: 80-81%)
 - ✅ No GCP VMs created (0 instances)
 - ✅ Clean shutdown
 
@@ -97,7 +97,7 @@ gcloud compute instances list --project=jarvis-473803
 
 **Execution:**
 ```bash
-# Start JARVIS in background
+# Start Ironcliw in background
 python start_system.py > /tmp/jarvis_test.log 2>&1 &
 
 # Run memory stress test
@@ -207,7 +207,7 @@ ACCOUNT_ID            NAME              OPEN
 ```bash
 gcloud billing budgets create \
   --billing-account=014BA1-5EDD05-403D87 \
-  --display-name="JARVIS Monthly Budget Alert" \
+  --display-name="Ironcliw Monthly Budget Alert" \
   --budget-amount=20USD \
   --threshold-rule=percent=50 \
   --threshold-rule=percent=75 \
@@ -285,7 +285,7 @@ Backups:
 **Purpose:** Persistent storage for SAI learning patterns, user preferences, conversation history
 
 **Why Keep Always-On:**
-- Instant availability for JARVIS
+- Instant availability for Ironcliw
 - Persistent learning across sessions
 - GCP Spot VMs can access database
 - Already on cheapest tier (db-f1-micro)
@@ -338,7 +338,7 @@ Savings:    96.3%
 - Manual override
 
 **Auto-Cleanup:**
-- On JARVIS shutdown (Ctrl+C)
+- On Ironcliw shutdown (Ctrl+C)
 - On Spot VM preemption (GCP reclaims)
 - On max duration reached (3 hours)
 
@@ -397,7 +397,7 @@ Project Roles: Owner
 
 **Budget Configuration:**
 ```yaml
-Name: JARVIS Monthly Budget Alert
+Name: Ironcliw Monthly Budget Alert
 Amount: $20 USD
 Period: Monthly (calendar month)
 Thresholds:
@@ -487,7 +487,7 @@ print("\n✅ Configuration validated!")
 - Monitors RAM every 10 seconds
 
 **Test Log:** `/tmp/jarvis_test.log`
-- Complete JARVIS startup sequence
+- Complete Ironcliw startup sequence
 - RAM monitoring logs
 - GCP deployment logs
 - Cleanup attempt logs
@@ -498,14 +498,14 @@ print("\n✅ Configuration validated!")
 
 ### Normal Development Workflow
 
-#### 1. Start JARVIS (Local Operation)
+#### 1. Start Ironcliw (Local Operation)
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python start_system.py
 ```
 
 **Expected Behavior:**
-- JARVIS starts locally
+- Ironcliw starts locally
 - RAM monitor activates (checks every 5s)
 - If RAM < 85%: stays local
 - Cost: $0/hour ✅
@@ -549,10 +549,10 @@ python start_system.py
 
 ---
 
-#### 3. Stop JARVIS (Automatic Cleanup)
+#### 3. Stop Ironcliw (Automatic Cleanup)
 
 ```bash
-# Press Ctrl+C in terminal where JARVIS is running
+# Press Ctrl+C in terminal where Ironcliw is running
 ```
 
 **Expected Behavior:**
@@ -584,12 +584,12 @@ gcloud compute instances list --project=jarvis-473803
 gcloud compute instances list --project=jarvis-473803
 ```
 
-**Expected output (JARVIS stopped):**
+**Expected output (Ironcliw stopped):**
 ```
 Listed 0 items.
 ```
 
-**Expected output (JARVIS using GCP):**
+**Expected output (Ironcliw using GCP):**
 ```
 NAME                    ZONE           MACHINE_TYPE  STATUS   PROVISIONING_MODEL
 jarvis-auto-1761346789  us-central1-a  e2-highmem-4  RUNNING  SPOT
@@ -656,13 +656,13 @@ Edit `start_system.py` temporarily:
 RAM_CRITICAL_THRESHOLD = 0.70  # Was 0.85, now triggers at 70%
 ```
 
-Then restart JARVIS.
+Then restart Ironcliw.
 
 **Remember to revert after testing!**
 
 ---
 
-#### Check JARVIS Logs
+#### Check Ironcliw Logs
 ```bash
 # Latest log file
 ls -lt backend/logs/jarvis_*.log | head -1
@@ -724,7 +724,7 @@ grep -i "gcp\|spot\|shift" backend/logs/jarvis_*.log
 # Check for forgotten VMs
 gcloud compute instances list --project=jarvis-473803
 
-# Should always show: Listed 0 items (when JARVIS stopped)
+# Should always show: Listed 0 items (when Ironcliw stopped)
 ```
 
 **Why:** Catch auto-cleanup bugs early
@@ -835,11 +835,11 @@ open "https://console.cloud.google.com/billing/014BA1-5EDD05-403D87/export"
 **Symptoms:**
 ```bash
 gcloud compute instances list --project=jarvis-473803
-# Shows VMs still running after stopping JARVIS
+# Shows VMs still running after stopping Ironcliw
 ```
 
 **Diagnosis:**
-Check JARVIS logs for cleanup attempts:
+Check Ironcliw logs for cleanup attempts:
 ```bash
 grep "Cleaning up GCP instance" backend/logs/jarvis_*.log
 ```
@@ -850,8 +850,8 @@ grep "Cleaning up GCP instance" backend/logs/jarvis_*.log
    - Error: `'HybridIntelligenceCoordinator' object has no attribute 'gcp_active'`
    - Solution: Already fixed in commit `f0fc193`
 
-2. **JARVIS crashed before cleanup**
-   - JARVIS killed with `kill -9`
+2. **Ironcliw crashed before cleanup**
+   - Ironcliw killed with `kill -9`
    - Mac crashed
    - Power loss
 
@@ -1014,12 +1014,12 @@ open "https://console.cloud.google.com/billing/014BA1-5EDD05-403D87/reports"
 
 **Symptoms:**
 - Mac RAM at 90%+
-- JARVIS running slow
+- Ironcliw running slow
 - No GCP VM created
 
 **Diagnosis:**
 ```bash
-# Check JARVIS logs
+# Check Ironcliw logs
 grep -i "ram\|shift\|gcp" backend/logs/jarvis_*.log | tail -20
 ```
 
@@ -1105,7 +1105,7 @@ gcloud sql instances describe jarvis-learning-db \
    nc -zv 34.46.152.27 5432
 
    # Check IP in .env
-   grep JARVIS_DB_HOST backend/.env
+   grep Ironcliw_DB_HOST backend/.env
    ```
 
 3. **Cloud SQL Proxy not running**
@@ -1131,7 +1131,7 @@ gcloud sql instances describe jarvis-learning-db \
      --project=jarvis-473803
 
    # Update backend/.env
-   # JARVIS_DB_PASSWORD=NEW_PASSWORD
+   # Ironcliw_DB_PASSWORD=NEW_PASSWORD
    ```
 
 ---
@@ -1232,7 +1232,7 @@ gcloud sql instances describe jarvis-learning-db \
    - ✅ No unexpected billing alerts
    - ✅ Auto-cleanup working 100%
 
-2. **Add VM Monitoring to JARVIS** (optional enhancement)
+2. **Add VM Monitoring to Ironcliw** (optional enhancement)
    - Proactive check for forgotten VMs every 6 hours
    - Alert: "GCP VM has been running for X hours"
    - Auto-suggest deletion if unused
@@ -1256,7 +1256,7 @@ gcloud sql instances describe jarvis-learning-db \
    - Zero data loss
 
 3. **Cost Analytics Dashboard**
-   - Real-time cost tracking in JARVIS UI
+   - Real-time cost tracking in Ironcliw UI
    - Monthly cost trends
    - Savings visualization
 
@@ -1269,7 +1269,7 @@ gcloud sql instances describe jarvis-learning-db \
 
 ## 📚 Related Documentation
 
-### JARVIS Documentation
+### Ironcliw Documentation
 - [HYBRID_COST_OPTIMIZATION.md](./HYBRID_COST_OPTIMIZATION.md) - 94% cost reduction guide (Spot VMs, auto-cleanup)
 - [HYBRID_ARCHITECTURE.md](./HYBRID_ARCHITECTURE.md) - Complete hybrid architecture with UAE/SAI/CAI integration
 - [README.md](./README.md) - Main project documentation and quick start guide
@@ -1317,6 +1317,6 @@ TOTAL:         $11-15  (was $180)
 ---
 
 **Last Updated:** October 24, 2025
-**System Version:** JARVIS v16.0 Hybrid Cloud Intelligence
+**System Version:** Ironcliw v16.0 Hybrid Cloud Intelligence
 **Branch:** hybrid-cost-optimization-validation
 **Status:** ✅ Production-Ready (Monitoring Phase)

@@ -1,5 +1,5 @@
-"""
-Query Context Manager for JARVIS Vision System
+﻿"""
+Query Context Manager for Ironcliw Vision System
 Tracks user patterns, context, and conversation flow to improve classification.
 
 Provides rich context for intelligent query classification.

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Cross-Repo Component Registry v2.0 - Production Hardened
 =========================================================
 
-Exposes JARVIS components for cross-repo access by JARVIS Prime and Reactor Core.
+Exposes Ironcliw components for cross-repo access by Ironcliw Prime and Reactor Core.
 
 HARDENED VERSION (v2.0) with:
 - AtomicFileOps for safe file operations
@@ -13,20 +13,20 @@ HARDENED VERSION (v2.0) with:
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
-    │                       JARVIS Body                               │
+    │                       Ironcliw Body                               │
     │  [Components] → [Registry] → [~/.jarvis/cross_repo/registry/]   │
     └────────────────────────────────┬────────────────────────────────┘
                                      │ File-Based RPC
                                      ▼
     ┌─────────────────────────────────────────────────────────────────┐
-    │                   JARVIS Prime / Reactor Core                   │
+    │                   Ironcliw Prime / Reactor Core                   │
     │  [Read Registry] → [Call Component] → [Get Response]            │
     └─────────────────────────────────────────────────────────────────┘
 
 Communication Protocol:
-1. JARVIS writes component availability to registry.json
+1. Ironcliw writes component availability to registry.json
 2. Callers write requests to ~/.jarvis/cross_repo/requests/{component_id}/{request_id}.json
-3. JARVIS processes requests and writes responses to ~/.jarvis/cross_repo/responses/{request_id}.json
+3. Ironcliw processes requests and writes responses to ~/.jarvis/cross_repo/responses/{request_id}.json
 4. Callers read responses and delete request/response files
 
 This enables loose coupling while maintaining strong typing via JSON schemas.
@@ -159,14 +159,14 @@ class ComponentResponse:
 
 
 # =============================================================================
-# Component Registry (JARVIS Side)
+# Component Registry (Ironcliw Side)
 # =============================================================================
 
 class CrossRepoComponentRegistry:
     """
-    Registry for exposing JARVIS components to other repos.
+    Registry for exposing Ironcliw components to other repos.
 
-    This enables JARVIS Prime and Reactor Core to call JARVIS components
+    This enables Ironcliw Prime and Reactor Core to call Ironcliw components
     without direct imports, using file-based RPC.
 
     HARDENED Features (v2.0):
@@ -599,15 +599,15 @@ class CrossRepoComponentRegistry:
 
 
 # =============================================================================
-# Component Client (For Prime/Reactor to call JARVIS components)
+# Component Client (For Prime/Reactor to call Ironcliw components)
 # =============================================================================
 
 class CrossRepoComponentClient:
     """
-    Client for calling JARVIS components from other repos.
+    Client for calling Ironcliw components from other repos.
 
-    This is used by JARVIS Prime and Reactor Core to call components
-    registered in the JARVIS registry.
+    This is used by Ironcliw Prime and Reactor Core to call components
+    registered in the Ironcliw registry.
 
     Example:
         client = CrossRepoComponentClient("jarvis-prime")
@@ -626,7 +626,7 @@ class CrossRepoComponentClient:
         self._cache_ttl: float = 30.0  # 30 second cache
 
     async def get_available_components(self) -> Dict[str, ComponentInfo]:
-        """Get available JARVIS components."""
+        """Get available Ironcliw components."""
         # Check cache
         if time.time() - self._cache_time < self._cache_ttl:
             return self._registry_cache
@@ -672,7 +672,7 @@ class CrossRepoComponentClient:
         **kwargs,
     ) -> Any:
         """
-        Call a method on a JARVIS component.
+        Call a method on a Ironcliw component.
 
         Args:
             component_id: Target component ID
@@ -846,12 +846,12 @@ async def shutdown_component_registry() -> None:
 
 async def register_jarvis_components(registry: CrossRepoComponentRegistry) -> None:
     """
-    Register standard JARVIS components with the registry.
+    Register standard Ironcliw components with the registry.
 
-    This should be called during JARVIS startup to expose components
+    This should be called during Ironcliw startup to expose components
     for cross-repo access.
     """
-    logger.info("Registering JARVIS components for cross-repo access...")
+    logger.info("Registering Ironcliw components for cross-repo access...")
 
     # UnifiedModelServing
     try:
@@ -948,7 +948,7 @@ async def register_jarvis_components(registry: CrossRepoComponentRegistry) -> No
         logger.warning(f"Could not register task_router: {e}")
 
     logger.info(
-        f"Registered {len(registry._components)} JARVIS components for cross-repo access"
+        f"Registered {len(registry._components)} Ironcliw components for cross-repo access"
     )
 
 

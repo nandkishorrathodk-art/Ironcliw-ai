@@ -1,8 +1,8 @@
-# JARVIS Vision System Integration Guide
+﻿# Ironcliw Vision System Integration Guide
 
 ## Overview
 
-The JARVIS vision system is now fully integrated with sliding window support in `claude_vision_analyzer.py`. This guide explains how all vision components work together.
+The Ironcliw vision system is now fully integrated with sliding window support in `claude_vision_analyzer.py`. This guide explains how all vision components work together.
 
 ## Core Integration File: `claude_vision_analyzer.py`
 
@@ -109,11 +109,11 @@ result = await analyzer.analyze_with_sliding_window(
 )
 ```
 
-### 3. JARVIS Integration
+### 3. Ironcliw Integration
 ```python
 from jarvis_sliding_window_example import JarvisSlidingWindowVision
 
-# Initialize JARVIS vision
+# Initialize Ironcliw vision
 jarvis_vision = JarvisSlidingWindowVision(api_key)
 
 # Process vision command
@@ -178,7 +178,7 @@ Run integration tests:
 python test_sliding_window_integration.py
 ```
 
-Run JARVIS examples:
+Run Ironcliw examples:
 ```bash
 python jarvis_sliding_window_example.py
 ```

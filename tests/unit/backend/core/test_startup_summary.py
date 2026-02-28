@@ -1,4 +1,4 @@
-"""Tests for StartupSummary - Human-readable startup completion reporting."""
+﻿"""Tests for StartupSummary - Human-readable startup completion reporting."""
 import pytest
 import time
 import json
@@ -228,7 +228,7 @@ class TestStartupSummary:
         summary.end_time = datetime.now(timezone.utc)
         output = summary.format_summary()
 
-        assert "JARVIS Startup Summary" in output
+        assert "Ironcliw Startup Summary" in output
         assert "v148.0" in output
         assert "━" in output  # Decorative lines
 
@@ -564,7 +564,7 @@ class TestStartupSummaryEmptyRegistry:
 
         # Should not raise
         output = summary.format_summary()
-        assert "JARVIS Startup Summary" in output
+        assert "Ironcliw Startup Summary" in output
         assert "v148.0" in output
 
     def test_compute_overall_status_empty_registry(self):

@@ -1,5 +1,5 @@
-"""
-Precise Weather Provider for JARVIS
+﻿"""
+Precise Weather Provider for Ironcliw
 Uses Core Location for accurate GPS-based weather
 """
 

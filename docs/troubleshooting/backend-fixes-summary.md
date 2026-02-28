@@ -1,4 +1,4 @@
-# Backend Startup Fixes Summary
+﻿# Backend Startup Fixes Summary
 
 ## Issues Fixed
 
@@ -37,7 +37,7 @@ python start_backend_robust.py
 ### Option 2: Direct startup
 ```bash
 cd backend
-export JARVIS_MEMORY_LEVEL=critical  # For low memory situations
+export Ironcliw_MEMORY_LEVEL=critical  # For low memory situations
 export DYLD_LIBRARY_PATH="$PWD/swift_bridge/.build/release"
 python -m uvicorn main:app --host 0.0.0.0 --port 8010 --workers 1
 ```

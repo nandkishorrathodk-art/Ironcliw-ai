@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Dynamic Configuration System for JARVIS Vision
+Dynamic Configuration System for Ironcliw Vision
 ==============================================
 
 Provides dynamic, non-hardcoded configuration for the intelligent orchestration system.
@@ -128,7 +128,7 @@ class DynamicConfigManager:
             # Load from environment variables
             env_prefs = {}
             for key, value in os.environ.items():
-                if key.startswith("JARVIS_"):
+                if key.startswith("Ironcliw_"):
                     env_prefs[key[7:].lower()] = value
             
             # Load from config file if exists

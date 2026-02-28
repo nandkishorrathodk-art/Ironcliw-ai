@@ -1,6 +1,6 @@
-# JARVIS Windows Installation Script
+﻿# Ironcliw Windows Installation Script
 # ═══════════════════════════════════════════════════════════════════════════════
-# Automated setup for JARVIS AI Assistant on Windows 10/11
+# Automated setup for Ironcliw AI Assistant on Windows 10/11
 # 
 # This script:
 #   1. Checks system requirements (Python 3.11+, RAM, disk space)
@@ -13,7 +13,7 @@
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File install_windows.ps1
 #
-# Author: JARVIS System
+# Author: Ironcliw System
 # Version: 1.0.0 (Windows Port Phase 1)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -104,7 +104,7 @@ function Get-SystemInfo {
 # MAIN INSTALLATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-Write-Header "JARVIS Windows Installation"
+Write-Header "Ironcliw Windows Installation"
 
 # Get project root (where this script is located)
 $scriptPath = $PSScriptRoot
@@ -139,7 +139,7 @@ Write-Host ""
 # Check RAM (minimum 16GB)
 if ($sysInfo.TotalRAMGB -lt 15) {
     Write-Error "Insufficient RAM: $($sysInfo.TotalRAMGB) GB (minimum 16GB required)"
-    Write-Warning "JARVIS may not run optimally with less than 16GB RAM"
+    Write-Warning "Ironcliw may not run optimally with less than 16GB RAM"
     $continue = Read-Host "Continue anyway? (y/N)"
     if ($continue -ne 'y') {
         exit 1
@@ -284,11 +284,11 @@ if (-not (Test-Path $envPath)) {
         Write-Info "Creating minimal .env file..."
         
         $minimalEnv = @"
-# JARVIS Windows Environment
-JARVIS_PLATFORM=windows
-JARVIS_AUTH_MODE=BYPASS
-JARVIS_DEV_MODE=true
-JARVIS_VERBOSE_PLATFORM=true
+# Ironcliw Windows Environment
+Ironcliw_PLATFORM=windows
+Ironcliw_AUTH_MODE=BYPASS
+Ironcliw_DEV_MODE=true
+Ironcliw_VERBOSE_PLATFORM=true
 PYTHONPATH=$projectRoot
 "@
         $minimalEnv | Out-File -FilePath $envPath -Encoding UTF8
@@ -306,14 +306,14 @@ else {
 Write-Header "Step 5: Directory Structure"
 
 $directories = @(
-    "$env:LOCALAPPDATA\JARVIS",
-    "$env:LOCALAPPDATA\JARVIS\logs",
-    "$env:LOCALAPPDATA\JARVIS\models",
-    "$env:LOCALAPPDATA\JARVIS\state",
-    "$env:LOCALAPPDATA\JARVIS\state\trinity",
-    "$env:LOCALAPPDATA\JARVIS\state\cross_repo",
-    "$env:LOCALAPPDATA\JARVIS\state\signals",
-    "$env:APPDATA\JARVIS"
+    "$env:LOCALAPPDATA\Ironcliw",
+    "$env:LOCALAPPDATA\Ironcliw\logs",
+    "$env:LOCALAPPDATA\Ironcliw\models",
+    "$env:LOCALAPPDATA\Ironcliw\state",
+    "$env:LOCALAPPDATA\Ironcliw\state\trinity",
+    "$env:LOCALAPPDATA\Ironcliw\state\cross_repo",
+    "$env:LOCALAPPDATA\Ironcliw\state\signals",
+    "$env:APPDATA\Ironcliw"
 )
 
 foreach ($dir in $directories) {
@@ -412,7 +412,7 @@ catch {
 
 Write-Header "Installation Complete!"
 
-Write-Success "JARVIS Platform Abstraction Layer installed successfully!"
+Write-Success "Ironcliw Platform Abstraction Layer installed successfully!"
 Write-Host ""
 Write-Info "Next steps:"
 Write-Host "  1. Edit .env file and add your API keys (Claude, OpenAI, GCP)"
@@ -422,7 +422,7 @@ Write-Host ""
 Write-Info "Current status: Phase 1 (Foundation & Platform Abstraction) complete"
 Write-Info "Next phase: Windows Native Layer (C# DLLs)"
 Write-Host ""
-Write-Warning "Note: Full JARVIS functionality requires completion of all 11 phases."
+Write-Warning "Note: Full Ironcliw functionality requires completion of all 11 phases."
 Write-Warning "See .zenflow/tasks/iron-cliw-0081/plan.md for the complete roadmap."
 Write-Host ""
 

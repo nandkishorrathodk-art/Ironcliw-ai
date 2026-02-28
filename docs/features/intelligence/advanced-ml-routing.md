@@ -1,8 +1,8 @@
-# JARVIS Advanced ML Command Routing - Zero Hardcoding
+﻿# Ironcliw Advanced ML Command Routing - Zero Hardcoding
 
 ## Overview
 
-This document describes the revolutionary ML-based command routing system that replaces ALL hardcoded patterns in JARVIS with intelligent, self-learning classification. The system solves the "open WhatsApp" problem permanently and makes JARVIS truly adaptive.
+This document describes the revolutionary ML-based command routing system that replaces ALL hardcoded patterns in Ironcliw with intelligent, self-learning classification. The system solves the "open WhatsApp" problem permanently and makes Ironcliw truly adaptive.
 
 ## Key Innovation: Zero Hardcoding
 
@@ -104,7 +104,7 @@ python apply_advanced_whatsapp_fix.py
 from voice.integrate_advanced_routing import patch_jarvis_voice_agent_advanced
 
 # Apply patch
-patch_jarvis_voice_agent_advanced(JARVISAgentVoice)
+patch_jarvis_voice_agent_advanced(IroncliwAgentVoice)
 ```
 
 2. **Build Swift components (optional):**
@@ -307,10 +307,10 @@ router.provide_feedback(feedback)
 
 ## Conclusion
 
-The JARVIS Advanced ML Command Routing system represents a paradigm shift from hardcoded patterns to true machine intelligence. With zero hardcoding and continuous learning, JARVIS becomes smarter with every interaction, providing a truly adaptive and intelligent assistant experience.
+The Ironcliw Advanced ML Command Routing system represents a paradigm shift from hardcoded patterns to true machine intelligence. With zero hardcoding and continuous learning, Ironcliw becomes smarter with every interaction, providing a truly adaptive and intelligent assistant experience.
 
 The "open WhatsApp" problem is not just fixed - it's impossible to occur again because the system understands intent, not keywords. This is the future of voice assistants: intelligent, adaptive, and ever-improving.
 
 ---
 
-*"The best code is no code. The best patterns are learned patterns."* - JARVIS ML Philosophy
+*"The best code is no code. The best patterns are learned patterns."* - Ironcliw ML Philosophy

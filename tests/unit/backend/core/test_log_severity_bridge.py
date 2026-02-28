@@ -1,4 +1,4 @@
-# tests/unit/backend/core/test_log_severity_bridge.py
+﻿# tests/unit/backend/core/test_log_severity_bridge.py
 """Tests for log severity bridge - temporary module until ComponentRegistry exists."""
 import pytest
 from unittest.mock import patch, MagicMock
@@ -10,7 +10,7 @@ class TestComponentCriticality:
     def test_normalize_component_name_kebab_case(self):
         from backend.core.log_severity_bridge import _normalize_component_name
         assert _normalize_component_name("jarvis_prime") == "jarvis-prime"
-        assert _normalize_component_name("JARVIS_PRIME") == "jarvis-prime"
+        assert _normalize_component_name("Ironcliw_PRIME") == "jarvis-prime"
         assert _normalize_component_name("Jarvis Prime") == "jarvis-prime"
         assert _normalize_component_name("jarvis-prime") == "jarvis-prime"
 

@@ -1,8 +1,8 @@
-# JARVIS Voice Integration System
+﻿# Ironcliw Voice Integration System
 
 ## Overview
 
-The JARVIS Voice Integration System provides comprehensive voice capabilities including automatic notifications, natural conversation, and voice-based approvals. The system is fully dynamic, using Anthropic's Claude API for natural language generation without hardcoded responses.
+The Ironcliw Voice Integration System provides comprehensive voice capabilities including automatic notifications, natural conversation, and voice-based approvals. The system is fully dynamic, using Anthropic's Claude API for natural language generation without hardcoded responses.
 
 ## Features
 
@@ -69,8 +69,8 @@ pip install edge-tts
 export ANTHROPIC_API_KEY="your-claude-api-key-here"
 
 # Optional: Configure voice preferences
-export JARVIS_VOICE_RATE="175"
-export JARVIS_VOICE_VOLUME="0.9"
+export Ironcliw_VOICE_RATE="175"
+export Ironcliw_VOICE_VOLUME="0.9"
 ```
 
 ## Usage
@@ -196,7 +196,7 @@ All voice content is generated dynamically using Claude API:
 
 ```python
 # Example: Announcement generation
-prompt = f"""Generate a natural JARVIS announcement for:
+prompt = f"""Generate a natural Ironcliw announcement for:
 Context: {notification.context}
 Content: {notification.content}
 Urgency: {notification.urgency}
@@ -216,7 +216,7 @@ The system continuously learns from interactions:
 - **Context optimization**: Improves context understanding over time
 - **Response refinement**: Enhances response quality based on feedback
 
-## Integration with JARVIS Components
+## Integration with Ironcliw Components
 
 ### Notification Intelligence
 ```python
@@ -342,4 +342,4 @@ When contributing to the voice integration system:
 
 ## License
 
-This voice integration system is part of the JARVIS AI Agent project and follows the same licensing terms.
+This voice integration system is part of the Ironcliw AI Agent project and follows the same licensing terms.

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test Context Awareness for JARVIS
+Test Context Awareness for Ironcliw
 ==================================
 
 Tests the screen lock detection and context-aware command handling
@@ -18,7 +18,7 @@ async def test_context_awareness():
     # API endpoint
     api_url = "http://localhost:8000/api/command"
     
-    print("🧪 Testing JARVIS Context Awareness")
+    print("🧪 Testing Ironcliw Context Awareness")
     print("=" * 50)
     
     # Test 1: Simple command that doesn't require screen
@@ -84,8 +84,8 @@ async def test_context_awareness():
     print("✅ Context awareness test completed!")
     print("\nTo test with a locked screen:")
     print("1. Lock your screen (Cmd+Ctrl+Q or Apple menu > Lock Screen)")
-    print("2. Say: 'Hey JARVIS, open Safari and search for dogs'")
-    print("3. JARVIS should:")
+    print("2. Say: 'Hey Ironcliw, open Safari and search for dogs'")
+    print("3. Ironcliw should:")
     print("   - Detect the locked screen")
     print("   - Tell you it will unlock by typing the password")
     print("   - Unlock the screen")

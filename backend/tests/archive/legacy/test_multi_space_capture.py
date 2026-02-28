@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for Multi-Space Capture Engine integration
 Tests the enhanced PureVisionIntelligence with multi-space screenshot capture
@@ -169,7 +169,7 @@ async def test_permission_flow():
         )
         
         # Note: This will actually request permission
-        print("⚠️  Set JARVIS_AUTO_APPROVE_SPACE_SWITCH=true to auto-approve")
+        print("⚠️  Set Ironcliw_AUTO_APPROVE_SPACE_SWITCH=true to auto-approve")
         
         result = await engine.capture_all_spaces(request)
         
@@ -198,6 +198,6 @@ async def main():
 if __name__ == "__main__":
     # Set environment for testing
     import os
-    os.environ['JARVIS_AUTO_APPROVE_SPACE_SWITCH'] = 'true'
+    os.environ['Ironcliw_AUTO_APPROVE_SPACE_SWITCH'] = 'true'
     
     asyncio.run(main())

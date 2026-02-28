@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Verify Claude API Key Configuration for JARVIS Vision
+Verify Claude API Key Configuration for Ironcliw Vision
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-print("🔍 JARVIS API Key Verification")
+print("🔍 Ironcliw API Key Verification")
 print("=" * 60)
 
 # Check various possible .env locations
@@ -92,13 +92,13 @@ if not api_key:
     print("   echo 'export ANTHROPIC_API_KEY=\"your-actual-api-key-here\"' >> ~/.zshrc")
     print("   source ~/.zshrc")
 
-    print("\n⚠️  After adding the key, restart JARVIS!")
+    print("\n⚠️  After adding the key, restart Ironcliw!")
     print("\n🔑 Get your API key from: https://console.anthropic.com/")
 else:
     print("\n✅ API key is configured correctly!")
     print("\n🚀 Next steps:")
-    print("   1. Restart JARVIS: python start_system.py")
-    print("   2. Say: 'Hey JARVIS, what's on my screen?'")
+    print("   1. Restart Ironcliw: python start_system.py")
+    print("   2. Say: 'Hey Ironcliw, what's on my screen?'")
     print("   3. Enjoy intelligent vision responses!")
 
 # Check if vision files are using the key

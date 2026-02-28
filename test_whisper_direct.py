@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Direct Whisper Test - Test if Whisper can transcribe "unlock my screen"
 """
@@ -56,7 +56,7 @@ def test_whisper_transcription():
     if "unlock" in text.lower() and "screen" in text.lower():
         print("   ✅ SUCCESS! Whisper correctly heard 'unlock my screen'")
         print("\n🎉 Whisper is working!")
-        print("The issue is that JARVIS isn't using Whisper properly.")
+        print("The issue is that Ironcliw isn't using Whisper properly.")
     else:
         print(f"   ❌ Whisper heard: '{text}'")
         print("   Try speaking more clearly or adjusting microphone")

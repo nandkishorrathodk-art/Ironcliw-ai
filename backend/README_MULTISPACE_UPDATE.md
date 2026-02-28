@@ -1,7 +1,7 @@
-## 🆕 What's New in v13.2.0 - Multi-Space Desktop Vision System
+﻿## 🆕 What's New in v13.2.0 - Multi-Space Desktop Vision System
 
 ### 🚀 Multi-Space Vision Intelligence (GROUNDBREAKING!)
-**JARVIS CAN NOW SEE ALL YOUR DESKTOP SPACES AT ONCE!** Revolutionary upgrade:
+**Ironcliw CAN NOW SEE ALL YOUR DESKTOP SPACES AT ONCE!** Revolutionary upgrade:
 - ✅ **Full workspace awareness** - Sees across all macOS desktop spaces
 - ✅ **Intelligent space detection** - Knows when to look at multiple spaces
 - ✅ **Cross-space app tracking** - "Where is Terminal?" finds it on any space
@@ -17,7 +17,7 @@
 - ✅ **"What's running on other desktops?"** - Multi-space activity summary
 
 ### 🔍 Proactive Multi-Space Monitoring (REVOLUTIONARY!)
-**JARVIS WATCHES ALL SPACES AND HELPS PROACTIVELY!** Features:
+**Ironcliw WATCHES ALL SPACES AND HELPS PROACTIVELY!** Features:
 - ✅ **Workspace change detection** - Notices new spaces, app movements
 - ✅ **Pattern recognition** - "You're rapidly switching spaces, looking for something?"
 - ✅ **Workflow insights** - "VS Code is spread across 3 spaces"
@@ -63,7 +63,7 @@
 
 #### Basic Queries:
 ```bash
-"Hey JARVIS, show me all my workspaces"
+"Hey Ironcliw, show me all my workspaces"
 "What's on Desktop 3?"
 "Find all my Terminal windows"
 "Which space has Slack?"
@@ -79,8 +79,8 @@
 
 #### Enable Proactive Monitoring:
 ```python
-# JARVIS will start watching all spaces
-"Hey JARVIS, monitor all my desktop spaces"
+# Ironcliw will start watching all spaces
+"Hey Ironcliw, monitor all my desktop spaces"
 
 # Get insights about your workspace
 "Give me workspace insights"

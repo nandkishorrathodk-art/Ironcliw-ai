@@ -1,8 +1,8 @@
-# CoreML Voice Engine Integration
+﻿# CoreML Voice Engine Integration
 **Ultra-Fast Voice Activity Detection + Speaker Recognition on Apple Neural Engine**
 
 ## Overview
-JARVIS now features hardware-accelerated voice recognition using Apple's CoreML framework, delivering <10ms latency on the Neural Engine with zero hardcoding and fully adaptive thresholds.
+Ironcliw now features hardware-accelerated voice recognition using Apple's CoreML framework, delivering <10ms latency on the Neural Engine with zero hardcoding and fully adaptive thresholds.
 
 ## Architecture
 
@@ -419,7 +419,7 @@ Potential improvements:
 
 ---
 
-**Result**: JARVIS now has enterprise-grade voice recognition with hardware acceleration! 🚀
+**Result**: Ironcliw now has enterprise-grade voice recognition with hardware acceleration! 🚀
 
 ## Quick Start
 
@@ -434,6 +434,6 @@ cd voice/coreml
 # 3. Test the engine
 python3 voice_engine_bridge.py
 
-# 4. Integrate with JARVIS
+# 4. Integrate with Ironcliw
 # See jarvis_voice.py for usage
 ```

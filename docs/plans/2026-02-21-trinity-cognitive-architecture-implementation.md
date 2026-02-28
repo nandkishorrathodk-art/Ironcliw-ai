@@ -1,4 +1,4 @@
-# Trinity Cognitive Architecture Implementation Plan
+﻿# Trinity Cognitive Architecture Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -199,7 +199,7 @@ PHI_SELF_SERVE_DOMAINS = frozenset({"conversation", "system"})
 
 # Minimum confidence to trust classification (below this -> escalate)
 MIN_CONFIDENCE_THRESHOLD = float(
-    os.environ.get("JARVIS_PHI_MIN_CONFIDENCE", "0.5")
+    os.environ.get("Ironcliw_PHI_MIN_CONFIDENCE", "0.5")
 )
 
 
@@ -211,7 +211,7 @@ def build_classifier_system_prompt(action_registry: Optional[Dict] = None) -> st
         actions_list = ", ".join(sorted(action_registry.keys()))
         actions_section = f"\n\nAvailable actions the Body can execute: {actions_list}"
 
-    return f"""You are a query classifier for the JARVIS AI assistant. Your ONLY job is to classify the user's query into a structured JSON object. Do NOT answer the query — only classify it.
+    return f"""You are a query classifier for the Ironcliw AI assistant. Your ONLY job is to classify the user's query into a structured JSON object. Do NOT answer the query — only classify it.
 
 Output JSON with these fields:
 - schema_version: always {SCHEMA_VERSION}
@@ -367,7 +367,7 @@ if (_classification
         # Phi generates directly (it's already loaded and fast)
         _phi_response = await _executor.classify(
             query=messages[-1]["content"] if messages else "",
-            system_prompt="You are JARVIS, a helpful AI assistant. Respond briefly and naturally.",
+            system_prompt="You are Ironcliw, a helpful AI assistant. Respond briefly and naturally.",
         )
         # For self-serve, the "classification" IS the response
         # But we need free text, so use generate without grammar
@@ -528,7 +528,7 @@ mute, greeting). Published to ~/.jarvis/trinity/ on J-Prime boot."
 
 ## Task 5: Body — Extend JarvisPrimeClient
 
-**Repo:** `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent`
+**Repo:** `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent`
 
 **Files:**
 - Modify: `backend/core/jarvis_prime_client.py` (1,916 lines)
@@ -674,7 +674,7 @@ async def _brain_vacuum_fallback(
     try:
         response = await self._execute_completion(
             prompt=query,
-            system_prompt=system_prompt or "You are JARVIS, a helpful AI assistant.",
+            system_prompt=system_prompt or "You are Ironcliw, a helpful AI assistant.",
             max_tokens=max_tokens,
             mode=RoutingMode.GEMINI_API,
         )
@@ -696,7 +696,7 @@ async def _brain_vacuum_fallback(
 **Step 4:** Commit.
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/core/jarvis_prime_client.py
 git commit -m "feat: add classify_and_complete() to JarvisPrimeClient
 
@@ -709,7 +709,7 @@ StructuredResponse with full routing metadata."
 
 ## Task 6: Body — Hollow Out UCP (THE BIG SURGERY)
 
-**Repo:** `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent`
+**Repo:** `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent`
 
 **Files:**
 - Modify: `backend/api/unified_command_processor.py` (6,747 lines)
@@ -959,7 +959,7 @@ async def _execute_reflex(
 **Step 7:** Commit.
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/api/unified_command_processor.py
 git commit -m "feat: hollow out UCP — replace classification with Spinal Reflex Arc
 
@@ -972,7 +972,7 @@ call + action executor. Zero caller changes."
 
 ## Task 7: Body — Clean Up Caller Pre-Classification
 
-**Repo:** `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent`
+**Repo:** `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent`
 
 **Files:**
 - Modify: `backend/api/jarvis_voice_api.py` (5,450 lines)
@@ -993,7 +993,7 @@ Replace with a clean pass-through: the voice pipeline should transcribe speech, 
 **Step 3:** Commit.
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add backend/api/jarvis_voice_api.py main.py
 git commit -m "feat: remove pre-classification from voice API and main.py
 
@@ -1006,7 +1006,7 @@ J-Prime via process_command(). ~320 lines removed."
 
 ## Task 8: Body — Delete Dead Files
 
-**Repo:** `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent`
+**Repo:** `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent`
 
 **Files:**
 - Delete: `backend/core/tiered_command_router.py` (1,356 lines)
@@ -1030,7 +1030,7 @@ Remove any remaining imports in other files.
 **Step 3:** Commit.
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git rm backend/core/tiered_command_router.py backend/core/tiered_vbia_adapter.py backend/api/unified_command_processor_pure.py
 git commit -m "feat: delete dead classification files
 
@@ -1100,7 +1100,7 @@ as DPO training candidates for local model improvement."
 
 ## Task 10: Verification — Golden Test Corpus
 
-**Repo:** `/Users/djrussell23/Documents/repos/JARVIS-AI-Agent`
+**Repo:** `/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent`
 
 **Context:** Verify the surgery worked. Create a test corpus of diverse queries and verify each produces correct behavior through the new routing.
 
@@ -1149,7 +1149,7 @@ GOLDEN_CORPUS = [
 **Step 3:** Commit test corpus.
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 git add tests/verify_trinity_routing.py
 git commit -m "test: add golden test corpus for Trinity routing verification
 

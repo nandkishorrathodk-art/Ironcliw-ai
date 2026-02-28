@@ -1,4 +1,4 @@
-# Audio Pipeline Unification Implementation Plan
+﻿# Audio Pipeline Unification Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -123,7 +123,7 @@ git commit -m "fix: ModeDispatcher accepts constructor deps, adds lifecycle meth
 
 ### Task 2: Fix ConversationPipeline TTS Routing Through AudioBus
 
-`_speak_sentence()` calls `tts_engine.speak()` directly, bypassing AudioBus. TTS output must go through AudioBus so AEC has a reference signal and BargeIn can detect JARVIS speaking.
+`_speak_sentence()` calls `tts_engine.speak()` directly, bypassing AudioBus. TTS output must go through AudioBus so AEC has a reference signal and BargeIn can detect Ironcliw speaking.
 
 **Files:**
 - Modify: `backend/audio/conversation_pipeline.py` (lines 472-487)
@@ -432,7 +432,7 @@ def _create_bargein_vad_consumer(barge_in):
     Uses energy-based VAD (no imports needed) to detect speech.
     """
     import numpy as np
-    _energy_threshold = float(os.getenv("JARVIS_BARGEIN_ENERGY_THRESHOLD", "0.01"))
+    _energy_threshold = float(os.getenv("Ironcliw_BARGEIN_ENERGY_THRESHOLD", "0.01"))
 
     def _on_frame(frame: np.ndarray) -> None:
         energy = float(np.sqrt(np.mean(frame ** 2)))
@@ -813,7 +813,7 @@ git commit -m "feat: add conversation_mode flag to hallucination guard for relax
 
 ### Task 8: Wire Wake Word to ModeDispatcher
 
-The ModeDispatcher's `handle_transcript()` method is never called by the existing wake word / command processor. Connect it so "JARVIS, let's chat" triggers conversation mode.
+The ModeDispatcher's `handle_transcript()` method is never called by the existing wake word / command processor. Connect it so "Ironcliw, let's chat" triggers conversation mode.
 
 **Files:**
 - Modify: `backend/audio/audio_pipeline_bootstrap.py` (add to `wire_conversation_pipeline`)
@@ -894,7 +894,7 @@ Verify the full system works by checking imports and startup flow.
 **Step 1: Verify all imports resolve**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 -c "
 from backend.audio.audio_pipeline_bootstrap import (
     start_audio_bus, wire_conversation_pipeline, shutdown, PipelineHandle

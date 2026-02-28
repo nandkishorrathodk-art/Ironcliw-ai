@@ -1,8 +1,8 @@
-{
+﻿{
   "info": {
     "_postman_id": "jarvis-voice-unlock-flow-2024",
-    "name": "JARVIS Voice Unlock Flow (Sequential) v17.8.1",
-    "description": "Sequential collection that mimics the Voice Unlock Authentication Flow with PRD v2.0 + Voice Biometric Semantic Cache enhancements.\n\n## v17.8.1 Features - Semantic Cache with Continuous Learning\n- **L1-L3 Semantic Cache** for sub-millisecond authentication\n- **Continuous Learning** - ALL attempts recorded to SQLite\n- **Fire-and-Forget DB Recording** - Non-blocking async persistence\n- **Cache Statistics** - Full metrics on hit rates and learning\n\n## PRD v2.0 Features\n- **AAM-Softmax + Center Loss + Triplet Loss** fine-tuning for speaker embeddings\n- **Platt Scaling & Isotonic Regression** for probability calibration\n- **Adaptive Thresholds** targeting 90%/95%/98% for base/high/critical security\n- **Comprehensive Anti-Spoofing** (replay, synthesis, voice conversion, environmental)\n\n## Flow Steps\n0. Backend Check\n1. System Health\n2. Audit Session Start\n3. Comprehensive Anti-Spoofing\n4. Calibrated Voice Authentication\n5. Calibration Training Sample\n6. Multi-Factor Fusion (if borderline)\n7. Screen Unlock\n8. JARVIS Feedback\n9. Audit Session End\n\n## New: Voice Biometric Cache Endpoints\n- GET /api/voice-unlock/cache/stats - Cache performance + learning metrics\n- POST /api/voice-unlock/cache/lookup - Manual cache lookup test\n- POST /api/voice-unlock/cache/invalidate - Clear cache entries\n\n⚠️ IMPORTANT: Make sure JARVIS backend is running on port 8010!\n\nTo start backend:\n```bash\ncd backend && python main.py\n```\n\n⏱️ Recommended timeout: 5000ms",
+    "name": "Ironcliw Voice Unlock Flow (Sequential) v17.8.1",
+    "description": "Sequential collection that mimics the Voice Unlock Authentication Flow with PRD v2.0 + Voice Biometric Semantic Cache enhancements.\n\n## v17.8.1 Features - Semantic Cache with Continuous Learning\n- **L1-L3 Semantic Cache** for sub-millisecond authentication\n- **Continuous Learning** - ALL attempts recorded to SQLite\n- **Fire-and-Forget DB Recording** - Non-blocking async persistence\n- **Cache Statistics** - Full metrics on hit rates and learning\n\n## PRD v2.0 Features\n- **AAM-Softmax + Center Loss + Triplet Loss** fine-tuning for speaker embeddings\n- **Platt Scaling & Isotonic Regression** for probability calibration\n- **Adaptive Thresholds** targeting 90%/95%/98% for base/high/critical security\n- **Comprehensive Anti-Spoofing** (replay, synthesis, voice conversion, environmental)\n\n## Flow Steps\n0. Backend Check\n1. System Health\n2. Audit Session Start\n3. Comprehensive Anti-Spoofing\n4. Calibrated Voice Authentication\n5. Calibration Training Sample\n6. Multi-Factor Fusion (if borderline)\n7. Screen Unlock\n8. Ironcliw Feedback\n9. Audit Session End\n\n## New: Voice Biometric Cache Endpoints\n- GET /api/voice-unlock/cache/stats - Cache performance + learning metrics\n- POST /api/voice-unlock/cache/lookup - Manual cache lookup test\n- POST /api/voice-unlock/cache/invalidate - Clear cache entries\n\n⚠️ IMPORTANT: Make sure Ironcliw backend is running on port 8010!\n\nTo start backend:\n```bash\ncd backend && python main.py\n```\n\n⏱️ Recommended timeout: 5000ms",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -127,7 +127,7 @@
           "listen": "prerequest",
           "script": {
             "exec": [
-              "console.log('🔍 Checking if JARVIS backend is running on ' + pm.collectionVariables.get('base_url'));"
+              "console.log('🔍 Checking if Ironcliw backend is running on ' + pm.collectionVariables.get('base_url'));"
             ],
             "type": "text/javascript"
           }
@@ -647,16 +647,16 @@
       }
     },
     {
-      "name": "8. JARVIS Success Feedback",
+      "name": "8. Ironcliw Success Feedback",
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test('JARVIS feedback sent', function() {",
+              "pm.test('Ironcliw feedback sent', function() {",
               "    pm.response.to.have.status(200);",
               "});",
-              "console.log('🔊 JARVIS feedback delivered');"
+              "console.log('🔊 Ironcliw feedback delivered');"
             ],
             "type": "text/javascript"
           }
@@ -679,7 +679,7 @@
           "host": ["{{base_url}}"],
           "path": ["voice", "jarvis", "speak"]
         },
-        "description": "Have JARVIS speak success feedback"
+        "description": "Have Ironcliw speak success feedback"
       }
     },
     {

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Debug weather navigation and reading"""
 
 import asyncio
@@ -80,5 +80,5 @@ async def debug_weather():
             print(f"⚠️  Showing: {weather_result.get('analysis')[:100]}")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(debug_weather())

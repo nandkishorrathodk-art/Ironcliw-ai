@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Debug WebSocket Connection
 ==========================
@@ -69,7 +69,7 @@ async def test_websocket():
         print(f"\n❌ WebSocket connection rejected with status {e.status_code}")
         print(f"   Headers: {e.headers}")
     except ConnectionRefusedError:
-        print("\n❌ Connection refused - is JARVIS running on port 8000?")
+        print("\n❌ Connection refused - is Ironcliw running on port 8000?")
     except Exception as e:
         print(f"\n❌ Connection error: {e}")
         traceback.print_exc()

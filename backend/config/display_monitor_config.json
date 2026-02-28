@@ -1,4 +1,4 @@
-{
+﻿{
   "display_monitoring": {
     "enabled": true,
     "check_interval_seconds": 10.0,
@@ -30,15 +30,15 @@
     "voice_name": "en-US-GuyNeural",
     "prompt_templates": {
       "generic": [
-        "JARVIS online. Ready for your command, sir.",
+        "Ironcliw online. Ready for your command, sir.",
         "Systems initialized. At your service, sir.",
         "Good to see you, sir.",
-        "JARVIS standing by.",
+        "Ironcliw standing by.",
         "All systems operational, sir.",
         "Online and ready, sir.",
         "At your service.",
         "Systems ready.",
-        "JARVIS operational.",
+        "Ironcliw operational.",
         "Ready when you are, sir."
       ],
       "morning": [

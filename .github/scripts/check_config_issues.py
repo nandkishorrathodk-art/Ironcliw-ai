@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Check for common configuration issues in JARVIS codebase.
+Check for common configuration issues in Ironcliw codebase.
 
 This script catches common mistakes that cause production issues:
 1. Using os.environ instead of subprocess env dict in start_system.py
@@ -18,7 +18,7 @@ def check_subprocess_env_propagation(repo_root: Path) -> list:
     """
     Critical check: Ensure env vars are passed to subprocess env dict.
 
-    This catches the exact issue we just fixed where JARVIS_DB_HOST
+    This catches the exact issue we just fixed where Ironcliw_DB_HOST
     was set in os.environ but not in the subprocess env dict.
     """
     errors = []
@@ -31,11 +31,11 @@ def check_subprocess_env_propagation(repo_root: Path) -> list:
 
     content = start_system_path.read_text()
 
-    # Find all os.environ assignments for JARVIS_DB_* variables
-    os_environ_assignments = re.findall(r'os\.environ\["(JARVIS_DB_\w+)"\]\s*=', content)
+    # Find all os.environ assignments for Ironcliw_DB_* variables
+    os_environ_assignments = re.findall(r'os\.environ\["(Ironcliw_DB_\w+)"\]\s*=', content)
 
-    # Find all env dict assignments for JARVIS_DB_* variables
-    env_dict_assignments = re.findall(r'env\["(JARVIS_DB_\w+)"\]\s*=', content)
+    # Find all env dict assignments for Ironcliw_DB_* variables
+    env_dict_assignments = re.findall(r'env\["(Ironcliw_DB_\w+)"\]\s*=', content)
 
     # Check if any vars are set in os.environ but not in env dict
     os_environ_set = set(os_environ_assignments)
@@ -62,10 +62,10 @@ def check_critical_env_vars_presence(repo_root: Path) -> list:
 
     # Critical env vars that MUST be in subprocess env dict
     critical_vars = {
-        "JARVIS_DB_HOST": "127.0.0.1",  # Must be localhost for proxy
-        "JARVIS_DB_PORT": None,  # Must be set (port number)
-        "JARVIS_DB_TYPE": "cloudsql",  # Should be cloudsql
-        "JARVIS_DB_CONNECTION_NAME": None,  # Must be set
+        "Ironcliw_DB_HOST": "127.0.0.1",  # Must be localhost for proxy
+        "Ironcliw_DB_PORT": None,  # Must be set (port number)
+        "Ironcliw_DB_TYPE": "cloudsql",  # Should be cloudsql
+        "Ironcliw_DB_CONNECTION_NAME": None,  # Must be set
     }
 
     for var_name, expected_value in critical_vars.items():

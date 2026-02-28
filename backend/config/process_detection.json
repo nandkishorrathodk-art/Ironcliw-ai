@@ -1,5 +1,5 @@
-{
-  "description": "Advanced Process Detection Configuration for JARVIS",
+﻿{
+  "description": "Advanced Process Detection Configuration for Ironcliw",
   "version": "1.0.0",
   "ports": [
     8010,

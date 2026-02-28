@@ -1,5 +1,5 @@
-"""
-JARVIS Structured Logging Module
+﻿"""
+Ironcliw Structured Logging Module
 ================================
 
 Production-grade structured logging system with real-time monitoring.

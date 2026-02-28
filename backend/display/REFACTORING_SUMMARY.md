@@ -1,4 +1,4 @@
-# Display Connection Refactoring Summary
+﻿# Display Connection Refactoring Summary
 
 ## What Changed
 
@@ -85,8 +85,8 @@ This will:
 
 Watch the mouse - it should move to the correct positions!
 
-### Test via JARVIS:
-Restart JARVIS and say "living room tv"
+### Test via Ironcliw:
+Restart Ironcliw and say "living room tv"
 
 Expected behavior:
 - Mouse drags to (1235, 10) ✅
@@ -152,14 +152,14 @@ If UI layout changes, update coordinates in config file:
 4. Verify coordinates are correct for your screen
 
 ### Connection times out
-1. Check JARVIS is using `SimpleDisplayConnector`
+1. Check Ironcliw is using `SimpleDisplayConnector`
 2. Verify coordinates are visible (UI not obscured)
 3. Check logs for errors in click sequence
 
 ### UI layout changed
 1. Use macOS Accessibility Inspector to find new positions
 2. Update coordinates in `simple_display_connector.py`
-3. Restart JARVIS
+3. Restart Ironcliw
 
 ## Documentation
 

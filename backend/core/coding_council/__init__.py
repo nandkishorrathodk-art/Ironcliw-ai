@@ -1,8 +1,8 @@
-"""
+﻿"""
 v77.0: Unified Coding Council - Self-Evolution Framework
 =========================================================
 
-This module provides a bulletproof, production-grade system for JARVIS
+This module provides a bulletproof, production-grade system for Ironcliw
 self-evolution through coordinated use of multiple AI coding frameworks.
 
 Architecture:
@@ -49,7 +49,7 @@ Usage:
         target_files=["backend/voice/intelligent_command_handler.py"]
     )
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 Version: 1.0.0
 """
 
@@ -121,7 +121,7 @@ async def initialize_coding_council_full() -> "UnifiedCodingCouncil":
     Full initialization of Coding Council with Trinity integration.
 
     This is the recommended way to initialize the Coding Council
-    when running as part of the full JARVIS system.
+    when running as part of the full Ironcliw system.
 
     Returns:
         The initialized UnifiedCodingCouncil

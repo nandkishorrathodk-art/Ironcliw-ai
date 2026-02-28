@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Ghost Hands End-to-End Integration Test
 =========================================
@@ -9,7 +9,7 @@ Tests the complete Vision → Brain → Hands pipeline:
 2. Brain (Orchestrator): Receives trigger_event with window_id, routes action
 3. Hands (YabaiAwareActuator): Executes cross-space click on exact window
 
-This proves the "Golden Path" - JARVIS can see a target on any space
+This proves the "Golden Path" - Ironcliw can see a target on any space
 and surgically interact with it without disturbing your workflow.
 
 Usage:
@@ -186,7 +186,7 @@ async def test_end_to_end_integration():
         print(f"  • Hands executed cross-space click via {report.backend_used}")
         print(f"  • User focus preserved: {report.focus_preserved}")
         print("")
-        print("JARVIS can now SEE and ACT across all Spaces simultaneously!")
+        print("Ironcliw can now SEE and ACT across all Spaces simultaneously!")
     else:
         print("❌ INTEGRATION TEST FAILED")
         print(f"   Error: {report.error}")
@@ -334,7 +334,7 @@ The Ghost Hands system is fully integrated:
 │  User remains on Space 7, completely undisturbed!               │
 └─────────────────────────────────────────────────────────────────┘
 
-JARVIS is now a multi-dimensional autonomous agent.
+Ironcliw is now a multi-dimensional autonomous agent.
 """)
     else:
         print("\n❌ Some tests failed. Check the output above for details.")

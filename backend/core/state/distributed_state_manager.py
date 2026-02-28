@@ -1,4 +1,4 @@
-"""
+﻿"""
 DistributedStateManager v100.0 - Unified Distributed State Coordination
 ========================================================================
 
@@ -39,7 +39,7 @@ Architecture:
     |  +------------------------------------------------------------+ |
     +-----------------------------------------------------------------+
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -75,7 +75,7 @@ from backend.core.async_safety import LazyAsyncLock
 # Environment-driven configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 REDIS_STATE_DB = int(os.getenv("REDIS_STATE_DB", "2"))
-STATE_KEY_PREFIX = os.getenv("JARVIS_STATE_PREFIX", "jarvis:state:")
+STATE_KEY_PREFIX = os.getenv("Ironcliw_STATE_PREFIX", "jarvis:state:")
 LEADER_TTL_SECONDS = int(os.getenv("STATE_LEADER_TTL", "30"))
 STATE_SYNC_INTERVAL = float(os.getenv("STATE_SYNC_INTERVAL", "5.0"))
 SNAPSHOT_INTERVAL = float(os.getenv("STATE_SNAPSHOT_INTERVAL", "300.0"))  # 5 minutes

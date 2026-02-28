@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Fix JARVIS Weather Hang Issue
+Fix Ironcliw Weather Hang Issue
 This script patches the weather handling to prevent hanging
 """
 
@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 def apply_weather_fix():
     """Apply fix to prevent weather hanging"""
-    print("🔧 Applying JARVIS Weather Hang Fix")
+    print("🔧 Applying Ironcliw Weather Hang Fix")
     print("=" * 60)
     
     # Read the jarvis_agent_voice.py file
@@ -125,7 +125,7 @@ except ImportError as e:
     print("2. Simplified timeout structure (single 20s timeout)")
     print("3. Better error handling and logging")
     print("4. Automatic Weather app opening as fallback")
-    print("\nRestart your JARVIS server for the fix to take effect.")
+    print("\nRestart your Ironcliw server for the fix to take effect.")
 
 
 if __name__ == "__main__":

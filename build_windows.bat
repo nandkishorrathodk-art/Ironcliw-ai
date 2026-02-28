@@ -1,12 +1,12 @@
-@echo off
-REM JARVIS Windows Build Script
+﻿@echo off
+REM Ironcliw Windows Build Script
 REM Version: 1.0.0
 REM Platform: Windows 10/11
 
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo   JARVIS Windows Build Script
+echo   Ironcliw Windows Build Script
 echo   Version 1.0.0
 echo ============================================
 echo.
@@ -150,7 +150,7 @@ python verify_dependencies.py
 if %errorLevel% neq 0 (
     echo.
     echo WARNING: Some dependencies failed verification.
-    echo JARVIS may not work correctly.
+    echo Ironcliw may not work correctly.
     echo Check the output above for details.
     echo.
 ) else (
@@ -159,9 +159,9 @@ if %errorLevel% neq 0 (
     echo   Build Successful!
     echo ============================================
     echo.
-    echo JARVIS is ready to run on Windows.
+    echo Ironcliw is ready to run on Windows.
     echo.
-    echo To start JARVIS:
+    echo To start Ironcliw:
     echo   1. Activate virtual environment: venv\Scripts\activate
     echo   2. Run supervisor: python unified_supervisor.py
     echo.

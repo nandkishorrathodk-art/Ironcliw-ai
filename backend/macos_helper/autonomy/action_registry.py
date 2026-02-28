@@ -1,9 +1,9 @@
-"""
-Centralized Action Registry for JARVIS Autonomous System.
+﻿"""
+Centralized Action Registry for Ironcliw Autonomous System.
 
 This module provides a comprehensive registry of all executable actions,
 their metadata, handlers, and validation rules. It serves as the single
-source of truth for what actions JARVIS can perform.
+source of truth for what actions Ironcliw can perform.
 
 Key Features:
     - Dynamic action registration and discovery
@@ -14,9 +14,9 @@ Key Features:
     - Async-first design with no hardcoding
 
 Environment Variables:
-    JARVIS_ACTION_REGISTRY_AUTO_DISCOVER: Enable auto-discovery (default: true)
-    JARVIS_ACTION_REGISTRY_CACHE_TTL: Cache TTL in seconds (default: 300)
-    JARVIS_ACTION_REGISTRY_VALIDATION_MODE: strict/lenient (default: strict)
+    Ironcliw_ACTION_REGISTRY_AUTO_DISCOVER: Enable auto-discovery (default: true)
+    Ironcliw_ACTION_REGISTRY_CACHE_TTL: Cache TTL in seconds (default: 300)
+    Ironcliw_ACTION_REGISTRY_VALIDATION_MODE: strict/lenient (default: strict)
 """
 
 from __future__ import annotations
@@ -409,19 +409,19 @@ class ActionRegistryConfig:
         """Create configuration from environment variables."""
         return cls(
             auto_discover=os.getenv(
-                "JARVIS_ACTION_REGISTRY_AUTO_DISCOVER", "true"
+                "Ironcliw_ACTION_REGISTRY_AUTO_DISCOVER", "true"
             ).lower() == "true",
             cache_ttl_seconds=float(os.getenv(
-                "JARVIS_ACTION_REGISTRY_CACHE_TTL", "300"
+                "Ironcliw_ACTION_REGISTRY_CACHE_TTL", "300"
             )),
             validation_mode=os.getenv(
-                "JARVIS_ACTION_REGISTRY_VALIDATION_MODE", "strict"
+                "Ironcliw_ACTION_REGISTRY_VALIDATION_MODE", "strict"
             ),
             allow_custom_actions=os.getenv(
-                "JARVIS_ACTION_REGISTRY_ALLOW_CUSTOM", "true"
+                "Ironcliw_ACTION_REGISTRY_ALLOW_CUSTOM", "true"
             ).lower() == "true",
             max_custom_actions=int(os.getenv(
-                "JARVIS_ACTION_REGISTRY_MAX_CUSTOM", "100"
+                "Ironcliw_ACTION_REGISTRY_MAX_CUSTOM", "100"
             )),
         )
 
@@ -436,7 +436,7 @@ class ActionRegistry:
     Centralized registry for all executable actions.
 
     This class manages action registration, discovery, and lookup.
-    It provides a single source of truth for what actions JARVIS can perform.
+    It provides a single source of truth for what actions Ironcliw can perform.
     """
 
     def __init__(self, config: Optional[ActionRegistryConfig] = None):

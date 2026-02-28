@@ -1,4 +1,4 @@
-"""
+﻿"""
 VBI Debug Tracer - Comprehensive debugging and pre-warming system for Voice Biometric Intelligence
 
 This module provides:
@@ -730,7 +730,7 @@ class ECAPAPreWarmer:
 
             # Try default Cloud Run endpoints
             default_endpoints = [
-                os.environ.get("JARVIS_ML_ENDPOINT"),
+                os.environ.get("Ironcliw_ML_ENDPOINT"),
             ]
 
             import aiohttp
@@ -764,10 +764,10 @@ class ECAPAPreWarmer:
         
         # From environment variables (highest priority)
         for env_var in [
-            "JARVIS_CLOUD_ML_ENDPOINT",
-            "JARVIS_CLOUD_ECAPA_ENDPOINT",
+            "Ironcliw_CLOUD_ML_ENDPOINT",
+            "Ironcliw_CLOUD_ECAPA_ENDPOINT",
             "CLOUD_ECAPA_ENDPOINT",
-            "JARVIS_ML_ENDPOINT",
+            "Ironcliw_ML_ENDPOINT",
             "ML_SERVICE_URL",
         ]:
             env_endpoint = os.environ.get(env_var)

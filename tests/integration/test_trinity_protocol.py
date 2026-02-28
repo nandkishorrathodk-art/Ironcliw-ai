@@ -1,7 +1,7 @@
-"""
+﻿"""
 Integration tests for the Trinity cross-repo health check protocol.
 
-Simulates the 3-component Trinity architecture (JARVIS Body, J-Prime, Reactor-Core)
+Simulates the 3-component Trinity architecture (Ironcliw Body, J-Prime, Reactor-Core)
 using mock HTTP servers and heartbeat files to verify health aggregation, staleness
 detection, recovery flows, grace periods, and concurrent check execution.
 """
@@ -121,12 +121,12 @@ class TestTrinityProtocol:
         try:
             snapshot = await monitor.check_health()
 
-            body = snapshot.components[TrinityComponent.JARVIS_BODY]
+            body = snapshot.components[TrinityComponent.Ironcliw_BODY]
             assert body.status == ComponentStatus.HEALTHY, (
                 f"Body expected HEALTHY, got {body.status}"
             )
 
-            prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+            prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
             assert prime.status == ComponentStatus.HEALTHY, (
                 f"Prime expected HEALTHY, got {prime.status}"
             )
@@ -170,14 +170,14 @@ class TestTrinityProtocol:
         try:
             snapshot = await monitor.check_health()
 
-            body = snapshot.components[TrinityComponent.JARVIS_BODY]
+            body = snapshot.components[TrinityComponent.Ironcliw_BODY]
             # 500 should trigger non-healthy status (DEGRADED or UNHEALTHY)
             assert body.status in (
                 ComponentStatus.DEGRADED, ComponentStatus.UNHEALTHY,
             ), f"Body expected DEGRADED/UNHEALTHY, got {body.status}"
 
             # Prime and Reactor should still be healthy
-            prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+            prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
             assert prime.status == ComponentStatus.HEALTHY
 
             # Overall should reflect the degradation
@@ -209,14 +209,14 @@ class TestTrinityProtocol:
             snapshot = await monitor.check_health()
 
             # Body should be DEGRADED or UNHEALTHY (connection refused)
-            body = snapshot.components[TrinityComponent.JARVIS_BODY]
+            body = snapshot.components[TrinityComponent.Ironcliw_BODY]
             assert body.status in (
                 ComponentStatus.DEGRADED, ComponentStatus.UNHEALTHY,
             ), f"Body expected DEGRADED/UNHEALTHY, got {body.status}"
 
             # Prime + Reactor have no heartbeat files -> OPTIONAL_OFFLINE
             # (v125.0 graceful degradation when heartbeat file never existed)
-            prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+            prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
             assert prime.status in (
                 ComponentStatus.UNHEALTHY, ComponentStatus.OPTIONAL_OFFLINE,
             ), f"Prime expected UNHEALTHY/OPTIONAL_OFFLINE, got {prime.status}"
@@ -253,7 +253,7 @@ class TestTrinityProtocol:
         try:
             snapshot = await monitor.check_health()
 
-            body = snapshot.components[TrinityComponent.JARVIS_BODY]
+            body = snapshot.components[TrinityComponent.Ironcliw_BODY]
             # Should have timed out -> not HEALTHY
             assert body.status != ComponentStatus.HEALTHY, (
                 f"Body should have timed out, got {body.status}"
@@ -294,7 +294,7 @@ class TestTrinityProtocol:
         try:
             snapshot = await monitor.check_health()
 
-            prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+            prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
             assert prime.status == ComponentStatus.UNHEALTHY, (
                 f"Stale Prime expected UNHEALTHY, got {prime.status}"
             )
@@ -331,11 +331,11 @@ class TestTrinityProtocol:
             snapshot = await monitor.check_health()
 
             # Body healthy
-            body = snapshot.components[TrinityComponent.JARVIS_BODY]
+            body = snapshot.components[TrinityComponent.Ironcliw_BODY]
             assert body.status == ComponentStatus.HEALTHY
 
             # Prime never had a heartbeat -> OPTIONAL_OFFLINE (v125.0)
-            prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+            prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
             assert prime.status == ComponentStatus.OPTIONAL_OFFLINE, (
                 f"Prime expected OPTIONAL_OFFLINE, got {prime.status}"
             )
@@ -383,7 +383,7 @@ class TestTrinityProtocol:
                 body={"phase": "error"},
             )
             snap1 = await monitor.check_health()
-            body1 = snap1.components[TrinityComponent.JARVIS_BODY]
+            body1 = snap1.components[TrinityComponent.Ironcliw_BODY]
             assert body1.status in (ComponentStatus.DEGRADED, ComponentStatus.UNHEALTHY)
 
             # Phase 2: Body recovers -> 200
@@ -393,7 +393,7 @@ class TestTrinityProtocol:
                       "ready_components": 5, "total_components": 5},
             )
             snap2 = await monitor.check_health()
-            body2 = snap2.components[TrinityComponent.JARVIS_BODY]
+            body2 = snap2.components[TrinityComponent.Ironcliw_BODY]
             assert body2.status == ComponentStatus.HEALTHY, (
                 f"Expected HEALTHY after recovery, got {body2.status}"
             )
@@ -402,7 +402,7 @@ class TestTrinityProtocol:
             body_changes = [
                 (old, new)
                 for comp, old, new in status_changes
-                if comp == TrinityComponent.JARVIS_BODY
+                if comp == TrinityComponent.Ironcliw_BODY
             ]
             assert len(body_changes) >= 1, "Expected at least one status change callback"
         finally:
@@ -483,14 +483,14 @@ class TestTrinityProtocol:
         config = _make_config(trinity_dir, body_port=port)
 
         # Record that Prime just started (within grace period)
-        config.record_component_startup(TrinityComponent.JARVIS_PRIME)
+        config.record_component_startup(TrinityComponent.Ironcliw_PRIME)
 
         # Patch is_in_startup_grace_period to return True for Prime
         # (since TrinityOrchestrationConfig may not be importable in test env)
         original_grace = config.is_in_startup_grace_period
 
         def patched_grace(component: TrinityComponent) -> bool:
-            if component == TrinityComponent.JARVIS_PRIME:
+            if component == TrinityComponent.Ironcliw_PRIME:
                 return True
             return original_grace(component)
 
@@ -501,7 +501,7 @@ class TestTrinityProtocol:
         try:
             snapshot = await monitor.check_health()
 
-            prime = snapshot.components[TrinityComponent.JARVIS_PRIME]
+            prime = snapshot.components[TrinityComponent.Ironcliw_PRIME]
             # During grace period, stale heartbeat should result in STARTING, not UNHEALTHY
             assert prime.status == ComponentStatus.STARTING, (
                 f"Prime expected STARTING (grace period), got {prime.status}"

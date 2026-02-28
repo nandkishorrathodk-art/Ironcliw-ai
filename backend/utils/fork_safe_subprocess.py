@@ -1,4 +1,4 @@
-"""
+﻿"""
 Fork-Safe Subprocess Execution for macOS Multi-Threaded Environments
 ======================================================================
 
@@ -75,10 +75,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 30.0
 
 # Maximum number of concurrent subprocess operations
-MAX_CONCURRENT_SUBPROCESSES = int(os.getenv("JARVIS_MAX_SUBPROCESSES", "10"))
+MAX_CONCURRENT_SUBPROCESSES = int(os.getenv("Ironcliw_MAX_SUBPROCESSES", "10"))
 
 # Enable verbose fork-safety logging
-FORK_SAFETY_DEBUG = os.getenv("JARVIS_FORK_SAFETY_DEBUG", "false").lower() == "true"
+FORK_SAFETY_DEBUG = os.getenv("Ironcliw_FORK_SAFETY_DEBUG", "false").lower() == "true"
 
 # Semaphore for limiting concurrent subprocess operations
 _subprocess_semaphore: Optional[asyncio.Semaphore] = None

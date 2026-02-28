@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Tool Registry
 =====================
 
@@ -11,7 +11,7 @@ Centralizes tool management for autonomous agents, providing:
 
 v1.0: Initial implementation with dynamic discovery and capability matching.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -36,33 +36,33 @@ class ToolRegistryConfig:
 
     # Discovery settings
     auto_discover: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TOOL_AUTO_DISCOVER", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TOOL_AUTO_DISCOVER", "true").lower() == "true"
     )
     discovery_paths: List[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_TOOL_PATHS", "").split(",") if os.getenv("JARVIS_TOOL_PATHS") else []
+        default_factory=lambda: os.getenv("Ironcliw_TOOL_PATHS", "").split(",") if os.getenv("Ironcliw_TOOL_PATHS") else []
     )
 
     # Hot reload settings
     hot_reload_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TOOL_HOT_RELOAD", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TOOL_HOT_RELOAD", "false").lower() == "true"
     )
     reload_check_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TOOL_RELOAD_INTERVAL", "30"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TOOL_RELOAD_INTERVAL", "30"))
     )
 
     # Access control
     require_tier2_for_system: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TIER2_SYSTEM_TOOLS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TIER2_SYSTEM_TOOLS", "true").lower() == "true"
     )
 
     # Versioning
     version_tracking_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TOOL_VERSIONING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TOOL_VERSIONING", "true").lower() == "true"
     )
 
     # Capability matching
     match_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TOOL_MATCH_THRESHOLD", "0.6"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TOOL_MATCH_THRESHOLD", "0.6"))
     )
 
 
@@ -836,7 +836,7 @@ def jarvis_tool(
     actions: Optional[List[str]] = None,
 ):
     """
-    Decorator to mark a function as a JARVIS tool.
+    Decorator to mark a function as a Ironcliw tool.
 
     Usage:
         @jarvis_tool(

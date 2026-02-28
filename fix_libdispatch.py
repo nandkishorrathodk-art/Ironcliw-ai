@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix libdispatch module for macOS video streaming
 """
@@ -83,7 +83,7 @@ def main():
             logger.info("\n✅ All video capture dependencies fixed!")
             logger.info("Native macOS video streaming is now fully functional")
             logger.info("The purple recording indicator will appear when streaming")
-            logger.info("\nRestart JARVIS to use native video capture: python start_system.py")
+            logger.info("\nRestart Ironcliw to use native video capture: python start_system.py")
             return True
         else:
             logger.warning("\n⚠️  Some imports still failing")
@@ -91,7 +91,7 @@ def main():
             return False
     else:
         logger.warning("\n⚠️  libdispatch installation failed")
-        logger.info("JARVIS will continue to use fallback video capture")
+        logger.info("Ironcliw will continue to use fallback video capture")
         return False
 
 if __name__ == "__main__":

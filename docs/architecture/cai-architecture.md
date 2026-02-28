@@ -1,8 +1,8 @@
-# 🧠 JARVIS Contextual Awareness Intelligence (CAI) Architecture
+﻿# 🧠 Ironcliw Contextual Awareness Intelligence (CAI) Architecture
 
 ## Overview
 
-JARVIS's Contextual Awareness Intelligence (CAI) is a sophisticated system that enables JARVIS to understand and respond to commands based on the current context of your Mac's state. Unlike traditional assistants that process commands in isolation, CAI considers screen content, application state, and user patterns to provide intelligent, context-aware responses.
+Ironcliw's Contextual Awareness Intelligence (CAI) is a sophisticated system that enables Ironcliw to understand and respond to commands based on the current context of your Mac's state. Unlike traditional assistants that process commands in isolation, CAI considers screen content, application state, and user patterns to provide intelligent, context-aware responses.
 
 ## 🏗️ Architectural Diagram
 
@@ -80,7 +80,7 @@ graph TB
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        JARVIS CAI System Architecture                            │
+│                        Ironcliw CAI System Architecture                            │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
                                     User Input
@@ -156,7 +156,7 @@ graph TB
 
 ### 2. **Intelligence Processing Phase**
 ```python
-# JARVIS thinks: "User wants web search, but screen is locked"
+# Ironcliw thinks: "User wants web search, but screen is locked"
 
 1. Intent Analysis:
    - Primary goal: Web search for AI news
@@ -176,7 +176,7 @@ graph TB
 
 ### 3. **Action Orchestration Phase**
 ```python
-# JARVIS executes: Coordinated multi-step process
+# Ironcliw executes: Coordinated multi-step process
 
 1. Pre-Action Preparation:
    - Announce: "Your screen is locked. I'll unlock it first."
@@ -201,10 +201,10 @@ graph TB
 ```bash
 # Lock your screen first (Cmd+Ctrl+Q or Apple → Lock Screen)
 # Then say:
-"Hey JARVIS, open my email"
+"Hey Ironcliw, open my email"
 
 # Expected behavior:
-1. JARVIS detects locked screen
+1. Ironcliw detects locked screen
 2. Responds: "Your screen is locked. Let me unlock it first."
 3. Unlocks screen (if voice unlock enabled)
 4. Opens Mail app
@@ -215,10 +215,10 @@ graph TB
 ```bash
 # Have multiple apps open
 # Then say:
-"Hey JARVIS, show me the weather and play some music"
+"Hey Ironcliw, show me the weather and play some music"
 
 # Expected behavior:
-1. JARVIS analyzes current app state
+1. Ironcliw analyzes current app state
 2. Opens Weather app (or shows weather info)
 3. Launches Music app
 4. Responds: "I've opened Weather and started Music for you."
@@ -228,10 +228,10 @@ graph TB
 ```bash
 # With Safari already open on a specific topic
 # Then say:
-"Hey JARVIS, find more information about this"
+"Hey Ironcliw, find more information about this"
 
 # Expected behavior:
-1. JARVIS analyzes current Safari content
+1. Ironcliw analyzes current Safari content
 2. Identifies the topic from the page
 3. Searches for related information
 4. Responds: "I found more information about [detected topic]."
@@ -240,10 +240,10 @@ graph TB
 ### Scenario 4: Time-Based Context
 ```bash
 # In the evening, say:
-"Hey JARVIS, prepare for tomorrow"
+"Hey Ironcliw, prepare for tomorrow"
 
 # Expected behavior:
-1. JARVIS checks time (evening context)
+1. Ironcliw checks time (evening context)
 2. Opens Calendar for tomorrow
 3. Checks Weather for tomorrow
 4. Opens Reminders/Notes
@@ -254,10 +254,10 @@ graph TB
 ### Scenario 5: Workspace Context
 ```bash
 # With development tools open, say:
-"Hey JARVIS, I need to debug this"
+"Hey Ironcliw, I need to debug this"
 
 # Expected behavior:
-1. JARVIS detects development context (VSCode, Terminal, etc.)
+1. Ironcliw detects development context (VSCode, Terminal, etc.)
 2. Opens relevant debugging tools
 3. Checks for error logs
 4. Responds: "I've prepared your debugging environment. 
@@ -307,21 +307,21 @@ SCREEN_ANALYSIS_INTERVAL_MS=1000
 
 ### 1. **Proactive Assistance**
 ```python
-# JARVIS notices patterns and suggests actions
+# Ironcliw notices patterns and suggests actions
 "Sir, you usually check email at this time. Shall I open it?"
 "I notice you have a meeting in 5 minutes. Should I prepare Zoom?"
 ```
 
 ### 2. **Context Persistence**
 ```python
-# JARVIS remembers context across sessions
+# Ironcliw remembers context across sessions
 "Continuing from where we left off with the AI research..."
 "You were working on [project] yesterday. Shall I reopen those files?"
 ```
 
 ### 3. **Adaptive Responses**
 ```python
-# JARVIS adjusts based on your preferences
+# Ironcliw adjusts based on your preferences
 Morning: "Good morning, Sir. Here's your schedule for today."
 Evening: "Good evening, Sir. Shall I prepare for tomorrow?"
 Busy: *Shorter, more direct responses*
@@ -332,7 +332,7 @@ Relaxed: *More conversational tone*
 
 ### View Current Context
 ```bash
-# Check what JARVIS sees
+# Check what Ironcliw sees
 curl http://localhost:8000/api/context/current
 
 # Response:
@@ -394,4 +394,4 @@ tail -f logs/jarvis.log | grep "CONTEXT\|CAI"
 
 ---
 
-The Contextual Awareness Intelligence system transforms JARVIS from a command executor to an intelligent assistant that truly understands your digital environment and adapts to your needs.
+The Contextual Awareness Intelligence system transforms Ironcliw from a command executor to an intelligent assistant that truly understands your digital environment and adapts to your needs.

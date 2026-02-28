@@ -1,4 +1,4 @@
-"""
+﻿"""
 Context Awareness Intelligence (CAI) runtime implementation.
 
 Provides:
@@ -52,13 +52,13 @@ class ContextAwarenessIntelligence:
     def __init__(self, db_path: Optional[Path] = None) -> None:
         self._lock = threading.RLock()
         requested_db_path = db_path or Path(
-            os.getenv("JARVIS_CAI_DB_PATH", str(_default_db_path()))
+            os.getenv("Ironcliw_CAI_DB_PATH", str(_default_db_path()))
         )
         self._conn, self._db_location = self._open_connection(requested_db_path)
         self._conn.row_factory = sqlite3.Row
         self._init_db()
 
-        self._history_limit = max(100, _env_int("JARVIS_CAI_HISTORY_LIMIT", 1000))
+        self._history_limit = max(100, _env_int("Ironcliw_CAI_HISTORY_LIMIT", 1000))
         self._intent_history: Deque[Dict[str, Any]] = deque(maxlen=self._history_limit)
         self._preferences: Dict[str, Dict[str, Any]] = {}
         self._intent_profiles = self._load_intent_profiles()
@@ -423,14 +423,14 @@ class ContextAwarenessIntelligence:
 
     def _load_intent_profiles(self) -> Dict[str, Dict[str, Any]]:
         """Load intent profiles from env override or defaults."""
-        raw = os.getenv("JARVIS_CAI_INTENT_PROFILES_JSON", "").strip()
+        raw = os.getenv("Ironcliw_CAI_INTENT_PROFILES_JSON", "").strip()
         if raw:
             try:
                 parsed = json.loads(raw)
                 if isinstance(parsed, dict) and parsed:
                     return parsed
             except json.JSONDecodeError:
-                logger.warning("Invalid JARVIS_CAI_INTENT_PROFILES_JSON, using defaults")
+                logger.warning("Invalid Ironcliw_CAI_INTENT_PROFILES_JSON, using defaults")
 
         return {
             "display_control": {"keywords": ["display", "screen", "window", "monitor", "brightness"]},

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 CloudSQL Connection Diagnostics Tool
 =====================================
@@ -100,7 +100,7 @@ async def count_active_connections():
             print(f"\n📊 Total connections: {len(connections)}")
             print(f"   Max allowed (db-f1-micro): ~25")
             print(f"   Reserved for superuser: ~3")
-            print(f"   Available for JARVIS: ~22")
+            print(f"   Available for Ironcliw: ~22")
             print()
 
             if len(connections) > 20:
@@ -229,9 +229,9 @@ async def test_singleton_manager():
 
 
 def check_process_connections():
-    """Check JARVIS processes with database connections"""
+    """Check Ironcliw processes with database connections"""
     print("\n" + "=" * 60)
-    print("4. JARVIS Processes with DB Connections")
+    print("4. Ironcliw Processes with DB Connections")
     print("=" * 60)
 
     try:
@@ -265,13 +265,13 @@ def check_process_connections():
                 continue
 
         if jarvis_procs:
-            print(f"\nFound {len(jarvis_procs)} JARVIS processes:")
+            print(f"\nFound {len(jarvis_procs)} Ironcliw processes:")
             for p in jarvis_procs:
                 marker = "🔌" if p['has_db_conn'] else "  "
                 print(f"{marker} PID {p['pid']}: {p['name']}")
                 print(f"     {p['cmdline']}")
         else:
-            print("✅ No JARVIS processes currently running")
+            print("✅ No Ironcliw processes currently running")
 
     except ImportError:
         print("❌ psutil not available")
@@ -364,7 +364,7 @@ async def main():
         print("EMERGENCY CLEANUP")
         print("=" * 60)
 
-        response = input("\n⚠️  This will kill ALL JARVIS processes and connections. Continue? (y/N): ")
+        response = input("\n⚠️  This will kill ALL Ironcliw processes and connections. Continue? (y/N): ")
         if response.lower() == 'y':
             from process_cleanup_manager import emergency_cleanup
             results = emergency_cleanup(force=True)

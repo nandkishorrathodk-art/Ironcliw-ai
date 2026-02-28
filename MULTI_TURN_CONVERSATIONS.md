@@ -1,8 +1,8 @@
-# Multi-Turn Conversations with JARVIS
+﻿# Multi-Turn Conversations with Ironcliw
 
 ## Overview
 
-JARVIS now supports **natural, multi-turn conversations** where it remembers context and continues discussions naturally across multiple exchanges.
+Ironcliw now supports **natural, multi-turn conversations** where it remembers context and continues discussions naturally across multiple exchanges.
 
 ## How It Works
 
@@ -12,18 +12,18 @@ JARVIS now supports **natural, multi-turn conversations** where it remembers con
 ```
 You: "can you see my terminal in the other window?"
 
-JARVIS: "Yes, I can see your terminal is open on Desktop 2, Sir.
+Ironcliw: "Yes, I can see your terminal is open on Desktop 2, Sir.
          Based on the window information, it's running a '-zsh' session
-         in the 'JARVIS-AI-Agent' directory with dimensions of 204x60.
+         in the 'Ironcliw-AI-Agent' directory with dimensions of 204x60.
          Would you like me to help you with anything in that terminal?"
 ```
 
 **Turn 2 (Follow-up):**
 ```
-You: "yes jarvis, can you explain to me what's happening in the JARVIS-AI-Agent?"
+You: "yes jarvis, can you explain to me what's happening in the Ironcliw-AI-Agent?"
 
-JARVIS: **Terminal (Desktop 2)**
-        Working directory: `/Users/you/JARVIS-AI-Agent`
+Ironcliw: **Terminal (Desktop 2)**
+        Working directory: `/Users/you/Ironcliw-AI-Agent`
 
         Recent commands:
           • `python start_system.py`
@@ -36,14 +36,14 @@ JARVIS: **Terminal (Desktop 2)**
 ```
 You: "what about the errors?"
 
-JARVIS: [Explains specific errors from the terminal context]
+Ironcliw: [Explains specific errors from the terminal context]
 ```
 
 ## Key Features
 
 ### 1. Affirmative Continuations
 
-JARVIS recognizes when you're saying "yes" to its offer:
+Ironcliw recognizes when you're saying "yes" to its offer:
 
 **Recognized patterns:**
 - "yes"
@@ -54,9 +54,9 @@ JARVIS recognizes when you're saying "yes" to its offer:
 - "go ahead"
 
 **Example:**
-- JARVIS: "Would you like me to help you with anything?"
+- Ironcliw: "Would you like me to help you with anything?"
 - You: "yes" ✅
-- JARVIS: [Provides detailed help]
+- Ironcliw: [Provides detailed help]
 
 ### 2. Natural Follow-Ups
 
@@ -70,13 +70,13 @@ You can continue the conversation naturally:
 - "what about [topic]"
 
 **Example:**
-- JARVIS: "I see Terminal in Space 2..."
+- Ironcliw: "I see Terminal in Space 2..."
 - You: "explain what's happening" ✅
-- JARVIS: [Detailed explanation]
+- Ironcliw: [Detailed explanation]
 
 ### 3. Context-Aware Responses
 
-JARVIS combines:
+Ironcliw combines:
 - **What it just said** (conversational memory)
 - **What it can see** (visual analysis)
 - **What it knows** (structured context from Context Intelligence)
@@ -112,10 +112,10 @@ if any(affirm in query_lower for affirm in ["yes", "yeah", "sure", "please"]):
 
 **2. `backend/api/pure_vision_intelligence.py`**
 
-Saves conversational context when JARVIS asks questions (lines 543-553):
+Saves conversational context when Ironcliw asks questions (lines 543-553):
 ```python
 if response and ("would you like" in response.lower() or "can i help" in response.lower()):
-    # JARVIS asked a follow-up question, save context for continuation
+    # Ironcliw asked a follow-up question, save context for continuation
     self.context_bridge._save_conversation_context(
         query=user_query,
         response=response,
@@ -153,41 +153,41 @@ Provides detailed explanation
 
 ```
 You: "can you see my terminal in the other window?"
-JARVIS: "Yes, I can see Terminal in Space 2... Would you like me to help?"
+Ironcliw: "Yes, I can see Terminal in Space 2... Would you like me to help?"
 
 You: "yes please, what's happening?"
-JARVIS: [Detailed terminal analysis with commands, errors, directory]
+Ironcliw: [Detailed terminal analysis with commands, errors, directory]
 
 You: "explain the error"
-JARVIS: [Specific error explanation with fix suggestions]
+Ironcliw: [Specific error explanation with fix suggestions]
 ```
 
 ### Example 2: Workspace Overview
 
 ```
 You: "what do you see across all my spaces?"
-JARVIS: "I can see Terminal in Space 1, Chrome in Space 2, VS Code in Space 3...
+Ironcliw: "I can see Terminal in Space 1, Chrome in Space 2, VS Code in Space 3...
          Would you like me to explain what's happening?"
 
 You: "yes, tell me about the terminal"
-JARVIS: [Terminal analysis from Space 1]
+Ironcliw: [Terminal analysis from Space 1]
 
 You: "what about Chrome?"
-JARVIS: [Browser analysis from Space 2]
+Ironcliw: [Browser analysis from Space 2]
 ```
 
 ### Example 3: Error Investigation
 
 ```
 You: "can you see my terminal?"
-JARVIS: "Yes, I notice there's an error: ModuleNotFoundError...
+Ironcliw: "Yes, I notice there's an error: ModuleNotFoundError...
          Would you like me to explain?"
 
 You: "yes"
-JARVIS: [Full error analysis with command, directory, fix suggestions]
+Ironcliw: [Full error analysis with command, directory, fix suggestions]
 
 You: "how do I fix it?"
-JARVIS: [Specific fix commands with safety classification]
+Ironcliw: [Specific fix commands with safety classification]
 ```
 
 ## Benefits
@@ -208,7 +208,7 @@ JARVIS: [Specific fix commands with safety classification]
 - Maintains conversation thread
 
 ### 4. Proactive Assistance
-- JARVIS offers help
+- Ironcliw offers help
 - You accept with simple "yes"
 - Detailed help provided
 
@@ -256,7 +256,7 @@ detail_keywords = [
 # Access via context_bridge
 bridge._conversation_timestamp  # Should be recent datetime
 bridge._last_query  # What was last asked
-bridge._last_response  # What JARVIS said
+bridge._last_response  # What Ironcliw said
 ```
 
 ## Common Patterns
@@ -306,11 +306,11 @@ Potential improvements:
 
 ## Summary
 
-The multi-turn conversation system enables **natural, continuous discussions** with JARVIS:
+The multi-turn conversation system enables **natural, continuous discussions** with Ironcliw:
 
 ✅ Say "yes" to continue
 ✅ Ask follow-up questions naturally
-✅ JARVIS remembers context
+✅ Ironcliw remembers context
 ✅ Detailed help on demand
 ✅ No need to repeat yourself
 

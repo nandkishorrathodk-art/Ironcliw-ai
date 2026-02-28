@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Final Unlock Fix
 =====================
@@ -19,15 +19,15 @@ async def test_unlock_command():
     print(f"Time: {datetime.now().strftime('%I:%M %p')}")
     
     try:
-        # Wait a bit more for JARVIS to be ready
-        print("\n⏳ Waiting for JARVIS to be fully ready...")
+        # Wait a bit more for Ironcliw to be ready
+        print("\n⏳ Waiting for Ironcliw to be fully ready...")
         await asyncio.sleep(5)
         
-        print("\n📡 Connecting to JARVIS WebSocket...")
+        print("\n📡 Connecting to Ironcliw WebSocket...")
         
-        # Connect to JARVIS
+        # Connect to Ironcliw
         async with websockets.connect('ws://localhost:8000/voice/jarvis/stream') as ws:
-            print("✅ Connected to JARVIS")
+            print("✅ Connected to Ironcliw")
             
             # Send the unlock command as text (like the frontend does)
             command_data = {
@@ -41,7 +41,7 @@ async def test_unlock_command():
             
             # Collect responses
             responses = []
-            print("\n📨 Responses from JARVIS:")
+            print("\n📨 Responses from Ironcliw:")
             print("-"*40)
             
             # Wait for responses
@@ -52,7 +52,7 @@ async def test_unlock_command():
                     responses.append(data)
                     
                     if data.get('text'):
-                        print(f"   JARVIS: {data['text']}")
+                        print(f"   Ironcliw: {data['text']}")
                         if data.get('speak'):
                             print(f"           (spoken aloud)")
                     
@@ -94,7 +94,7 @@ async def test_unlock_command():
                 
     except Exception as e:
         print(f"\n❌ Error: {e}")
-        print("\nMake sure JARVIS is running on port 8000")
+        print("\nMake sure Ironcliw is running on port 8000")
         return
     
     print("\n🎉 Test complete!")

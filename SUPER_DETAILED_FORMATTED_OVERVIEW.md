@@ -1,4 +1,4 @@
-# Super Detailed & Beautifully Formatted Overview
+﻿# Super Detailed & Beautifully Formatted Overview
 
 ## 🎯 **What Changed**
 
@@ -10,8 +10,8 @@ Sir, you're working across 5 desktop spaces:
 
 • Space 1: Finder - Recents
 • Space 2 (current): Google Chrome - Web browsing
-• Space 3: Cursor - Working on JARVIS-AI-Agent project
-• Space 4: Code - Working on JARVIS-AI-Agent project
+• Space 3: Cursor - Working on Ironcliw-AI-Agent project
+• Space 4: Code - Working on Ironcliw-AI-Agent project
 • Space 5: Terminal - Terminal operations
 
 Your focus spans multiple areas: development, terminal, browser.
@@ -25,10 +25,10 @@ Sir, you're working across 5 desktop spaces:
 📍 Space 2 ← You are here: Google Chrome — Viewing: Cursor AI Documentation
 📍 Space 3: Cursor
    Editing intelligent_orchestrator.py
-   📂 Project: JARVIS-AI-Agent
+   📂 Project: Ironcliw-AI-Agent
 📍 Space 4: Code
    Editing claude_vision_analyzer_main.py
-   📂 Project: JARVIS-AI-Agent
+   📂 Project: Ironcliw-AI-Agent
 📍 Space 5: Terminal — Running Jupyter: Homework2
 
 ──────────────────────────────────────────────────
@@ -46,7 +46,7 @@ Sir, you're working across 5 desktop spaces:
 ### **Browser Intelligence**
 Extracts specific context from Chrome/Safari/Firefox tabs:
 
-- **GitHub repos:** "Browsing GitHub repository: JARVIS-AI-Agent"
+- **GitHub repos:** "Browsing GitHub repository: Ironcliw-AI-Agent"
 - **Stack Overflow:** "Stack Overflow: Python asyncio error handling"
 - **YouTube:** "Watching: Building AI Agents Tutorial"
 - **Documentation:** "Reading docs: Claude API Reference"
@@ -64,7 +64,7 @@ Extracts what's actually running:
 - **Docker:** "Managing Docker containers"
 - **SSH:** "SSH connected to production-server.com"
 - **Git:** "Running Git commands"
-- **Directory:** "Working in: JARVIS-AI-Agent"
+- **Directory:** "Working in: Ironcliw-AI-Agent"
 
 ### **Code Editor Intelligence**
 Shows specific files AND projects:
@@ -73,7 +73,7 @@ Shows specific files AND projects:
 ```
 📍 Space 3: Cursor
    Editing intelligent_orchestrator.py
-   📂 Project: JARVIS-AI-Agent
+   📂 Project: Ironcliw-AI-Agent
 ```
 
 **Single line when just file:**
@@ -113,7 +113,7 @@ Rich details use multi-line format with proper indentation:
 ```
 📍 Space 3 ← You are here: Cursor
    Editing intelligent_orchestrator.py
-   📂 Project: JARVIS-AI-Agent
+   📂 Project: Ironcliw-AI-Agent
 ```
 
 ### **Structured Sections:**
@@ -236,7 +236,7 @@ Sir, you're working across 2 desktop spaces:
 
 ## ✅ **To Apply**
 
-**Restart JARVIS:**
+**Restart Ironcliw:**
 ```bash
 # Press Ctrl+C
 python3 start_system.py

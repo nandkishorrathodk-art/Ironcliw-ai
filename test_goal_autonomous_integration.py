@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Goal Inference + Autonomous Decision Integration
 Shows end-user visible behavior
@@ -82,7 +82,7 @@ async def simulate_user_scenario():
 
     if display_decision:
         print("✅ PROACTIVE SUGGESTION TRIGGERED!")
-        print(f"\n   💬 JARVIS would say:")
+        print(f"\n   💬 Ironcliw would say:")
         print(f"   \"Sir, I've noticed you have a team meeting in 10 minutes.")
         print(f"    Your presentation is ready in Keynote.")
         print(f"    Would you like me to connect to Living Room TV?\"")
@@ -103,7 +103,7 @@ async def simulate_user_scenario():
             print("   ⏱️  Connection time: <0.3s (pre-loaded resources)")
             print("   🎯 Mode: Extended display")
             print("   📊 Your presentation is now visible on TV")
-            print("\n   💬 JARVIS: \"Living Room TV connected, sir. Your presentation is ready.\"")
+            print("\n   💬 Ironcliw: \"Living Room TV connected, sir. Your presentation is ready.\"")
     else:
         print("❌ No proactive suggestion (confidence too low or not display-relevant)")
         print(f"   Goals inferred: {integration.metrics['goals_inferred']}")
@@ -126,9 +126,9 @@ async def simulate_user_scenario():
     print("=" * 70)
 
     print("\n🎯 What you would see:")
-    print("   1. JARVIS proactively suggests connecting display BEFORE you ask")
+    print("   1. Ironcliw proactively suggests connecting display BEFORE you ask")
     print("   2. Connection happens instantly (<0.3s vs 0.7s)")
-    print("   3. JARVIS explains WHY it's suggesting (based on your meeting)")
+    print("   3. Ironcliw explains WHY it's suggesting (based on your meeting)")
     print("   4. Over time, learns your patterns and automates this")
 
     print("\n📚 What's happening behind the scenes:")
@@ -188,7 +188,7 @@ async def test_simple_command():
     print("\n💡 To see Goal Inference in action:")
     print("   1. Open Keynote or presentation software")
     print("   2. Have a meeting in your calendar soon")
-    print("   3. Let JARVIS observe for a few moments")
+    print("   3. Let Ironcliw observe for a few moments")
     print("   4. It will proactively suggest display connection!")
 
 
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     print("=" * 70)
     print("""
 1. **Look for proactive suggestions**:
-   - JARVIS suggests actions BEFORE you ask
+   - Ironcliw suggests actions BEFORE you ask
    - Suggestions are contextually relevant
 
 2. **Notice faster response times**:
@@ -211,7 +211,7 @@ if __name__ == "__main__":
    - Resources are pre-loaded
 
 3. **See learned patterns**:
-   - JARVIS remembers your habits
+   - Ironcliw remembers your habits
    - Offers to automate repetitive tasks
 
 4. **Check the logs**:
@@ -221,7 +221,7 @@ if __name__ == "__main__":
 
 5. **Test learning**:
    - Connect display at same time for a few days
-   - JARVIS will learn and offer automation
+   - Ironcliw will learn and offer automation
 
 6. **Metrics dashboard** (if you build one):
    - See goals inferred count

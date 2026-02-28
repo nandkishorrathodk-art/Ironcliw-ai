@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Trace the actual ValueError in the live system"""
 
 import sys
@@ -66,7 +66,7 @@ msi.MultiSpaceIntelligenceExtension.process_multi_space_query = patched_process
 msi.ResponseBuilder._generate_response = patched_generate
 
 print("🔍 Error tracing patches applied to multi_space_intelligence")
-print("Now run your JARVIS query to see detailed trace...")
+print("Now run your Ironcliw query to see detailed trace...")
 
 # Keep script running
 import time

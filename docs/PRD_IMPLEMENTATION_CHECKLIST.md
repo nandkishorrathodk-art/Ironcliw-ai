@@ -1,4 +1,4 @@
-# PRD v1.1 Implementation Checklist
+﻿# PRD v1.1 Implementation Checklist
 
 **Date:** October 8th, 2025
 **Source:** PRD v1.1 — Context-Aware Follow-Up Handling (Integration Update)
@@ -41,7 +41,7 @@
 ### ✅ FR-I2: pure_vision_intelligence must record pending questions
 
 **PRD Requirement:**
-> pure_vision_intelligence must recording pending questions each time JARVIS asks a follow-up-eligible question and expose an accessor for "latest valid pending".
+> pure_vision_intelligence must recording pending questions each time Ironcliw asks a follow-up-eligible question and expose an accessor for "latest valid pending".
 
 **Implementation Status:** ✅ **COMPLETE**
 
@@ -366,7 +366,7 @@ pipeline = AsyncPipeline(vision=pure_vision, follow_up_router=router)
 ### AC-1: Terminal description flow ✅ **READY**
 
 **Criteria:**
-> When JARVIS offers a Terminal description and user says "yes," JARVIS returns a context-accurate description or actionable fix suggestion.
+> When Ironcliw offers a Terminal description and user says "yes," Ironcliw returns a context-accurate description or actionable fix suggestion.
 
 **Status:** ✅ Code path complete, ready for testing once wired to main.py
 
@@ -375,7 +375,7 @@ pipeline = AsyncPipeline(vision=pure_vision, follow_up_router=router)
 ### AC-2: Expired context handling ✅ **COMPLETE**
 
 **Criteria:**
-> If pending context expired or window not found, JARVIS proposes to refresh the snapshot (no crash).
+> If pending context expired or window not found, Ironcliw proposes to refresh the snapshot (no crash).
 
 **Evidence:**
 ```python

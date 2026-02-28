@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test dynamic error handling in JARVIS Voice API - Direct Implementation Test"""
+﻿#!/usr/bin/env python3
+"""Test dynamic error handling in Ironcliw Voice API - Direct Implementation Test"""
 
 import os
 import sys
@@ -72,8 +72,8 @@ def test_error_handler_implementation():
     
     # Test safe_getattr
     print("\n2️⃣ Testing safe_getattr...")
-    obj = SimpleNamespace(name="JARVIS", version="2.0")
-    assert handler.safe_getattr(obj, "name") == "JARVIS"
+    obj = SimpleNamespace(name="Ironcliw", version="2.0")
+    assert handler.safe_getattr(obj, "name") == "Ironcliw"
     assert handler.safe_getattr(obj, "nonexistent", "default") == "default"
     assert handler.safe_getattr(None, "anything", "default") == "default"
     print("  ✅ Attribute access: OK")
@@ -116,20 +116,20 @@ def test_error_handler_implementation():
 
 async def test_api_integration():
     """Test the actual API with error handling"""
-    print("\n🔧 Testing JARVIS Voice API integration...")
+    print("\n🔧 Testing Ironcliw Voice API integration...")
     
     try:
         from api.jarvis_voice_api import jarvis_api
         
         # Test that API exists and has error handler
         assert jarvis_api is not None
-        print("  ✅ JARVIS API instance exists")
+        print("  ✅ Ironcliw API instance exists")
         
         if hasattr(jarvis_api, 'error_handler'):
             print("  ✅ Error handler is integrated")
         
-        # Test API methods work even without JARVIS
-        print("\n  Testing API endpoints without JARVIS...")
+        # Test API methods work even without Ironcliw
+        print("\n  Testing API endpoints without Ironcliw...")
         
         status = await jarvis_api.get_status()
         print(f"  📊 Status: {status.get('status', 'unknown')}")
@@ -153,7 +153,7 @@ async def test_api_integration():
 
 
 if __name__ == "__main__":
-    print("🧪 Testing JARVIS Dynamic Error Handling System\n")
+    print("🧪 Testing Ironcliw Dynamic Error Handling System\n")
     print("=" * 60)
     
     # Test implementation
@@ -169,7 +169,7 @@ if __name__ == "__main__":
         print("🛡️ The system can now handle:")
         print("   • VoiceCommand() initialization errors")
         print("   • NoneType attribute access")
-        print("   • Missing JARVIS components")
+        print("   • Missing Ironcliw components")
         print("   • Unexpected initialization parameters")
     else:
         print("\n⚠️ Some tests need attention.")

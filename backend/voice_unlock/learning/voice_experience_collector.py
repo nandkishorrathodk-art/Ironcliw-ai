@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Experience Collector - Collect Experiences for Training Pipeline.
 =======================================================================
 
@@ -22,7 +22,7 @@ Architecture:
     │  └── ReactorForwarder (sends to training pipeline)                  │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v81.0 - Unified Learning Loop
+Author: Ironcliw Trinity v81.0 - Unified Learning Loop
 """
 
 from __future__ import annotations

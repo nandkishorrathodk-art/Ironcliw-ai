@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit Tests for StateIntelligence v2.0
 
 Tests v2.0 features:
@@ -17,7 +17,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from collections import deque
 
 import sys
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 from vision.intelligence.state_intelligence import (
     StateIntelligence,

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Clean Vision Response Interceptor
 Ensures only clean text is sent to frontend, not full vision result objects
@@ -62,7 +62,7 @@ def clean_vision_response(response: Any) -> str:
 
 def patch_jarvis_voice_api():
     """
-    Patch the JARVIS Voice API to clean vision responses before sending to frontend.
+    Patch the Ironcliw Voice API to clean vision responses before sending to frontend.
     """
     try:
         import api.jarvis_voice_api as jarvis_voice_api
@@ -91,10 +91,10 @@ def patch_jarvis_voice_api():
         
         # Store the patch function for use
         jarvis_voice_api._clean_send_json = clean_send_json
-        logger.info("[CLEAN VISION] Patched JARVIS Voice API for clean responses")
+        logger.info("[CLEAN VISION] Patched Ironcliw Voice API for clean responses")
         
     except Exception as e:
-        logger.error(f"[CLEAN VISION] Failed to patch JARVIS Voice API: {e}")
+        logger.error(f"[CLEAN VISION] Failed to patch Ironcliw Voice API: {e}")
 
 
 # Auto-patch on import

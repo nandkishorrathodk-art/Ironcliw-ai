@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Integration Tests for AdaptiveControlCenterClicker
 ==================================================
@@ -46,8 +46,8 @@ from display.adaptive_control_center_clicker import (
 # ============================================================================
 
 # Skip integration tests if not explicitly enabled
-INTEGRATION_TESTS_ENABLED = os.getenv("JARVIS_INTEGRATION_TESTS", "0") == "1"
-SKIP_REASON = "Integration tests disabled. Set JARVIS_INTEGRATION_TESTS=1 to enable"
+INTEGRATION_TESTS_ENABLED = os.getenv("Ironcliw_INTEGRATION_TESTS", "0") == "1"
+SKIP_REASON = "Integration tests disabled. Set Ironcliw_INTEGRATION_TESTS=1 to enable"
 
 # Vision analyzer setup
 VISION_ANALYZER_AVAILABLE = False
@@ -204,7 +204,7 @@ class TestDeviceConnection:
 
         NOTE: This requires an AirPlay device to be available
         """
-        device_name = os.getenv("JARVIS_TEST_DEVICE", "Living Room TV")
+        device_name = os.getenv("Ironcliw_TEST_DEVICE", "Living Room TV")
 
         result = await integration_clicker.connect_to_device(device_name)
 

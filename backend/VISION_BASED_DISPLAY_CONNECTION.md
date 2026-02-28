@@ -1,8 +1,8 @@
-# Vision-Based Display Connection - Implementation Summary
+﻿# Vision-Based Display Connection - Implementation Summary
 
 ## 🎯 Overview
 
-Successfully integrated ML-powered vision-based clicking flow for display connection, enabling JARVIS to SEE and CLICK UI elements using hybrid Computer Vision + Deep Learning.
+Successfully integrated ML-powered vision-based clicking flow for display connection, enabling Ironcliw to SEE and CLICK UI elements using hybrid Computer Vision + Deep Learning.
 
 **Date:** October 16, 2025
 **Status:** ✅ **FULLY INTEGRATED AND OPERATIONAL**
@@ -347,7 +347,7 @@ asyncio.run(test())
 # 1. Ensure backend is running on port 8010
 # 2. Ensure frontend is connected
 # 3. Say: "connect to living room tv"
-# 4. Watch JARVIS vision in action!
+# 4. Watch Ironcliw vision in action!
 ```
 
 ---
@@ -527,7 +527,7 @@ Lower for more lenient matching (more false positives), raise for stricter (may 
 
 ## 🎉 Summary
 
-**JARVIS can now use its VISION to:**
+**Ironcliw can now use its VISION to:**
 1. ✅ SEE the Control Center icon
 2. ✅ MOVE the mouse and CLICK it
 3. ✅ SEE the Screen Mirroring button
@@ -549,4 +549,4 @@ Lower for more lenient matching (more false positives), raise for stricter (may 
 
 *Generated: October 16, 2025*
 *Author: Derek J. Russell*
-*JARVIS AI Agent System - Vision Enhancement v1.0*
+*Ironcliw AI Agent System - Vision Enhancement v1.0*

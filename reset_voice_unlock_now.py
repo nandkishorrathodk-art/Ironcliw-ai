@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 IMMEDIATE Voice Unlock Reset
 ============================
-Run this WHILE JARVIS is running to reset circuit breakers.
+Run this WHILE Ironcliw is running to reset circuit breakers.
 
-This script connects to the running JARVIS instance and resets
+This script connects to the running Ironcliw instance and resets
 the circuit breakers that are blocking voice unlock.
 
 Usage: python3 reset_voice_unlock_now.py
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 def main():
     print("=" * 60)
-    print("🔧 JARVIS Voice Unlock - Immediate Reset")
+    print("🔧 Ironcliw Voice Unlock - Immediate Reset")
     print("=" * 60)
     print()
     
@@ -117,7 +117,7 @@ def main():
         for fix in fixes_applied:
             print(f"   • {fix}")
         print()
-        print("🎤 Try voice unlock now: 'JARVIS, lock my screen'")
+        print("🎤 Try voice unlock now: 'Ironcliw, lock my screen'")
     else:
         print("ℹ️  No circuit breakers needed resetting")
         print()

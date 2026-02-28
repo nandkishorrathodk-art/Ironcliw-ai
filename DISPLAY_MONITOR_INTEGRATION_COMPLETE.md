@@ -1,4 +1,4 @@
-# JARVIS Display Monitor - Integration Complete! 🎉
+﻿# Ironcliw Display Monitor - Integration Complete! 🎉
 
 **Date:** 2025-10-15
 **Version:** 2.0
@@ -8,7 +8,7 @@
 
 ## 🎯 Integration Summary
 
-The Advanced Display Monitor has been **fully integrated** into JARVIS as **Component #9**!
+The Advanced Display Monitor has been **fully integrated** into Ironcliw as **Component #9**!
 
 ---
 
@@ -24,10 +24,10 @@ The Advanced Display Monitor has been **fully integrated** into JARVIS as **Comp
 ✅ Updated shutdown to use `stop()` method (line 1087-1093)
 
 **Key changes:**
-- Display monitor now loads with other components during JARVIS startup
-- Integrates with JARVIS voice system automatically
+- Display monitor now loads with other components during Ironcliw startup
+- Integrates with Ironcliw voice system automatically
 - Starts monitoring 2 seconds after backend initialization
-- Graceful shutdown on JARVIS exit
+- Graceful shutdown on Ironcliw exit
 
 ### 2. **Updated start_system.py**
 
@@ -37,16 +37,16 @@ The Advanced Display Monitor has been **fully integrated** into JARVIS as **Comp
 
 **Key changes:**
 - Users see "DISPLAY_MONITOR" in startup logs
-- Component listed in JARVIS status reports
+- Component listed in Ironcliw status reports
 - Documentation reflects new component
 
 ---
 
 ## 🚀 How to Use
 
-### Starting JARVIS
+### Starting Ironcliw
 
-Simply start JARVIS as normal:
+Simply start Ironcliw as normal:
 
 ```bash
 python3 start_system.py
@@ -54,7 +54,7 @@ python3 start_system.py
 
 **You'll see:**
 ```
-🚀 Starting optimized JARVIS backend...
+🚀 Starting optimized Ironcliw backend...
 ⚡ Starting parallel component imports...
   ✅ chatbots loaded
   ✅ vision loaded
@@ -84,10 +84,10 @@ python3 start_system.py
 
 **Terminal Output:**
 ```
-[JARVIS Backend] ✨ Detected: Living Room TV
+[Ironcliw Backend] ✨ Detected: Living Room TV
 ```
 
-**JARVIS Speaks:**
+**Ironcliw Speaks:**
 ```
 "Sir, I see your Living Room TV is now available.
  Would you like to extend your display to it?"
@@ -96,16 +96,16 @@ python3 start_system.py
 ### You can then:
 1. **Manually connect** via Screen Mirroring menu
 2. **Say "yes"** (if voice commands configured)
-3. **Ignore it** (JARVIS keeps monitoring)
+3. **Ignore it** (Ironcliw keeps monitoring)
 
 ### When Connected:
 
 **Terminal Output:**
 ```
-[JARVIS Backend] ✅ Connected: Living Room TV
+[Ironcliw Backend] ✅ Connected: Living Room TV
 ```
 
-**JARVIS Speaks:**
+**Ironcliw Speaks:**
 ```
 "Connected to Living Room TV, sir."
 ```
@@ -138,7 +138,7 @@ Located at: `backend/config/display_monitor_config.json`
 
 ### Adding More Displays
 
-While JARVIS is running, in a separate terminal:
+While Ironcliw is running, in a separate terminal:
 
 ```bash
 python3 start_tv_monitoring.py --add-display
@@ -150,15 +150,15 @@ Or edit `backend/config/display_monitor_config.json` directly.
 
 ## 🎤 Voice Integration
 
-The display monitor automatically uses JARVIS's voice system:
+The display monitor automatically uses Ironcliw's voice system:
 
 **Voice Flow:**
-1. **Display detected** → JARVIS voice engine
-2. **Speaks prompt** → Through JARVIS speakers
-3. **Connection success** → JARVIS confirmation
+1. **Display detected** → Ironcliw voice engine
+2. **Speaks prompt** → Through Ironcliw speakers
+3. **Connection success** → Ironcliw confirmation
 
 **Voice fallback chain:**
-- Primary: JARVIS voice_engine.py
+- Primary: Ironcliw voice_engine.py
 - Fallback: voice_integration_handler.py
 - Last resort: macOS `say` command
 
@@ -166,7 +166,7 @@ The display monitor automatically uses JARVIS's voice system:
 
 ## 📊 Component Status
 
-Display Monitor is now part of JARVIS's 9 components:
+Display Monitor is now part of Ironcliw's 9 components:
 
 | # | Component | Status |
 |---|-----------|--------|
@@ -186,7 +186,7 @@ Display Monitor is now part of JARVIS's 9 components:
 
 ### Detection Methods
 
-JARVIS uses **3 methods** to detect your display:
+Ironcliw uses **3 methods** to detect your display:
 
 1. **AppleScript** (Primary)
    - Queries Screen Mirroring menu
@@ -275,7 +275,7 @@ python3 test_advanced_display_monitor.py --quick
 ### Integration Test
 
 ```bash
-# Start JARVIS and check logs
+# Start Ironcliw and check logs
 python3 start_system.py
 
 # Look for:
@@ -300,7 +300,7 @@ tail -f backend/logs/jarvis_optimized_*.log | grep -i display
 2. **Permission error** → Grant Accessibility in System Preferences
 3. **Config error** → Validate `display_monitor_config.json`
 
-### JARVIS speaks but doesn't detect display?
+### Ironcliw speaks but doesn't detect display?
 
 **Test detection manually:**
 ```bash
@@ -339,7 +339,7 @@ Grant these permissions in **System Preferences → Security & Privacy → Priva
 ### Check Monitor Status
 
 ```python
-# In JARVIS backend
+# In Ironcliw backend
 app.state.display_monitor.get_status()
 # Returns: {
 #   "is_monitoring": True,
@@ -380,8 +380,8 @@ config.save()
    ```
 
 2. **Voice Command Integration** (Future)
-   - "Hey JARVIS, connect to Living Room TV"
-   - "Hey JARVIS, what displays are available?"
+   - "Hey Ironcliw, connect to Living Room TV"
+   - "Hey Ironcliw, what displays are available?"
 
 3. **Multi-Monitor Support** (v2.0)
    - Track display positions
@@ -421,16 +421,16 @@ config.save()
 
 ## 🎉 You're All Set!
 
-**JARVIS now automatically monitors for your displays!**
+**Ironcliw now automatically monitors for your displays!**
 
-### What happens when you start JARVIS:
+### What happens when you start Ironcliw:
 
 1. ✅ All 9 components load
 2. ✅ Display monitor starts automatically
-3. ✅ JARVIS watches for "Living Room TV"
-4. ✅ When TV appears → JARVIS speaks
+3. ✅ Ironcliw watches for "Living Room TV"
+4. ✅ When TV appears → Ironcliw speaks
 5. ✅ You can connect or ignore
-6. ✅ JARVIS continues monitoring
+6. ✅ Ironcliw continues monitoring
 
 **Just run:**
 ```bash
@@ -449,5 +449,5 @@ python3 start_system.py
 ---
 
 **Integration Date:** 2025-10-15
-**JARVIS Version:** v14.0.0 + Display Monitor v2.0
+**Ironcliw Version:** v14.0.0 + Display Monitor v2.0
 **Status:** ✅ Production Ready

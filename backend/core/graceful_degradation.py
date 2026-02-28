@@ -1,9 +1,9 @@
-"""
+﻿"""
 Graceful Degradation System v80.0
 =================================
 
 Provides intelligent fallback routing when Trinity components fail.
-Ensures JARVIS continues operating even when subsystems are unavailable.
+Ensures Ironcliw continues operating even when subsystems are unavailable.
 
 v80.0 ENHANCEMENTS:
     - ResourceBulkhead integration for failure isolation
@@ -14,7 +14,7 @@ v80.0 ENHANCEMENTS:
     - Proactive circuit breaker with permit system
 
 FALLBACK CHAIN:
-    Primary: Local JARVIS-Prime (Mind) → Fast, free, private
+    Primary: Local Ironcliw-Prime (Mind) → Fast, free, private
     ↓ (if unavailable or bulkhead open)
     Secondary: Cloud Claude API → Reliable, but costs money
     ↓ (if unavailable or rate limited)
@@ -165,7 +165,7 @@ except ImportError:
 
 class InferenceTarget(Enum):
     """Available inference targets."""
-    LOCAL_PRIME = "local_prime"      # JARVIS-Prime local model
+    LOCAL_PRIME = "local_prime"      # Ironcliw-Prime local model
     CLOUD_CLAUDE = "cloud_claude"    # Anthropic Claude API
     CLOUD_OPENAI = "cloud_openai"    # OpenAI API (backup)
     CACHED = "cached"                # Cached responses
@@ -270,7 +270,7 @@ class GracefulDegradation:
     """
     Intelligent fallback routing for Trinity components.
 
-    Ensures JARVIS remains operational even when subsystems fail.
+    Ensures Ironcliw remains operational even when subsystems fail.
 
     v80.0 Features:
         - Bulkhead isolation per inference target
@@ -826,7 +826,7 @@ async def shutdown_degradation() -> None:
 class TrinityFallbackTarget(Enum):
     """Extended targets for Trinity cross-component fallback."""
     # J-Prime Chain
-    LOCAL_JARVIS_PRIME = "local_jarvis_prime"
+    LOCAL_Ironcliw_PRIME = "local_jarvis_prime"
     CLOUD_RUN_PRIME = "cloud_run_prime"
     CLOUD_CLAUDE_API = "cloud_claude_api"
 
@@ -908,7 +908,7 @@ class TrinityFallbackManager:
     JPRIME_CHAIN = TrinityFallbackChain(
         name="jprime",
         targets=[
-            TrinityFallbackTarget.LOCAL_JARVIS_PRIME,
+            TrinityFallbackTarget.LOCAL_Ironcliw_PRIME,
             TrinityFallbackTarget.CLOUD_RUN_PRIME,
             TrinityFallbackTarget.CLOUD_CLAUDE_API,
         ],
@@ -1064,7 +1064,7 @@ class TrinityFallbackManager:
         handlers = {}
 
         if local_handler:
-            handlers[TrinityFallbackTarget.LOCAL_JARVIS_PRIME] = local_handler
+            handlers[TrinityFallbackTarget.LOCAL_Ironcliw_PRIME] = local_handler
         if cloud_run_handler:
             handlers[TrinityFallbackTarget.CLOUD_RUN_PRIME] = cloud_run_handler
         if claude_api_handler:

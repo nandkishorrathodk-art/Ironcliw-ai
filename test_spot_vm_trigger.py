@@ -1,10 +1,10 @@
-import asyncio
+﻿import asyncio
 import os
 import sys
 from pathlib import Path
 
 # Add the project root to PYTHONPATH
-sys.path.insert(0, str(Path(r"c:\Users\nandk\JARVIS").resolve()))
+sys.path.insert(0, str(Path(r"c:\Users\nandk\Ironcliw").resolve()))
 
 from backend.core.intelligent_gcp_optimizer import get_gcp_optimizer
 from backend.core.platform_memory_monitor import get_memory_monitor

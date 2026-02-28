@@ -1,5 +1,5 @@
-# =============================================================================
-# JARVIS Spot VM Instance Template - Cost-Optimized for Solo Developer
+﻿# =============================================================================
+# Ironcliw Spot VM Instance Template - Cost-Optimized for Solo Developer
 # =============================================================================
 # 
 # This creates an INSTANCE TEMPLATE (not actual VMs) with the Triple-Lock safety
@@ -14,7 +14,7 @@
 # Triple-Lock Safety System:
 # 1. Platform-Level: max_run_duration auto-terminates VMs
 # 2. VM-Side: startup script self-destruct if backend dies
-# 3. Local: shutdown_hook.py cleans up on JARVIS exit
+# 3. Local: shutdown_hook.py cleans up on Ironcliw exit
 
 # =============================================================================
 # VARIABLES
@@ -110,9 +110,9 @@ resource "google_compute_instance_template" "spot_template" {
     # Try to load startup script, fall back to inline if file not found
     startup-script = <<-EOF
       #!/bin/bash
-      # JARVIS Spot VM Startup Script with Self-Destruct
+      # Ironcliw Spot VM Startup Script with Self-Destruct
       
-      echo "🚀 JARVIS Spot VM starting..."
+      echo "🚀 Ironcliw Spot VM starting..."
       echo "   Machine Type: ${var.machine_type}"
       echo "   Max Runtime: ${var.max_runtime_seconds}s"
       
@@ -121,12 +121,12 @@ resource "google_compute_instance_template" "spot_template" {
       echo "$(date): VM started" >> /var/log/jarvis/lifecycle.log
       
       # TRIPLE-LOCK #2: Self-destruct monitor
-      # If no JARVIS process runs within 5 minutes, shut down
+      # If no Ironcliw process runs within 5 minutes, shut down
       (
         sleep 300  # Wait 5 mins for startup
         while true; do
           if ! pgrep -f "python.*main.py|jarvis" > /dev/null; then
-            echo "$(date): No JARVIS process detected, initiating self-destruct" >> /var/log/jarvis/lifecycle.log
+            echo "$(date): No Ironcliw process detected, initiating self-destruct" >> /var/log/jarvis/lifecycle.log
             sudo shutdown -h now
             exit 0
           fi
@@ -140,7 +140,7 @@ resource "google_compute_instance_template" "spot_template" {
     shutdown-script = <<-EOF
       #!/bin/bash
       echo "$(date): VM shutting down" >> /var/log/jarvis/lifecycle.log
-      echo "🛑 JARVIS Spot VM terminated"
+      echo "🛑 Ironcliw Spot VM terminated"
     EOF
   }
 

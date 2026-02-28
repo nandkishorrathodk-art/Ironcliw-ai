@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Crew Models
+﻿"""
+Ironcliw Neural Mesh - Crew Models
 
 Core data models for the multi-agent collaboration system inspired by CrewAI.
 
@@ -192,7 +192,7 @@ class CrewAgent:
     """
     An agent in the crew system.
 
-    Wraps existing JARVIS agents with crew collaboration capabilities.
+    Wraps existing Ironcliw agents with crew collaboration capabilities.
     """
     id: str
     name: str
@@ -213,7 +213,7 @@ class CrewAgent:
     status: str = "idle"
 
     # References
-    underlying_agent: Optional[Any] = None  # Reference to actual JARVIS agent
+    underlying_agent: Optional[Any] = None  # Reference to actual Ironcliw agent
     crew_id: Optional[str] = None
 
     @classmethod

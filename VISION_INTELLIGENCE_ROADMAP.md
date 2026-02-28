@@ -1,4 +1,4 @@
-# 🚀 JARVIS Vision-Multispace Intelligence: Advanced Roadmap
+﻿# 🚀 Ironcliw Vision-Multispace Intelligence: Advanced Roadmap
 
 ## Executive Summary
 
@@ -250,11 +250,11 @@ class ProactiveMonitor:
 
 **User Experience:**
 ```
-[JARVIS, unprompted]: "Sir, a new error just appeared in Space 3, line 422."
+[Ironcliw, unprompted]: "Sir, a new error just appeared in Space 3, line 422."
 
 User: "What is it?"
 
-JARVIS: "Type error: 'str' cannot be assigned to 'int'. 
+Ironcliw: "Type error: 'str' cannot be assigned to 'int'. 
 This is likely from your recent change on line 415."
 ```
 
@@ -480,7 +480,7 @@ class ResilientCapture:
 # backend/vision/session_memory.py (NEW)
 
 class SessionMemory:
-    """Persistent memory across JARVIS sessions"""
+    """Persistent memory across Ironcliw sessions"""
     
     def __init__(self):
         self.db = sqlite3.connect("jarvis_memory.db")
@@ -558,13 +558,13 @@ class SessionMemory:
 ```
 User: "What's this error in Space 3?"
 
-JARVIS: "Sir, this is a TypeError on line 421. You encountered 
+Ironcliw: "Sir, this is a TypeError on line 421. You encountered 
 a similar error last Wednesday in intelligent_orchestrator.py. 
 You fixed it by adding a type check before the assignment."
 
 User: "What did I work on yesterday?"
 
-JARVIS: "Sir, yesterday you spent 3 hours on the vision system, 
+Ironcliw: "Sir, yesterday you spent 3 hours on the vision system, 
 focusing on the intelligent_orchestrator.py file. You fixed 
 5 bugs and added the space targeting feature."
 ```
@@ -668,7 +668,7 @@ Provide:
 ```
 User: "What does this function do?"
 
-JARVIS: "Sir, this function (_select_capture_targets) dynamically 
+Ironcliw: "Sir, this function (_select_capture_targets) dynamically 
 selects which windows to capture based on:
 1. Query intent (error analysis, debugging, research)
 2. Window priorities (terminals and IDEs score higher)
@@ -679,7 +679,7 @@ the max_targets configuration."
 
 User: "Why am I getting this TypeError?"
 
-JARVIS: "Sir, on line 421, you're passing a variable 'result' of type 
+Ironcliw: "Sir, on line 421, you're passing a variable 'result' of type 
 Optional[str] to a function expecting type int. This is happening 
 because the upstream function on line 385 can return None, but you're 
 not checking for that case before passing it forward.
@@ -784,17 +784,17 @@ class MultiModalIntelligence:
 **User Experience:**
 ```
 [User starts typing rapidly in Space 4]
-[JARVIS detects FLOW state, suppresses non-critical alerts]
+[Ironcliw detects FLOW state, suppresses non-critical alerts]
 
 [User idle for 5 minutes, browser shows Stack Overflow]
-JARVIS: "Sir, you've been researching this error for a while. 
+Ironcliw: "Sir, you've been researching this error for a while. 
 I see you're looking at async/await patterns. Would you like 
 me to analyze your code and suggest where to apply this?"
 
 [Build process starts in terminal]
-[JARVIS monitors terminal for errors]
+[Ironcliw monitors terminal for errors]
 [Build fails]
-JARVIS: "Sir, your build just failed with a TypeScript error 
+Ironcliw: "Sir, your build just failed with a TypeScript error 
 in components/Button.tsx line 42."
 ```
 
@@ -876,36 +876,36 @@ class WorkflowAutomator:
 1. **Test Running:**
    ```
    [User saves test_vision.py]
-   JARVIS: "Sir, shall I run the test suite?" 
+   Ironcliw: "Sir, shall I run the test suite?" 
    User: "Yes"
-   [JARVIS runs: pytest backend/tests/test_vision.py]
-   JARVIS: "Tests passed. 15/15 successful."
+   [Ironcliw runs: pytest backend/tests/test_vision.py]
+   Ironcliw: "Tests passed. 15/15 successful."
    ```
 
 2. **Related Files:**
    ```
    [User editing intelligent_orchestrator.py]
    [Makes changes to _select_capture_targets method]
-   JARVIS: "Sir, this change may affect vision_command_handler.py. 
+   Ironcliw: "Sir, this change may affect vision_command_handler.py. 
    Would you like me to open it?"
    ```
 
 3. **Smart Commits:**
    ```
    [User modified 3 files]
-   JARVIS: "Sir, these 3 files are typically committed together. 
+   Ironcliw: "Sir, these 3 files are typically committed together. 
    Shall I stage them and generate a commit message?"
    User: "Yes"
-   JARVIS: "Commit message: 'Enhance space targeting with query parsing'"
+   Ironcliw: "Commit message: 'Enhance space targeting with query parsing'"
    ```
 
 4. **Dependency Detection:**
    ```
-   [JARVIS detects import error]
-   JARVIS: "Sir, you're importing 'Optional' but it's not in your imports. 
+   [Ironcliw detects import error]
+   Ironcliw: "Sir, you're importing 'Optional' but it's not in your imports. 
    Shall I add it?"
    User: "Yes"
-   [JARVIS adds: from typing import Optional]
+   [Ironcliw adds: from typing import Optional]
    ```
 
 **Files to Create:**
@@ -999,16 +999,16 @@ class PredictiveAnalyzer:
 **User Experience:**
 ```
 [User is typing code]
-[JARVIS analyzes in real-time]
+[Ironcliw analyzes in real-time]
 
-JARVIS: "Sir, the function you're writing might fail if 'result' 
+Ironcliw: "Sir, the function you're writing might fail if 'result' 
 is None. Consider adding a null check before line 385."
 
 [User ignores]
 
 [30 seconds later, saves file]
 
-JARVIS: "Sir, as expected, there's now a type error on line 421 
+Ironcliw: "Sir, as expected, there's now a type error on line 421 
 where you're passing Optional[str] to a function expecting int. 
 Shall I add the null check I suggested?"
 ```
@@ -1087,13 +1087,13 @@ class ProjectIntelligence:
 ```
 User: "How do I handle API rate limiting?"
 
-JARVIS: "Sir, you implemented rate limiting in your 'api-client' project 
+Ironcliw: "Sir, you implemented rate limiting in your 'api-client' project 
 using an exponential backoff decorator. Would you like me to show you 
 that code or adapt it for this project?"
 
 User: "Adapt it"
 
-JARVIS: "Here's the adapted version for your current API:
+Ironcliw: "Here's the adapted version for your current API:
 [Shows code with inline explanation]
 This is in api-client/src/decorators/rate_limit.py if you need reference."
 ```
@@ -1190,19 +1190,19 @@ class ConversationalAI:
 
 ```
 User: "What's that error in Space 3?"
-JARVIS: "Sir, I see 5 errors in Space 3. Which one? The TypeError on line 421?"
+Ironcliw: "Sir, I see 5 errors in Space 3. Which one? The TypeError on line 421?"
 
 User: "Yes, that one"
-JARVIS: "This is a type mismatch error where..."
+Ironcliw: "This is a type mismatch error where..."
 
 User: "How do I fix it?"
-JARVIS: "Add a null check before line 421: [shows code]"
+Ironcliw: "Add a null check before line 421: [shows code]"
 
 User: "Apply that fix"
-JARVIS: "Applied. The error is now resolved."
+Ironcliw: "Applied. The error is now resolved."
 
 User: "Are there similar errors in other spaces?"
-JARVIS: "Yes, Space 5 has a similar type error on line 502. Shall I fix that too?"
+Ironcliw: "Yes, Space 5 has a similar type error on line 502. Shall I fix that too?"
 ```
 
 **Features:**
@@ -1220,7 +1220,7 @@ JARVIS: "Yes, Space 5 has a similar type error on line 502. Shall I fix that too
 ---
 
 ### 3.4 Autonomous Problem Solving ⭐⭐⭐⭐⭐
-**Goal:** JARVIS autonomously solves problems with minimal user input
+**Goal:** Ironcliw autonomously solves problems with minimal user input
 
 **Implementation:**
 ```python
@@ -1311,9 +1311,9 @@ class AutonomousSolver:
 
 **User Experience:**
 ```
-User: "JARVIS, fix all the errors in Space 3"
+User: "Ironcliw, fix all the errors in Space 3"
 
-JARVIS: "Sir, analyzing Space 3... I see 5 errors. Beginning autonomous repair.
+Ironcliw: "Sir, analyzing Space 3... I see 5 errors. Beginning autonomous repair.
 
 [30 seconds later]
 
@@ -1328,7 +1328,7 @@ Changes have been staged. Ready to commit."
 
 User: "Commit it"
 
-JARVIS: "Committed: 'Fix type errors and linter warnings in intelligent_orchestrator.py'"
+Ironcliw: "Committed: 'Fix type errors and linter warnings in intelligent_orchestrator.py'"
 ```
 
 **Safety Mechanisms:**
@@ -1433,7 +1433,7 @@ JARVIS: "Committed: 'Fix type errors and linter warnings in intelligent_orchestr
 2. **API Key Security:** Encrypt API keys, never log them
 3. **Input Validation:** Sanitize all user inputs
 4. **Rate Limiting:** Prevent abuse with rate limits
-5. **Audit Logging:** Log all JARVIS actions for review
+5. **Audit Logging:** Log all Ironcliw actions for review
 
 ---
 
@@ -1570,7 +1570,7 @@ JARVIS: "Committed: 'Fix type errors and linter warnings in intelligent_orchestr
 
 ## 🎯 Vision Statement
 
-**JARVIS Vision-Multispace Intelligence v2.0:**
+**Ironcliw Vision-Multispace Intelligence v2.0:**
 A fully autonomous AI assistant that understands your entire workspace, learns from your patterns, predicts problems before they occur, and autonomously solves issues - making you 10x more productive.
 
 ---

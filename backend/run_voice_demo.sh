@@ -1,7 +1,7 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Run the voice demo with proper setup
 
-echo "🚀 Running JARVIS Voice Lock/Unlock Demo"
+echo "🚀 Running Ironcliw Voice Lock/Unlock Demo"
 echo "========================================"
 
 # Check if WebSocket server is running
@@ -15,10 +15,10 @@ if ! lsof -i:8765 > /dev/null 2>&1; then
     echo "✅ WebSocket server started"
 fi
 
-# Check if JARVIS is running
+# Check if Ironcliw is running
 if ! lsof -i:8888 > /dev/null 2>&1; then
-    echo "⚠️  JARVIS not running on port 8888"
-    echo "Please start JARVIS with: python main.py"
+    echo "⚠️  Ironcliw not running on port 8888"
+    echo "Please start Ironcliw with: python main.py"
     exit 1
 fi
 

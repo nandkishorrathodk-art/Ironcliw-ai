@@ -1,30 +1,30 @@
-/**
- * JARVISWebSocketServer.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwWebSocketServer.h
+ * Ironcliw Voice Unlock System
  *
- * WebSocket server for daemon communication with JARVIS API
+ * WebSocket server for daemon communication with Ironcliw API
  */
 
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-@class JARVISWebSocketServer;
+@class IroncliwWebSocketServer;
 @class PSWebSocketServer;
 @class PSWebSocket;
 
-@protocol JARVISWebSocketServerDelegate <NSObject>
+@protocol IroncliwWebSocketServerDelegate <NSObject>
 @optional
-- (void)webSocketServer:(JARVISWebSocketServer *)server didStart:(NSUInteger)port;
-- (void)webSocketServer:(JARVISWebSocketServer *)server didReceiveMessage:(NSDictionary *)message fromClient:(PSWebSocket *)client;
-- (void)webSocketServer:(JARVISWebSocketServer *)server didConnectClient:(PSWebSocket *)client;
-- (void)webSocketServer:(JARVISWebSocketServer *)server didDisconnectClient:(PSWebSocket *)client;
-- (void)webSocketServer:(JARVISWebSocketServer *)server didFailWithError:(NSError *)error;
+- (void)webSocketServer:(IroncliwWebSocketServer *)server didStart:(NSUInteger)port;
+- (void)webSocketServer:(IroncliwWebSocketServer *)server didReceiveMessage:(NSDictionary *)message fromClient:(PSWebSocket *)client;
+- (void)webSocketServer:(IroncliwWebSocketServer *)server didConnectClient:(PSWebSocket *)client;
+- (void)webSocketServer:(IroncliwWebSocketServer *)server didDisconnectClient:(PSWebSocket *)client;
+- (void)webSocketServer:(IroncliwWebSocketServer *)server didFailWithError:(NSError *)error;
 @end
 
-@interface JARVISWebSocketServer : NSObject
+@interface IroncliwWebSocketServer : NSObject
 
-@property (nonatomic, weak) id<JARVISWebSocketServerDelegate> delegate;
+@property (nonatomic, weak) id<IroncliwWebSocketServerDelegate> delegate;
 @property (nonatomic, readonly) NSUInteger port;
 @property (nonatomic, readonly) BOOL isRunning;
 @property (nonatomic, readonly) NSArray<PSWebSocket *> *connectedClients;

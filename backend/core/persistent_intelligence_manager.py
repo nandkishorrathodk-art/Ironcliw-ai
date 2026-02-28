@@ -1,7 +1,7 @@
-"""
-JARVIS Persistent Intelligence Manager (v2.7)
+﻿"""
+Ironcliw Persistent Intelligence Manager (v2.7)
 
-Unified state persistence and synchronization layer for the JARVIS AI system.
+Unified state persistence and synchronization layer for the Ironcliw AI system.
 Provides automatic local/cloud sync, checkpointing, recovery, and conflict resolution.
 
 Architecture:
@@ -27,7 +27,7 @@ Features:
 - Incremental sync (delta updates)
 - Offline-first with automatic sync on reconnect
 - Checkpointing and recovery
-- Cross-repo state sharing (JARVIS, Prime, Reactor)
+- Cross-repo state sharing (Ironcliw, Prime, Reactor)
 - Event-driven state changes
 - Compression for large state objects
 """
@@ -169,7 +169,7 @@ class SyncStats:
 
 class PersistentIntelligenceManager:
     """
-    Unified state persistence manager for JARVIS.
+    Unified state persistence manager for Ironcliw.
 
     Provides:
     - Automatic local/cloud sync
@@ -199,15 +199,15 @@ class PersistentIntelligenceManager:
 
     # Configurable settings via environment
     LOCAL_DB_PATH = os.getenv(
-        "JARVIS_STATE_DB",
+        "Ironcliw_STATE_DB",
         str(Path.home() / ".jarvis" / "state" / "persistent_intelligence.db")
     )
     STATE_DIR = os.getenv(
-        "JARVIS_STATE_DIR",
+        "Ironcliw_STATE_DIR",
         str(Path.home() / ".jarvis" / "state")
     )
     CROSS_REPO_DIR = os.getenv(
-        "JARVIS_CROSS_REPO_DIR",
+        "Ironcliw_CROSS_REPO_DIR",
         str(Path.home() / ".jarvis" / "cross_repo")
     )
 

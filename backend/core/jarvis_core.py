@@ -1,5 +1,5 @@
-"""
-JARVIS Core - Integrated system with Model Manager, Memory Controller, and Task Router
+﻿"""
+Ironcliw Core - Integrated system with Model Manager, Memory Controller, and Task Router
 Built for scale and memory efficiency
 
 v84.0 - Trinity Integration with Intelligent LLM Routing
@@ -123,13 +123,13 @@ class IntelligentLLMRouter:
 
         # Configuration from environment
         self._jprime_complexity_threshold = float(os.getenv(
-            "JARVIS_JPRIME_COMPLEXITY_THRESHOLD", "0.6"
+            "Ironcliw_JPRIME_COMPLEXITY_THRESHOLD", "0.6"
         ))
         self._prefer_local = os.getenv(
-            "JARVIS_PREFER_LOCAL", "true"
+            "Ironcliw_PREFER_LOCAL", "true"
         ).lower() == "true"
         self._cost_sensitivity = float(os.getenv(
-            "JARVIS_COST_SENSITIVITY", "0.5"  # 0=ignore cost, 1=minimize cost
+            "Ironcliw_COST_SENSITIVITY", "0.5"  # 0=ignore cost, 1=minimize cost
         ))
 
         # J-Prime client (lazy loaded)
@@ -386,16 +386,16 @@ def get_llm_router() -> IntelligentLLMRouter:
         _llm_router = IntelligentLLMRouter()
     return _llm_router
 
-class JARVISCore:
+class IroncliwCore:
     """
-    Core JARVIS system integrating all components for intelligent,
+    Core Ironcliw system integrating all components for intelligent,
     memory-efficient operation
     """
     
     def __init__(self, 
                  models_dir: str = "models",
                  config_path: Optional[str] = None):
-        """Initialize JARVIS Core with all components"""
+        """Initialize Ironcliw Core with all components"""
         
         # Load configuration
         self.config = self._load_config(config_path)
@@ -432,7 +432,7 @@ class JARVISCore:
         await self.memory_controller.start_monitoring()
         
         # Ensure tiny model is loaded
-        logger.info("JARVIS Core initialized and ready")
+        logger.info("Ironcliw Core initialized and ready")
         
     def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
         """Load configuration from file or use defaults"""
@@ -587,7 +587,7 @@ class JARVISCore:
         route = await llm_router.route(query, context, memory_pressure)
         start_time = time.time()
 
-        logger.info(f"[JARVISCore] Routing to {route.backend.name}: {route.reason}")
+        logger.info(f"[IroncliwCore] Routing to {route.backend.name}: {route.reason}")
 
         # Execute based on route
         response = None
@@ -612,13 +612,13 @@ class JARVISCore:
                     llm_router.update_latency(backend, latency_ms)
 
                     logger.info(
-                        f"[JARVISCore] Response from {backend.name} "
+                        f"[IroncliwCore] Response from {backend.name} "
                         f"(latency={latency_ms:.0f}ms, tried={backends_tried})"
                     )
                     return response
 
             except Exception as e:
-                logger.warning(f"[JARVISCore] {backend.name} failed: {e}")
+                logger.warning(f"[IroncliwCore] {backend.name} failed: {e}")
                 continue
 
         # All backends failed
@@ -650,7 +650,7 @@ class JARVISCore:
             return None
 
         except Exception as e:
-            logger.debug(f"[JARVISCore] J-Prime execution failed: {e}")
+            logger.debug(f"[IroncliwCore] J-Prime execution failed: {e}")
             return None
 
     async def _execute_local(
@@ -670,7 +670,7 @@ class JARVISCore:
             )
             return response
         except Exception as e:
-            logger.debug(f"[JARVISCore] Local execution failed: {e}")
+            logger.debug(f"[IroncliwCore] Local execution failed: {e}")
             return None
 
     async def _execute_cloud_gcp(
@@ -682,7 +682,7 @@ class JARVISCore:
         """Execute query via GCP Cloud (placeholder for actual implementation)."""
         # TODO: Implement actual GCP Cloud integration
         # For now, return None to fall through to fallbacks
-        logger.debug("[JARVISCore] GCP Cloud not yet implemented")
+        logger.debug("[IroncliwCore] GCP Cloud not yet implemented")
         return None
             
     def _build_prompt(self, query: str, context: List[str]) -> str:
@@ -757,8 +757,8 @@ class JARVISCore:
         }
         
     async def shutdown(self):
-        """Gracefully shutdown JARVIS Core"""
-        logger.info("Shutting down JARVIS Core...")
+        """Gracefully shutdown Ironcliw Core"""
+        logger.info("Shutting down Ironcliw Core...")
         
         # Stop memory monitoring
         await self.memory_controller.stop_monitoring()
@@ -768,14 +768,14 @@ class JARVISCore:
             if tier in self.model_manager.loaded_models:
                 await self.model_manager.unload_model(tier)
                 
-        logger.info("JARVIS Core shutdown complete")
+        logger.info("Ironcliw Core shutdown complete")
         
 
-class JARVISAssistant:
-    """High-level assistant interface for JARVIS Core"""
+class IroncliwAssistant:
+    """High-level assistant interface for Ironcliw Core"""
     
-    def __init__(self, core: Optional[JARVISCore] = None):
-        self.core = core or JARVISCore()
+    def __init__(self, core: Optional[IroncliwCore] = None):
+        self.core = core or IroncliwCore()
         
     async def chat(self, message: str, **kwargs) -> str:
         """Simple chat interface"""

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Code Ownership System - Permission-Aware Code Management
 ==========================================================
 
@@ -31,7 +31,7 @@ Architecture:
     │                                                                         │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -61,7 +61,7 @@ from typing import (
     Union,
 )
 
-logger = logging.getLogger("JARVIS.CodeOwnership")
+logger = logging.getLogger("Ironcliw.CodeOwnership")
 
 
 # =============================================================================
@@ -1045,7 +1045,7 @@ class CodeOwnershipEngine:
 
 class CrossRepoOwnershipCoordinator:
     """
-    Coordinates ownership across JARVIS, JARVIS-Prime, and Reactor-Core.
+    Coordinates ownership across Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
     Enables:
     - Cross-repo ownership lookup
@@ -1071,7 +1071,7 @@ class CrossRepoOwnershipCoordinator:
 
             # Initialize engine for each repo
             repos = {
-                "jarvis": CrossRepoConfig.JARVIS_REPO,
+                "jarvis": CrossRepoConfig.Ironcliw_REPO,
                 "prime": CrossRepoConfig.PRIME_REPO,
                 "reactor": CrossRepoConfig.REACTOR_REPO,
             }

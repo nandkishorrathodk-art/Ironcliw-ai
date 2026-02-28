@@ -1,4 +1,4 @@
-# ✅ Living Room TV Monitoring - Ready to Use!
+﻿# ✅ Living Room TV Monitoring - Ready to Use!
 
 ## What I Built For You
 
@@ -16,14 +16,14 @@ Based on your screenshots showing "Living Room TV" in your Screen Mirroring menu
 ### Option 1: Test the Monitor Now
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_tv_monitoring.py
 ```
 
 You'll see:
 ```
 ======================================================================
-🖥️  JARVIS Living Room TV Monitor
+🖥️  Ironcliw Living Room TV Monitor
 ======================================================================
 
 📺 Monitoring for: Living Room TV
@@ -32,7 +32,7 @@ You'll see:
 
 **Now turn your TV off and on** - the monitor will detect it!
 
-### Option 2: Integrate with JARVIS
+### Option 2: Integrate with Ironcliw
 
 Add to `backend/main.py` startup:
 
@@ -111,13 +111,13 @@ This means the simple monitoring approach will work perfectly!
        │
        ▼ 2. Appears in Screen Mirroring menu
 ┌─────────────┐
-│   MacBook   │  3. JARVIS detects it
+│   MacBook   │  3. Ironcliw detects it
 │   Monitor   │     (checks every 10 sec)
 └──────┬──────┘
        │
        ▼ 4. Generates prompt
 ┌─────────────┐
-│   JARVIS    │  "Sir, I see Living Room TV
+│   Ironcliw    │  "Sir, I see Living Room TV
 │   Voice     │   is available. Extend?"
 └──────┬──────┘
        │
@@ -163,11 +163,11 @@ Should connect to your TV!
 
 ### ✅ Test 3: Integration
 
-Start JARVIS with TV monitoring enabled:
+Start Ironcliw with TV monitoring enabled:
 1. Your TV turns on
-2. JARVIS voice says: "Sir, I see Living Room TV is available..."
+2. Ironcliw voice says: "Sir, I see Living Room TV is available..."
 3. You say: "Yes"
-4. JARVIS connects to TV
+4. Ironcliw connects to TV
 
 ## Next Steps
 
@@ -179,7 +179,7 @@ Start JARVIS with TV monitoring enabled:
 
 ### Short Term (Today/Tomorrow)
 
-1. **Integrate with JARVIS**: Add to `main.py` startup
+1. **Integrate with Ironcliw**: Add to `main.py` startup
 2. **Connect voice commands**: Link to voice handler
 3. **Test end-to-end**: Voice prompt → connection
 
@@ -233,10 +233,10 @@ rm backend/api/proximity_display_api.py
 **Fix**:
 ```bash
 # Ensure you're in the right directory
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 
 # Ensure backend is in Python path
-export PYTHONPATH="${PYTHONPATH}:/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend"
+export PYTHONPATH="${PYTHONPATH}:/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend"
 ```
 
 ## Documentation

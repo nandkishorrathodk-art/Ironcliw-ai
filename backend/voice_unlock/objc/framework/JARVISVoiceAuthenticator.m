@@ -1,22 +1,22 @@
-/**
- * JARVISVoiceAuthenticator.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwVoiceAuthenticator.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of the voice authentication engine.
  */
 
-#import "JARVISVoiceAuthenticator.h"
+#import "IroncliwVoiceAuthenticator.h"
 #import <Accelerate/Accelerate.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <os/log.h>
 
 // Result keys
-NSString *const JARVISAuthResultSuccessKey = @"success";
-NSString *const JARVISAuthResultConfidenceKey = @"confidence";
-NSString *const JARVISAuthResultUserIDKey = @"userID";
-NSString *const JARVISAuthResultReasonKey = @"reason";
-NSString *const JARVISAuthResultLivenessScoreKey = @"livenessScore";
-NSString *const JARVISAuthResultAntispoofingScoreKey = @"antispoofingScore";
+NSString *const IroncliwAuthResultSuccessKey = @"success";
+NSString *const IroncliwAuthResultConfidenceKey = @"confidence";
+NSString *const IroncliwAuthResultUserIDKey = @"userID";
+NSString *const IroncliwAuthResultReasonKey = @"reason";
+NSString *const IroncliwAuthResultLivenessScoreKey = @"livenessScore";
+NSString *const IroncliwAuthResultAntispoofingScoreKey = @"antispoofingScore";
 
 // Private constants
 static const NSInteger kFeatureVectorSize = 128;
@@ -26,7 +26,7 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
 
 #pragma mark - Voiceprint Implementation
 
-@interface JARVISVoiceprint ()
+@interface IroncliwVoiceprint ()
 @property (nonatomic, readwrite) NSString *userID;
 @property (nonatomic, readwrite) NSString *userName;
 @property (nonatomic, readwrite) NSDate *createdDate;
@@ -36,7 +36,7 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
 @property (nonatomic, readwrite) float qualityScore;
 @end
 
-@implementation JARVISVoiceprint
+@implementation IroncliwVoiceprint
 
 + (BOOL)supportsSecureCoding {
     return YES;
@@ -109,13 +109,13 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
 
 #pragma mark - Voice Authenticator Implementation
 
-@interface JARVISVoiceAuthenticator ()
-@property (nonatomic, strong) NSMutableDictionary<NSString *, JARVISVoiceprint *> *voiceprints;
+@interface IroncliwVoiceAuthenticator ()
+@property (nonatomic, strong) NSMutableDictionary<NSString *, IroncliwVoiceprint *> *voiceprints;
 @property (nonatomic, strong) dispatch_queue_t processingQueue;
 @property (nonatomic, strong) os_log_t logger;
 @end
 
-@implementation JARVISVoiceAuthenticator
+@implementation IroncliwVoiceAuthenticator
 
 - (instancetype)init {
     self = [super init];
@@ -169,7 +169,7 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     NSData *data = [NSData dataWithContentsOfFile:path];
     if (!data) {
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISVoiceAuth" 
+            *error = [NSError errorWithDomain:@"IroncliwVoiceAuth" 
                                          code:404 
                                      userInfo:@{NSLocalizedDescriptionKey: @"Voiceprint file not found"}];
         }
@@ -190,14 +190,14 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     
     if (!features || features.count != kFeatureVectorSize) {
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISVoiceAuth" 
+            *error = [NSError errorWithDomain:@"IroncliwVoiceAuth" 
                                          code:400 
                                      userInfo:@{NSLocalizedDescriptionKey: @"Invalid voiceprint format"}];
         }
         return NO;
     }
     
-    JARVISVoiceprint *voiceprint = [[JARVISVoiceprint alloc] initWithUserID:userID
+    IroncliwVoiceprint *voiceprint = [[IroncliwVoiceprint alloc] initWithUserID:userID
                                                                     userName:voiceprintData[@"name"]
                                                                     features:features];
     
@@ -233,8 +233,8 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     // Check audio quality first
     if (![self isAudioSuitableForAuthentication:audioData]) {
         return @{
-            JARVISAuthResultSuccessKey: @NO,
-            JARVISAuthResultReasonKey: @(JARVISAuthFailureReasonAudioQuality)
+            IroncliwAuthResultSuccessKey: @NO,
+            IroncliwAuthResultReasonKey: @(IroncliwAuthFailureReasonAudioQuality)
         };
     }
     
@@ -242,8 +242,8 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     NSArray<NSNumber *> *features = [self extractFeaturesFromAudio:audioData];
     if (!features || features.count != kFeatureVectorSize) {
         return @{
-            JARVISAuthResultSuccessKey: @NO,
-            JARVISAuthResultReasonKey: @(JARVISAuthFailureReasonUnknown)
+            IroncliwAuthResultSuccessKey: @NO,
+            IroncliwAuthResultReasonKey: @(IroncliwAuthFailureReasonUnknown)
         };
     }
     
@@ -254,7 +254,7 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     NSString *bestMatchUserID = nil;
     
     for (NSString *checkUserID in usersToCheck) {
-        JARVISVoiceprint *voiceprint = self.voiceprints[checkUserID];
+        IroncliwVoiceprint *voiceprint = self.voiceprints[checkUserID];
         if (!voiceprint) continue;
         
         float confidence = [self calculateConfidence:features against:voiceprint.features];
@@ -267,26 +267,26 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     // Check if we found a match
     if (!bestMatchUserID || bestConfidence < self.confidenceThreshold) {
         return @{
-            JARVISAuthResultSuccessKey: @NO,
-            JARVISAuthResultReasonKey: @(JARVISAuthFailureReasonNoMatch),
-            JARVISAuthResultConfidenceKey: @(bestConfidence)
+            IroncliwAuthResultSuccessKey: @NO,
+            IroncliwAuthResultReasonKey: @(IroncliwAuthFailureReasonNoMatch),
+            IroncliwAuthResultConfidenceKey: @(bestConfidence)
         };
     }
     
     NSMutableDictionary *result = [NSMutableDictionary dictionaryWithDictionary:@{
-        JARVISAuthResultSuccessKey: @YES,
-        JARVISAuthResultUserIDKey: bestMatchUserID,
-        JARVISAuthResultConfidenceKey: @(bestConfidence)
+        IroncliwAuthResultSuccessKey: @YES,
+        IroncliwAuthResultUserIDKey: bestMatchUserID,
+        IroncliwAuthResultConfidenceKey: @(bestConfidence)
     }];
     
     // Perform liveness detection
     if (self.enableLivenessDetection) {
         float livenessScore = [self calculateLivenessScore:audioData];
-        result[JARVISAuthResultLivenessScoreKey] = @(livenessScore);
+        result[IroncliwAuthResultLivenessScoreKey] = @(livenessScore);
         
         if (livenessScore < self.livenessThreshold) {
-            result[JARVISAuthResultSuccessKey] = @NO;
-            result[JARVISAuthResultReasonKey] = @(JARVISAuthFailureReasonLivenessFailed);
+            result[IroncliwAuthResultSuccessKey] = @NO;
+            result[IroncliwAuthResultReasonKey] = @(IroncliwAuthFailureReasonLivenessFailed);
             return result;
         }
     }
@@ -294,17 +294,17 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     // Perform anti-spoofing
     if (self.enableAntispoofing) {
         float antispoofingScore = [self calculateAntispoofingScore:audioData];
-        result[JARVISAuthResultAntispoofingScoreKey] = @(antispoofingScore);
+        result[IroncliwAuthResultAntispoofingScoreKey] = @(antispoofingScore);
         
         if (antispoofingScore < self.antispoofingThreshold) {
-            result[JARVISAuthResultSuccessKey] = @NO;
-            result[JARVISAuthResultReasonKey] = @(JARVISAuthFailureReasonSpoofingDetected);
+            result[IroncliwAuthResultSuccessKey] = @NO;
+            result[IroncliwAuthResultReasonKey] = @(IroncliwAuthFailureReasonSpoofingDetected);
             return result;
         }
     }
     
     // Update voiceprint if adaptive learning is enabled
-    if (self.enableAdaptiveLearning && [result[JARVISAuthResultSuccessKey] boolValue]) {
+    if (self.enableAdaptiveLearning && [result[IroncliwAuthResultSuccessKey] boolValue]) {
         dispatch_async(self.processingQueue, ^{
             [self updateVoiceprintWithSuccessfulAuth:audioData forUser:bestMatchUserID];
         });
@@ -538,7 +538,7 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
 #pragma mark - Adaptive Learning
 
 - (void)updateVoiceprintWithSuccessfulAuth:(NSData *)audioData forUser:(NSString *)userID {
-    JARVISVoiceprint *voiceprint = self.voiceprints[userID];
+    IroncliwVoiceprint *voiceprint = self.voiceprints[userID];
     if (!voiceprint || !self.enableAdaptiveLearning) {
         return;
     }
@@ -559,7 +559,7 @@ static const float kDefaultAntispoofingThreshold = 0.8f;
     }
 }
 
-- (void)saveVoiceprint:(JARVISVoiceprint *)voiceprint {
+- (void)saveVoiceprint:(IroncliwVoiceprint *)voiceprint {
     NSString *path = [NSString stringWithFormat:@"~/.jarvis/voice_unlock/%@_voiceprint.json", voiceprint.userID];
     path = [path stringByExpandingTildeInPath];
     

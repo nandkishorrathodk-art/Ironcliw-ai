@@ -1,8 +1,8 @@
-"""
-JARVIS Dependency Injection Framework v2.0
+﻿"""
+Ironcliw Dependency Injection Framework v2.0
 ==========================================
 
-Enterprise-grade dependency injection for the JARVIS AI system.
+Enterprise-grade dependency injection for the Ironcliw AI system.
 
 This package provides:
 - Type-safe service registration and resolution
@@ -13,7 +13,7 @@ This package provides:
 - Rich visualization exports (DOT, Mermaid, JSON)
 - Lifecycle event system with distributed tracing
 - Lazy lock initialization for async safety
-- Cross-repo coordination for Trinity (JARVIS, Prime, Reactor)
+- Cross-repo coordination for Trinity (Ironcliw, Prime, Reactor)
 - Circuit breaker pattern for cascade failure prevention
 - Retry policies with exponential backoff and jitter
 
@@ -58,7 +58,7 @@ Usage:
     # Visualize
     print(resolver.to_mermaid())
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0
 """
 

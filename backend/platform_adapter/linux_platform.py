@@ -1,8 +1,8 @@
-"""
+﻿"""
 Linux Platform Implementation
 ==============================
 
-Linux-specific implementation of JARVIS platform abstraction layer.
+Linux-specific implementation of Ironcliw platform abstraction layer.
 Supports both X11 and Wayland display servers.
 """
 

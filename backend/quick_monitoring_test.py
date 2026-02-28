@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick test to check monitoring command flow
 """
@@ -26,8 +26,8 @@ async def quick_test():
             print(f"   - Video Streaming: {debug_info['vision_system']['video_streaming_available']}")
             print(f"   - macOS Capture: {debug_info['vision_system']['macos_capture_available']}")
             
-            print(f"\n✅ JARVIS System:")
-            print(f"   - JARVIS Available: {debug_info['jarvis_system']['jarvis_voice_available']}")
+            print(f"\n✅ Ironcliw System:")
+            print(f"   - Ironcliw Available: {debug_info['jarvis_system']['jarvis_voice_available']}")
             print(f"   - Claude Chatbot: {debug_info['jarvis_system']['claude_chatbot_available']}")
             
             print(f"\n✅ Command Routing:")

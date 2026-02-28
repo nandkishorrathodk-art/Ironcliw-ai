@@ -1,7 +1,7 @@
-# WhatsApp Notification Detection Fix
+﻿# WhatsApp Notification Detection Fix
 
 ## Issue
-When asking JARVIS "do I have any notifications from WhatsApp", it was responding with "I don't have access to your WhatsApp notifications or account information" instead of using the workspace intelligence to check the screen.
+When asking Ironcliw "do I have any notifications from WhatsApp", it was responding with "I don't have access to your WhatsApp notifications or account information" instead of using the workspace intelligence to check the screen.
 
 ## Root Cause
 The query wasn't being recognized as a system/workspace command, so it was processed as a regular conversation instead of triggering the Multi-Window Intelligence system.
@@ -51,7 +51,7 @@ Updated the NOTIFICATIONS intent patterns and routing logic:
 ## How It Works Now
 
 1. User asks: "Do I have any notifications from WhatsApp?"
-2. JARVIS detects this as a system command (notification keywords)
+2. Ironcliw detects this as a system command (notification keywords)
 3. Routes to workspace intelligence system
 4. Smart Query Router identifies NOTIFICATIONS intent
 5. Specifically looks for WhatsApp windows
@@ -63,22 +63,22 @@ Updated the NOTIFICATIONS intent patterns and routing logic:
 
 **Before Fix:**
 - User: "Do I have any notifications from WhatsApp?"
-- JARVIS: "I don't have access to your WhatsApp notifications..."
+- Ironcliw: "I don't have access to your WhatsApp notifications..."
 
 **After Fix:**
 - User: "Do I have any notifications from WhatsApp?"
-- JARVIS: "Sir, WhatsApp is open. I can see 3 unread messages in the chat list."
+- Ironcliw: "Sir, WhatsApp is open. I can see 3 unread messages in the chat list."
 
 OR if WhatsApp isn't open:
-- JARVIS: "Sir, WhatsApp is not currently open on your screen."
+- Ironcliw: "Sir, WhatsApp is not currently open on your screen."
 
 ## Testing
 
 To test the fix:
-1. Restart JARVIS to load the updated code
+1. Restart Ironcliw to load the updated code
 2. Open WhatsApp (or any communication app)
-3. Say: "Hey JARVIS, do I have any notifications from WhatsApp?"
-4. JARVIS should analyze your screen and report what it sees
+3. Say: "Hey Ironcliw, do I have any notifications from WhatsApp?"
+4. Ironcliw should analyze your screen and report what it sees
 
 ## Related Queries That Now Work
 

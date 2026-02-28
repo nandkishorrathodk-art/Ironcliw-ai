@@ -1,4 +1,4 @@
-# 🚀 Intelligent Vision System - Quick Start Guide
+﻿# 🚀 Intelligent Vision System - Quick Start Guide
 
 ## What Was Built
 
@@ -67,10 +67,10 @@ backend/api/
 
 ### 1. The System is Already Integrated!
 
-The intelligent system is automatically used when you send vision queries to JARVIS. No changes needed!
+The intelligent system is automatically used when you send vision queries to Ironcliw. No changes needed!
 
 ```python
-# Just use JARVIS normally:
+# Just use Ironcliw normally:
 "How many spaces do I have?"           # → Routed to METADATA_ONLY (fast!)
 "What do you see on my screen?"        # → Routed to VISUAL_ANALYSIS
 "Analyze all my workspaces"            # → Routed to DEEP_ANALYSIS
@@ -220,7 +220,7 @@ Example output:
 # 4. Router sends to multi-space handler
 # 5. All spaces captured, Yabai metadata collected
 # 6. Sent to Claude Vision with full context
-# 7. Response in ~4.5s: "You're working on 3 projects: JARVIS in Space 1..."
+# 7. Response in ~4.5s: "You're working on 3 projects: Ironcliw in Space 1..."
 
 # Result: Comprehensive - analyzes all spaces when needed
 ```
@@ -350,7 +350,7 @@ The intelligent system is **deployed and running**! It will:
 
 ### Next Steps
 
-1. **Use JARVIS normally** - System is already working!
+1. **Use Ironcliw normally** - System is already working!
 2. **Monitor performance** - Check stats after 100 queries
 3. **Provide feedback** - System learns from your usage
 4. **Tune settings** - Adjust thresholds if needed
@@ -400,7 +400,7 @@ The Intelligent Multi-Space Vision System is:
 - ✅ **Documented and ready**
 - ✅ **Optimized for M1 16GB**
 
-**Just use JARVIS - the intelligent system handles the rest!**
+**Just use Ironcliw - the intelligent system handles the rest!**
 
 ---
 

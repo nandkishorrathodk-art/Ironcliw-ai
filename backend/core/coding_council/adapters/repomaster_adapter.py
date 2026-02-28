@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: RepoMaster Framework Adapter
 ===================================
 
@@ -12,7 +12,7 @@ RepoMaster provides:
 
 For codebase understanding before making changes.
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 Version: 1.0.0
 """
 

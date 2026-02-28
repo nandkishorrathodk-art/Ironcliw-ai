@@ -1,11 +1,11 @@
-"""
+﻿"""
 Tests for backend.config.hardware_enforcer module.
 
 These tests verify that:
 1. get_system_ram_gb() returns the correct system RAM in GB
 2. enforce_hollow_client() enforces Hollow Client mode based on RAM threshold
 3. Module-level enforcement runs on import
-4. Idempotency is maintained when JARVIS_HOLLOW_CLIENT is already set
+4. Idempotency is maintained when Ironcliw_HOLLOW_CLIENT is already set
 5. The RAM threshold is configurable via environment variable
 
 Following TDD principles - tests written first, then implementation.
@@ -28,12 +28,12 @@ def clean_env():
     """
     Fixture to ensure clean environment for each test.
 
-    Removes JARVIS_HOLLOW_CLIENT and JARVIS_HOLLOW_RAM_THRESHOLD_GB env vars
+    Removes Ironcliw_HOLLOW_CLIENT and Ironcliw_HOLLOW_RAM_THRESHOLD_GB env vars
     and resets the hardware_enforcer module state.
     """
     # Store original values
     original_env = {}
-    vars_to_clean = ["JARVIS_HOLLOW_CLIENT", "JARVIS_HOLLOW_RAM_THRESHOLD_GB"]
+    vars_to_clean = ["Ironcliw_HOLLOW_CLIENT", "Ironcliw_HOLLOW_RAM_THRESHOLD_GB"]
     for key in vars_to_clean:
         if key in os.environ:
             original_env[key] = os.environ.pop(key)
@@ -134,13 +134,13 @@ class TestEnforceHollowClientBelowThreshold:
             result = enforce_hollow_client(source="test")
 
             assert result is True
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") == "true"
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true"
             assert "[HardwareEnforcer] Hollow Client enforced" in caplog_info.text
             assert "source: test" in caplog_info.text
             assert "16.0GB < 32.0GB" in caplog_info.text
 
     def test_enforce_sets_env_var_to_true_string(self, clean_env) -> None:
-        """Test that enforce_hollow_client sets JARVIS_HOLLOW_CLIENT to 'true' string."""
+        """Test that enforce_hollow_client sets Ironcliw_HOLLOW_CLIENT to 'true' string."""
         mock_vmem = MagicMock()
         mock_vmem.total = 8 * (1024**3)  # 8 GB
 
@@ -152,8 +152,8 @@ class TestEnforceHollowClientBelowThreshold:
             enforce_hollow_client(source="test_string")
 
             # Must be the string "true", not boolean True
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") == "true"
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") != True  # noqa: E712
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true"
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") != True  # noqa: E712
 
 
 # =============================================================================
@@ -179,7 +179,7 @@ class TestEnforceHollowClientAboveThreshold:
             result = enforce_hollow_client(source="test")
 
             assert result is False
-            assert "JARVIS_HOLLOW_CLIENT" not in os.environ
+            assert "Ironcliw_HOLLOW_CLIENT" not in os.environ
             assert "Full mode available" in caplog_debug.text
             assert "64.0GB >= 32.0GB" in caplog_debug.text
 
@@ -198,7 +198,7 @@ class TestEnforceHollowClientAboveThreshold:
             result = enforce_hollow_client(source="test")
 
             assert result is False
-            assert "JARVIS_HOLLOW_CLIENT" not in os.environ
+            assert "Ironcliw_HOLLOW_CLIENT" not in os.environ
 
 
 # =============================================================================
@@ -210,20 +210,20 @@ class TestConfigurableThreshold:
     """Tests for configurable RAM threshold via environment variable."""
 
     def test_threshold_is_configurable(self, clean_env, caplog_info) -> None:
-        """Test: JARVIS_HOLLOW_RAM_THRESHOLD_GB=64, 48GB RAM -> True (enforced)."""
+        """Test: Ironcliw_HOLLOW_RAM_THRESHOLD_GB=64, 48GB RAM -> True (enforced)."""
         mock_vmem = MagicMock()
         mock_vmem.total = 48 * (1024**3)  # 48 GB
 
         with patch("backend.config.hardware_enforcer.psutil") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_vmem
-            os.environ["JARVIS_HOLLOW_RAM_THRESHOLD_GB"] = "64"
+            os.environ["Ironcliw_HOLLOW_RAM_THRESHOLD_GB"] = "64"
 
             from backend.config.hardware_enforcer import enforce_hollow_client
 
             result = enforce_hollow_client(source="test")
 
             assert result is True
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") == "true"
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true"
             assert "48.0GB < 64.0GB" in caplog_info.text
 
     def test_threshold_higher_allows_machine_that_would_fail_default(
@@ -239,15 +239,15 @@ class TestConfigurableThreshold:
             from backend.config.hardware_enforcer import enforce_hollow_client
 
             # First test with default threshold (32GB) - should NOT enforce
-            os.environ.pop("JARVIS_HOLLOW_RAM_THRESHOLD_GB", None)
-            os.environ.pop("JARVIS_HOLLOW_CLIENT", None)
+            os.environ.pop("Ironcliw_HOLLOW_RAM_THRESHOLD_GB", None)
+            os.environ.pop("Ironcliw_HOLLOW_CLIENT", None)
 
             result_default = enforce_hollow_client(source="default_threshold")
             assert result_default is False  # 48GB >= 32GB
 
             # Now test with 64GB threshold - should enforce
-            os.environ["JARVIS_HOLLOW_RAM_THRESHOLD_GB"] = "64"
-            os.environ.pop("JARVIS_HOLLOW_CLIENT", None)
+            os.environ["Ironcliw_HOLLOW_RAM_THRESHOLD_GB"] = "64"
+            os.environ.pop("Ironcliw_HOLLOW_CLIENT", None)
 
             result_custom = enforce_hollow_client(source="custom_threshold")
             assert result_custom is True  # 48GB < 64GB
@@ -259,7 +259,7 @@ class TestConfigurableThreshold:
 
         with patch("backend.config.hardware_enforcer.psutil") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_vmem
-            os.environ["JARVIS_HOLLOW_RAM_THRESHOLD_GB"] = "not_a_number"
+            os.environ["Ironcliw_HOLLOW_RAM_THRESHOLD_GB"] = "not_a_number"
 
             from backend.config.hardware_enforcer import enforce_hollow_client
 
@@ -274,11 +274,11 @@ class TestConfigurableThreshold:
 
 
 class TestIdempotency:
-    """Tests for idempotent behavior when JARVIS_HOLLOW_CLIENT is already set."""
+    """Tests for idempotent behavior when Ironcliw_HOLLOW_CLIENT is already set."""
 
     def test_idempotent_when_already_set(self, clean_env, caplog_info) -> None:
-        """Test: JARVIS_HOLLOW_CLIENT already 'true' -> returns True immediately."""
-        os.environ["JARVIS_HOLLOW_CLIENT"] = "true"
+        """Test: Ironcliw_HOLLOW_CLIENT already 'true' -> returns True immediately."""
+        os.environ["Ironcliw_HOLLOW_CLIENT"] = "true"
 
         mock_vmem = MagicMock()
         mock_vmem.total = 64 * (1024**3)  # 64 GB - would NOT trigger enforcement
@@ -299,7 +299,7 @@ class TestIdempotency:
 
     def test_idempotent_does_not_call_psutil(self, clean_env) -> None:
         """Test: When already set, psutil should not be called."""
-        os.environ["JARVIS_HOLLOW_CLIENT"] = "true"
+        os.environ["Ironcliw_HOLLOW_CLIENT"] = "true"
 
         with patch("backend.config.hardware_enforcer.psutil") as mock_psutil:
             from backend.config.hardware_enforcer import enforce_hollow_client
@@ -374,12 +374,12 @@ class TestModuleLevelEnforcement:
             import backend.config.hardware_enforcer  # noqa: F401
 
             # Verify enforcement happened
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") == "true"
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true"
 
     def test_module_import_with_sufficient_ram_does_not_set_env(
         self, clean_env
     ) -> None:
-        """Test: Module import with sufficient RAM does not set JARVIS_HOLLOW_CLIENT."""
+        """Test: Module import with sufficient RAM does not set Ironcliw_HOLLOW_CLIENT."""
         import sys
 
         mock_vmem = MagicMock()
@@ -397,7 +397,7 @@ class TestModuleLevelEnforcement:
             import backend.config.hardware_enforcer  # noqa: F401
 
             # Verify enforcement did NOT happen
-            assert "JARVIS_HOLLOW_CLIENT" not in os.environ
+            assert "Ironcliw_HOLLOW_CLIENT" not in os.environ
 
 
 # =============================================================================
@@ -421,7 +421,7 @@ class TestEdgeCases:
             result = enforce_hollow_client(source="test")
 
             assert result is True
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") == "true"
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true"
 
     def test_very_high_ram(self, clean_env) -> None:
         """Test: Very high RAM (256GB) correctly skips enforcement."""
@@ -436,7 +436,7 @@ class TestEdgeCases:
             result = enforce_hollow_client(source="test")
 
             assert result is False
-            assert "JARVIS_HOLLOW_CLIENT" not in os.environ
+            assert "Ironcliw_HOLLOW_CLIENT" not in os.environ
 
     def test_fractional_ram(self, clean_env) -> None:
         """Test: Fractional RAM values are handled correctly."""
@@ -461,7 +461,7 @@ class TestEdgeCases:
         with patch("backend.config.hardware_enforcer.psutil") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_vmem
             # Note: Implementation should handle or reject zero threshold
-            os.environ["JARVIS_HOLLOW_RAM_THRESHOLD_GB"] = "0"
+            os.environ["Ironcliw_HOLLOW_RAM_THRESHOLD_GB"] = "0"
 
             from backend.config.hardware_enforcer import enforce_hollow_client
 

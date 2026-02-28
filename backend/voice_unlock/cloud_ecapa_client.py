@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Cloud ECAPA Client - Robust Cloud Speaker Embedding Client
 ============================================================
@@ -255,7 +255,7 @@ class CloudECAPAClientConfig:
     # Primary endpoints (in priority order)
     ENDPOINTS = [
         e.strip() for e in
-        os.getenv("JARVIS_CLOUD_ML_ENDPOINTS", "").split(",")
+        os.getenv("Ironcliw_CLOUD_ML_ENDPOINTS", "").split(",")
         if e.strip()
     ]
 
@@ -268,14 +268,14 @@ class CloudECAPAClientConfig:
     # Dynamic endpoint discovery - tries multiple known endpoints
     # Updated 2024-12 to new Cloud Run URL format
     PRIMARY_ENDPOINT = os.getenv(
-        "JARVIS_CLOUD_ML_ENDPOINT",
+        "Ironcliw_CLOUD_ML_ENDPOINT",
         "https://jarvis-ml-888774109345.us-central1.run.app"
     )
 
     # Fallback endpoints for redundancy (no hardcoding - all from env or discovery)
     FALLBACK_ENDPOINTS = [
         e.strip() for e in
-        os.getenv("JARVIS_CLOUD_ML_FALLBACK_ENDPOINTS", "").split(",")
+        os.getenv("Ironcliw_CLOUD_ML_FALLBACK_ENDPOINTS", "").split(",")
         if e.strip()
     ]
 
@@ -330,8 +330,8 @@ class CloudECAPAClientConfig:
             endpoints.append(cloud_run_default)
 
         # Add localhost for development
-        if os.getenv("JARVIS_DEV_MODE", "false").lower() == "true":
-            ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+        if os.getenv("Ironcliw_DEV_MODE", "false").lower() == "true":
+            ecapa_port = int(os.getenv("Ironcliw_ECAPA_PORT", "8015"))
             localhost = f"http://localhost:{ecapa_port}/api/ml"
             if localhost not in endpoints:
                 endpoints.insert(0, localhost)  # Prefer local in dev mode
@@ -343,33 +343,33 @@ class CloudECAPAClientConfig:
     # =========================================================================
 
     # Enable Spot VM backend
-    SPOT_VM_ENABLED = os.getenv("JARVIS_SPOT_VM_ENABLED", "true").lower() == "true"
+    SPOT_VM_ENABLED = os.getenv("Ironcliw_SPOT_VM_ENABLED", "true").lower() == "true"
 
     # Spot VM creation triggers
-    SPOT_VM_TRIGGER_FAILURES = int(os.getenv("JARVIS_SPOT_VM_TRIGGER_FAILURES", "3"))
-    SPOT_VM_TRIGGER_LATENCY_MS = float(os.getenv("JARVIS_SPOT_VM_TRIGGER_LATENCY_MS", "2000"))
+    SPOT_VM_TRIGGER_FAILURES = int(os.getenv("Ironcliw_SPOT_VM_TRIGGER_FAILURES", "3"))
+    SPOT_VM_TRIGGER_LATENCY_MS = float(os.getenv("Ironcliw_SPOT_VM_TRIGGER_LATENCY_MS", "2000"))
 
     # Spot VM idle timeout (auto-terminate)
-    SPOT_VM_IDLE_TIMEOUT_MIN = float(os.getenv("JARVIS_SPOT_VM_IDLE_TIMEOUT", "10"))
+    SPOT_VM_IDLE_TIMEOUT_MIN = float(os.getenv("Ironcliw_SPOT_VM_IDLE_TIMEOUT", "10"))
 
     # Daily budget for Spot VMs
-    SPOT_VM_DAILY_BUDGET = float(os.getenv("JARVIS_SPOT_VM_DAILY_BUDGET", "1.0"))
+    SPOT_VM_DAILY_BUDGET = float(os.getenv("Ironcliw_SPOT_VM_DAILY_BUDGET", "1.0"))
 
     # RAM thresholds for backend selection - DYNAMIC based on system
     # ECAPA-TDNN actual requirements: ~1.5GB working set, ~500MB model weights
     # Old static threshold of 6GB was too conservative for M1 Macs with unified memory
-    ECAPA_WORKING_SET_GB = float(os.getenv("JARVIS_ECAPA_WORKING_SET", "1.5"))  # Actual ECAPA needs
-    RAM_THRESHOLD_MIN_AVAILABLE_GB = float(os.getenv("JARVIS_RAM_MIN_AVAILABLE", "2.0"))  # Minimum free RAM
-    RAM_THRESHOLD_PERCENT = float(os.getenv("JARVIS_RAM_THRESHOLD_PERCENT", "15.0"))  # % of total RAM needed free
-    RAM_THRESHOLD_CLOUD_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_CLOUD", "4.0"))
-    RAM_THRESHOLD_CRITICAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_CRITICAL", "1.0"))  # Emergency only
+    ECAPA_WORKING_SET_GB = float(os.getenv("Ironcliw_ECAPA_WORKING_SET", "1.5"))  # Actual ECAPA needs
+    RAM_THRESHOLD_MIN_AVAILABLE_GB = float(os.getenv("Ironcliw_RAM_MIN_AVAILABLE", "2.0"))  # Minimum free RAM
+    RAM_THRESHOLD_PERCENT = float(os.getenv("Ironcliw_RAM_THRESHOLD_PERCENT", "15.0"))  # % of total RAM needed free
+    RAM_THRESHOLD_CLOUD_GB = float(os.getenv("Ironcliw_RAM_THRESHOLD_CLOUD", "4.0"))
+    RAM_THRESHOLD_CRITICAL_GB = float(os.getenv("Ironcliw_RAM_THRESHOLD_CRITICAL", "1.0"))  # Emergency only
 
     # Legacy compatibility - now computed dynamically
-    RAM_THRESHOLD_LOCAL_GB = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "2.0"))  # Lowered from 6.0
+    RAM_THRESHOLD_LOCAL_GB = float(os.getenv("Ironcliw_RAM_THRESHOLD_LOCAL", "2.0"))  # Lowered from 6.0
 
     # Routing preferences
-    PREFER_CLOUD_RUN = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
-    CLOUD_FALLBACK_ENABLED = os.getenv("JARVIS_CLOUD_FALLBACK", "true").lower() == "true"
+    PREFER_CLOUD_RUN = os.getenv("Ironcliw_PREFER_CLOUD_RUN", "true").lower() == "true"
+    CLOUD_FALLBACK_ENABLED = os.getenv("Ironcliw_CLOUD_FALLBACK", "true").lower() == "true"
 
 
 # =============================================================================
@@ -620,10 +620,10 @@ class SpotVMBackend:
                 self._active_vm = vm
                 # Construct endpoint URL from VM IP
                 if vm.ip_address:
-                    vm_ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                    vm_ecapa_port = int(os.getenv("Ironcliw_ECAPA_PORT", "8015"))
                     self._vm_endpoint = f"http://{vm.ip_address}:{vm_ecapa_port}/api/ml"
                 elif vm.internal_ip:
-                    vm_ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                    vm_ecapa_port = int(os.getenv("Ironcliw_ECAPA_PORT", "8015"))
                     self._vm_endpoint = f"http://{vm.internal_ip}:{vm_ecapa_port}/api/ml"
                 else:
                     self._vm_endpoint = None
@@ -1409,7 +1409,7 @@ class CloudECAPAClient:
                 timeout=timeout,
                 connector=connector,
                 headers={
-                    "User-Agent": f"JARVIS-CloudECAPA/{self.VERSION}",
+                    "User-Agent": f"Ironcliw-CloudECAPA/{self.VERSION}",
                     "Accept": "application/json",
                     "Connection": "keep-alive",
                 },
@@ -2466,7 +2466,7 @@ class CloudECAPAClient:
             timeout=timeout,
             connector=connector,
             headers={
-                "User-Agent": f"JARVIS-CloudECAPA/{self.VERSION}",
+                "User-Agent": f"Ironcliw-CloudECAPA/{self.VERSION}",
                 "Accept": "application/json",
                 "Connection": "keep-alive",
             },

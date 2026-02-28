@@ -1,4 +1,4 @@
-# JARVIS Display Monitor - Quick Start
+﻿# Ironcliw Display Monitor - Quick Start
 
 **Get up and running in 2 minutes!**
 
@@ -38,7 +38,7 @@ Priority: 1
 python3 start_tv_monitoring.py --test-voice
 ```
 
-You should hear: "JARVIS display monitoring is online, sir."
+You should hear: "Ironcliw display monitoring is online, sir."
 
 ### Step 3: Start Monitoring!
 
@@ -48,7 +48,7 @@ python3 start_tv_monitoring.py
 
 Output:
 ```
-🖥️  JARVIS Advanced Display Monitor
+🖥️  Ironcliw Advanced Display Monitor
 ================================================================================
 
 📋 Configuration:
@@ -65,7 +65,7 @@ Output:
    Press Ctrl+C to stop
 ```
 
-**That's it!** JARVIS will now:
+**That's it!** Ironcliw will now:
 1. Detect when your TV becomes available
 2. Speak: "Sir, I see your Living Room TV is now available..."
 3. Prompt you to connect
@@ -213,7 +213,7 @@ config.apply_preset('performance')  # or 'minimal', 'voice_focused'
 
 ## 🎉 That's It!
 
-You're now running JARVIS's advanced display monitoring system!
+You're now running Ironcliw's advanced display monitoring system!
 
 **Next Steps:**
 1. ✅ Add your displays

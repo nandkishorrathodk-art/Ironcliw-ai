@@ -1,8 +1,8 @@
-# Advanced Process Detection System
+﻿# Advanced Process Detection System
 
 ## Overview
 
-The Advanced Process Detection System is a robust, async, configuration-driven solution for detecting and terminating JARVIS processes with **zero hardcoding**. It replaces the previous basic 3-strategy detection with a comprehensive 7-strategy approach that handles all edge cases and nuances.
+The Advanced Process Detection System is a robust, async, configuration-driven solution for detecting and terminating Ironcliw processes with **zero hardcoding**. It replaces the previous basic 3-strategy detection with a comprehensive 7-strategy approach that handles all edge cases and nuances.
 
 ## Key Features
 
@@ -43,11 +43,11 @@ The Advanced Process Detection System is a robust, async, configuration-driven s
 5. **file_descriptor** - Open file analysis
    - Scans open file descriptors
    - Matches against file path patterns
-   - Detects processes holding JARVIS files
+   - Detects processes holding Ironcliw files
 
 6. **parent_child** - Process tree analysis
    - Builds parent-child relationships
-   - Finds child processes of detected JARVIS processes
+   - Finds child processes of detected Ironcliw processes
    - Ensures complete cleanup of process trees
 
 7. **command_line** - Regex pattern matching
@@ -67,7 +67,7 @@ Processes are assigned priorities for optimal termination order:
   - `start_system.py` processes
 
 - **MEDIUM** (Priority 3): Port-bound processes
-  - Processes listening on JARVIS ports
+  - Processes listening on Ironcliw ports
 
 - **LOW** (Priority 4): Everything else
   - Supporting processes
@@ -133,7 +133,7 @@ You can override default behavior with `backend/config/process_detection.json`:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ports` | List[int] | Auto-discovered | Ports to scan for JARVIS processes |
+| `ports` | List[int] | Auto-discovered | Ports to scan for Ironcliw processes |
 | `process_patterns` | List[str] | See config | Process name patterns to match |
 | `file_patterns` | List[str] | See config | File path patterns to match |
 | `cmdline_patterns` | List[str] | See config | Regex patterns for command lines |
@@ -154,7 +154,7 @@ python start_system.py --restart
 
 Output:
 ```
-1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...
+1️⃣ Advanced Ironcliw instance detection (using AdvancedProcessDetector)...
   → Running 7 concurrent detection strategies...
     • psutil_scan: Process enumeration
     • ps_command: Shell command verification
@@ -164,9 +164,9 @@ Output:
     • parent_child: Process tree analysis
     • command_line: Regex pattern matching
 
-  ✓ Detected 2 JARVIS processes
+  ✓ Detected 2 Ironcliw processes
 
-Found 2 JARVIS process(es):
+Found 2 Ironcliw process(es):
   1. PID 12345 (port_based:8010, 2.3h)
   2. PID 12346 (psutil_scan, 2.3h)
 
@@ -379,11 +379,11 @@ python -c "from backend.core.process_detector import AdvancedProcessDetector"
 
 **Symptom:**
 ```
-✓ Detected 0 JARVIS processes
+✓ Detected 0 Ironcliw processes
 ```
 
 **Solutions:**
-1. Check if JARVIS is actually running: `ps aux | grep jarvis`
+1. Check if Ironcliw is actually running: `ps aux | grep jarvis`
 2. Review configuration patterns match your setup
 3. Enable debug logging:
    ```python
@@ -436,4 +436,4 @@ Potential improvements for future versions:
 - **Author**: Claude (Anthropic)
 - **Version**: 1.0.0
 - **Date**: 2025-11-08
-- **License**: Same as JARVIS AI Agent
+- **License**: Same as Ironcliw AI Agent

@@ -1,5 +1,5 @@
-"""
-Fast startup wrapper for JARVIS vision system.
+﻿"""
+Fast startup wrapper for Ironcliw vision system.
 Defers Rust building to background and uses Python fallbacks initially.
 """
 
@@ -23,8 +23,8 @@ class FastStartupWrapper:
         logger.info("🚀 Fast startup: Using Python implementations initially")
         
         # Set environment to skip Rust checks during startup
-        os.environ['JARVIS_SKIP_RUST_BUILD'] = 'true'
-        os.environ['JARVIS_USE_PYTHON_FALLBACKS'] = 'true'
+        os.environ['Ironcliw_SKIP_RUST_BUILD'] = 'true'
+        os.environ['Ironcliw_USE_PYTHON_FALLBACKS'] = 'true'
         
         config = {
             'available': True,
@@ -39,7 +39,7 @@ class FastStartupWrapper:
         }
         
         # Schedule Rust build in background after startup
-        if not os.environ.get('JARVIS_DISABLE_RUST_COMPLETELY', '').lower() == 'true':
+        if not os.environ.get('Ironcliw_DISABLE_RUST_COMPLETELY', '').lower() == 'true':
             self.rust_build_task = asyncio.create_task(self._build_rust_in_background())
         
         return config

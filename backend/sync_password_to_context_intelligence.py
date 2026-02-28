@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Sync Password from Voice Unlock to Context Intelligence
 ======================================================
@@ -38,7 +38,7 @@ def sync_password():
     
     # Store in Context Intelligence keychain
     try:
-        keyring.set_password("JARVIS_Screen_Unlock", "jarvis_user", password)
+        keyring.set_password("Ironcliw_Screen_Unlock", "jarvis_user", password)
         print("✅ Password copied to Context Intelligence keychain")
         
         # Clear password from memory

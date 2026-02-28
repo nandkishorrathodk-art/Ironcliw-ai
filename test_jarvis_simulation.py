@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Simulate exactly what happens when you tell JARVIS "living room tv"
+Simulate exactly what happens when you tell Ironcliw "living room tv"
 This traces the exact code path with debugging
 """
 import sys
@@ -39,14 +39,14 @@ pyautogui.click = logged_click
 async def simulate_jarvis_command():
     """Simulate the exact flow when user says 'living room tv'"""
     print("\n" + "="*80)
-    print("SIMULATING JARVIS COMMAND: 'living room tv'")
+    print("SIMULATING Ironcliw COMMAND: 'living room tv'")
     print("="*80 + "\n")
 
-    # Import what JARVIS would use
+    # Import what Ironcliw would use
     from backend.api.unified_command_processor import UnifiedCommandProcessor
     from backend.display.advanced_display_monitor import AdvancedDisplayMonitor
 
-    # Create the processor (what JARVIS uses)
+    # Create the processor (what Ironcliw uses)
     processor = UnifiedCommandProcessor()
 
     # The monitor that would be used
@@ -61,7 +61,7 @@ async def simulate_jarvis_command():
     print(f"Processing command: '{command_text}'")
     print("-"*80)
 
-    # Process like JARVIS would
+    # Process like Ironcliw would
     result = await processor.process_command(command_text)
 
     print("\n" + "="*80)

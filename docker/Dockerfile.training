@@ -1,17 +1,17 @@
-# =============================================================================
-# JARVIS Training Engine Dockerfile v1.0.0
+﻿# =============================================================================
+# Ironcliw Training Engine Dockerfile v1.0.0
 # =============================================================================
 #
 # Unified training container that integrates:
-# - JARVIS-AI-Agent (experience collection, observability)
+# - Ironcliw-AI-Agent (experience collection, observability)
 # - reactor-core (training pipeline, GGUF export)
-# - JARVIS-Prime (model deployment)
+# - Ironcliw-Prime (model deployment)
 #
 # Features:
 # - SQLite training database for experience storage
 # - Continuous background web scraping via Safe Scout
 # - Automatic model training on schedule
-# - GGUF model export for JARVIS-Prime
+# - GGUF model export for Ironcliw-Prime
 # - GCS upload for cloud deployment
 #
 # Build:
@@ -30,13 +30,13 @@
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim-bookworm AS builder
 
-LABEL maintainer="JARVIS AI Agent Team"
-LABEL description="JARVIS Training Engine - Autonomous Self-Improving Learning Pipeline"
+LABEL maintainer="Ironcliw AI Agent Team"
+LABEL description="Ironcliw Training Engine - Autonomous Self-Improving Learning Pipeline"
 LABEL version="1.0.0"
 
 # Build arguments
 ARG REACTOR_CORE_VERSION=main
-ARG JARVIS_PRIME_VERSION=main
+ARG Ironcliw_PRIME_VERSION=main
 
 # Environment
 ENV PYTHONUNBUFFERED=1 \
@@ -64,10 +64,10 @@ RUN pip install --upgrade pip wheel setuptools
 # Create working directory
 WORKDIR /build
 
-# Copy JARVIS-AI-Agent requirements
+# Copy Ironcliw-AI-Agent requirements
 COPY requirements.txt /build/jarvis-requirements.txt
 
-# Install JARVIS-AI-Agent dependencies
+# Install Ironcliw-AI-Agent dependencies
 RUN pip install -r /build/jarvis-requirements.txt || true
 
 # Install additional training dependencies
@@ -111,8 +111,8 @@ RUN playwright install chromium
 FROM python:3.11-slim-bookworm AS production
 
 # Labels
-LABEL maintainer="JARVIS AI Agent Team"
-LABEL description="JARVIS Training Engine"
+LABEL maintainer="Ironcliw AI Agent Team"
+LABEL description="Ironcliw Training Engine"
 LABEL version="1.0.0"
 
 # Install runtime dependencies
@@ -162,7 +162,7 @@ RUN mkdir -p \
     /app/logs \
     && chown -R jarvis:jarvis /app
 
-# Copy JARVIS-AI-Agent backend
+# Copy Ironcliw-AI-Agent backend
 COPY --chown=jarvis:jarvis backend/ /app/backend/
 
 # Copy training-specific files
@@ -180,21 +180,21 @@ USER jarvis
 # =============================================================================
 
 # Paths
-ENV JARVIS_ROOT=/app \
-    JARVIS_DATA_DIR=/app/data \
-    JARVIS_MODELS_DIR=/app/models \
-    JARVIS_LOGS_DIR=/app/logs \
+ENV Ironcliw_ROOT=/app \
+    Ironcliw_DATA_DIR=/app/data \
+    Ironcliw_MODELS_DIR=/app/models \
+    Ironcliw_LOGS_DIR=/app/logs \
     PYTHONPATH=/app:/app/backend
 
 # Training Database (SQLite)
-ENV JARVIS_TRAINING_DB=/app/data/training_db/jarvis_training.db \
-    JARVIS_TRAINING_DB_TYPE=sqlite
+ENV Ironcliw_TRAINING_DB=/app/data/training_db/jarvis_training.db \
+    Ironcliw_TRAINING_DB_TYPE=sqlite
 
 # Training Configuration
-ENV JARVIS_TRAINING_ENABLED=true \
-    JARVIS_TRAINING_SCHEDULE="03:00" \
-    JARVIS_TRAINING_MIN_EXPERIENCES=100 \
-    JARVIS_TRAINING_COOLDOWN_HOURS=24
+ENV Ironcliw_TRAINING_ENABLED=true \
+    Ironcliw_TRAINING_SCHEDULE="03:00" \
+    Ironcliw_TRAINING_MIN_EXPERIENCES=100 \
+    Ironcliw_TRAINING_COOLDOWN_HOURS=24
 
 # Continuous Scraping
 ENV CONTINUOUS_SCRAPING_ENABLED=true \
@@ -224,7 +224,7 @@ EXPOSE 8090
 
 # Health check
 HEALTHCHECK --interval=60s --timeout=30s --start-period=60s --retries=3 \
-    CMD python3 -c "import sqlite3; conn = sqlite3.connect('$JARVIS_TRAINING_DB'); print('ok')" || exit 1
+    CMD python3 -c "import sqlite3; conn = sqlite3.connect('$Ironcliw_TRAINING_DB'); print('ok')" || exit 1
 
 # Default entrypoint
 ENTRYPOINT ["python3", "/app/training_entrypoint.py"]

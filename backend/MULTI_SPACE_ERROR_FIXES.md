@@ -1,4 +1,4 @@
-# Multi-Space Vision Error Fixes
+﻿# Multi-Space Vision Error Fixes
 
 ## Issues Found and Fixed
 
@@ -40,7 +40,7 @@ else (isinstance(space, dict) and space.get('cached_screenshot'))
 
 ## How to Test
 
-1. **Restart JARVIS Backend**
+1. **Restart Ironcliw Backend**
    ```bash
    # Stop any existing backend
    ps aux | grep "python.*main.py" | grep -v grep | awk '{print $2}' | xargs kill -9
@@ -57,7 +57,7 @@ else (isinstance(space, dict) and space.get('cached_screenshot'))
 
 3. **Test Multi-Space Vision**
    ```
-   User: "Hey JARVIS, start monitoring my screen"
+   User: "Hey Ironcliw, start monitoring my screen"
    # Wait for purple indicator to appear
    
    User: "Where is Terminal?"
@@ -72,7 +72,7 @@ else (isinstance(space, dict) and space.get('cached_screenshot'))
 When working correctly:
 - Purple indicator appears when monitoring starts
 - Multi-space queries like "Where is Terminal?" work without errors
-- JARVIS can find apps across all desktop spaces
+- Ironcliw can find apps across all desktop spaces
 - No ValueError or AttributeError messages
 - Purple indicator disappears when monitoring stops
 

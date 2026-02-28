@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 ###############################################################################
-# JARVIS Startup Script with Goal Inference Configuration
+# Ironcliw Startup Script with Goal Inference Configuration
 ###############################################################################
 
 # Colors for output
@@ -10,11 +10,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Set default optimal settings if not already set
-export JARVIS_GOAL_PRESET="${JARVIS_GOAL_PRESET:-balanced}"
-export JARVIS_GOAL_AUTOMATION="${JARVIS_GOAL_AUTOMATION:-true}"
+export Ironcliw_GOAL_PRESET="${Ironcliw_GOAL_PRESET:-balanced}"
+export Ironcliw_GOAL_AUTOMATION="${Ironcliw_GOAL_AUTOMATION:-true}"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                   🤖 JARVIS AI ASSISTANT                       ║${NC}"
+echo -e "${BLUE}║                   🤖 Ironcliw AI ASSISTANT                       ║${NC}"
 echo -e "${BLUE}║              Goal Inference & Learning System                  ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -73,9 +73,9 @@ if [ -z "$PRESET" ]; then
     read -p "Press Enter to start with default config, or Ctrl+C to exit..."
 fi
 
-# Start JARVIS
+# Start Ironcliw
 echo ""
-echo -e "${GREEN}🚀 Starting JARVIS...${NC}"
+echo -e "${GREEN}🚀 Starting Ironcliw...${NC}"
 echo ""
 
 # Build command with preset and automation flags
@@ -90,7 +90,7 @@ EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
     echo ""
-    echo -e "${YELLOW}⚠️  JARVIS exited with code ${EXIT_CODE}${NC}"
+    echo -e "${YELLOW}⚠️  Ironcliw exited with code ${EXIT_CODE}${NC}"
     echo ""
 fi
 

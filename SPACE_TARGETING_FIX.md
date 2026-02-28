@@ -1,4 +1,4 @@
-# 🎯 Space-Specific Targeting Fix
+﻿# 🎯 Space-Specific Targeting Fix
 
 ## Problem Identified
 
@@ -11,7 +11,7 @@
 
 The `_select_capture_targets()` method didn't recognize space-specific queries. It scored ALL windows across ALL spaces and picked the highest priority ones.
 
-Since Terminal (Space 6) had visible errors in the window title, it scored higher than VS Code (Space 5), so JARVIS captured and analyzed the wrong space.
+Since Terminal (Space 6) had visible errors in the window title, it scored higher than VS Code (Space 5), so Ironcliw captured and analyzed the wrong space.
 
 ## Fix Applied
 
@@ -149,10 +149,10 @@ if target_space else ""}
 
 ## Action Required
 
-**Restart JARVIS backend:**
+**Restart Ironcliw backend:**
 ```bash
 # In backend terminal (Ctrl+C)
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 

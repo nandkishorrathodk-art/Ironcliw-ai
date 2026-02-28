@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🎤 JARVIS Microphone Fix Script - Enhanced Edition"
+echo "🎤 Ironcliw Microphone Fix Script - Enhanced Edition"
 echo "=================================================="
 echo ""
 
@@ -256,7 +256,7 @@ if [ -f "$DIAGNOSTIC_PY" ]; then
     FINAL_RESULT=$?
     
     if [ $FINAL_RESULT -eq 0 ]; then
-        echo -e "\n${GREEN}✅ Microphone is now working! JARVIS voice control is ready.${NC}"
+        echo -e "\n${GREEN}✅ Microphone is now working! Ironcliw voice control is ready.${NC}"
     else
         echo -e "\n${YELLOW}⚠️  Some issues may still exist.${NC}"
         echo ""
@@ -278,8 +278,8 @@ echo ""
 # Make the script executable (for next time)
 chmod +x "$0" 2>/dev/null
 
-# Offer to start JARVIS
-read -p "Would you like to start JARVIS now? (y/n) " -n 1 -r
+# Offer to start Ironcliw
+read -p "Would you like to start Ironcliw now? (y/n) " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     cd "$SCRIPT_DIR"

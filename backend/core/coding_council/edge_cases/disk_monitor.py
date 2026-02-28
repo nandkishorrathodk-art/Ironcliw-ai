@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Disk Monitor - Gap #32
 ==============================
 
@@ -9,7 +9,7 @@ Disk space monitoring and management:
 - Per-path monitoring
 - Trend analysis
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

@@ -1,10 +1,10 @@
-# JARVIS AI Agent Backend - Cloud Run Minimal
+﻿# Ironcliw AI Agent Backend - Cloud Run Minimal
 # ============================================
 #
 # Ultra-lightweight for fast Cloud Run deploys.
 # Uses external services for heavy lifting:
 # - Anthropic API for intelligence
-# - JARVIS-Prime Cloud Run for LLM
+# - Ironcliw-Prime Cloud Run for LLM
 # - Cloud Memorystore for Redis
 #
 # Version: 9.4.0
@@ -41,7 +41,7 @@ RUN chmod +x /app/entrypoint.sh
 
 RUN mkdir -p /app/data /app/logs && chown -R jarvis:jarvis /app
 
-ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app:/app/backend JARVIS_DOCKER=true
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app:/app/backend Ironcliw_DOCKER=true
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8010/health || exit 1

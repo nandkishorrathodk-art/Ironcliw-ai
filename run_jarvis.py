@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Body Entry Point - Trinity-Integrated Computer Use Agent
+Ironcliw Body Entry Point - Trinity-Integrated Computer Use Agent
 ================================================================
 
 v92.0 - Unified Entry Point for Cross-Repo Orchestration
 
-This script starts the JARVIS Body (Computer Use Agent) as part of the
+This script starts the Ironcliw Body (Computer Use Agent) as part of the
 Trinity ecosystem. It's designed to be called by the unified supervisor
-in JARVIS-Prime via:
+in Ironcliw-Prime via:
 
     python3 run_supervisor.py --unified
 
@@ -16,10 +16,10 @@ FEATURES:
     - Health endpoint for supervisor monitoring
     - Graceful shutdown handling
     - Auto-registration with service mesh
-    - WebSocket connection to JARVIS-Prime
+    - WebSocket connection to Ironcliw-Prime
 
 TRINITY ARCHITECTURE:
-    JARVIS-Prime (Mind)  <-->  JARVIS (Body)  <-->  Reactor-Core (Nerves)
+    Ironcliw-Prime (Mind)  <-->  Ironcliw (Body)  <-->  Reactor-Core (Nerves)
          Port 8000                Port 8080              Port 8090
 
 USAGE:
@@ -30,8 +30,8 @@ USAGE:
     cd ../jarvis-prime && python3 run_supervisor.py --unified
 
 ENVIRONMENT VARIABLES:
-    JARVIS_PORT: Port for HTTP server (default: 8080)
-    JARVIS_PRIME_URL: URL of JARVIS-Prime (default: http://localhost:8000)
+    Ironcliw_PORT: Port for HTTP server (default: 8080)
+    Ironcliw_PRIME_URL: URL of Ironcliw-Prime (default: http://localhost:8000)
     TRINITY_ENABLED: Enable Trinity Protocol (default: true)
     LOG_LEVEL: Logging level (default: INFO)
 """
@@ -66,13 +66,13 @@ logger = logging.getLogger("jarvis.body")
 # CONFIGURATION
 # =============================================================================
 
-class JARVISBodyConfig:
-    """Configuration for JARVIS Body service."""
+class IroncliwBodyConfig:
+    """Configuration for Ironcliw Body service."""
 
     def __init__(self):
-        self.port = int(os.getenv("JARVIS_PORT", "8080"))
-        self.host = os.getenv("JARVIS_HOST", "0.0.0.0")
-        self.jarvis_prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")
+        self.port = int(os.getenv("Ironcliw_PORT", "8080"))
+        self.host = os.getenv("Ironcliw_HOST", "0.0.0.0")
+        self.jarvis_prime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8000")
         self.trinity_enabled = os.getenv("TRINITY_ENABLED", "true").lower() == "true"
         self.service_name = "jarvis"
         self.version = "v92.0"
@@ -91,7 +91,7 @@ class JARVISBodyConfig:
 # HEALTH SERVER
 # =============================================================================
 
-async def create_health_server(config: JARVISBodyConfig, state: Dict[str, Any]):
+async def create_health_server(config: IroncliwBodyConfig, state: Dict[str, Any]):
     """Create HTTP server with health endpoint."""
     try:
         from aiohttp import web
@@ -148,9 +148,9 @@ async def create_health_server(config: JARVISBodyConfig, state: Dict[str, Any]):
 # =============================================================================
 
 class TrinityClient:
-    """Client for Trinity Protocol communication with JARVIS-Prime."""
+    """Client for Trinity Protocol communication with Ironcliw-Prime."""
 
-    def __init__(self, config: JARVISBodyConfig):
+    def __init__(self, config: IroncliwBodyConfig):
         self._config = config
         self._connected = False
         self._heartbeat_task: Optional[asyncio.Task] = None
@@ -237,13 +237,13 @@ class TrinityClient:
 
 
 # =============================================================================
-# JARVIS BODY SERVICE
+# Ironcliw BODY SERVICE
 # =============================================================================
 
-class JARVISBodyService:
-    """Main JARVIS Body service."""
+class IroncliwBodyService:
+    """Main Ironcliw Body service."""
 
-    def __init__(self, config: JARVISBodyConfig):
+    def __init__(self, config: IroncliwBodyConfig):
         self._config = config
         self._state: Dict[str, Any] = {
             "running": False,
@@ -258,8 +258,8 @@ class JARVISBodyService:
         self._shutdown_event = asyncio.Event()
 
     async def start(self):
-        """Start the JARVIS Body service."""
-        logger.info(f"Starting JARVIS Body service {self._config.version}")
+        """Start the Ironcliw Body service."""
+        logger.info(f"Starting Ironcliw Body service {self._config.version}")
 
         # Start health server
         self._health_runner = await create_health_server(self._config, self._state)
@@ -271,7 +271,7 @@ class JARVISBodyService:
             self._state["trinity_connected"] = connected
 
         self._state["running"] = True
-        logger.info(f"JARVIS Body service started on port {self._config.port}")
+        logger.info(f"Ironcliw Body service started on port {self._config.port}")
 
         # Write state for cross-repo coordination
         await self._write_state()
@@ -289,14 +289,14 @@ class JARVISBodyService:
 
     async def run(self):
         """Run the service until shutdown."""
-        logger.info("JARVIS Body service running. Press Ctrl+C to stop.")
+        logger.info("Ironcliw Body service running. Press Ctrl+C to stop.")
 
         # Wait for shutdown signal
         await self._shutdown_event.wait()
 
     async def stop(self):
-        """Stop the JARVIS Body service."""
-        logger.info("Stopping JARVIS Body service...")
+        """Stop the Ironcliw Body service."""
+        logger.info("Stopping Ironcliw Body service...")
 
         self._state["running"] = False
 
@@ -308,7 +308,7 @@ class JARVISBodyService:
         if self._health_runner:
             await self._health_runner.cleanup()
 
-        logger.info("JARVIS Body service stopped")
+        logger.info("Ironcliw Body service stopped")
 
     def request_shutdown(self):
         """Request service shutdown."""
@@ -322,7 +322,7 @@ class JARVISBodyService:
 async def main(args: argparse.Namespace):
     """Main entry point."""
     # Create configuration
-    config = JARVISBodyConfig()
+    config = IroncliwBodyConfig()
 
     # Override from args
     if args.port:
@@ -331,7 +331,7 @@ async def main(args: argparse.Namespace):
         config.jarvis_prime_url = args.prime_url
 
     # Create and start service
-    service = JARVISBodyService(config)
+    service = IroncliwBodyService(config)
 
     # Setup signal handlers
     loop = asyncio.get_event_loop()
@@ -353,7 +353,7 @@ async def main(args: argparse.Namespace):
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="JARVIS Body - Computer Use Agent Entry Point",
+        description="Ironcliw Body - Computer Use Agent Entry Point",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -368,7 +368,7 @@ def parse_args():
         "--prime-url",
         type=str,
         default=None,
-        help="URL of JARVIS-Prime (default: http://localhost:8000)",
+        help="URL of Ironcliw-Prime (default: http://localhost:8000)",
     )
     parser.add_argument(
         "--debug",

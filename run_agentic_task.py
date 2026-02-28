@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Agentic Task Runner - CLI Interface
+Ironcliw Agentic Task Runner - CLI Interface
 ===========================================
 
 Thin CLI wrapper for the unified AgenticTaskRunner.
@@ -31,7 +31,7 @@ Usage:
     # Debug mode
     python run_agentic_task.py --goal "Open System Preferences" --debug
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0 (Unified CLI - Supervisor Integration)
 """
 
@@ -90,7 +90,7 @@ import logging
 from typing import Optional
 
 # Default API endpoint
-DEFAULT_API_BASE = os.getenv("JARVIS_API_BASE", "http://localhost:8000")
+DEFAULT_API_BASE = os.getenv("Ironcliw_API_BASE", "http://localhost:8000")
 
 
 # ============================================================================
@@ -338,7 +338,7 @@ async def interactive_mode(
     )
 
     print("\n" + "=" * 60)
-    print("JARVIS Agentic Task Runner - Interactive Mode")
+    print("Ironcliw Agentic Task Runner - Interactive Mode")
     if use_api:
         print(f"  Connected to: {api_base}")
     else:
@@ -449,7 +449,7 @@ async def interactive_mode(
 async def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="JARVIS Agentic Task Runner CLI",
+        description="Ironcliw Agentic Task Runner CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -517,7 +517,7 @@ Examples:
 
     # Print banner
     print("\n" + "=" * 60)
-    print("JARVIS Agentic Task Runner v3.0 (Unified)")
+    print("Ironcliw Agentic Task Runner v3.0 (Unified)")
     print("=" * 60)
 
     # Determine execution mode

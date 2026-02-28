@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Menu Bar Status Indicator
+﻿"""
+Ironcliw macOS Helper - Menu Bar Status Indicator
 
 Native PyObjC implementation for macOS menu bar integration.
 
@@ -185,7 +185,7 @@ if PYOBJC_AVAILABLE:
         re-defining the same Objective-C class causes:
             "overriding existing Objective-C class"
         """
-        objc_name = "JARVISMenuBarDelegate"
+        objc_name = "IroncliwMenuBarDelegate"
         try:
             existing = objc.lookUpClass(objc_name)
             if existing is not None:
@@ -265,7 +265,7 @@ if PYOBJC_AVAILABLE:
 
 class MenuBarIndicator:
     """
-    Native macOS menu bar status indicator for JARVIS.
+    Native macOS menu bar status indicator for Ironcliw.
 
     Uses PyObjC for native AppKit integration, providing:
     - Real-time status display
@@ -451,9 +451,9 @@ class MenuBarIndicator:
 
         # Build title with icon and optional activity
         if self._activity_message:
-            title = f"{icon} JARVIS"
+            title = f"{icon} Ironcliw"
         else:
-            title = f"{icon} JARVIS"
+            title = f"{icon} Ironcliw"
 
         self._status_item.setTitle_(title)
 
@@ -631,7 +631,7 @@ class MenuBarIndicator:
 
         # About
         about_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "About JARVIS", "menuAction:", ""
+            "About Ironcliw", "menuAction:", ""
         )
         about_item.setTarget_(self._delegate)
         about_item.setRepresentedObject_("about")
@@ -639,7 +639,7 @@ class MenuBarIndicator:
 
         # Quit
         quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "Quit JARVIS Helper", "quitAction:", ""
+            "Quit Ironcliw Helper", "quitAction:", ""
         )
         quit_item.setTarget_(self._delegate)
         quit_item.setKeyEquivalent_("q")
@@ -734,8 +734,8 @@ class MenuBarIndicator:
         import subprocess
         subprocess.run([
             "osascript", "-e",
-            '''display dialog "JARVIS AI Assistant\n\nPhase 1: macOS Helper Layer\n\nAn intelligent AI OS layer for macOS\n\nVersion: 1.0.0" '''
-            '''buttons {"OK"} default button "OK" with title "About JARVIS"'''
+            '''display dialog "Ironcliw AI Assistant\n\nPhase 1: macOS Helper Layer\n\nAn intelligent AI OS layer for macOS\n\nVersion: 1.0.0" '''
+            '''buttons {"OK"} default button "OK" with title "About Ironcliw"'''
         ], capture_output=True)
 
     def _open_permission_settings(self, permission_type: str) -> None:

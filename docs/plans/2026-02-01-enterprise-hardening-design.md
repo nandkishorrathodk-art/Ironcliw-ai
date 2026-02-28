@@ -1,4 +1,4 @@
-# Enterprise Hardening Design - unified_supervisor.py
+﻿# Enterprise Hardening Design - unified_supervisor.py
 ## Date: 2026-02-01
 ## Version: 1.0.0
 
@@ -46,7 +46,7 @@ Harden `unified_supervisor.py` to resolve critical lifecycle gaps regarding GCP 
 - In **Phase 5 (Cross-Repo)**, call `backend.supervisor.cross_repo_startup_orchestrator.initialize_cross_repo_orchestration()`
 - This module already handles:
   - "GCP Pre-warm" for SLIM hardware profiles
-  - "Hollow Client" env vars (`JARVIS_GCP_OFFLOAD_ACTIVE`, `GCP_PRIME_ENDPOINT`)
+  - "Hollow Client" env vars (`Ironcliw_GCP_OFFLOAD_ACTIVE`, `GCP_PRIME_ENDPOINT`)
   - "Memory Gating" for 16GB M1 Macs
   - Cloud lock management
   - Trinity Protocol sequencing
@@ -72,7 +72,7 @@ Harden `unified_supervisor.py` to resolve critical lifecycle gaps regarding GCP 
 - Set `DEFAULT_TRINITY_TIMEOUT` to **600s** (10 minutes)
 - Set `DEFAULT_STARTUP_TIMEOUT` to **900s** (15 minutes) when Trinity is enabled
 - Ensure the Supervisor waits at least this long before declaring "Crash" or "GCP Unreachable"
-- Use `JARVIS_STARTUP_TIMEOUT` env var to allow override
+- Use `Ironcliw_STARTUP_TIMEOUT` env var to allow override
 
 **Timeout Hierarchy:**
 ```

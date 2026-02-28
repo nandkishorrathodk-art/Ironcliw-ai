@@ -1,4 +1,4 @@
-# WebSocket Connection Failed - Debug Guide
+﻿# WebSocket Connection Failed - Debug Guide
 
 ## Error: `WebSocket connection to 'ws://localhost:8010/voice/jarvis/stream' failed`
 
@@ -95,7 +95,7 @@ app.add_middleware(
 ```bash
 # Check if backend is running and healthy
 curl http://localhost:8000/
-# Should return: {"status": "JARVIS API is running", ...}
+# Should return: {"status": "Ironcliw API is running", ...}
 ```
 
 ### Step 2: Test WebSocket Endpoint
@@ -120,7 +120,7 @@ testWs.onclose = (e) => console.log('Closed:', e);
 
 **1. Start the backend:**
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend
 python main.py
 ```
 
@@ -142,7 +142,7 @@ curl http://localhost:8000/
 @app.websocket("/voice/jarvis/stream")
 async def voice_stream_endpoint(websocket: WebSocket):
     await websocket.accept()
-    voice_handler = JARVISVoiceHandler()
+    voice_handler = IroncliwVoiceHandler()
     try:
         await voice_handler.handle_stream(websocket)
     except WebSocketDisconnect:
@@ -156,7 +156,7 @@ const wsUrl = 'ws://localhost:8000/voice/jarvis/stream';
 const ws = new WebSocket(wsUrl);
 
 ws.onopen = () => {
-    console.log('WebSocket connected to JARVIS');
+    console.log('WebSocket connected to Ironcliw');
 };
 
 ws.onerror = (error) => {

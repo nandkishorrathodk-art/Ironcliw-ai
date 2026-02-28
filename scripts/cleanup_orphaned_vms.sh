@@ -1,5 +1,5 @@
-#!/bin/bash
-# Cleanup orphaned JARVIS Spot VMs
+﻿#!/bin/bash
+# Cleanup orphaned Ironcliw Spot VMs
 # Run this daily via cron or manually to cleanup forgotten VMs
 # Enhanced with cost tracking and notifications
 
@@ -19,7 +19,7 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-log "🔍 Checking for orphaned JARVIS VMs..."
+log "🔍 Checking for orphaned Ironcliw VMs..."
 
 # Get all jarvis-auto VMs with their creation time
 VMS=$(gcloud compute instances list \
@@ -116,13 +116,13 @@ if [ $ORPHANED_COUNT -gt 0 ]; then
 
   # Send notification (if notification system available)
   if command -v osascript &> /dev/null; then
-    osascript -e "display notification \"Deleted $ORPHANED_COUNT orphaned VM(s)\" with title \"JARVIS Cleanup\" sound name \"Purr\""
+    osascript -e "display notification \"Deleted $ORPHANED_COUNT orphaned VM(s)\" with title \"Ironcliw Cleanup\" sound name \"Purr\""
   fi
 
   # Send email alert (if mail command available and configured)
-  if command -v mail &> /dev/null && [ -n "$JARVIS_ALERT_EMAIL" ]; then
-    echo "JARVIS deleted $ORPHANED_COUNT orphaned VM(s): ${ORPHANED_VMS_LIST%,}" | \
-      mail -s "JARVIS: Orphaned VMs Cleaned Up" "$JARVIS_ALERT_EMAIL"
+  if command -v mail &> /dev/null && [ -n "$Ironcliw_ALERT_EMAIL" ]; then
+    echo "Ironcliw deleted $ORPHANED_COUNT orphaned VM(s): ${ORPHANED_VMS_LIST%,}" | \
+      mail -s "Ironcliw: Orphaned VMs Cleaned Up" "$Ironcliw_ALERT_EMAIL"
   fi
 else
   log "✅ No orphaned VMs required cleanup"

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.3: IDE Integration Module for Coding Council
 =================================================
 
@@ -10,11 +10,11 @@ Real-time IDE integration providing Claude Code-like capabilities:
 - Error-aware editing
 - Trinity cross-repo sync
 
-This module bridges VS Code/Cursor to the JARVIS Coding Council,
+This module bridges VS Code/Cursor to the Ironcliw Coding Council,
 enabling real-time code assistance while maintaining autonomous
 self-evolution capabilities.
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 1.0.0
 """
 

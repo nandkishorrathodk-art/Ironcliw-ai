@@ -1,4 +1,4 @@
-# 🔐 Long-Term Secret Management Strategy for JARVIS
+﻿# 🔐 Long-Term Secret Management Strategy for Ironcliw
 
 ## Philosophy: Zero Secrets in Repository
 
@@ -25,7 +25,7 @@
            │
            ▼
     ┌──────────────────────────────────────────────────┐
-    │              JARVIS Application                  │
+    │              Ironcliw Application                  │
     │  - Uses secrets from memory only                 │
     │  - Never writes secrets to disk                  │
     └──────────────────────────────────────────────────┘
@@ -84,7 +84,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class SecretManager:
-    """Centralized secret management for JARVIS"""
+    """Centralized secret management for Ironcliw"""
 
     def __init__(self, project_id: str = "jarvis-473803"):
         self.project_id = project_id
@@ -184,15 +184,15 @@ from backend.core.secret_manager import get_secret_manager
 def get_db_connection():
     secret_mgr = get_secret_manager()
 
-    # OLD: password = os.getenv("JARVIS_DB_PASSWORD")
+    # OLD: password = os.getenv("Ironcliw_DB_PASSWORD")
     # NEW:
     password = secret_mgr.get_db_password()
 
     return psycopg2.connect(
-        host=os.getenv("JARVIS_DB_HOST"),
-        port=os.getenv("JARVIS_DB_PORT"),
-        database=os.getenv("JARVIS_DB_NAME"),
-        user=os.getenv("JARVIS_DB_USER"),
+        host=os.getenv("Ironcliw_DB_HOST"),
+        port=os.getenv("Ironcliw_DB_PORT"),
+        database=os.getenv("Ironcliw_DB_NAME"),
+        user=os.getenv("Ironcliw_DB_USER"),
         password=password
     )
 ```
@@ -223,7 +223,7 @@ SECRETS = {
 
 def setup_keychain_secrets():
     """Store secrets in macOS Keychain"""
-    print("🔐 JARVIS Local Secret Setup\n")
+    print("🔐 Ironcliw Local Secret Setup\n")
     print("This will store secrets securely in your macOS Keychain.\n")
 
     for secret_id, description in SECRETS.items():
@@ -231,7 +231,7 @@ def setup_keychain_secrets():
         print(f"   Secret ID: {secret_id}")
 
         # Check if already exists
-        existing = keyring.get_password("JARVIS", secret_id)
+        existing = keyring.get_password("Ironcliw", secret_id)
         if existing:
             update = input("   Secret already exists. Update? (y/N): ").lower()
             if update != 'y':
@@ -246,7 +246,7 @@ def setup_keychain_secrets():
             continue
 
         # Store in keychain
-        keyring.set_password("JARVIS", secret_id, secret_value)
+        keyring.set_password("Ironcliw", secret_id, secret_value)
         print("   ✅ Stored securely in Keychain")
 
     print("\n✅ All secrets configured!")
@@ -281,7 +281,7 @@ class SecretManager:
 
             try:
                 # Try macOS Keychain (local development)
-                keychain_value = keyring.get_password("JARVIS", secret_id)
+                keychain_value = keyring.get_password("Ironcliw", secret_id)
                 if keychain_value:
                     logger.info(f"✅ Using secret '{secret_id}' from Keychain")
                     return keychain_value
@@ -310,7 +310,7 @@ class SecretManager:
 ```bash
 # Using GitHub CLI
 gh secret set ANTHROPIC_API_KEY --body "your-key-here"
-gh secret set JARVIS_DB_PASSWORD --body "your-password-here"
+gh secret set Ironcliw_DB_PASSWORD --body "your-password-here"
 gh secret set PICOVOICE_ACCESS_KEY --body "your-key-here"
 
 # Or sync from GCP Secret Manager
@@ -318,7 +318,7 @@ gcloud secrets versions access latest --secret="anthropic-api-key" | \
   gh secret set ANTHROPIC_API_KEY
 
 gcloud secrets versions access latest --secret="jarvis-db-password" | \
-  gh secret set JARVIS_DB_PASSWORD
+  gh secret set Ironcliw_DB_PASSWORD
 ```
 
 ### Workflow Configuration
@@ -347,7 +347,7 @@ jobs:
         env:
           # Secrets from GitHub Secrets
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          JARVIS_DB_PASSWORD: ${{ secrets.JARVIS_DB_PASSWORD }}
+          Ironcliw_DB_PASSWORD: ${{ secrets.Ironcliw_DB_PASSWORD }}
           PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
         run: pytest backend/tests/
 ```
@@ -364,7 +364,7 @@ brew install gitleaks
 
 # Create .gitleaks.toml
 cat > .gitleaks.toml << 'EOF'
-title = "JARVIS Secret Scanner"
+title = "Ironcliw Secret Scanner"
 
 [extend]
 useDefault = true
@@ -583,7 +583,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "🔐 JARVIS database password rotated successfully"
+              "text": "🔐 Ironcliw database password rotated successfully"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -603,7 +603,7 @@ jobs:
 ```bash
 # Set your credentials
 export ANTHROPIC_API_KEY="your-api-key-here"
-export JARVIS_DB_PASSWORD="your-secure-password"
+export Ironcliw_DB_PASSWORD="your-secure-password"
 
 # Or fetch from Secret Manager
 export ANTHROPIC_API_KEY=$(gcloud secrets versions access latest --secret="anthropic-api-key")
@@ -614,7 +614,7 @@ export ANTHROPIC_API_KEY=$(gcloud secrets versions access latest --secret="anthr
 ```bash
 # DON'T DO THIS!
 export ANTHROPIC_API_KEY="sk-ant-api03-AqIrRCst..."
-export JARVIS_DB_PASSWORD="JarvisSecure2025!"
+export Ironcliw_DB_PASSWORD="JarvisSecure2025!"
 ```
 ```
 
@@ -629,9 +629,9 @@ ANTHROPIC_API_KEY=sk-ant-api03-YOUR_KEY_HERE
 CLAUDE_MODEL=claude-3-5-sonnet-20241022
 
 # Database Configuration
-JARVIS_DB_PASSWORD=YOUR_SECURE_PASSWORD_HERE
-JARVIS_DB_HOST=127.0.0.1
-JARVIS_DB_PORT=5432
+Ironcliw_DB_PASSWORD=YOUR_SECURE_PASSWORD_HERE
+Ironcliw_DB_HOST=127.0.0.1
+Ironcliw_DB_PORT=5432
 
 # Voice Configuration
 PICOVOICE_ACCESS_KEY=YOUR_PICOVOICE_KEY_HERE
@@ -727,7 +727,7 @@ alert:
 - **Access**: $0.03 per 10,000 operations
 - **Free tier**: 6 active secrets, 10k operations/month
 
-**Estimated monthly cost for JARVIS**: ~$0.20 - $2.00
+**Estimated monthly cost for Ironcliw**: ~$0.20 - $2.00
 
 ### ROI
 
@@ -751,7 +751,7 @@ macOS Keychain    →   GCP Secret Manager ←  GitHub Secrets
                  Secret Manager Class
                 (Auto-detect environment)
    ─────────────────────────────────────────────────
-                    JARVIS Application
+                    Ironcliw Application
 ```
 
 **Never store secrets in**:

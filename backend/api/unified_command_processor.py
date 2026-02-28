@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Command Processor - Dynamic command interpretation with zero hardcoding
 Learns from the system and adapts to any environment
 
@@ -38,7 +38,7 @@ async def _get_ultra_coordinator() -> Optional[Any]:
     global _ultra_coordinator, _ultra_coord_lock
 
     # Skip if disabled
-    if os.getenv("JARVIS_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
+    if os.getenv("Ironcliw_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
         return None
 
     if _ultra_coordinator is not None:
@@ -161,7 +161,7 @@ class DynamicPatternLearner:
 
 
 class CommandType(Enum):
-    """Types of commands JARVIS can handle"""
+    """Types of commands Ironcliw can handle"""
 
     VISION = "vision"
     SYSTEM = "system"
@@ -290,7 +290,7 @@ class UnifiedCommandProcessor:
         self._reflex_inhibition_hash: str = ""
         self._reflex_cache_checked_at: float = 0.0
         self._REFLEX_CACHE_CHECK_INTERVAL: float = float(
-            os.getenv("JARVIS_REFLEX_CACHE_INTERVAL", "5.0")
+            os.getenv("Ironcliw_REFLEX_CACHE_INTERVAL", "5.0")
         )
 
         # v242.1: Observability counters for routing diagnostics
@@ -348,7 +348,7 @@ class UnifiedCommandProcessor:
             Dict of sensory context to merge into _jprime_ctx.
         """
         sensory: Dict[str, Any] = {}
-        _timeout = float(os.environ.get("JARVIS_SENSORY_TIMEOUT_MS", "100")) / 1000.0
+        _timeout = float(os.environ.get("Ironcliw_SENSORY_TIMEOUT_MS", "100")) / 1000.0
 
         async def _query_sai() -> Optional[Dict[str, Any]]:
             """Get screen state from Situational Awareness Intelligence."""
@@ -1453,18 +1453,18 @@ class UnifiedCommandProcessor:
         )
 
         # =========================================================================
-        # 🔇 SELF-VOICE SUPPRESSION - Prevent JARVIS echo/hallucinations
+        # 🔇 SELF-VOICE SUPPRESSION - Prevent Ironcliw echo/hallucinations
         # =========================================================================
-        # If JARVIS is currently speaking, this command is likely JARVIS's own
+        # If Ironcliw is currently speaking, this command is likely Ironcliw's own
         # voice being picked up by the microphone. Silently reject it to prevent
-        # feedback loops where JARVIS processes its own speech as commands.
+        # feedback loops where Ironcliw processes its own speech as commands.
         # =========================================================================
         try:
             from agi_os.realtime_voice_communicator import get_voice_communicator
             voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.5)
             if voice_comm and voice_comm.is_speaking and not allow_during_tts_interrupt:
                 logger.warning(
-                    f"[SELF-VOICE-SUPPRESSION] Rejecting command while JARVIS is speaking: "
+                    f"[SELF-VOICE-SUPPRESSION] Rejecting command while Ironcliw is speaking: "
                     f"'{command_text[:50]}...'"
                 )
                 self._v242_metrics["self_voice_suppressions"] += 1
@@ -1472,7 +1472,7 @@ class UnifiedCommandProcessor:
                     "success": False,
                     "response": None,  # Silent -- don't speak or it creates more echo
                     "type": "self_voice_suppressed",
-                    "message": "Command rejected — JARVIS is currently speaking",
+                    "message": "Command rejected — Ironcliw is currently speaking",
                     "original_command": command_text,
                     "suppressed": True,  # v242.2: Explicit flag for callers to detect
                     "retry_after_ms": 2000,  # Hint: retry after TTS likely done
@@ -1801,7 +1801,7 @@ class UnifiedCommandProcessor:
         """Check if command matches a reflex in the J-Prime-published manifest.
 
         v242.1: Cached with content-hash invalidation. Disk reads rate-limited
-        to every JARVIS_REFLEX_CACHE_INTERVAL seconds (default 5s).
+        to every Ironcliw_REFLEX_CACHE_INTERVAL seconds (default 5s).
         Returns reflex dict if matched, None otherwise.
         Checks inhibition signals before executing.
         """
@@ -2138,7 +2138,7 @@ class UnifiedCommandProcessor:
 
             intelligent_handler = IntelligentCommandHandler()
             surveillance_timeout = float(
-                os.getenv("JARVIS_SURVEILLANCE_HANDLER_TIMEOUT", "80")
+                os.getenv("Ironcliw_SURVEILLANCE_HANDLER_TIMEOUT", "80")
             )
 
             result = await asyncio.wait_for(
@@ -2362,7 +2362,7 @@ class UnifiedCommandProcessor:
                 remaining = deadline - _time.monotonic()
             else:
                 try:
-                    remaining = float(os.getenv("JARVIS_WORKSPACE_ACTION_TIMEOUT", "30.0"))
+                    remaining = float(os.getenv("Ironcliw_WORKSPACE_ACTION_TIMEOUT", "30.0"))
                 except (TypeError, ValueError):
                     remaining = 30.0
 
@@ -3645,7 +3645,7 @@ class UnifiedCommandProcessor:
 
                 # 3c. ASYNC EXECUTION WITH DYNAMIC TIMEOUT (v31.0)
                 # Surveillance needs more time for multi-window initialization
-                surveillance_timeout = float(os.getenv("JARVIS_SURVEILLANCE_HANDLER_TIMEOUT", "60"))
+                surveillance_timeout = float(os.getenv("Ironcliw_SURVEILLANCE_HANDLER_TIMEOUT", "60"))
                 logger.info(f"[SOVEREIGN] Using {surveillance_timeout}s timeout for surveillance")
                 result = await asyncio.wait_for(
                     intelligent_handler.handle_command(command_text),
@@ -3735,14 +3735,14 @@ class UnifiedCommandProcessor:
                 # Load configurable surveillance patterns (no hardcoding!)
                 import os
                 monitoring_keywords = os.getenv(
-                    "JARVIS_MONITORING_KEYWORDS",
+                    "Ironcliw_MONITORING_KEYWORDS",
                     "watch,monitor,track,alert when,notify when,detect when,look for,scan for"
                 ).split(",")
                 monitoring_keywords = [k.strip() for k in monitoring_keywords]
 
                 # Load surveillance structure patterns (no hardcoding!)
                 surveillance_patterns = os.getenv(
-                    "JARVIS_SURVEILLANCE_PATTERNS",
+                    "Ironcliw_SURVEILLANCE_PATTERNS",
                     "for,when,until,if,whenever"
                 ).split(",")
                 surveillance_patterns = [p.strip() for p in surveillance_patterns]
@@ -3825,7 +3825,7 @@ class UnifiedCommandProcessor:
                 #
                 # AGGRESSIVE PATTERN: Matches "all [ANYTHING] windows"
                 god_mode_pattern = os.getenv(
-                    "JARVIS_GOD_MODE_GRAMMAR_PATTERN",
+                    "Ironcliw_GOD_MODE_GRAMMAR_PATTERN",
                     r"\b(all|every|each)\s+.*?\s*(windows?|tabs?|instances?|spaces?)\b"
                 )
 
@@ -3846,7 +3846,7 @@ class UnifiedCommandProcessor:
 
                 # v242.0 Gap J: Negative patterns prevent misclassification
                 _non_surv_kw2 = os.getenv(
-                    "JARVIS_NON_SURVEILLANCE_KEYWORDS",
+                    "Ironcliw_NON_SURVEILLANCE_KEYWORDS",
                     "youtube,video,movie,show,episode,series,stream,play,recipe,flight,"
                     "hotel,restaurant,information,tutorial,guide,how to,what is,explain"
                 ).split(",")
@@ -3967,10 +3967,10 @@ class UnifiedCommandProcessor:
                         # Surveillance commands need more time for multi-window setup
                         # Regular commands use standard timeout
                         if command_type == CommandType.SURVEILLANCE:
-                            handler_timeout = float(os.getenv("JARVIS_SURVEILLANCE_HANDLER_TIMEOUT", "60"))
+                            handler_timeout = float(os.getenv("Ironcliw_SURVEILLANCE_HANDLER_TIMEOUT", "60"))
                             logger.info(f"[UNIFIED] Using extended {handler_timeout}s timeout for surveillance")
                         else:
-                            handler_timeout = float(os.getenv("JARVIS_HANDLER_TIMEOUT", "30"))
+                            handler_timeout = float(os.getenv("Ironcliw_HANDLER_TIMEOUT", "30"))
 
                         try:
                             result = await asyncio.wait_for(
@@ -5505,7 +5505,7 @@ class UnifiedCommandProcessor:
                 )
                 return {
                     "success": False,
-                    "response": "Display monitor not initialized. Please restart JARVIS.",
+                    "response": "Display monitor not initialized. Please restart Ironcliw.",
                 }
 
             # Route based on action type
@@ -5566,7 +5566,7 @@ class UnifiedCommandProcessor:
             # NEW: Try Claude Computer Use integration first (vision-based, dynamic)
             try:
                 from display.jarvis_computer_use_integration import (
-                    JARVISComputerUse,
+                    IroncliwComputerUse,
                     ExecutionMode
                 )
                 import os
@@ -5574,7 +5574,7 @@ class UnifiedCommandProcessor:
                 # Check if API key is available
                 if os.environ.get("ANTHROPIC_API_KEY"):
                     logger.info(f"[DISPLAY-ACTION] Trying Computer Use for '{display_name}'")
-                    jarvis_cu = JARVISComputerUse(execution_mode=ExecutionMode.FULL_VOICE)
+                    jarvis_cu = IroncliwComputerUse(execution_mode=ExecutionMode.FULL_VOICE)
                     await jarvis_cu.initialize()
 
                     cu_result = await jarvis_cu.connect_to_display(display_name, narrate=True)
@@ -5834,7 +5834,7 @@ class UnifiedCommandProcessor:
         Flow:
         1. TV is in standby mode (AirPlay chip active, broadcasts availability)
         2. macOS Control Center sees "Living Room TV"
-        3. JARVIS detects "Living Room TV" via DNS-SD
+        3. Ironcliw detects "Living Room TV" via DNS-SD
         4. User command triggers AirPlay connection request
         5. Sony TV receives wake signal → Powers ON automatically
         6. Mac screen appears on Sony TV

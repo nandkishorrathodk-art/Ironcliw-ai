@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enhanced Window Relationship Detection for JARVIS Multi-Window Intelligence
+Enhanced Window Relationship Detection for Ironcliw Multi-Window Intelligence
 Memory-optimized relationship detection with no hardcoded values
 Optimized for 16GB RAM macOS systems
 """

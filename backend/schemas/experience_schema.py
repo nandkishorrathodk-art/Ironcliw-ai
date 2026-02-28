@@ -1,10 +1,10 @@
-"""
+﻿"""
 Canonical Experience Schema — v1.0
 ===================================
 
 THE single source of truth for all telemetry/experience data flowing between:
-- JARVIS Body  → emits interactions via TelemetryEmitter
-- JARVIS Prime → emits interactions via TelemetryHook
+- Ironcliw Body  → emits interactions via TelemetryEmitter
+- Ironcliw Prime → emits interactions via TelemetryHook
 - Reactor Core → consumes experiences for DPO/LoRA training
 
 This file lives in ~/.jarvis/schemas/ (outside any single repo) and is imported
@@ -12,8 +12,8 @@ by all three repos. Changes here propagate everywhere. Every event carries a
 schema_version field so consumers can handle format evolution gracefully.
 
 PROTOCOL:
-    - JARVIS Body  POSTs ExperienceEvent to Reactor Core /api/v1/experiences/stream
-    - JARVIS Prime writes ExperienceEvent as JSONL to ~/.jarvis/telemetry/
+    - Ironcliw Body  POSTs ExperienceEvent to Reactor Core /api/v1/experiences/stream
+    - Ironcliw Prime writes ExperienceEvent as JSONL to ~/.jarvis/telemetry/
     - Reactor Core reads from both HTTP endpoint and ~/.jarvis/telemetry/ JSONL files
     - TrinityExperienceReceiver watches ~/.jarvis/trinity/events/ for JSON files
 
@@ -75,8 +75,8 @@ class ExperienceOutcome(str, Enum):
 
 class ExperienceSource(str, Enum):
     """Which system generated this experience."""
-    JARVIS_BODY = "jarvis_body"          # JARVIS backend (port 8010)
-    JARVIS_PRIME = "jarvis_prime"        # J-Prime inference (port 8002)
+    Ironcliw_BODY = "jarvis_body"          # Ironcliw backend (port 8010)
+    Ironcliw_PRIME = "jarvis_prime"        # J-Prime inference (port 8002)
     REACTOR_CORE = "reactor_core"        # Reactor Core training (port 8090)
     UNIFIED_SUPERVISOR = "supervisor"    # Unified supervisor
     EXTERNAL = "external"                # External/manual import
@@ -110,7 +110,7 @@ class ExperienceEvent(BaseModel):
         description="Type of experience event",
     )
     source: ExperienceSource = Field(
-        default=ExperienceSource.JARVIS_BODY,
+        default=ExperienceSource.Ironcliw_BODY,
         description="System that generated this event",
     )
 
@@ -311,7 +311,7 @@ class ExperienceBatch(BaseModel):
         description="List of experience events in this batch",
     )
     source: ExperienceSource = Field(
-        default=ExperienceSource.JARVIS_BODY,
+        default=ExperienceSource.Ironcliw_BODY,
         description="Source system for this batch",
     )
     batch_id: str = Field(
@@ -334,7 +334,7 @@ class ExperienceBatch(BaseModel):
 
 def from_telemetry_emitter_format(event_data: Dict[str, Any]) -> ExperienceEvent:
     """
-    Adapt from JARVIS Body's TelemetryEmitter format to canonical schema.
+    Adapt from Ironcliw Body's TelemetryEmitter format to canonical schema.
 
     TelemetryEmitter sends:
         {
@@ -369,7 +369,7 @@ def from_telemetry_emitter_format(event_data: Dict[str, Any]) -> ExperienceEvent
     return ExperienceEvent(
         event_id=event_data.get("event_id", str(uuid.uuid4())),
         event_type=event_type,
-        source=ExperienceSource.JARVIS_BODY,
+        source=ExperienceSource.Ironcliw_BODY,
         timestamp=ts or datetime.now(timezone.utc).isoformat(),
         user_input=data.get("user_input", ""),
         assistant_output=data.get("response", ""),  # "response" → "assistant_output"
@@ -424,7 +424,7 @@ def from_telemetry_hook_format(record_data: Dict[str, Any]) -> ExperienceEvent:
     return ExperienceEvent(
         event_id=record_data.get("id", str(uuid.uuid4())),
         event_type=ExperienceType.INTERACTION,
-        source=ExperienceSource.JARVIS_PRIME,
+        source=ExperienceSource.Ironcliw_PRIME,
         timestamp=record_data.get("timestamp", datetime.now(timezone.utc).isoformat()),
         user_input=user_input,
         assistant_output=assistant_output,
@@ -461,7 +461,7 @@ def from_trinity_receiver_format(event_data: Dict[str, Any]) -> List[ExperienceE
         results.append(ExperienceEvent(
             event_id=event_data.get("event_id", str(uuid.uuid4())),
             event_type=ExperienceType.INTERACTION,
-            source=ExperienceSource.JARVIS_BODY,
+            source=ExperienceSource.Ironcliw_BODY,
             timestamp=event_data.get("timestamp", datetime.now(timezone.utc).isoformat()),
             user_input=exp.get("user_input", ""),
             assistant_output=exp.get("assistant_output", ""),
@@ -538,7 +538,7 @@ def from_raw_dict(data: Dict[str, Any]) -> ExperienceEvent:
             else ExperienceType.INTERACTION,
         source=ExperienceSource(data.get("source", "jarvis_body"))
             if data.get("source") in [s.value for s in ExperienceSource]
-            else ExperienceSource.JARVIS_BODY,
+            else ExperienceSource.Ironcliw_BODY,
         timestamp=ts,
         user_input=user_input,
         assistant_output=assistant_output,

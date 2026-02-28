@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Diagnose why vision command "can you see my screen?" is not responding
 """
@@ -9,11 +9,11 @@ import subprocess
 from pathlib import Path
 
 print("=" * 80)
-print("JARVIS VISION ISSUE DIAGNOSTIC")
+print("Ironcliw VISION ISSUE DIAGNOSTIC")
 print("=" * 80)
 
 # Check 1: Is backend running?
-print("\n[1] Checking if JARVIS backend is running...")
+print("\n[1] Checking if Ironcliw backend is running...")
 result = subprocess.run(
     ["ps", "aux"], capture_output=True, text=True
 )
@@ -25,8 +25,8 @@ if backend_running:
             print(f"   {line.strip()}")
 else:
     print("❌ Backend is NOT running!")
-    print("\n💡 Solution: Start JARVIS backend:")
-    print("   cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent")
+    print("\n💡 Solution: Start Ironcliw backend:")
+    print("   cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent")
     print("   python start_system.py --restart")
 
 # Check 2: Are ports listening?
@@ -80,7 +80,7 @@ if not backend_running:
     print("\n🔴 PRIMARY ISSUE: Backend is not running!")
     print("\n📋 TO FIX:")
     print("   1. Open Terminal")
-    print("   2. cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent")
+    print("   2. cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent")
     print("   3. Run: python start_system.py --restart")
     print("   4. Wait for 'Backend started on port XXXX' message")
     print("   5. Try 'can you see my screen?' again")

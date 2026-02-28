@@ -1,8 +1,8 @@
-"""
-JARVIS AGI OS - Main Coordinator
+﻿"""
+Ironcliw AGI OS - Main Coordinator
 
 The central coordinator for the Autonomous General Intelligence Operating System.
-Integrates all JARVIS systems into a cohesive autonomous platform:
+Integrates all Ironcliw systems into a cohesive autonomous platform:
 
 - MAS (Multi-Agent System): Neural Mesh agent coordination
 - SAI (Self-Aware Intelligence): Self-monitoring and optimization
@@ -52,7 +52,7 @@ Usage:
     # Start AGI OS
     agi = await start_agi_os()
 
-    # Now JARVIS operates autonomously:
+    # Now Ironcliw operates autonomously:
     # - Monitors your screen
     # - Detects issues and opportunities
     # - Makes intelligent decisions
@@ -146,7 +146,7 @@ class ComponentStatus:
 
 class AGIOSCoordinator:
     """
-    Main coordinator for JARVIS AGI OS.
+    Main coordinator for Ironcliw AGI OS.
 
     Integrates all systems:
     - AGI OS components (voice, approval, events, orchestration)
@@ -176,7 +176,7 @@ class AGIOSCoordinator:
 
         # Neural Mesh
         self._neural_mesh: Optional[Any] = None
-        self._jarvis_bridge: Optional[Any] = None  # v237.0: JARVISNeuralMeshBridge
+        self._jarvis_bridge: Optional[Any] = None  # v237.0: IroncliwNeuralMeshBridge
         self._event_bridge: Optional[Any] = None  # v237.2: NeuralMesh ↔ EventStream bridge
         self._notification_monitor: Optional[Any] = None  # v237.2: macOS notification listener
         self._system_event_monitor: Optional[Any] = None  # v237.3: macOS system event listener
@@ -224,7 +224,7 @@ class AGIOSCoordinator:
         # Maps component name → number of recovery attempts made so far.
         self._recovery_attempts: Dict[str, int] = {}
         self._recovery_max_attempts: int = int(
-            _env_float("JARVIS_AGI_OS_RECOVERY_MAX_ATTEMPTS", 3.0)
+            _env_float("Ironcliw_AGI_OS_RECOVERY_MAX_ATTEMPTS", 3.0)
         )
 
         # v253.4: Track registered callbacks for cleanup on stop()
@@ -286,7 +286,7 @@ class AGIOSCoordinator:
         self._component_status.clear()
         self._phase_status.clear()
         # v255.0: Store memory mode for use by component and neural mesh guards
-        self._memory_mode = memory_mode or os.getenv("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        self._memory_mode = memory_mode or os.getenv("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
         logger.info("Starting AGI OS... (memory_mode=%s)", self._memory_mode)
 
         # v252.1: Reset notification bridge for warm restarts (stop → start
@@ -302,7 +302,7 @@ class AGIOSCoordinator:
         # 90+ seconds with zero DMS heartbeats → stall → rollback.
         self._progress_callback = progress_callback
         progress_callback_timeout = max(
-            0.1, _env_float("JARVIS_AGI_OS_PROGRESS_CALLBACK_TIMEOUT", 0.75)
+            0.1, _env_float("Ironcliw_AGI_OS_PROGRESS_CALLBACK_TIMEOUT", 0.75)
         )
         self._progress_callback_timeout = progress_callback_timeout
 
@@ -343,37 +343,37 @@ class AGIOSCoordinator:
         # New total: 35+45+100+5+25+15 = 225s (fits 290s budget with 65s spare)
         phase_timeouts = {
             "agi_os_components": _env_float(
-                "JARVIS_AGI_OS_PHASE_COMPONENTS_TIMEOUT", 35.0
+                "Ironcliw_AGI_OS_PHASE_COMPONENTS_TIMEOUT", 35.0
             ),
             "intelligence_systems": _env_float(
-                "JARVIS_AGI_OS_PHASE_INTELLIGENCE_TIMEOUT", 45.0
+                "Ironcliw_AGI_OS_PHASE_INTELLIGENCE_TIMEOUT", 45.0
             ),
             "neural_mesh": _env_float(
-                "JARVIS_AGI_OS_PHASE_NEURAL_MESH_TIMEOUT", 100.0
+                "Ironcliw_AGI_OS_PHASE_NEURAL_MESH_TIMEOUT", 100.0
             ),
             "hybrid_orchestrator": _env_float(
-                "JARVIS_AGI_OS_PHASE_HYBRID_TIMEOUT", 5.0
+                "Ironcliw_AGI_OS_PHASE_HYBRID_TIMEOUT", 5.0
             ),
             "screen_analyzer": _env_float(
-                "JARVIS_AGI_OS_PHASE_SCREEN_TIMEOUT", 25.0
+                "Ironcliw_AGI_OS_PHASE_SCREEN_TIMEOUT", 25.0
             ),
             "components_connected": _env_float(
-                "JARVIS_AGI_OS_PHASE_CONNECT_TIMEOUT", 15.0
+                "Ironcliw_AGI_OS_PHASE_CONNECT_TIMEOUT", 15.0
             ),
         }
 
         # Keep phase-level budgets aligned with the caller's startup envelope.
         effective_budget = startup_budget_seconds
         if effective_budget is None:
-            env_budget = _env_float("JARVIS_AGI_OS_PHASE_TOTAL_BUDGET", 0.0)
+            env_budget = _env_float("Ironcliw_AGI_OS_PHASE_TOTAL_BUDGET", 0.0)
             effective_budget = env_budget if env_budget > 0 else None
 
         if effective_budget is not None:
             phase_budget_reserve = max(
-                1.0, _env_float("JARVIS_AGI_OS_PHASE_BUDGET_RESERVE", 8.0)
+                1.0, _env_float("Ironcliw_AGI_OS_PHASE_BUDGET_RESERVE", 8.0)
             )
             phase_min_timeout = max(
-                0.5, _env_float("JARVIS_AGI_OS_PHASE_MIN_TIMEOUT", 5.0)
+                0.5, _env_float("Ironcliw_AGI_OS_PHASE_MIN_TIMEOUT", 5.0)
             )
             available_phase_budget = max(
                 len(phase_timeouts) * 0.5,
@@ -621,9 +621,9 @@ class AGIOSCoordinator:
 
             import random
             shutdown_messages = [
-                f"JARVIS going offline. Goodbye, {owner_name}.",
+                f"Ironcliw going offline. Goodbye, {owner_name}.",
                 f"Shutting down now. See you soon, {owner_name}.",
-                f"JARVIS offline. Take care, {owner_name}.",
+                f"Ironcliw offline. Take care, {owner_name}.",
                 f"Systems shutting down. Until next time, {owner_name}.",
             ]
             await self._voice.speak(random.choice(shutdown_messages), mode=VoiceMode.QUIET)
@@ -788,10 +788,10 @@ class AGIOSCoordinator:
                 self._agent_status_callback = None
                 self._agent_status_registry = None
 
-            # v237.0: Stop JARVIS Bridge (stops adapter agents, cancels startup tasks).
+            # v237.0: Stop Ironcliw Bridge (stops adapter agents, cancels startup tasks).
             if self._jarvis_bridge:
                 await _run_stop_step(
-                    "JARVIS Bridge",
+                    "Ironcliw Bridge",
                     self._jarvis_bridge.stop,
                     timeout=bridge_stop_timeout,
                 )
@@ -875,9 +875,9 @@ class AGIOSCoordinator:
         This prevents silent >60s gaps that trigger supervisor stall detection
         while still enforcing deterministic upper bounds per subsystem.
         """
-        heartbeat_seconds = max(1.0, _env_float("JARVIS_AGI_OS_STEP_HEARTBEAT", 10.0))
+        heartbeat_seconds = max(1.0, _env_float("Ironcliw_AGI_OS_STEP_HEARTBEAT", 10.0))
         cancel_grace_seconds = max(
-            0.5, _env_float("JARVIS_AGI_OS_CANCEL_GRACE_TIMEOUT", 5.0)
+            0.5, _env_float("Ironcliw_AGI_OS_CANCEL_GRACE_TIMEOUT", 5.0)
         )
         started = time.monotonic()
         task = asyncio.create_task(operation(), name=f"agi_os_init_{step_name}")
@@ -963,8 +963,8 @@ class AGIOSCoordinator:
             import psutil as _psutil_guard
             _vm = _psutil_guard.virtual_memory()
             _avail_mb = _vm.available / (1024 * 1024)
-            _guard_min = _env_float("JARVIS_AGI_OS_COMPONENTS_GUARD_MIN_MB", 2000.0)
-            _guard_seq = _env_float("JARVIS_AGI_OS_COMPONENTS_GUARD_SEQUENTIAL_MB", 3000.0)
+            _guard_min = _env_float("Ironcliw_AGI_OS_COMPONENTS_GUARD_MIN_MB", 2000.0)
+            _guard_seq = _env_float("Ironcliw_AGI_OS_COMPONENTS_GUARD_SEQUENTIAL_MB", 3000.0)
             _mem_mode = getattr(self, '_memory_mode', 'local_full')
 
             if _avail_mb <= _guard_min or _mem_mode == "minimal":
@@ -984,20 +984,20 @@ class AGIOSCoordinator:
             pass
 
         # v264.0: Per-component timeout sizing is now budget-driven by default.
-        # `JARVIS_AGI_OS_COMPONENT_TIMEOUT` acts as an optional explicit cap;
+        # `Ironcliw_AGI_OS_COMPONENT_TIMEOUT` acts as an optional explicit cap;
         # when unset or <=0, timeout auto-expands to phase_budget minus margin.
-        _comp_timeout_cap_env = _env_float("JARVIS_AGI_OS_COMPONENT_TIMEOUT", 0.0)
+        _comp_timeout_cap_env = _env_float("Ironcliw_AGI_OS_COMPONENT_TIMEOUT", 0.0)
         _comp_timeout_min = max(
-            3.0, _env_float("JARVIS_AGI_OS_COMPONENT_TIMEOUT_MIN", 3.0)
+            3.0, _env_float("Ironcliw_AGI_OS_COMPONENT_TIMEOUT_MIN", 3.0)
         )
         _comp_timeout_margin = max(
-            0.5, _env_float("JARVIS_AGI_OS_COMPONENT_TIMEOUT_PHASE_MARGIN", 2.0)
+            0.5, _env_float("Ironcliw_AGI_OS_COMPONENT_TIMEOUT_PHASE_MARGIN", 2.0)
         )
         _history_window = max(
-            3, int(_env_float("JARVIS_AGI_OS_COMPONENT_TIMEOUT_HISTORY", 10.0))
+            3, int(_env_float("Ironcliw_AGI_OS_COMPONENT_TIMEOUT_HISTORY", 10.0))
         )
         _history_multiplier = max(
-            1.0, _env_float("JARVIS_AGI_OS_COMPONENT_TIMEOUT_MULTIPLIER", 1.4)
+            1.0, _env_float("Ironcliw_AGI_OS_COMPONENT_TIMEOUT_MULTIPLIER", 1.4)
         )
 
         # v253.3: Read the scaled phase budget. When the supervisor passes a
@@ -1209,7 +1209,7 @@ class AGIOSCoordinator:
         # scaling reduces intelligence_systems from 60s to ~20s, the internal
         # budget must match — otherwise _intel_remaining() returns time that
         # the outer phase timeout will cancel before it's used.
-        _intel_env = _env_float("JARVIS_AGI_OS_INTEL_BUDGET", 45.0)
+        _intel_env = _env_float("Ironcliw_AGI_OS_INTEL_BUDGET", 45.0)
         _intel_phase = getattr(self, '_phase_budgets', {}).get(
             "intelligence_systems", 45.0,
         )
@@ -1298,7 +1298,7 @@ class AGIOSCoordinator:
         try:
             from core.hybrid_orchestrator import _get_learning_db
             learning_db_timeout = min(
-                _env_float("JARVIS_AGI_OS_LEARNING_DB_TIMEOUT", intel_budget * 0.2),
+                _env_float("Ironcliw_AGI_OS_LEARNING_DB_TIMEOUT", intel_budget * 0.2),
                 _intel_remaining(),
             )
             self._learning_db = await self._run_timed_init_step(
@@ -1341,7 +1341,7 @@ class AGIOSCoordinator:
             try:
                 from voice.speaker_verification_service import get_speaker_verification_service
                 speaker_timeout = min(
-                    _env_float("JARVIS_AGI_OS_SPEAKER_TIMEOUT", intel_budget * 0.5),
+                    _env_float("Ironcliw_AGI_OS_SPEAKER_TIMEOUT", intel_budget * 0.5),
                     _intel_remaining(),
                 )
 
@@ -1388,7 +1388,7 @@ class AGIOSCoordinator:
         else:
             try:
                 owner_identity_timeout = min(
-                    _env_float("JARVIS_AGI_OS_OWNER_ID_TIMEOUT", intel_budget * 0.3),
+                    _env_float("Ironcliw_AGI_OS_OWNER_ID_TIMEOUT", intel_budget * 0.3),
                     _intel_remaining(),
                 )
 
@@ -1462,15 +1462,15 @@ class AGIOSCoordinator:
                     name='neural_mesh', available=False,
                     error=f"Deferred: {_mem_mode}",
                 )
-                os.environ["JARVIS_NEURAL_MESH_DEFERRED"] = "true"
+                os.environ["Ironcliw_NEURAL_MESH_DEFERRED"] = "true"
                 return
 
             _skip_bridge = False
             try:
                 import psutil as _psutil_nm
                 _avail_mb = _psutil_nm.virtual_memory().available / (1024 * 1024)
-                _nm_min = _env_float("JARVIS_AGI_OS_NEURAL_MESH_GUARD_MIN_MB", 1800.0)
-                _nm_bridge = _env_float("JARVIS_AGI_OS_NEURAL_MESH_GUARD_BRIDGE_MB", 2500.0)
+                _nm_min = _env_float("Ironcliw_AGI_OS_NEURAL_MESH_GUARD_MIN_MB", 1800.0)
+                _nm_bridge = _env_float("Ironcliw_AGI_OS_NEURAL_MESH_GUARD_BRIDGE_MB", 2500.0)
                 if _avail_mb <= _nm_min:
                     logger.warning(
                         "Neural Mesh deferred: low memory (%.0fMB <= %.0fMB)",
@@ -1480,7 +1480,7 @@ class AGIOSCoordinator:
                         name='neural_mesh', available=False,
                         error=f"Deferred: {_avail_mb:.0f}MB",
                     )
-                    os.environ["JARVIS_NEURAL_MESH_DEFERRED"] = "true"
+                    os.environ["Ironcliw_NEURAL_MESH_DEFERRED"] = "true"
                     return
                 elif _avail_mb < _nm_bridge:
                     logger.warning(
@@ -1495,7 +1495,7 @@ class AGIOSCoordinator:
             # Default 75s — capped to the phase timeout (also 75s by default).
             # v254.0: Supervisor outer timeout raised to 260s, so the phase
             # budget no longer gets squeezed.  Internal budget is min(env, phase-3).
-            _nm_env = _env_float("JARVIS_AGI_OS_NEURAL_MESH_BUDGET", 100.0)
+            _nm_env = _env_float("Ironcliw_AGI_OS_NEURAL_MESH_BUDGET", 100.0)
             _nm_phase = getattr(self, '_phase_budgets', {}).get(
                 "neural_mesh", 100.0,
             )
@@ -1509,7 +1509,7 @@ class AGIOSCoordinator:
             # Step 1: Start coordinator (40% of budget)
             from neural_mesh import start_neural_mesh
             mesh_timeout = min(
-                _env_float("JARVIS_AGI_OS_NEURAL_MESH_TIMEOUT", total_budget * 0.4),
+                _env_float("Ironcliw_AGI_OS_NEURAL_MESH_TIMEOUT", total_budget * 0.4),
                 _remaining(),
             )
             self._neural_mesh = await self._run_timed_init_step(
@@ -1523,7 +1523,7 @@ class AGIOSCoordinator:
             try:
                 from neural_mesh.agents.agent_initializer import initialize_production_agents
                 agent_timeout = min(
-                    _env_float("JARVIS_AGI_OS_NEURAL_AGENT_TIMEOUT", total_budget * 0.3),
+                    _env_float("Ironcliw_AGI_OS_NEURAL_AGENT_TIMEOUT", total_budget * 0.3),
                     _remaining(),
                 )
 
@@ -1552,7 +1552,7 @@ class AGIOSCoordinator:
                 try:
                     from neural_mesh import start_jarvis_neural_mesh
                     bridge_timeout = min(
-                        _env_float("JARVIS_AGI_OS_NEURAL_BRIDGE_TIMEOUT", _remaining()),
+                        _env_float("Ironcliw_AGI_OS_NEURAL_BRIDGE_TIMEOUT", _remaining()),
                         _remaining(),
                     )
                     self._jarvis_bridge = await self._run_timed_init_step(
@@ -1562,7 +1562,7 @@ class AGIOSCoordinator:
                     )
                     n_adapters = len(self._jarvis_bridge.registered_agents) if hasattr(self._jarvis_bridge, 'registered_agents') else 0
                 except Exception as bridge_exc:
-                    logger.warning("JARVIS Neural Mesh Bridge failed (mesh still running): %s", bridge_exc)
+                    logger.warning("Ironcliw Neural Mesh Bridge failed (mesh still running): %s", bridge_exc)
 
             total = len(self._neural_mesh.get_all_agents()) if hasattr(self._neural_mesh, 'get_all_agents') else n_production + n_adapters
             elapsed = time.monotonic() - budget_start
@@ -1646,16 +1646,16 @@ class AGIOSCoordinator:
                 cpu_percent = psutil.cpu_percent(interval=0.0)
 
                 min_available_mb = _env_float(
-                    "JARVIS_AGI_OS_SCREEN_GUARD_MIN_AVAILABLE_MB", 2200.0
+                    "Ironcliw_AGI_OS_SCREEN_GUARD_MIN_AVAILABLE_MB", 2200.0
                 )
                 critical_available_mb = _env_float(
-                    "JARVIS_AGI_OS_SCREEN_GUARD_CRITICAL_AVAILABLE_MB", 1400.0
+                    "Ironcliw_AGI_OS_SCREEN_GUARD_CRITICAL_AVAILABLE_MB", 1400.0
                 )
                 max_process_mb = _env_float(
-                    "JARVIS_AGI_OS_SCREEN_GUARD_MAX_PROCESS_MB", 1600.0
+                    "Ironcliw_AGI_OS_SCREEN_GUARD_MAX_PROCESS_MB", 1600.0
                 )
                 max_cpu_percent = _env_float(
-                    "JARVIS_AGI_OS_SCREEN_GUARD_MAX_CPU_PERCENT", 92.0
+                    "Ironcliw_AGI_OS_SCREEN_GUARD_MAX_CPU_PERCENT", 92.0
                 )
 
                 if available_mb <= critical_available_mb:
@@ -1708,7 +1708,7 @@ class AGIOSCoordinator:
 
             # Proportional allocation: construct 35%, capture 20%, monitor 25%, bridge 20%
             construct_timeout = min(
-                _env_float("JARVIS_AGI_OS_SCREEN_CONSTRUCT_TIMEOUT", 20.0),
+                _env_float("Ironcliw_AGI_OS_SCREEN_CONSTRUCT_TIMEOUT", 20.0),
                 max(3.0, _sa_budget * 0.35),
             )
 
@@ -1724,7 +1724,7 @@ class AGIOSCoordinator:
                     prefer_video_over_screenshots=False,
                     max_concurrent_requests=int(
                         _env_float(
-                            "JARVIS_AGI_OS_SCREEN_DEGRADED_MAX_CONCURRENCY", 2.0
+                            "Ironcliw_AGI_OS_SCREEN_DEGRADED_MAX_CONCURRENCY", 2.0
                         )
                     ),
                 )
@@ -1738,7 +1738,7 @@ class AGIOSCoordinator:
             try:
                 await self._report_init_progress("screen_analyzer", "Capture probe")
                 capture_probe_timeout = min(
-                    _env_float("JARVIS_AGI_OS_SCREEN_CAPTURE_PROBE_TIMEOUT", 12.0),
+                    _env_float("Ironcliw_AGI_OS_SCREEN_CAPTURE_PROBE_TIMEOUT", 12.0),
                     max(2.0, _sa_remaining() * 0.4),  # v253.3: budget-aware
                 )
                 test_capture = await asyncio.wait_for(
@@ -1761,7 +1761,7 @@ class AGIOSCoordinator:
                 logger.warning(
                     "Screen capture permission not granted. "
                     "Grant Screen Recording permission in System Settings > "
-                    "Privacy & Security > Screen Recording, then restart JARVIS."
+                    "Privacy & Security > Screen Recording, then restart Ironcliw."
                 )
                 self._component_status['screen_analyzer'] = ComponentStatus(
                     name='screen_analyzer',
@@ -1773,7 +1773,7 @@ class AGIOSCoordinator:
             await self._report_init_progress("screen_analyzer", "Starting monitor loop")
             self._screen_analyzer = MemoryAwareScreenAnalyzer(vision_handler)
             monitor_start_timeout = min(
-                _env_float("JARVIS_AGI_OS_SCREEN_MONITOR_START_TIMEOUT", 15.0),
+                _env_float("Ironcliw_AGI_OS_SCREEN_MONITOR_START_TIMEOUT", 15.0),
                 max(2.0, _sa_remaining() * 0.55),  # v253.3: budget-aware
             )
             await asyncio.wait_for(
@@ -1784,7 +1784,7 @@ class AGIOSCoordinator:
             # Bridge to event stream for proactive detection
             await self._report_init_progress("screen_analyzer", "Connecting AGI bridge")
             bridge_timeout = min(
-                _env_float("JARVIS_AGI_OS_SCREEN_BRIDGE_TIMEOUT", 15.0),
+                _env_float("Ironcliw_AGI_OS_SCREEN_BRIDGE_TIMEOUT", 15.0),
                 max(2.0, _sa_remaining()),  # v253.3: all remaining budget
             )
             await asyncio.wait_for(
@@ -1994,7 +1994,7 @@ class AGIOSCoordinator:
         v251.2: Wrapped in a hard timeout to prevent voice TTS hangs from
         stalling the entire startup sequence.  Default: 15s.
         """
-        announce_timeout = _env_float("JARVIS_AGI_OS_ANNOUNCE_TIMEOUT", 15.0)
+        announce_timeout = _env_float("Ironcliw_AGI_OS_ANNOUNCE_TIMEOUT", 15.0)
         try:
             await asyncio.wait_for(
                 self._announce_startup_inner(), timeout=announce_timeout
@@ -2026,23 +2026,23 @@ class AGIOSCoordinator:
         import random
         if available == total:
             full_online_greetings = [
-                f"Good day, {owner_name}. JARVIS is fully online. All systems operational.",
-                f"JARVIS online, {owner_name}. All components ready and awaiting your command.",
-                f"Hello, {owner_name}. JARVIS is ready to assist. All systems are go.",
-                f"JARVIS fully operational, {owner_name}. How may I help you today?",
+                f"Good day, {owner_name}. Ironcliw is fully online. All systems operational.",
+                f"Ironcliw online, {owner_name}. All components ready and awaiting your command.",
+                f"Hello, {owner_name}. Ironcliw is ready to assist. All systems are go.",
+                f"Ironcliw fully operational, {owner_name}. How may I help you today?",
             ]
             greeting = random.choice(full_online_greetings)
         elif available > total // 2:
             degraded_greetings = [
-                f"JARVIS is online, {owner_name}. {available} of {total} components available. Running at reduced capacity.",
-                f"Hello, {owner_name}. JARVIS online with {available} of {total} systems ready.",
-                f"JARVIS partially online, {owner_name}. Some systems are still initializing.",
+                f"Ironcliw is online, {owner_name}. {available} of {total} components available. Running at reduced capacity.",
+                f"Hello, {owner_name}. Ironcliw online with {available} of {total} systems ready.",
+                f"Ironcliw partially online, {owner_name}. Some systems are still initializing.",
             ]
             greeting = random.choice(degraded_greetings)
         else:
             limited_greetings = [
-                f"JARVIS starting with limited functionality, {owner_name}. Several systems are unavailable.",
-                f"Hello, {owner_name}. JARVIS is online but operating with reduced capabilities.",
+                f"Ironcliw starting with limited functionality, {owner_name}. Several systems are unavailable.",
+                f"Hello, {owner_name}. Ironcliw is online but operating with reduced capabilities.",
             ]
             greeting = random.choice(limited_greetings)
 
@@ -2127,7 +2127,7 @@ class AGIOSCoordinator:
         # v265.6: Stagger recovery — don't attempt on first health tick
         _ticks_since_recovery = 0
         _recovery_interval_ticks = max(
-            2, int(_env_float("JARVIS_AGI_OS_RECOVERY_INTERVAL_TICKS", 4.0))
+            2, int(_env_float("Ironcliw_AGI_OS_RECOVERY_INTERVAL_TICKS", 4.0))
         )
 
         while self._state in [AGIOSState.ONLINE, AGIOSState.DEGRADED, AGIOSState.PAUSED]:
@@ -2183,7 +2183,7 @@ class AGIOSCoordinator:
 
         Bounded: each component gets at most _recovery_max_attempts tries.
         """
-        _recovery_timeout = _env_float("JARVIS_AGI_OS_RECOVERY_TIMEOUT", 15.0)
+        _recovery_timeout = _env_float("Ironcliw_AGI_OS_RECOVERY_TIMEOUT", 15.0)
 
         # Collect components that are unavailable and haven't exhausted retries
         failed = {}
@@ -2215,7 +2215,7 @@ class AGIOSCoordinator:
                 import psutil as _ps_recov
                 _vm = _ps_recov.virtual_memory()
                 _avail_mb = _vm.available / (1024 * 1024)
-                _guard_min = _env_float("JARVIS_AGI_OS_COMPONENTS_GUARD_MIN_MB", 2000.0)
+                _guard_min = _env_float("Ironcliw_AGI_OS_COMPONENTS_GUARD_MIN_MB", 2000.0)
 
                 if _avail_mb > _guard_min * 1.2:
                     # Memory has improved — attempt re-init of skipped components

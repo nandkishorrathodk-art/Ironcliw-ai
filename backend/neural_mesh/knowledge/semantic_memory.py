@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Advanced Semantic Memory & Retrieval System
+﻿"""
+Ironcliw Neural Mesh - Advanced Semantic Memory & Retrieval System
 
 A production-grade semantic memory system providing:
 - Vector similarity search for "What did I do last time this happened?"

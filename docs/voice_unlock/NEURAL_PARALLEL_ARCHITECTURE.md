@@ -1,8 +1,8 @@
-# Neural Parallel Voice Unlock Architecture (v20.5.0)
+﻿# Neural Parallel Voice Unlock Architecture (v20.5.0)
 
 ## Executive Summary
 
-The Neural Parallel Voice Unlock Architecture represents JARVIS's advanced voice biometric authentication system. This architecture transforms voice authentication from a sequential bottleneck into a **Coordinated Swarm of Experts** - running multiple verification engines in parallel to achieve both high security AND real-time performance.
+The Neural Parallel Voice Unlock Architecture represents Ironcliw's advanced voice biometric authentication system. This architecture transforms voice authentication from a sequential bottleneck into a **Coordinated Swarm of Experts** - running multiple verification engines in parallel to achieve both high security AND real-time performance.
 
 **Key Achievement:** Reduce authentication latency from ~3+ seconds to **<300ms** while maintaining 7-layer security.
 
@@ -178,7 +178,7 @@ flowchart TB
         keychain["🔐 Keychain Password"]
     end
 
-    subgraph backend["🐍 JARVIS Backend (Python)"]
+    subgraph backend["🐍 Ironcliw Backend (Python)"]
         subgraph unlock_service["IntelligentVoiceUnlockService"]
             subgraph parallel_engine["Parallel Verification Engine"]
                 stt["STT Router"]
@@ -225,11 +225,11 @@ flowchart TB
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          JARVIS Voice Unlock System                             │
+│                          Ironcliw Voice Unlock System                             │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                 │
 │  ┌─────────────┐    ┌─────────────────────────────────────────────────────┐     │
-│  │   macOS     │    │              JARVIS Backend (Python)                │     │
+│  │   macOS     │    │              Ironcliw Backend (Python)                │     │
 │  │  Frontend   │    │                                                     │     │
 │  │             │    │  ┌─────────────────────────────────────────────┐    │     │
 │  │ ┌─────────┐ │    │  │     IntelligentVoiceUnlockService           │    │     │
@@ -1112,7 +1112,7 @@ flowchart TD
 │                                                                             │
 │  SEMANTIC CACHE OPTIMIZATION:                                              │
 │  When you unlock 15 minutes before a calendar meeting:                     │
-│  JARVIS: [Skips expensive behavioral analysis]                             │
+│  Ironcliw: [Skips expensive behavioral analysis]                             │
 │  "Good timing for your 9 AM meeting - unlocking now."                      │
 │  [Saved $0.004 by using calendar context instead of full analysis]         │
 │                                                                             │
@@ -1265,7 +1265,7 @@ class DynamicTimeoutManager:
 │  - Adjusted threshold (voice quality): 80%                                 │
 │  - Decision: AUTHENTICATE with explanation                                 │
 │                                                                             │
-│  JARVIS Response:                                                          │
+│  Ironcliw Response:                                                          │
 │  "Your voice sounds a bit different today, Derek - hope you're feeling     │
 │   okay. I'm confident it's you from your speech patterns. Unlocking now."  │
 │                                                                             │
@@ -1280,11 +1280,11 @@ class DynamicTimeoutManager:
 │                                                                             │
 │  Handling:                                                                 │
 │  1. First attempt: CHALLENGE due to low physics                            │
-│  2. JARVIS asks: "Are you using a different microphone?"                   │
+│  2. Ironcliw asks: "Are you using a different microphone?"                   │
 │  3. Derek: "Yes, AirPods"                                                  │
-│  4. JARVIS recalibrates with AirPods-specific filtering                    │
+│  4. Ironcliw recalibrates with AirPods-specific filtering                    │
 │  5. Second attempt: AUTHENTICATE                                           │
-│  6. JARVIS stores AirPods voiceprint variant in database                   │
+│  6. Ironcliw stores AirPods voiceprint variant in database                   │
 │                                                                             │
 │  ─────────────────────────────────────────────────────────────────────────  │
 │                                                                             │
@@ -1305,7 +1305,7 @@ class DynamicTimeoutManager:
 │  - ANOMALY DETECTED: High ML + very low physics                            │
 │  - Decision: ESCALATE (not just reject)                                    │
 │                                                                             │
-│  JARVIS Response:                                                          │
+│  Ironcliw Response:                                                          │
 │  "Security alert: I detected characteristics consistent with a voice       │
 │   recording rather than a live person. Access denied and logged."          │
 │                                                                             │
@@ -1343,7 +1343,7 @@ class DynamicTimeoutManager:
 │  - Bayesian P(auth) = 0.82 (below 85% due to low behavioral)               │
 │  - Decision: CHALLENGE (not reject, could be legitimate)                   │
 │                                                                             │
-│  JARVIS Response:                                                          │
+│  Ironcliw Response:                                                          │
 │  "That's quite early, Derek. Everything okay? For security, quick          │
 │   verification: What was the last project you worked on yesterday?"        │
 │                                                                             │
@@ -1500,11 +1500,11 @@ class DynamicTimeoutManager:
 # ═══════════════════════════════════════════════════════════════════════════
 
 # --- Timeout Configuration ---
-JARVIS_UNLOCK_TOTAL_TIMEOUT=35.0       # Total unlock operation timeout
-JARVIS_TRANSCRIPTION_TIMEOUT=20.0       # STT transcription timeout
-JARVIS_SPEAKER_ID_TIMEOUT=15.0          # Speaker identification timeout
-JARVIS_BIOMETRIC_TIMEOUT=15.0           # Biometric verification timeout
-JARVIS_COLD_START_MULTIPLIER=2.0        # Timeout multiplier for cold start
+Ironcliw_UNLOCK_TOTAL_TIMEOUT=35.0       # Total unlock operation timeout
+Ironcliw_TRANSCRIPTION_TIMEOUT=20.0       # STT transcription timeout
+Ironcliw_SPEAKER_ID_TIMEOUT=15.0          # Speaker identification timeout
+Ironcliw_BIOMETRIC_TIMEOUT=15.0           # Biometric verification timeout
+Ironcliw_COLD_START_MULTIPLIER=2.0        # Timeout multiplier for cold start
 
 # --- Bayesian Fusion ---
 BAYESIAN_PRIOR_AUTHENTIC=0.85           # Prior P(authentic)
@@ -1567,10 +1567,10 @@ The Neural Parallel Voice Unlock Architecture (v20.5.0) represents a production-
 4. **Cost-Optimized Cloud** - Scale-to-zero with pre-baked JIT models for <5s cold starts
 5. **Graceful Degradation** - Continues operating even when components fail
 
-JARVIS achieves sub-300ms authentication latency while maintaining 99.5%+ replay attack detection and <0.1% false accept rates.
+Ironcliw achieves sub-300ms authentication latency while maintaining 99.5%+ replay attack detection and <0.1% false accept rates.
 
 ---
 
 *Document Version: 20.5.0*
 *Last Updated: December 2024*
-*Author: JARVIS AI Agent Team*
+*Author: Ironcliw AI Agent Team*

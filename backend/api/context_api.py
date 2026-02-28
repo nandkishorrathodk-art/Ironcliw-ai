@@ -1,5 +1,5 @@
-"""
-JARVIS Context Intelligence API
+﻿"""
+Ironcliw Context Intelligence API
 ===============================
 
 Context awareness, OCR processing, and intelligent context queries.
@@ -159,7 +159,7 @@ async def get_context_summary() -> Dict[str, Any]:
     """
     Get a summary of current context.
 
-    Returns high-level overview of what JARVIS knows about current state.
+    Returns high-level overview of what Ironcliw knows about current state.
     """
     try:
         summary = _get_context_summary()

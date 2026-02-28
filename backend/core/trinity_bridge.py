@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Bridge v4.0 - Unified Cross-Repository Integration Layer
 =================================================================
 
 The Trinity Bridge is the master integration layer that connects all Trinity
-components (JARVIS Body, J-Prime, Reactor-Core) into a unified ecosystem.
+components (Ironcliw Body, J-Prime, Reactor-Core) into a unified ecosystem.
 
 This module provides:
 - Single-command startup for all repos
@@ -42,7 +42,7 @@ Architecture:
     │           │                     │                     │                   │
     │           ▼                     ▼                     ▼                   │
     │   ┌──────────────┐     ┌──────────────┐     ┌──────────────┐             │
-    │   │   JARVIS     │     │   J-PRIME    │     │   REACTOR    │             │
+    │   │   Ironcliw     │     │   J-PRIME    │     │   REACTOR    │             │
     │   │   (Body)     │     │   (Brain)    │     │   (Training) │             │
     │   │   Port: 5001 │     │   Port: 8000 │     │   Port: 8090 │             │
     │   └──────────────┘     └──────────────┘     └──────────────┘             │
@@ -61,7 +61,7 @@ Usage (Single Command Startup):
     6. Establishes cross-repo communication
     7. Monitors health and auto-heals
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 4.0.0
 """
 
@@ -93,13 +93,13 @@ class TrinityBridgeConfig:
     # Repo paths
     jarvis_repo_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_REPO_PATH",
+            "Ironcliw_REPO_PATH",
             str(Path(__file__).parent.parent.parent)
         ))
     )
     jprime_repo_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             str(Path.home() / "Documents" / "repos" / "jarvis-prime")
         ))
     )
@@ -112,10 +112,10 @@ class TrinityBridgeConfig:
 
     # Service ports (used as fallbacks, registry is preferred)
     jarvis_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PORT", "5001"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PORT", "5001"))
     )
     jprime_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
     )
     reactor_port: int = field(
         default_factory=lambda: int(os.getenv("REACTOR_CORE_PORT", "8090"))
@@ -123,7 +123,7 @@ class TrinityBridgeConfig:
 
     # Feature flags
     jprime_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
     )
     reactor_enabled: bool = field(
         default_factory=lambda: os.getenv("REACTOR_CORE_ENABLED", "true").lower() == "true"
@@ -280,7 +280,7 @@ class TrinityBridge:
             logger.info("=" * 70)
             logger.info("Trinity Bridge v4.0 Started Successfully")
             logger.info("=" * 70)
-            logger.info(f"  JARVIS Body:   localhost:{self.config.jarvis_port}")
+            logger.info(f"  Ironcliw Body:   localhost:{self.config.jarvis_port}")
             if self.config.jprime_enabled:
                 logger.info(f"  J-Prime:       localhost:{self.config.jprime_port}")
             if self.config.reactor_enabled:
@@ -452,9 +452,9 @@ class TrinityBridge:
             self._service_registry = get_service_registry()
             await self._service_registry.start_cleanup_task()
 
-            # v96.0: Register JARVIS Body with enhanced fields
+            # v96.0: Register Ironcliw Body with enhanced fields
             # Determine configured port vs actual port
-            configured_port = int(os.getenv("JARVIS_PORT", "8080"))
+            configured_port = int(os.getenv("Ironcliw_PORT", "8080"))
             actual_port = self.config.jarvis_port
             is_fallback = actual_port != configured_port
 
@@ -476,7 +476,7 @@ class TrinityBridge:
             )
 
             # v96.0: Also write to shared registry using ATOMIC locking
-            # This ensures cross-repo coordination with JARVIS Prime and Reactor Core
+            # This ensures cross-repo coordination with Ironcliw Prime and Reactor Core
             import time as time_module
             import psutil
             try:

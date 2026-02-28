@@ -1,17 +1,17 @@
-"""
+﻿"""
 Test Suite for Open Interpreter Integration
 ============================================
 
-Tests the Open Interpreter-inspired patterns implemented in JARVIS:
+Tests the Open Interpreter-inspired patterns implemented in Ironcliw:
 1. SafeCodeExecutor - Safe Python code execution with AST validation
 2. CoordinateExtractor - Grid overlay system for improved click accuracy
 3. SafetyMonitor - Action validation and audit trail
-4. Cross-repo adapters - JARVIS Prime and Reactor Core integration
+4. Cross-repo adapters - Ironcliw Prime and Reactor Core integration
 
 Run with: python -m pytest tests/test_open_interpreter_integration.py -v
 Or directly: python tests/test_open_interpreter_integration.py
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -99,7 +99,7 @@ class OpenInterpreterIntegrationTests:
             # Test cases: (code, should_be_safe, description)
             test_cases = [
                 # Safe code
-                ("print('Hello, JARVIS!')", True, "Simple print statement"),
+                ("print('Hello, Ironcliw!')", True, "Simple print statement"),
                 ("x = 1 + 2\ny = x * 3", True, "Basic arithmetic"),
                 ("data = [1, 2, 3]\nresult = sum(data)", True, "List operations"),
 
@@ -181,7 +181,7 @@ class OpenInterpreterIntegrationTests:
             executor = SafeCodeExecutor(config)
 
             # Test 1: Execute safe code
-            result = await executor.execute("print('Hello from JARVIS sandbox!')")
+            result = await executor.execute("print('Hello from Ironcliw sandbox!')")
 
             if not result.success:
                 duration = (time.time() - start) * 1000
@@ -193,7 +193,7 @@ class OpenInterpreterIntegrationTests:
                 )
                 return False
 
-            if "Hello from JARVIS sandbox!" not in result.stdout:
+            if "Hello from Ironcliw sandbox!" not in result.stdout:
                 duration = (time.time() - start) * 1000
                 self._record_result(
                     name="SafeCodeExecutor.execute (safe)",
@@ -637,7 +637,7 @@ class OpenInterpreterIntegrationTests:
                 CrossRepoIntelligenceHub,
                 SafeCodeAdapter,
                 ReactorCoreAdapter,
-                JARVISPrimeAdapter,
+                IroncliwPrimeAdapter,
             )
 
             # Test SafeCodeAdapter

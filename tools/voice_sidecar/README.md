@@ -1,4 +1,4 @@
-# JARVIS Voice Sidecar (Go Observer)
+﻿# Ironcliw Voice Sidecar (Go Observer)
 
 Read-only control-plane observer for Python health, startup mode signals, and safety advisories.
 

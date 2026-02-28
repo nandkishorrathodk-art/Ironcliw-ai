@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws://localhost:* wss://localhost:*;" />
+  <title>Ironcliw — Advanced AI Interface</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- ════════ TITLE BAR (frameless drag region) ════════ -->
+  <div id="title-bar">
+    <div id="title-logo">
+      <div class="logo-orb"></div>
+      <span class="title-text">I<span class="title-accent">RONCLIW</span></span>
+      <span class="title-version">v11.0 NEURAL</span>
+    </div>
+    <div id="title-connection">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-label">CONNECTING</span>
+    </div>
+    <div id="window-controls">
+      <button class="wc-btn" id="btn-minimize" title="Minimize">─</button>
+      <button class="wc-btn" id="btn-maximize" title="Maximize">▢</button>
+      <button class="wc-btn close-btn" id="btn-close" title="Close">✕</button>
+    </div>
+  </div>
+
+  <!-- ════════ SCANLINE OVERLAY ════════ -->
+  <div id="scanline-overlay"></div>
+
+  <!-- ════════ CANVAS LAYERS ════════ -->
+  <canvas id="particle-canvas"></canvas>
+  <canvas id="waveform-canvas"></canvas>
+
+  <!-- ════════ BOOT SEQUENCE ════════ -->
+  <div id="boot-screen">
+    <div class="boot-logo">
+      <div class="boot-ring r1"></div>
+      <div class="boot-ring r2"></div>
+      <div class="boot-ring r3"></div>
+      <div class="boot-core">I</div>
+    </div>
+    <div class="boot-text">INITIALIZING IRONCLIW NEURAL INTERFACE</div>
+    <div class="boot-bar-wrap">
+      <div class="boot-bar" id="boot-bar"></div>
+    </div>
+    <div class="boot-status" id="boot-status">Loading cortex modules...</div>
+    <div class="boot-version">BUILD 11.0.2026 · CORE MESH ACTIVE</div>
+  </div>
+
+  <!-- ════════ MAIN APP ════════ -->
+  <div id="app" class="hidden">
+
+    <!-- ─── LEFT PANEL ─── -->
+    <aside class="panel panel-left" id="panel-left">
+
+      <div class="panel-header">
+        <span class="ph-icon">⬡</span>
+        <span>SYSTEM STATUS</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <span class="stat-label">BACKEND</span>
+          <span class="stat-val" id="stat-backend">OFFLINE</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">MODE</span>
+          <span class="stat-val" id="stat-mode">STANDBY</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">UPTIME</span>
+          <span class="stat-val" id="stat-uptime">00:00:00</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">LATENCY</span>
+          <span class="stat-val" id="stat-latency">— ms</span>
+        </div>
+      </div>
+
+      <div class="panel-header mt-12">
+        <span class="ph-icon">◈</span>
+        <span>METRICS</span>
+      </div>
+      <div class="metric-bar-row">
+        <span class="mb-label">CPU</span>
+        <div class="mb-track">
+          <div class="mb-fill cpu-fill" id="cpu-fill"></div>
+        </div>
+        <span class="mb-val" id="cpu-val">—%</span>
+      </div>
+      <div class="metric-bar-row">
+        <span class="mb-label">MEM</span>
+        <div class="mb-track">
+          <div class="mb-fill mem-fill" id="mem-fill"></div>
+        </div>
+        <span class="mb-val" id="mem-val">—%</span>
+      </div>
+      <div class="metric-bar-row">
+        <span class="mb-label">NET</span>
+        <div class="mb-track">
+          <div class="mb-fill net-fill" id="net-fill"></div>
+        </div>
+        <span class="mb-val" id="net-val">—%</span>
+      </div>
+
+      <div class="panel-header mt-12">
+        <span class="ph-icon">◎</span>
+        <span>ACTIONS</span>
+      </div>
+      <div id="action-log" class="mini-scroll">
+        <div class="no-data-msg">No actions yet</div>
+      </div>
+    </aside>
+
+    <!-- ─── CENTER ─── -->
+    <main class="center-area">
+
+      <!-- Holographic Core Orb -->
+      <div class="holo-container" id="holo-container">
+        <div class="holo-ring ring-orbit-1">
+          <div class="ring-track"></div>
+        </div>
+        <div class="holo-ring ring-orbit-2">
+          <div class="ring-track"></div>
+        </div>
+        <div class="holo-ring ring-orbit-3">
+          <div class="ring-track rt-blue"></div>
+        </div>
+        <div class="holo-glow-outer"></div>
+        <div class="holo-core" id="holo-core">
+          <div class="core-inner">
+            <svg class="core-arc" viewBox="0 0 100 100">
+              <circle class="arc-bg" cx="50" cy="50" r="45" />
+              <circle class="arc-fg" cx="50" cy="50" r="45" id="arc-fg" />
+            </svg>
+            <div class="core-letter">I</div>
+            <div class="core-pulse" id="core-pulse"></div>
+          </div>
+        </div>
+        <div class="holo-particles" id="holo-particles"></div>
+      </div>
+
+      <!-- State Label -->
+      <div class="jarvis-state" id="jarvis-state">
+        <div class="state-dot" id="state-dot"></div>
+        <span id="state-text">STANDBY</span>
+      </div>
+
+      <!-- Mic Button -->
+      <div class="mic-area">
+        <button class="mic-btn" id="mic-btn" title="Push to Talk">
+          <div class="mic-ring r1" id="mic-ring-1"></div>
+          <div class="mic-ring r2" id="mic-ring-2"></div>
+          <div class="mic-ring r3" id="mic-ring-3"></div>
+          <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
+          </svg>
+        </button>
+        <div class="mic-label" id="mic-label">CLICK TO SPEAK</div>
+      </div>
+
+      <!-- Text Input -->
+      <div class="text-input-row">
+        <input type="text" id="text-input" class="jarvis-input" placeholder="Type a command or question..."
+          autocomplete="off" spellcheck="false" />
+        <button class="send-btn" id="send-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
+      </div>
+
+    </main>
+
+    <!-- ─── RIGHT PANEL ─── -->
+    <aside class="panel panel-right" id="panel-right">
+
+      <div class="panel-header">
+        <span class="ph-icon">◫</span>
+        <span>CONVERSATION</span>
+        <button class="panel-clear-btn" id="clear-chat-btn" title="Clear chat">✕</button>
+      </div>
+      <div id="chat-log" class="chat-log mini-scroll">
+        <div class="chat-entry jarvis-entry">
+          <div class="ce-avatar">I</div>
+          <div class="ce-bubble">
+            <span class="ce-name">IRONCLIW</span>
+            <p>Hello. I am online and ready. How can I assist you today?</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-header mt-12">
+        <span class="ph-icon">⟁</span>
+        <span>QUICK COMMANDS</span>
+      </div>
+      <div class="quick-cmds" id="quick-cmds">
+        <button class="qcmd" data-cmd="System status report">System Status</button>
+        <button class="qcmd" data-cmd="What time is it?">Time</button>
+        <button class="qcmd" data-cmd="Open a browser">Open Browser</button>
+        <button class="qcmd" data-cmd="Take a screenshot">Screenshot</button>
+        <button class="qcmd" data-cmd="Play some music">Play Music</button>
+        <button class="qcmd" data-cmd="What is the weather today?">Weather</button>
+      </div>
+    </aside>
+
+  </div><!-- #app -->
+
+  <!-- ════════ NOTIFICATION TOAST ════════ -->
+  <div id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

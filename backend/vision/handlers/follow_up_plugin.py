@@ -1,4 +1,4 @@
-"""
+﻿"""
 Vision Follow-Up Handler Plugin
 Handles follow-up responses to vision-related questions.
 """
@@ -165,7 +165,7 @@ async def handle_terminal_follow_up(
     - "what does it say?"
     - "are there any errors?"
     - "tell me more"
-    - "yes" (in response to JARVIS offering to analyze)
+    - "yes" (in response to Ironcliw offering to analyze)
 
     Now enhanced with:
     - Command safety classification

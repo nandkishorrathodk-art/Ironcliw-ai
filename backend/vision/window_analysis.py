@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enhanced Window Analysis Module for JARVIS Vision System
+Enhanced Window Analysis Module for Ironcliw Vision System
 Memory-optimized window analysis with no hardcoded values
 Optimized for 16GB RAM macOS systems
 """

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 NotebookLM Sync Script
 
@@ -767,7 +767,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Sync default JARVIS repos (manual mode)
+    # Sync default Ironcliw repos (manual mode)
     python sync_to_notebooklm.py
 
     # Sync with auto upload via MCP
@@ -791,7 +791,7 @@ Examples:
     parser.add_argument(
         "--repos",
         type=str,
-        default="drussell23/JARVIS-AI-Agent,drussell23/jarvis-prime,drussell23/reactor-core",
+        default="drussell23/Ironcliw-AI-Agent,drussell23/jarvis-prime,drussell23/reactor-core",
         help="Comma-separated list of repos (owner/repo format)"
     )
 

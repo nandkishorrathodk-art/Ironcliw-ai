@@ -1,5 +1,5 @@
-"""
-JARVIS Rust Core Python integration.
+﻿"""
+Ironcliw Rust Core Python integration.
 
 This module resolves the real Rust extension first, and only loads the local
 Python stub when no extension is importable. Stub mode is explicit and

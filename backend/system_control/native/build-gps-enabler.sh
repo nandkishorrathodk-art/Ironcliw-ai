@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 echo "🛠️ Building GPS Location Enabler"
 
@@ -24,9 +24,9 @@ cat > GPSLocationEnabler.app/Contents/Info.plist << 'EOF'
     <key>LSMinimumSystemVersion</key>
     <string>10.15</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>JARVIS needs GPS location to provide accurate weather and location-based services in your exact location, not just city-level data.</string>
+    <string>Ironcliw needs GPS location to provide accurate weather and location-based services in your exact location, not just city-level data.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>JARVIS can provide better contextual assistance with GPS location access for weather, navigation, and location reminders.</string>
+    <string>Ironcliw can provide better contextual assistance with GPS location access for weather, navigation, and location reminders.</string>
 </dict>
 </plist>
 EOF

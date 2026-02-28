@@ -1,7 +1,7 @@
-"""
-JARVIS Vision System - Sliding Window Integration Example
+﻿"""
+Ironcliw Vision System - Sliding Window Integration Example
 
-This module demonstrates how to integrate sliding window analysis into the JARVIS vision pipeline.
+This module demonstrates how to integrate sliding window analysis into the Ironcliw vision pipeline.
 It provides intelligent switching between full-screen and sliding window analysis based on
 image size, memory constraints, and query complexity. Optimized for 16GB RAM macOS systems.
 
@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass
 import logging
 
-# Import JARVIS vision components
+# Import Ironcliw vision components
 from claude_vision_analyzer_main import ClaudeVisionAnalyzer, VisionConfig
 
 # Set up logging
@@ -43,9 +43,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class JarvisVisionCommand:
-    """Vision command structure for JARVIS system.
+    """Vision command structure for Ironcliw system.
     
-    Represents a structured command that can be sent to the JARVIS vision system
+    Represents a structured command that can be sent to the Ironcliw vision system
     for various types of visual analysis tasks.
     
     Attributes:
@@ -68,7 +68,7 @@ class JarvisVisionCommand:
 
 class JarvisSlidingWindowVision:
     """
-    JARVIS Vision System with intelligent sliding window support.
+    Ironcliw Vision System with intelligent sliding window support.
     
     This class provides an intelligent vision analysis system that automatically
     switches between full-screen and sliding window analysis based on multiple
@@ -91,7 +91,7 @@ class JarvisSlidingWindowVision:
     """
     
     def __init__(self, api_key: str):
-        """Initialize the JARVIS Vision System.
+        """Initialize the Ironcliw Vision System.
         
         Args:
             api_key: Anthropic API key for Claude vision analysis
@@ -108,15 +108,15 @@ class JarvisSlidingWindowVision:
         self.analyzer = ClaudeVisionAnalyzer(api_key)
         
         # Decision thresholds (from environment)
-        self.use_sliding_threshold_px = int(os.getenv('JARVIS_SLIDING_THRESHOLD_PX', '800000'))  # 800k pixels
-        self.memory_threshold_mb = float(os.getenv('JARVIS_MEMORY_THRESHOLD_MB', '2000'))
-        self.complexity_threshold = float(os.getenv('JARVIS_COMPLEXITY_THRESHOLD', '0.7'))
+        self.use_sliding_threshold_px = int(os.getenv('Ironcliw_SLIDING_THRESHOLD_PX', '800000'))  # 800k pixels
+        self.memory_threshold_mb = float(os.getenv('Ironcliw_MEMORY_THRESHOLD_MB', '2000'))
+        self.complexity_threshold = float(os.getenv('Ironcliw_COMPLEXITY_THRESHOLD', '0.7'))
         
         logger.info(f"JarvisVisionSystem initialized with sliding threshold: {self.use_sliding_threshold_px} pixels")
     
     async def process_vision_command(self, command: JarvisVisionCommand, screenshot: np.ndarray) -> Dict[str, Any]:
         """
-        Process a vision command from JARVIS with intelligent analysis method selection.
+        Process a vision command from Ironcliw with intelligent analysis method selection.
         
         Automatically decides whether to use full-screen or sliding window analysis
         based on image characteristics, system resources, and command requirements.
@@ -541,19 +541,19 @@ class JarvisSlidingWindowVision:
 
 # Example usage scenarios
 async def example_use_cases():
-    """Demonstrate various JARVIS vision use cases.
+    """Demonstrate various Ironcliw vision use cases.
     
     Provides comprehensive examples of different vision commands and analysis
     scenarios, including element finding, region monitoring, and benchmarking.
     
-    This function serves as both documentation and testing for the JARVIS
+    This function serves as both documentation and testing for the Ironcliw
     vision system capabilities.
     
     Raises:
         RuntimeError: If examples fail to execute properly
     """
     
-    # Initialize JARVIS vision
+    # Initialize Ironcliw vision
     api_key = os.getenv("ANTHROPIC_API_KEY", "mock_api_key")
     jarvis_vision = JarvisSlidingWindowVision(api_key)
     
@@ -561,7 +561,7 @@ async def example_use_cases():
     screenshot = create_test_screenshot()
     
     print("=" * 60)
-    print("JARVIS VISION - SLIDING WINDOW EXAMPLES")
+    print("Ironcliw VISION - SLIDING WINDOW EXAMPLES")
     print("=" * 60)
     
     try:

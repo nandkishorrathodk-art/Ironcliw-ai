@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Setup and test Picovoice integration for JARVIS
+Setup and test Picovoice integration for Ironcliw
 """
 
 import os
@@ -164,9 +164,9 @@ ENABLE_VAD=true
 USE_PICOVOICE=true
 
 # Optimization
-JARVIS_OPTIMIZATION_LEVEL=balanced
-JARVIS_USE_COREML=true
-JARVIS_USE_METAL=true
+Ironcliw_OPTIMIZATION_LEVEL=balanced
+Ironcliw_USE_COREML=true
+Ironcliw_USE_METAL=true
 """
         env_file.write_text(env_content)
         print("✅ Created .env file with your Picovoice key")
@@ -188,7 +188,7 @@ JARVIS_USE_METAL=true
 
 def main():
     """Main setup and test function"""
-    print("🚀 JARVIS Picovoice Setup\n")
+    print("🚀 Ironcliw Picovoice Setup\n")
     
     # Setup environment
     setup_environment()

@@ -1,13 +1,13 @@
-# Claude API Setup Status ✅
+﻿# Claude API Setup Status ✅
 
 ## Integration Complete!
 
-Your JARVIS system is now fully integrated with Claude API. Here's the current status:
+Your Ironcliw system is now fully integrated with Claude API. Here's the current status:
 
 ### ✅ What's Done:
 1. **API Key Set**: Your API key is configured in `.env`
 2. **Dependencies Installed**: `anthropic` package is installed
-3. **Code Integration**: JARVIS can now use Claude when configured
+3. **Code Integration**: Ironcliw can now use Claude when configured
 4. **Dynamic Switching**: The system will automatically use Claude when enabled
 
 ### ⚠️ Action Required: Add Credits
@@ -22,7 +22,7 @@ Your Anthropic API key is valid but needs credits to work. Here's how to add the
 
 ### 🚀 How to Use Once Credits Are Added:
 
-1. **Start JARVIS with Claude** (recommended for M1 Mac):
+1. **Start Ironcliw with Claude** (recommended for M1 Mac):
    ```bash
    python start_system.py
    ```
@@ -60,4 +60,4 @@ CLAUDE_MODEL=claude-3-haiku-20240307
 3. You can monitor usage in the Anthropic console
 4. The system will gracefully fall back to local models if Claude is unavailable
 
-Once you add credits, JARVIS will automatically start using Claude for all responses!
+Once you add credits, Ironcliw will automatically start using Claude for all responses!

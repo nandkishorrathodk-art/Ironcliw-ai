@@ -1,8 +1,8 @@
-# 🚀 Production-Ready God Mode Integration
+﻿# 🚀 Production-Ready God Mode Integration
 
 ## Status: ✅ READY FOR LIVE TESTING
 
-The Final Wire has been successfully integrated into the production JARVIS voice pipeline. You can now test voice-activated God Mode surveillance with `python3 run_supervisor.py`.
+The Final Wire has been successfully integrated into the production Ironcliw voice pipeline. You can now test voice-activated God Mode surveillance with `python3 run_supervisor.py`.
 
 ---
 
@@ -15,7 +15,7 @@ The Final Wire has been successfully integrated into the production JARVIS voice
 - Voice-friendly response formatting
 
 ### 2. **Production Integration** (Just Completed)
-✅ `backend/api/vision_command_handler.py` - Integrated into JARVIS voice pipeline
+✅ `backend/api/vision_command_handler.py` - Integrated into Ironcliw voice pipeline
 - Added IntelligentCommandHandler import (lines 121-128)
 - Added lazy initialization method `_get_intelligent_handler()` (lines 249-271)
 - Added God Mode surveillance detection in `_handle_command_internal()` (lines 519-547)
@@ -25,11 +25,11 @@ The Final Wire has been successfully integrated into the production JARVIS voice
 ## Architecture Flow
 
 ```
-User Says: "JARVIS, watch all Chrome windows for Error"
+User Says: "Ironcliw, watch all Chrome windows for Error"
     ↓
 🎤 Voice Transcription (WebSocket or API)
     ↓
-📡 JARVISVoiceAPI.process_command()  (backend/api/jarvis_voice_api.py)
+📡 IroncliwVoiceAPI.process_command()  (backend/api/jarvis_voice_api.py)
     ↓
 👁️  VisionCommandHandler.handle_command()  (backend/api/vision_command_handler.py)
     ↓
@@ -141,9 +141,9 @@ except Exception as e:
 
 ## How to Test Live
 
-### 1. **Start JARVIS**
+### 1. **Start Ironcliw**
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -160,13 +160,13 @@ open backend/tests/visual_test/horizontal.html
 
 #### Test 1: Single Window Mode
 ```
-"JARVIS, watch Terminal for Build Complete"
+"Ironcliw, watch Terminal for Build Complete"
 ```
 Expected: Watches first Terminal window only
 
 #### Test 2: God Mode (All Spaces)
 ```
-"JARVIS, watch all Chrome windows for BOUNCE COUNT"
+"Ironcliw, watch all Chrome windows for BOUNCE COUNT"
 ```
 Expected:
 - Scans all spaces via Yabai
@@ -177,7 +177,7 @@ Expected:
 
 #### Test 3: With Specific Trigger
 ```
-"JARVIS, monitor Chrome across all spaces for Error"
+"Ironcliw, monitor Chrome across all spaces for Error"
 ```
 Expected: Same as Test 2, but looking for "Error" text
 
@@ -321,7 +321,7 @@ When you run `python3 run_supervisor.py`, watch for:
 ❌ Standalone testing only
 
 ### After
-✅ Voice-activated via production JARVIS
+✅ Voice-activated via production Ironcliw
 ✅ Natural language: "watch all Chrome for Error"
 ✅ Automatic window discovery
 ✅ Integrated into normal voice workflow
@@ -332,7 +332,7 @@ When you run `python3 run_supervisor.py`, watch for:
 ## Next Steps (Optional Enhancements)
 
 1. **Add Command History:**
-   - "JARVIS, watch Terminal like you did yesterday"
+   - "Ironcliw, watch Terminal like you did yesterday"
    - Store successful watch commands
 
 2. **Multi-Trigger Support:**
@@ -354,17 +354,17 @@ When you run `python3 run_supervisor.py`, watch for:
 🔌 **THE FINAL WIRE IS CONNECTED AND INTEGRATED**
 
 ✅ **Production Code:** intelligentcommand_handler.py + vision_command_handler.py
-✅ **Integration:** Fully wired into JARVIS voice pipeline
+✅ **Integration:** Fully wired into Ironcliw voice pipeline
 ✅ **Testing:** Ready for `python3 run_supervisor.py`
 ✅ **Features:** Natural language, God Mode, parallel surveillance
 ✅ **Quality:** Robust, async, parallel, intelligent, dynamic, no hardcoding
 
 **You can now say:**
 ```
-"JARVIS, watch all Chrome windows for bouncing ball"
+"Ironcliw, watch all Chrome windows for bouncing ball"
 ```
 
-**And JARVIS will:**
+**And Ironcliw will:**
 1. Parse your command
 2. Scan entire workspace
 3. Find ALL Chrome windows across ALL spaces

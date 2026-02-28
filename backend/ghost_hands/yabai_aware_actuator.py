@@ -1,4 +1,4 @@
-"""
+﻿"""
 Yabai-Aware Actuator: Cross-Space Window Actions
 =================================================
 
@@ -23,7 +23,7 @@ Architecture:
     ├── PlaywrightTabTargeter (specific tab control)
     └── SpaceSwitchFallback (last resort)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Cross-Space Ghost Hands
 """
 
@@ -55,31 +55,31 @@ class YabaiActuatorConfig:
 
     # Yabai settings
     yabai_path: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_YABAI_PATH")
+        default_factory=lambda: os.getenv("Ironcliw_YABAI_PATH")
     )
     yabai_timeout_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_YABAI_TIMEOUT_MS", "2000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_YABAI_TIMEOUT_MS", "2000"))
     )
 
     # Action settings
     use_accessibility_api: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_USE_AX", "true"
+            "Ironcliw_ACTUATOR_USE_AX", "true"
         ).lower() == "true"
     )
     use_space_switch_fallback: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_SPACE_SWITCH", "true"
+            "Ironcliw_ACTUATOR_SPACE_SWITCH", "true"
         ).lower() == "true"
     )
     space_switch_delay_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_SPACE_SWITCH_DELAY_MS", "200"))
+        default_factory=lambda: int(os.getenv("Ironcliw_SPACE_SWITCH_DELAY_MS", "200"))
     )
 
     # Safety
     preserve_user_space: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_PRESERVE_USER_SPACE", "true"
+            "Ironcliw_PRESERVE_USER_SPACE", "true"
         ).lower() == "true"
     )
 

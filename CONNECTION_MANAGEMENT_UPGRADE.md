@@ -1,8 +1,8 @@
-# CloudSQL Connection Management Upgrade
+﻿# CloudSQL Connection Management Upgrade
 
 ## 🎯 Summary
 
-Implemented a **comprehensive singleton connection management system** to eliminate CloudSQL connection leaks and ensure graceful shutdown across all JARVIS components.
+Implemented a **comprehensive singleton connection management system** to eliminate CloudSQL connection leaks and ensure graceful shutdown across all Ironcliw components.
 
 ## 📋 What Was Done
 
@@ -114,7 +114,7 @@ python diagnose_connections.py
 - Cloud SQL proxy status
 - Active connection count
 - Leaked connection detection
-- JARVIS process connections
+- Ironcliw process connections
 - Connection manager health
 
 ### 3. Kill Leaked Connections
@@ -168,7 +168,7 @@ except Exception as e:
 - **Reserved for superuser:** ~3
 - **Available for applications:** ~22
 
-### JARVIS Configuration
+### Ironcliw Configuration
 - **Max connections:** 3 (strict limit)
 - **Min connections:** 1 (auto-scales)
 - **Connection timeout:** 5 seconds
@@ -247,7 +247,7 @@ print(f"Errors: {stats['error_count']}")
 
 ### Still Getting "remaining connection slots" Error
 
-**1. Check for old JARVIS processes:**
+**1. Check for old Ironcliw processes:**
 ```bash
 ps aux | grep -i jarvis
 ```
@@ -322,7 +322,7 @@ After integration, verify:
 
 1. **Integrate with main.py** - Follow `LIFECYCLE_INTEGRATION.md`
 2. **Run Tests** - `python test_connection_manager.py`
-3. **Test Shutdown** - Start JARVIS, press Ctrl+C, verify cleanup
+3. **Test Shutdown** - Start Ironcliw, press Ctrl+C, verify cleanup
 4. **Monitor** - Use `diagnose_connections.py` periodically
 5. **Deploy** - Roll out to production
 

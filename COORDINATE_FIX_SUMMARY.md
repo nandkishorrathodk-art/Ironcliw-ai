@@ -1,7 +1,7 @@
-# Coordinate System Fix Summary
+﻿# Coordinate System Fix Summary
 
 ## Problem
-JARVIS was dragging the mouse to incorrect coordinates (e.g., 2470, 20) instead of the correct Control Center position (1235, 10). This was causing the display connection to fail.
+Ironcliw was dragging the mouse to incorrect coordinates (e.g., 2470, 20) instead of the correct Control Center position (1235, 10). This was causing the display connection to fail.
 
 ## Root Cause
 **Retina Display Coordinate System Mismatch:**
@@ -99,7 +99,7 @@ To verify the fix:
 # Test cached detection
 python test_cache_detection.py
 
-# Test live with JARVIS
+# Test live with Ironcliw
 # Say: "living room tv"
 # Expected: Mouse should drag to (1235, 10) correctly
 ```

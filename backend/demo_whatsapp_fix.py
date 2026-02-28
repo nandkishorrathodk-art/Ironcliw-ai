@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Demo: WhatsApp Command Routing Fix
 Shows how "open WhatsApp" is now correctly handled
@@ -16,7 +16,7 @@ from swift_bridge.python_bridge import IntelligentCommandRouter
 async def demo():
     """Demonstrate the fix for WhatsApp command routing"""
     
-    print("🤖 JARVIS WhatsApp Command Routing Demo")
+    print("🤖 Ironcliw WhatsApp Command Routing Demo")
     print("=" * 50)
     print()
     

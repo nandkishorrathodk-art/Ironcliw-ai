@@ -1,4 +1,4 @@
-"""
+﻿"""
 Shared Async System Metrics Service v258.0
 
 Provides non-blocking access to system metrics (CPU, memory, disk) from a single
@@ -6,7 +6,7 @@ background daemon thread. Replaces 22+ scattered `psutil.cpu_percent(interval=0.
 calls that each block the event loop for 100ms.
 
 Architecture:
-- Single daemon thread refreshes metrics every JARVIS_CPU_METRICS_REFRESH_INTERVAL seconds
+- Single daemon thread refreshes metrics every Ironcliw_CPU_METRICS_REFRESH_INTERVAL seconds
 - GIL guarantees atomic reference assignment — readers always see a complete snapshot
   (old or new), never partially-constructed (R2-#10)
 - Daemon thread exits with process — no shutdown race (R2-#2)
@@ -45,9 +45,9 @@ def _env_float(key: str, default: float) -> float:
         return default
 
 
-_REFRESH_INTERVAL = _env_float("JARVIS_CPU_METRICS_REFRESH_INTERVAL", 2.0)
-_MEASUREMENT_INTERVAL = _env_float("JARVIS_CPU_METRICS_MEASUREMENT_INTERVAL", 0.1)
-_MAX_CACHE_AGE = _env_float("JARVIS_CPU_METRICS_MAX_CACHE_AGE", 5.0)
+_REFRESH_INTERVAL = _env_float("Ironcliw_CPU_METRICS_REFRESH_INTERVAL", 2.0)
+_MEASUREMENT_INTERVAL = _env_float("Ironcliw_CPU_METRICS_MEASUREMENT_INTERVAL", 0.1)
+_MAX_CACHE_AGE = _env_float("Ironcliw_CPU_METRICS_MAX_CACHE_AGE", 5.0)
 
 # Cross-namespace singleton attribute name
 _SYS_ATTR = "_jarvis_metrics_service"

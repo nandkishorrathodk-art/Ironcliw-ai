@@ -1,4 +1,4 @@
-"""
+﻿"""
 Quality-weighted experience scoring for intelligent training triggers.
 
 Instead of triggering training after a flat count of experiences,
@@ -25,7 +25,7 @@ Architecture:
     │  should_trigger() ─► cumulative >= threshold?        │
     └──────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

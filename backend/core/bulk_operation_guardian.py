@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Bulk Operation Guardian - Automated Backup Before Risky Operations
 ===================================================================
@@ -36,7 +36,7 @@ Usage:
         
     # If anything goes wrong, files are automatically restored
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -165,13 +165,13 @@ class SnapshotManager:
     
     def __init__(self, base_dir: Optional[str] = None):
         self.base_dir = Path(base_dir or os.environ.get(
-            "JARVIS_SNAPSHOT_DIR",
+            "Ironcliw_SNAPSHOT_DIR",
             os.path.expanduser("~/.jarvis/operation_snapshots")
         ))
         self.base_dir.mkdir(parents=True, exist_ok=True)
         
-        self.max_snapshots = _env_int("JARVIS_MAX_SNAPSHOTS", 20)
-        self.retention_hours = _env_int("JARVIS_SNAPSHOT_RETENTION_HOURS", 72)
+        self.max_snapshots = _env_int("Ironcliw_MAX_SNAPSHOTS", 20)
+        self.retention_hours = _env_int("Ironcliw_SNAPSHOT_RETENTION_HOURS", 72)
         self._lock = threading.Lock()
     
     def create_snapshot(self, file_path: str, operation_id: str) -> Optional[FileSnapshot]:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script to verify concise response improvements
 """
@@ -10,7 +10,7 @@ import os
 # Add the backend directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from backend.vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+from backend.vision.jarvis_workspace_integration import IroncliwWorkspaceIntelligence
 
 
 async def test_concise_responses():
@@ -18,7 +18,7 @@ async def test_concise_responses():
     print("🧪 Testing Concise Response Improvements")
     print("=" * 60)
     
-    workspace_intel = JARVISWorkspaceIntelligence()
+    workspace_intel = IroncliwWorkspaceIntelligence()
     
     # Test commands that previously generated verbose responses
     test_cases = [

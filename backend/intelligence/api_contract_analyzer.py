@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Contract Analyzer v1.0 - REST API Contract Understanding
 =============================================================
 
@@ -40,7 +40,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -90,7 +90,7 @@ class APIContractConfig:
     OPENAPI_PATHS: List[str] = get_env_list("API_OPENAPI_PATHS", ["openapi.yaml", "openapi.json", "swagger.yaml", "swagger.json"])
 
     # Repository paths
-    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    Ironcliw_REPO: Path = Path(get_env_str("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
     PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
     REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
@@ -1082,7 +1082,7 @@ class CrossRepoAPIAnalyzer:
 
     def __init__(self):
         self._repos: Dict[str, Path] = {
-            "jarvis": APIContractConfig.JARVIS_REPO,
+            "jarvis": APIContractConfig.Ironcliw_REPO,
             "prime": APIContractConfig.PRIME_REPO,
             "reactor": APIContractConfig.REACTOR_REPO,
         }

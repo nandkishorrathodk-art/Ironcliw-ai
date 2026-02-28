@@ -1,4 +1,4 @@
-"""
+﻿"""
 Simple Chatbot for M1 Macs - No heavy models required
 Async version for better performance
 """
@@ -37,14 +37,14 @@ class SimpleChatbot:
         self._lock = asyncio.Lock()  # For thread-safe history access
 
         # System personality
-        self.personality = "helpful and friendly AI assistant named JARVIS"
+        self.personality = "helpful and friendly AI assistant named Ironcliw"
 
         # Pre-defined responses for common queries
         self.responses = {
             "greeting": [
-                "Hello! I'm JARVIS, your AI assistant. How can I help you today?",
+                "Hello! I'm Ironcliw, your AI assistant. How can I help you today?",
                 "Hi there! I'm here to assist you. What can I do for you?",
-                "Greetings! I'm JARVIS. How may I be of service?",
+                "Greetings! I'm Ironcliw. How may I be of service?",
             ],
             "how_are_you": [
                 "I'm functioning perfectly, thank you for asking! How can I help you?",

@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Configuration System v1.0
 ==================================
 
-Enterprise-grade configuration management for the JARVIS Trinity ecosystem.
-Handles all aspects of configuration across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade configuration management for the Ironcliw Trinity ecosystem.
+Handles all aspects of configuration across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 4 critical configuration patterns:

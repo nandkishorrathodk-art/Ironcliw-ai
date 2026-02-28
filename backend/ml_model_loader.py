@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Simplified ML Model Loader for JARVIS
+Simplified ML Model Loader for Ironcliw
 Only loads essential models: Whisper, embeddings
 """
 

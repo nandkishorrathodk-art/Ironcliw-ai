@@ -1,14 +1,14 @@
-"""
+﻿"""
 Minimal Computer Use Test Server
 ================================
 
 A lightweight FastAPI server to test the Computer Use integration
-without the heavy JARVIS initialization.
+without the heavy Ironcliw initialization.
 
 Run with: python tests/minimal_computer_use_server.py
 Test with: POST http://localhost:8000/api/computer-use/execute
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="JARVIS Computer Use Test Server",
+    title="Ironcliw Computer Use Test Server",
     version="1.0.0",
     description="Minimal server for testing Computer Use integration"
 )
@@ -84,7 +84,7 @@ async def get_connector():
 async def root():
     """Root endpoint."""
     return {
-        "service": "JARVIS Computer Use Test Server",
+        "service": "Ironcliw Computer Use Test Server",
         "version": "1.0.0",
         "endpoints": [
             "GET /health - Health check",
@@ -231,7 +231,7 @@ async def execute_safe_code(code: str):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("JARVIS Computer Use Test Server")
+    print("Ironcliw Computer Use Test Server")
     print("=" * 60)
     print("")
     print("Starting on http://localhost:8000")

@@ -1,9 +1,9 @@
-"""
+﻿"""
 v77.3: Trinity Cross-Repo IDE Synchronization
 ==============================================
 
 Advanced synchronization layer that connects the IDE bridge across
-JARVIS, J-Prime, and Reactor Core repositories.
+Ironcliw, J-Prime, and Reactor Core repositories.
 
 Features:
 - Real-time file change propagation
@@ -16,7 +16,7 @@ Features:
 This enables the IDE to understand the full Trinity ecosystem,
 providing intelligent suggestions that span all three repositories.
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 1.0.0
 """
 
@@ -110,7 +110,7 @@ def _get_trinity_repos() -> Dict[str, Path]:
 
     # Fallback to environment variables
     return {
-        "jarvis": Path(os.getenv("JARVIS_REPO", Path(__file__).parent.parent.parent.parent.parent)),
+        "jarvis": Path(os.getenv("Ironcliw_REPO", Path(__file__).parent.parent.parent.parent.parent)),
         "j_prime": Path(os.getenv("J_PRIME_REPO", Path.home() / "Documents/repos/jarvis-prime")),
         "reactor_core": Path(os.getenv("REACTOR_CORE_REPO", Path.home() / "Documents/repos/reactor-core")),
     }
@@ -167,7 +167,7 @@ class SyncEventType(Enum):
 
 class RepoType(Enum):
     """Trinity repository types."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     J_PRIME = "j_prime"
     REACTOR_CORE = "reactor_core"
 

@@ -1,22 +1,22 @@
-# JARVIS AI System v101.0
+﻿# Ironcliw AI System v101.0
 ## The World's Most Advanced Autonomous AI Operating System
 
 > **"Just Another Rather Very Intelligent System"** - A fully autonomous, cross-repository AI ecosystem with self-evolution capabilities, production-grade resilience, and AGI-level cognitive architecture.
 
-[![Version](https://img.shields.io/badge/version-101.0-blue.svg)](https://github.com/yourusername/JARVIS-AI-Agent)
+[![Version](https://img.shields.io/badge/version-101.0-blue.svg)](https://github.com/yourusername/Ironcliw-AI-Agent)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-Production-brightgreen.svg)](https://github.com/yourusername/JARVIS-AI-Agent)
+[![Status](https://img.shields.io/badge/status-Production-brightgreen.svg)](https://github.com/yourusername/Ironcliw-AI-Agent)
 
 ---
 
-## 🎯 What is JARVIS?
+## 🎯 What is Ironcliw?
 
-JARVIS is a **production-grade autonomous AI operating system** that orchestrates multiple AI agents, models, and services across distributed repositories. It's not just an assistant—it's a self-aware, self-healing, self-evolving cognitive architecture.
+Ironcliw is a **production-grade autonomous AI operating system** that orchestrates multiple AI agents, models, and services across distributed repositories. It's not just an assistant—it's a self-aware, self-healing, self-evolving cognitive architecture.
 
 ### Core Philosophy
 - **Zero Human Intervention**: Autonomous operation with self-healing and auto-recovery
-- **Cross-Repository Intelligence**: Seamlessly coordinates JARVIS, JARVIS-Prime, and Reactor-Core
+- **Cross-Repository Intelligence**: Seamlessly coordinates Ironcliw, Ironcliw-Prime, and Reactor-Core
 - **Production Hardened**: Circuit breakers, graceful degradation, timeout recovery
 - **Cost Optimized**: Intelligent routing between local, cloud, and API-based models
 - **Voice Native**: Full voice biometric authentication with multi-factor security
@@ -28,16 +28,16 @@ JARVIS is a **production-grade autonomous AI operating system** that orchestrate
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/yourusername/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Single command startup - orchestrates everything
 python3 run_supervisor.py
 ```
 
 That's it. One command starts:
-- ✅ JARVIS Core (main intelligence)
-- ✅ JARVIS-Prime (local LLM brain)
+- ✅ Ironcliw Core (main intelligence)
+- ✅ Ironcliw-Prime (local LLM brain)
 - ✅ Reactor-Core (training pipeline)
 - ✅ Neural Mesh (60+ coordinated agents)
 - ✅ Google Workspace Chief of Staff
@@ -69,11 +69,11 @@ That's it. One command starts:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         JARVIS AI ECOSYSTEM v101.0                           │
+│                         Ironcliw AI ECOSYSTEM v101.0                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                               │
 │  ┌───────────────────┐      ┌──────────────────┐      ┌──────────────────┐ │
-│  │   JARVIS Core     │◄────►│  JARVIS Prime    │◄────►│  Reactor Core    │ │
+│  │   Ironcliw Core     │◄────►│  Ironcliw Prime    │◄────►│  Reactor Core    │ │
 │  │   (Main Repo)     │      │  (Local LLM)     │      │  (Training)      │ │
 │  └───────────────────┘      └──────────────────┘      └──────────────────┘ │
 │           │                           │                         │            │
@@ -113,7 +113,7 @@ That's it. One command starts:
 
 | Layer | Technologies |
 |-------|-------------|
-| **LLM Models** | Claude Opus 4.5, JARVIS-Prime (Llama 70B GGUF), Gemini, GPT-4 |
+| **LLM Models** | Claude Opus 4.5, Ironcliw-Prime (Llama 70B GGUF), Gemini, GPT-4 |
 | **Voice** | ECAPA-TDNN, SpeechBrain STT, macOS TTS, ChromaDB semantic cache |
 | **Vector DBs** | ChromaDB (6 collections), Pinecone, Weaviate |
 | **Observability** | Langfuse (decision audit), Helicone (cost tracking), Prometheus |
@@ -127,7 +127,7 @@ That's it. One command starts:
 
 ## 🌐 Trinity Systems (v100-101)
 
-Trinity represents the **cross-repository orchestration layer** that unifies JARVIS, JARVIS-Prime, and Reactor-Core into a single cognitive system.
+Trinity represents the **cross-repository orchestration layer** that unifies Ironcliw, Ironcliw-Prime, and Reactor-Core into a single cognitive system.
 
 ### Trinity Components
 
@@ -173,11 +173,11 @@ Real-time state synchronization and event streaming.
 **File Structure:**
 ```
 ~/.jarvis/cross_repo/
-├── vbia_events.json       # JARVIS → All (voice auth events)
-├── vbia_requests.json     # Prime/Reactor → JARVIS
-├── vbia_results.json      # JARVIS → Prime/Reactor
-├── vbia_state.json        # JARVIS state broadcast
-├── prime_state.json       # JARVIS Prime status
+├── vbia_events.json       # Ironcliw → All (voice auth events)
+├── vbia_requests.json     # Prime/Reactor → Ironcliw
+├── vbia_results.json      # Ironcliw → Prime/Reactor
+├── vbia_state.json        # Ironcliw state broadcast
+├── prime_state.json       # Ironcliw Prime status
 ├── reactor_state.json     # Reactor Core status
 └── heartbeat.json         # Cross-repo health
 ```
@@ -191,7 +191,7 @@ from backend.core.cross_repo_state_initializer import (
 
 # Coordinated startup with graceful degradation
 results = await initialize_all_repos_coordinated()
-# Returns: {RepoType.JARVIS: True, RepoType.JARVIS_PRIME: True, ...}
+# Returns: {RepoType.Ironcliw: True, RepoType.Ironcliw_PRIME: True, ...}
 
 # Check status
 status = await get_initialization_status()
@@ -324,7 +324,7 @@ ACTIVE_REQUEST_VALIDATION_INTERVAL=60.0
 
 ```bash
 # Cost limits
-JARVIS_UNIFIED_DAILY_BUDGET=5.00              # $5/day total
+Ironcliw_UNIFIED_DAILY_BUDGET=5.00              # $5/day total
 MAX_SINGLE_REQUEST_COST=0.50                   # $0.50/request max
 PREFER_LOCAL_BELOW_COST=0.10                   # Use local if <$0.10
 
@@ -501,7 +501,7 @@ Decision: GRANT + Learn (store noisy environment profile)
 
 ### Cross-Repo Integration
 
-VBIA events are broadcast to JARVIS-Prime and Reactor-Core for analysis and training.
+VBIA events are broadcast to Ironcliw-Prime and Reactor-Core for analysis and training.
 
 **Event Types:**
 ```python
@@ -535,7 +535,7 @@ from backend.core.cross_repo_state_initializer import get_cross_repo_initializer
 initializer = await get_cross_repo_initializer()
 await initializer.emit_event(VBIAEvent(
     event_type=EventType.AUTHENTICATION_SUCCESS,
-    source_repo=RepoType.JARVIS,
+    source_repo=RepoType.Ironcliw,
     payload={
         "user_id": "derek",
         "confidence": 0.93,
@@ -710,7 +710,7 @@ await workspace_agent.execute(
 
 ## 🔄 Coding Council Self-Evolution
 
-Meta-level framework enabling JARVIS to improve its own codebase autonomously.
+Meta-level framework enabling Ironcliw to improve its own codebase autonomously.
 
 ### Architecture
 
@@ -732,7 +732,7 @@ Clinical-grade task governance preventing unconstrained evolution.
 - Design plan validation (architecture review)
 - Risk assessment (impact scoring)
 - MetaGPT-inspired discipline (structured thinking)
-- JARVIS Thinking Protocol enforcement
+- Ironcliw Thinking Protocol enforcement
 
 **Risk Scoring:**
 ```python
@@ -813,11 +813,11 @@ Routes evolution requests to appropriate execution strategy.
 
 ## 🌍 Cross-Repository Integration
 
-Unified ecosystem connecting JARVIS, JARVIS-Prime, and Reactor-Core.
+Unified ecosystem connecting Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
 ### Startup Coordination (v6.3)
 
-**Phase 1: JARVIS Local** (Required)
+**Phase 1: Ironcliw Local** (Required)
 ```
 Timeout: 30s
 Success: Continue to Phase 2
@@ -827,7 +827,7 @@ Failure: Abort (critical dependency)
 **Phase 2: External Repos** (Parallel)
 ```
 ┌─────────────────┐    ┌──────────────────┐
-│ JARVIS Prime    │    │ Reactor Core     │
+│ Ironcliw Prime    │    │ Reactor Core     │
 │ Timeout: 30s    │    │ Timeout: 30s     │
 │ Retry: 3x       │    │ Retry: 3x        │
 │ Delay: 2s       │    │ Delay: 2s        │
@@ -851,26 +851,26 @@ Failure: Abort (critical dependency)
    - Verify status = "ready" or "active"
 
 3. HTTP health check (if configured)
-   - GET {JARVIS_PRIME_HEALTH_URL}
+   - GET {Ironcliw_PRIME_HEALTH_URL}
    - GET {REACTOR_CORE_HEALTH_URL}
 ```
 
 **Configuration:**
 ```bash
 # Coordinated startup
-JARVIS_COORDINATED_STARTUP_ENABLED=true
-JARVIS_GRACEFUL_DEGRADATION_ENABLED=true
+Ironcliw_COORDINATED_STARTUP_ENABLED=true
+Ironcliw_GRACEFUL_DEGRADATION_ENABLED=true
 
 # Timeouts
-JARVIS_REPO_STARTUP_TIMEOUT=30.0           # Per-repo startup timeout
-JARVIS_REPO_HEALTH_PROBE_TIMEOUT=5.0       # Health check timeout
+Ironcliw_REPO_STARTUP_TIMEOUT=30.0           # Per-repo startup timeout
+Ironcliw_REPO_HEALTH_PROBE_TIMEOUT=5.0       # Health check timeout
 
 # Retry policy
-JARVIS_REPO_HEALTH_RETRY_COUNT=3           # Number of retries
-JARVIS_REPO_HEALTH_RETRY_DELAY=2.0         # Delay between retries (seconds)
+Ironcliw_REPO_HEALTH_RETRY_COUNT=3           # Number of retries
+Ironcliw_REPO_HEALTH_RETRY_DELAY=2.0         # Delay between retries (seconds)
 
 # Health endpoints (optional)
-JARVIS_PRIME_HEALTH_URL=http://localhost:8002/health
+Ironcliw_PRIME_HEALTH_URL=http://localhost:8002/health
 REACTOR_CORE_HEALTH_URL=http://localhost:8090/health
 ```
 
@@ -879,11 +879,11 @@ REACTOR_CORE_HEALTH_URL=http://localhost:8090/health
 [CrossRepoState] ═══════════════════════════════════════════════
 [CrossRepoState] v6.3: Starting coordinated multi-repo initialization
 [CrossRepoState] ═══════════════════════════════════════════════
-[CrossRepoState] Phase 1: Initializing JARVIS local...
-[CrossRepoState] ✅ JARVIS local initialized
-[CrossRepoState] Phase 2a: Initializing JARVIS Prime...
+[CrossRepoState] Phase 1: Initializing Ironcliw local...
+[CrossRepoState] ✅ Ironcliw local initialized
+[CrossRepoState] Phase 2a: Initializing Ironcliw Prime...
 [CrossRepoState] Phase 2b: Initializing Reactor Core...
-[CrossRepoState] ✅ JARVIS Prime initialized
+[CrossRepoState] ✅ Ironcliw Prime initialized
 [CrossRepoState] ⚠️ Reactor Core unavailable - degraded mode
 [CrossRepoState] ═══════════════════════════════════════════════
 [CrossRepoState] v6.3: Coordinated startup complete (12.34s)
@@ -898,7 +898,7 @@ REACTOR_CORE_HEALTH_URL=http://localhost:8090/health
 
 **Redis Pub/Sub Architecture:**
 ```
-JARVIS → Redis Channel "jarvis:cost:cross_repo" ← JARVIS Prime
+Ironcliw → Redis Channel "jarvis:cost:cross_repo" ← Ironcliw Prime
                             ↓                            ↓
                       Reactor Core                  [Others]
 
@@ -932,7 +932,7 @@ Messages:
 
 **Reactor-Core Integration:**
 ```
-JARVIS → Experience Events → Reactor-Core Training Pipeline
+Ironcliw → Experience Events → Reactor-Core Training Pipeline
 
 Experience Types:
 - Task completion (success/failure)
@@ -952,9 +952,9 @@ POST http://localhost:8090/api/training/experience
 
 **Continuous Learning:**
 ```
-User: "JARVIS, unlock my screen"
-JARVIS: [Tries voice auth, fails]
-JARVIS: "Voice authentication failed - background noise"
+User: "Ironcliw, unlock my screen"
+Ironcliw: [Tries voice auth, fails]
+Ironcliw: "Voice authentication failed - background noise"
 User: [Manually unlocks with password]
 
 Experience Recorded:
@@ -1198,26 +1198,26 @@ Confidence Thresholds:
 #### Core System
 ```bash
 # Startup
-JARVIS_FAST_STARTUP=false                  # Skip health checks for dev
-JARVIS_GLOBAL_STARTUP_TIMEOUT=600.0        # Max startup time (10 minutes)
+Ironcliw_FAST_STARTUP=false                  # Skip health checks for dev
+Ironcliw_GLOBAL_STARTUP_TIMEOUT=600.0        # Max startup time (10 minutes)
 
 # Logging
-JARVIS_LOG_LEVEL=INFO                      # DEBUG, INFO, WARNING, ERROR
-JARVIS_LOG_FILE=/var/log/jarvis/jarvis.log
+Ironcliw_LOG_LEVEL=INFO                      # DEBUG, INFO, WARNING, ERROR
+Ironcliw_LOG_FILE=/var/log/jarvis/jarvis.log
 
 # Database
-JARVIS_DB_PATH=~/.jarvis/jarvis.db         # SQLite database
-JARVIS_CLOUD_SQL_ENABLED=true              # Use Cloud SQL for voice profiles
+Ironcliw_DB_PATH=~/.jarvis/jarvis.db         # SQLite database
+Ironcliw_CLOUD_SQL_ENABLED=true              # Use Cloud SQL for voice profiles
 ```
 
 #### LLM Routing
 ```bash
 # Model preferences (v100.2)
-JARVIS_PRIMARY_MODEL=prime_local           # prime_local, claude, gemini
-JARVIS_FALLBACK_MODEL=claude              # Fallback when primary unavailable
+Ironcliw_PRIMARY_MODEL=prime_local           # prime_local, claude, gemini
+Ironcliw_FALLBACK_MODEL=claude              # Fallback when primary unavailable
 
 # Cost management
-JARVIS_UNIFIED_DAILY_BUDGET=5.00          # $5/day across all repos
+Ironcliw_UNIFIED_DAILY_BUDGET=5.00          # $5/day across all repos
 MAX_SINGLE_REQUEST_COST=0.50               # Max $0.50 per request
 
 # Timeouts
@@ -1233,54 +1233,54 @@ ACTIVE_REQUEST_VALIDATION_INTERVAL=60.0
 #### Cross-Repo Integration
 ```bash
 # Trinity coordination
-JARVIS_COORDINATED_STARTUP_ENABLED=true
-JARVIS_GRACEFUL_DEGRADATION_ENABLED=true
+Ironcliw_COORDINATED_STARTUP_ENABLED=true
+Ironcliw_GRACEFUL_DEGRADATION_ENABLED=true
 CROSS_REPO_NEURAL_MESH_ENABLED=true
 CROSS_REPO_COST_SYNC_ENABLED=true
 
 # Repo paths
-JARVIS_REPO_PATH=~/Documents/repos/JARVIS-AI-Agent
-JARVIS_PRIME_REPO_PATH=~/Documents/repos/jarvis-prime
+Ironcliw_REPO_PATH=~/Documents/repos/Ironcliw-AI-Agent
+Ironcliw_PRIME_REPO_PATH=~/Documents/repos/jarvis-prime
 REACTOR_CORE_REPO_PATH=~/Documents/repos/reactor-core
 
 # Health endpoints
-JARVIS_PRIME_HEALTH_URL=http://localhost:8002/health
+Ironcliw_PRIME_HEALTH_URL=http://localhost:8002/health
 REACTOR_CORE_HEALTH_URL=http://localhost:8090/health
 
 # Startup timeouts
-JARVIS_REPO_STARTUP_TIMEOUT=30.0
-JARVIS_REPO_HEALTH_PROBE_TIMEOUT=5.0
-JARVIS_REPO_HEALTH_RETRY_COUNT=3
-JARVIS_REPO_HEALTH_RETRY_DELAY=2.0
+Ironcliw_REPO_STARTUP_TIMEOUT=30.0
+Ironcliw_REPO_HEALTH_PROBE_TIMEOUT=5.0
+Ironcliw_REPO_HEALTH_RETRY_COUNT=3
+Ironcliw_REPO_HEALTH_RETRY_DELAY=2.0
 ```
 
 #### Voice Biometric Intelligence
 ```bash
 # Authentication thresholds
-JARVIS_TIER1_VBIA_THRESHOLD=0.70           # Low-auth tier
-JARVIS_TIER2_VBIA_THRESHOLD=0.85           # Strict-auth tier
+Ironcliw_TIER1_VBIA_THRESHOLD=0.70           # Low-auth tier
+Ironcliw_TIER2_VBIA_THRESHOLD=0.85           # Strict-auth tier
 
 # Features
-JARVIS_VOICE_AUTH_PRE_EXECUTION=true       # Verify before executing
-JARVIS_VOICE_CONTINUOUS_VERIFY=false       # Continuous background verification
-JARVIS_VOICE_ENV_ADAPT=true                # Adapt to environment noise
-JARVIS_ANTI_SPOOFING_ENABLED=true          # Physics-aware anti-spoofing
+Ironcliw_VOICE_AUTH_PRE_EXECUTION=true       # Verify before executing
+Ironcliw_VOICE_CONTINUOUS_VERIFY=false       # Continuous background verification
+Ironcliw_VOICE_ENV_ADAPT=true                # Adapt to environment noise
+Ironcliw_ANTI_SPOOFING_ENABLED=true          # Physics-aware anti-spoofing
 
 # Visual security
-JARVIS_VISUAL_SECURITY_ENABLED=true
-JARVIS_VISUAL_SECURITY_MODE=omniparser     # omniparser, claude_vision, ocr
+Ironcliw_VISUAL_SECURITY_ENABLED=true
+Ironcliw_VISUAL_SECURITY_MODE=omniparser     # omniparser, claude_vision, ocr
 
 # Caching
-JARVIS_VOICE_CACHE_TTL=30.0                # Semantic cache TTL (seconds)
+Ironcliw_VOICE_CACHE_TTL=30.0                # Semantic cache TTL (seconds)
 
 # Observability
-JARVIS_VOICE_WATCHDOG_INTEGRATION=true
+Ironcliw_VOICE_WATCHDOG_INTEGRATION=true
 ```
 
 #### Google Workspace
 ```bash
 # Enable Chief of Staff
-JARVIS_GOOGLE_WORKSPACE_ENABLED=true
+Ironcliw_GOOGLE_WORKSPACE_ENABLED=true
 
 # Credentials
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
@@ -1288,10 +1288,10 @@ GOOGLE_WORKSPACE_DOMAIN=yourcompany.com
 GOOGLE_WORKSPACE_USER_EMAIL=you@yourcompany.com
 
 # Features
-JARVIS_GMAIL_ENABLED=true
-JARVIS_CALENDAR_ENABLED=true
-JARVIS_DOCS_ENABLED=true
-JARVIS_DRIVE_ENABLED=true
+Ironcliw_GMAIL_ENABLED=true
+Ironcliw_CALENDAR_ENABLED=true
+Ironcliw_DOCS_ENABLED=true
+Ironcliw_DRIVE_ENABLED=true
 ```
 
 #### Neural Mesh
@@ -1309,17 +1309,17 @@ NEURAL_MESH_HEALTH_CHECK_INTERVAL=30.0
 #### God Mode Surveillance
 ```bash
 # Ghost Display
-JARVIS_SHADOW_DISPLAY=BetterDisplay        # Virtual display name
+Ironcliw_SHADOW_DISPLAY=BetterDisplay        # Virtual display name
 GHOST_DISPLAY_ID=2                         # Display ID
 
 # Capture
-JARVIS_CAPTURE_MODE=auto                   # auto, mosaic, ferrari
-JARVIS_OCR_CONFIDENCE_THRESHOLD=0.85
+Ironcliw_CAPTURE_MODE=auto                   # auto, mosaic, ferrari
+Ironcliw_OCR_CONFIDENCE_THRESHOLD=0.85
 
 # Detection
-JARVIS_OMNIPARSER_ENABLED=true
-JARVIS_CLAUDE_VISION_ENABLED=true
-JARVIS_OCR_FALLBACK_ENABLED=true
+Ironcliw_OMNIPARSER_ENABLED=true
+Ironcliw_CLAUDE_VISION_ENABLED=true
+Ironcliw_OCR_FALLBACK_ENABLED=true
 ```
 
 ---
@@ -1365,7 +1365,7 @@ from backend.core.cross_repo_state_initializer import (
 
 # Coordinated startup
 results = await initialize_all_repos_coordinated()
-# Returns: {RepoType.JARVIS: True, RepoType.JARVIS_PRIME: True, ...}
+# Returns: {RepoType.Ironcliw: True, RepoType.Ironcliw_PRIME: True, ...}
 
 # Check status
 status = await get_initialization_status()
@@ -1382,7 +1382,7 @@ status = await get_initialization_status()
 initializer = await get_cross_repo_initializer()
 await initializer.emit_event(VBIAEvent(
     event_type=EventType.AUTHENTICATION_SUCCESS,
-    source_repo=RepoType.JARVIS,
+    source_repo=RepoType.Ironcliw,
     payload={"user_id": "derek", "confidence": 0.93}
 ))
 
@@ -1475,12 +1475,12 @@ pytest -n auto
 
 ```bash
 # Enable debug logging
-export JARVIS_LOG_LEVEL=DEBUG
+export Ironcliw_LOG_LEVEL=DEBUG
 
 # Run with verbose output
 python3 run_supervisor.py --verbose
 
-# Interactive Python shell with JARVIS context
+# Interactive Python shell with Ironcliw context
 python3 -i -c "from backend.core import *"
 ```
 
@@ -1506,20 +1506,20 @@ bandit -r backend/
 
 ### Common Issues
 
-#### 1. "JARVIS-Prime failed to initialize"
+#### 1. "Ironcliw-Prime failed to initialize"
 
-**Cause:** JARVIS-Prime repo not found or not running.
+**Cause:** Ironcliw-Prime repo not found or not running.
 
 **Solution:**
 ```bash
-# Check JARVIS-Prime is running
+# Check Ironcliw-Prime is running
 curl http://localhost:8002/health
 
 # Check repo path
-echo $JARVIS_PRIME_REPO_PATH
+echo $Ironcliw_PRIME_REPO_PATH
 
 # Disable if not needed
-export JARVIS_COORDINATED_STARTUP_ENABLED=false
+export Ironcliw_COORDINATED_STARTUP_ENABLED=false
 ```
 
 #### 2. "Degradation mode - all tiers failed"
@@ -1548,10 +1548,10 @@ export DEGRADATION_RECOVERY_TIMEOUT=60.0  # Reduce to 1 minute
 **Solution:**
 ```bash
 # Enable adaptive thresholds
-export JARVIS_VOICE_ENV_ADAPT=true
+export Ironcliw_VOICE_ENV_ADAPT=true
 
 # Lower threshold temporarily
-export JARVIS_TIER2_VBIA_THRESHOLD=0.75
+export Ironcliw_TIER2_VBIA_THRESHOLD=0.75
 
 # Check microphone
 # Speak louder and closer to mic
@@ -1633,7 +1633,7 @@ curl http://localhost:8010/metrics
 
 Built with:
 - **Claude Opus 4.5** (Anthropic) - Primary reasoning model
-- **JARVIS-Prime** (Llama 70B) - Local LLM brain
+- **Ironcliw-Prime** (Llama 70B) - Local LLM brain
 - **SpeechBrain** - ECAPA-TDNN voice embeddings
 - **ChromaDB** - Vector database for semantic memory
 - **LangChain/LangGraph** - Agent orchestration
@@ -1653,12 +1653,12 @@ MIT License - See [LICENSE](LICENSE) file for details.
 ## 🔗 Links
 
 - **Documentation**: [https://jarvis-docs.example.com](https://jarvis-docs.example.com)
-- **Issue Tracker**: [GitHub Issues](https://github.com/yourusername/JARVIS-AI-Agent/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/JARVIS-AI-Agent/discussions)
-- **Blog**: [JARVIS Development Blog](https://blog.example.com)
+- **Issue Tracker**: [GitHub Issues](https://github.com/yourusername/Ironcliw-AI-Agent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/Ironcliw-AI-Agent/discussions)
+- **Blog**: [Ironcliw Development Blog](https://blog.example.com)
 
 ---
 
-**Made with ❤️ by the JARVIS Team**
+**Made with ❤️ by the Ironcliw Team**
 
 *"Just Another Rather Very Intelligent System"*

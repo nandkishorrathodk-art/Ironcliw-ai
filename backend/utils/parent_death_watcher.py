@@ -1,5 +1,5 @@
-"""
-JARVIS Parent Death Watcher
+﻿"""
+Ironcliw Parent Death Watcher
 ============================
 
 Monitors the parent process (kernel) and initiates graceful shutdown when
@@ -22,13 +22,13 @@ Usage in backend/main.py:
                 await watcher.stop()
 
 Architecture:
-- Reads JARVIS_KERNEL_PID from environment (set by supervisor)
+- Reads Ironcliw_KERNEL_PID from environment (set by supervisor)
 - Polls parent process liveness at configurable interval (default 2s)
 - On parent death: logs, sends SIGTERM to self, then SIGKILL after grace period
 - Works on macOS, Linux, and Windows
 - Fully async with sync fallback for shutdown
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -365,12 +365,12 @@ def get_kernel_pid() -> Optional[int]:
     Returns:
         Kernel PID if set, None otherwise.
     """
-    kernel_pid_str = os.environ.get("JARVIS_KERNEL_PID")
+    kernel_pid_str = os.environ.get("Ironcliw_KERNEL_PID")
     if kernel_pid_str:
         try:
             return int(kernel_pid_str)
         except ValueError:
-            logger.warning(f"[ParentWatcher] Invalid JARVIS_KERNEL_PID: {kernel_pid_str}")
+            logger.warning(f"[ParentWatcher] Invalid Ironcliw_KERNEL_PID: {kernel_pid_str}")
     return None
 
 
@@ -403,7 +403,7 @@ async def start_parent_watcher(
     kernel_pid = get_kernel_pid()
     if not kernel_pid:
         logger.debug(
-            "[ParentWatcher] JARVIS_KERNEL_PID not set - running standalone, "
+            "[ParentWatcher] Ironcliw_KERNEL_PID not set - running standalone, "
             "parent death watcher disabled"
         )
         return None
@@ -435,7 +435,7 @@ def start_parent_watcher_sync(
     kernel_pid = get_kernel_pid()
     if not kernel_pid:
         logger.debug(
-            "[ParentWatcher] JARVIS_KERNEL_PID not set - running standalone"
+            "[ParentWatcher] Ironcliw_KERNEL_PID not set - running standalone"
         )
         return None
 

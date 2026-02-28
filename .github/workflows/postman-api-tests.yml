@@ -1,4 +1,4 @@
-name: JARVIS Postman API Tests
+﻿name: Ironcliw Postman API Tests
 
 on:
   push:
@@ -229,12 +229,12 @@ jobs:
       - name: Run Voice Auth Intelligence Collection
         if: github.event.inputs.collection == 'all' || github.event.inputs.collection == 'voice-auth' || github.event.inputs.collection == ''
         run: |
-          newman run postman/collections/JARVIS_Voice_Auth_Intelligence_Collection.postman_collection.json \
+          newman run postman/collections/Ironcliw_Voice_Auth_Intelligence_Collection.postman_collection.json \
             --env-var "base_url=http://localhost:8010" \
             --env-var "speaker_name=Derek" \
             --reporters cli,htmlextra \
             --reporter-htmlextra-export ./reports/voice-auth-intelligence-report.html \
-            --reporter-htmlextra-title "JARVIS Voice Auth Intelligence Tests" \
+            --reporter-htmlextra-title "Ironcliw Voice Auth Intelligence Tests" \
             --delay-request 100 \
             --timeout-request 10000 \
             --folder "1. System Status" \
@@ -243,23 +243,23 @@ jobs:
       - name: Run Voice Unlock Flow Collection
         if: github.event.inputs.collection == 'all' || github.event.inputs.collection == 'voice-unlock' || github.event.inputs.collection == ''
         run: |
-          newman run postman/collections/JARVIS_Voice_Unlock_Flow_Collection.postman_collection.json \
+          newman run postman/collections/Ironcliw_Voice_Unlock_Flow_Collection.postman_collection.json \
             --env-var "base_url=http://localhost:8010" \
             --env-var "speaker_name=Derek" \
             --reporters cli,htmlextra \
             --reporter-htmlextra-export ./reports/voice-unlock-flow-report.html \
-            --reporter-htmlextra-title "JARVIS Voice Unlock Flow Tests" \
+            --reporter-htmlextra-title "Ironcliw Voice Unlock Flow Tests" \
             --delay-request 100 \
             --timeout-request 10000 || true
 
       - name: Run API Collection Health Checks
         if: github.event.inputs.collection == 'all' || github.event.inputs.collection == 'api' || github.event.inputs.collection == ''
         run: |
-          newman run postman/collections/JARVIS_API_Collection.postman_collection.json \
+          newman run postman/collections/Ironcliw_API_Collection.postman_collection.json \
             --env-var "base_url=http://localhost:8010" \
             --reporters cli,htmlextra \
             --reporter-htmlextra-export ./reports/api-collection-report.html \
-            --reporter-htmlextra-title "JARVIS API Tests" \
+            --reporter-htmlextra-title "Ironcliw API Tests" \
             --delay-request 100 \
             --timeout-request 10000 \
             --folder "Health & Status" || true
@@ -339,7 +339,7 @@ jobs:
 
       - name: Generate collection summary
         run: |
-          echo "# JARVIS Postman Collections Summary" > postman/COLLECTIONS_SUMMARY.md
+          echo "# Ironcliw Postman Collections Summary" > postman/COLLECTIONS_SUMMARY.md
           echo "" >> postman/COLLECTIONS_SUMMARY.md
           echo "Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> postman/COLLECTIONS_SUMMARY.md
           echo "" >> postman/COLLECTIONS_SUMMARY.md

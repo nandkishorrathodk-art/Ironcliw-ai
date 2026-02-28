@@ -1,8 +1,8 @@
-# JARVIS Vision Intelligence System
+﻿# Ironcliw Vision Intelligence System
 
 ## Overview
 
-The Vision Intelligence System is a multi-language, dynamic state learning framework that enables JARVIS to understand application states without any hardcoding. It combines Python orchestration, Rust performance optimization, and Swift native macOS integration to create a powerful vision understanding system.
+The Vision Intelligence System is a multi-language, dynamic state learning framework that enables Ironcliw to understand application states without any hardcoding. It combines Python orchestration, Rust performance optimization, and Swift native macOS integration to create a powerful vision understanding system.
 
 ## Key Features
 
@@ -248,4 +248,4 @@ cd backend/vision/intelligence
 
 ## License
 
-Part of the JARVIS AI Agent system.
+Part of the Ironcliw AI Agent system.

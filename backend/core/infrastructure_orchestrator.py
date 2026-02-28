@@ -1,23 +1,23 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Infrastructure Orchestrator - On-Demand Cloud Resource Management
+Ironcliw Infrastructure Orchestrator - On-Demand Cloud Resource Management
 =========================================================================
 v1.0.0 - Unified Infrastructure Lifecycle Edition
 
 The root problem this solves:
-- GCP resources (Cloud Run, Redis, etc.) stay deployed even when JARVIS isn't running
+- GCP resources (Cloud Run, Redis, etc.) stay deployed even when Ironcliw isn't running
 - This causes idle costs and resource waste
-- No unified lifecycle management across JARVIS, JARVIS-Prime, and Reactor-Core
+- No unified lifecycle management across Ironcliw, Ironcliw-Prime, and Reactor-Core
 
 Solution: On-demand infrastructure provisioning and automatic cleanup.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────┐
-    │                    JARVIS Supervisor Starts                          │
+    │                    Ironcliw Supervisor Starts                          │
     │  ┌─────────────────────────────────────────────────────────────┐    │
     │  │           Infrastructure Orchestrator                        │    │
     │  │  ┌──────────────────┬──────────────────┬─────────────────┐  │    │
-    │  │  │ JARVIS Backend   │  JARVIS Prime    │  Reactor Core   │  │    │
+    │  │  │ Ironcliw Backend   │  Ironcliw Prime    │  Reactor Core   │  │    │
     │  │  │ (Cloud Run)      │  (Cloud Run)     │  (GCS/Redis)    │  │    │
     │  │  └──────────────────┴──────────────────┴─────────────────┘  │    │
     │  │                                                              │    │
@@ -36,9 +36,9 @@ Key Principles:
 3. Async/parallel operations for fast startup/shutdown
 4. Environment-driven configuration (no hardcoding)
 5. Circuit breaker pattern for fault tolerance
-6. Multi-repo awareness (JARVIS, Prime, Reactor)
+6. Multi-repo awareness (Ironcliw, Prime, Reactor)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -90,7 +90,7 @@ class ProvisioningReason(Enum):
 
 class DestroyReason(Enum):
     """Why a resource should be destroyed."""
-    JARVIS_SHUTDOWN = "jarvis_shutdown"
+    Ironcliw_SHUTDOWN = "jarvis_shutdown"
     RESOURCE_IDLE = "resource_idle"
     COST_LIMIT_REACHED = "cost_limit_reached"
     EXPLICIT_REQUEST = "explicit_request"
@@ -107,46 +107,46 @@ class InfrastructureConfig:
 
     # Feature toggles
     on_demand_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_INFRA_ON_DEMAND", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_INFRA_ON_DEMAND", "true").lower() == "true"
     )
     auto_destroy_on_shutdown: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_INFRA_AUTO_DESTROY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_INFRA_AUTO_DESTROY", "true").lower() == "true"
     )
 
     # Terraform settings
     terraform_dir: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_TERRAFORM_DIR",
+            "Ironcliw_TERRAFORM_DIR",
             str(Path(__file__).parent.parent.parent / "terraform")
         ))
     )
     terraform_timeout_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_TERRAFORM_TIMEOUT", "300"))
+        default_factory=lambda: int(os.getenv("Ironcliw_TERRAFORM_TIMEOUT", "300"))
     )
     terraform_auto_approve: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TERRAFORM_AUTO_APPROVE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TERRAFORM_AUTO_APPROVE", "true").lower() == "true"
     )
 
     # Resource thresholds for intelligent provisioning
     memory_pressure_threshold_gb: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_MEMORY_THRESHOLD_GB", "4.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_MEMORY_THRESHOLD_GB", "4.0"))
     )
 
     # Cloud Run settings
     jarvis_prime_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_USE_CLOUD_RUN", "false").lower() == "true"
     )
     jarvis_backend_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_BACKEND_USE_CLOUD_RUN", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_BACKEND_USE_CLOUD_RUN", "false").lower() == "true"
     )
     redis_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_REDIS_ENABLED", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_REDIS_ENABLED", "false").lower() == "true"
     )
 
     # Multi-repo paths
     jarvis_prime_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             str(Path.home() / "Documents/repos/jarvis-prime")
         ))
     )
@@ -159,21 +159,21 @@ class InfrastructureConfig:
 
     # Cost protection
     daily_cost_limit_usd: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DAILY_COST_LIMIT", "1.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DAILY_COST_LIMIT", "1.0"))
     )
 
     # Circuit breaker
     max_consecutive_failures: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_INFRA_MAX_FAILURES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_INFRA_MAX_FAILURES", "3"))
     )
     circuit_breaker_timeout_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_INFRA_CB_TIMEOUT", "300"))
+        default_factory=lambda: int(os.getenv("Ironcliw_INFRA_CB_TIMEOUT", "300"))
     )
 
     # State persistence
     state_file: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_INFRA_STATE_FILE",
+            "Ironcliw_INFRA_STATE_FILE",
             str(Path.home() / ".jarvis/infrastructure_state.json")
         ))
     )
@@ -272,22 +272,22 @@ class InfrastructureOrchestrator:
 
     This class manages:
     - Intelligent resource provisioning based on workload
-    - Automatic cleanup on JARVIS shutdown
-    - Multi-repo awareness (JARVIS, Prime, Reactor)
+    - Automatic cleanup on Ironcliw shutdown
+    - Multi-repo awareness (Ironcliw, Prime, Reactor)
     - Cost tracking and protection
     - Circuit breaker for fault tolerance
 
     Usage:
         orchestrator = InfrastructureOrchestrator()
 
-        # On JARVIS startup
+        # On Ironcliw startup
         await orchestrator.initialize()
         await orchestrator.ensure_infrastructure()
 
         # During runtime
         orchestrator.track_cost(0.01)  # Track resource usage
 
-        # On JARVIS shutdown
+        # On Ironcliw shutdown
         await orchestrator.cleanup_infrastructure()
     """
 
@@ -347,16 +347,16 @@ class InfrastructureOrchestrator:
 
     def _init_resource_tracking(self):
         """Initialize tracking for all manageable resources."""
-        # JARVIS Prime Cloud Run
+        # Ironcliw Prime Cloud Run
         self.state.resources["jarvis_prime"] = ManagedResource(
-            name="JARVIS-Prime Cloud Run",
+            name="Ironcliw-Prime Cloud Run",
             terraform_module="module.jarvis_prime",
             estimated_hourly_cost_usd=0.03,  # ~$0.02-0.05/hr
         )
 
-        # JARVIS Backend Cloud Run
+        # Ironcliw Backend Cloud Run
         self.state.resources["jarvis_backend"] = ManagedResource(
-            name="JARVIS Backend Cloud Run",
+            name="Ironcliw Backend Cloud Run",
             terraform_module="module.jarvis_backend",
             estimated_hourly_cost_usd=0.10,  # ~$0.05-0.15/hr
         )
@@ -700,7 +700,7 @@ class InfrastructureOrchestrator:
 
         return success
 
-    async def cleanup_infrastructure(self, reason: DestroyReason = DestroyReason.JARVIS_SHUTDOWN) -> bool:
+    async def cleanup_infrastructure(self, reason: DestroyReason = DestroyReason.Ironcliw_SHUTDOWN) -> bool:
         """
         Clean up infrastructure that WE created.
 
@@ -946,7 +946,7 @@ class GCPReconciler:
         logger.info(f"[GCPReconciler] Session ID: {self._session_id}")
 
     def _generate_session_id(self) -> str:
-        """Generate unique session ID for this JARVIS instance."""
+        """Generate unique session ID for this Ironcliw instance."""
         import hashlib
         import socket
 
@@ -1098,7 +1098,7 @@ class GCPReconciler:
 
     async def _find_orphaned_vms(self) -> List[Dict[str, Any]]:
         """
-        Find VMs with JARVIS labels that aren't tracked locally.
+        Find VMs with Ironcliw labels that aren't tracked locally.
 
         v2.1 CRITICAL FIX: Now includes grace period for recently-created VMs.
         This prevents the reconciler from deleting VMs that were just created
@@ -1115,7 +1115,7 @@ class GCPReconciler:
         grace_period_minutes = float(os.getenv("GCP_ORPHAN_GRACE_PERIOD_MINUTES", "5.0"))
 
         try:
-            # Use gcloud CLI to list JARVIS VMs
+            # Use gcloud CLI to list Ironcliw VMs
             cmd = [
                 "gcloud", "compute", "instances", "list",
                 f"--project={self._project_id}",
@@ -1226,7 +1226,7 @@ class GCPReconciler:
 
     async def _find_orphaned_cloud_run(self) -> List[Dict[str, Any]]:
         """
-        Find Cloud Run services with JARVIS labels that aren't tracked.
+        Find Cloud Run services with Ironcliw labels that aren't tracked.
 
         v2.1: Same grace period logic as _find_orphaned_vms.
         """
@@ -1735,7 +1735,7 @@ class GCPReconciler:
 
     async def stop_cloud_sql(self, instance_name: str = "jarvis-learning-db") -> bool:
         """
-        Stop Cloud SQL instance to save costs when JARVIS is not running.
+        Stop Cloud SQL instance to save costs when Ironcliw is not running.
 
         Note: Cloud SQL doesn't have a "stop" command, but you can patch
         the activation policy to NEVER, which stops billing when no connections.
@@ -2154,7 +2154,7 @@ async def start_orphan_detection(
 
 async def cleanup_infrastructure_on_shutdown():
     """
-    Cleanup infrastructure on JARVIS shutdown.
+    Cleanup infrastructure on Ironcliw shutdown.
 
     v2.0: Enhanced with reconciler lock release and orphan loop stop.
     """
@@ -2232,7 +2232,7 @@ def register_shutdown_hook():
         logger.warning("[InfraOrchestrator] Running emergency gcloud cleanup...")
 
         try:
-            # Delete all JARVIS VMs
+            # Delete all Ironcliw VMs
             subprocess.run(
                 [
                     "gcloud", "compute", "instances", "list",

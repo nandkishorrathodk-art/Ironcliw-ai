@@ -1,7 +1,7 @@
-"""
-JARVIS Neural Mesh - Intelligence Engine Adapter
+﻿"""
+Ironcliw Neural Mesh - Intelligence Engine Adapter
 
-Adapts the JARVIS Intelligence Engines (UAE, SAI, CAI, ChainOfThought,
+Adapts the Ironcliw Intelligence Engines (UAE, SAI, CAI, ChainOfThought,
 ReasoningGraph) for seamless integration with the Neural Mesh system.
 
 This adapter enables:
@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 
 class IntelligenceEngineType(str, Enum):
-    """Types of intelligence engines in JARVIS."""
+    """Types of intelligence engines in Ironcliw."""
     UAE = "uae"  # Unified Awareness Engine
     SAI = "sai"  # Self-Aware Intelligence
     CAI = "cai"  # Context Awareness Intelligence
@@ -145,7 +145,7 @@ ENGINE_CAPABILITIES: Dict[IntelligenceEngineType, IntelligenceCapabilities] = {
 
 class IntelligenceEngineAdapter(BaseNeuralMeshAgent):
     """
-    Adapter for JARVIS Intelligence Engines to work with Neural Mesh.
+    Adapter for Ironcliw Intelligence Engines to work with Neural Mesh.
 
     This adapter wraps UAE, SAI, CAI, ChainOfThought, and ReasoningGraph
     engines, exposing their capabilities through the Neural Mesh interface.

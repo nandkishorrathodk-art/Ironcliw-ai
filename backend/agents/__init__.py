@@ -1,5 +1,5 @@
-"""
-JARVIS AI Agents Package
+﻿"""
+Ironcliw AI Agents Package
 
 Intelligent agents for specialized tasks:
 - Voice Memory Agent: Persistent voice recognition memory

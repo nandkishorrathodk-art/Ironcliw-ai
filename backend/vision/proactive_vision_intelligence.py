@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Proactive Vision Intelligence System for JARVIS
+Proactive Vision Intelligence System for Ironcliw
 Pure Claude Vision-based continuous monitoring with zero hardcoded rules
 """
 
@@ -237,7 +237,7 @@ class ProactiveVisionIntelligence:
         
     def _build_comparative_prompt(self) -> str:
         """Build prompt for comparing two screenshots"""
-        return '''You are JARVIS, an intelligent AI assistant monitoring the user's screen.
+        return '''You are Ironcliw, an intelligent AI assistant monitoring the user's screen.
 Compare these two screenshots (previous and current).
 
 Look for important changes including:
@@ -261,7 +261,7 @@ Respond in this JSON format:
             "importance": "high/medium/low",
             "confidence": 0.0-1.0,
             "category": "update/error/notification/status/dialog/completion/warning/other",
-            "suggested_message": "What JARVIS should say to the user",
+            "suggested_message": "What Ironcliw should say to the user",
             "location": "Where on screen this appeared"
         }
     ],
@@ -275,7 +275,7 @@ Focus on actionable or important information.'''
 
     def _build_initial_analysis_prompt(self) -> str:
         """Build prompt for initial screen analysis"""
-        return '''You are JARVIS, an intelligent AI assistant starting to monitor the user's screen.
+        return '''You are Ironcliw, an intelligent AI assistant starting to monitor the user's screen.
 Analyze this screenshot to understand the current state.
 
 Identify:

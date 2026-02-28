@@ -1,10 +1,10 @@
-"""
+﻿"""
 Trinity Shared Knowledge Graph v2.7
 ===================================
 
 Unified knowledge storage across Trinity repositories:
-- JARVIS (Body) - Interaction knowledge, user patterns
-- JARVIS Prime (Mind) - Model knowledge, inference patterns
+- Ironcliw (Body) - Interaction knowledge, user patterns
+- Ironcliw Prime (Mind) - Model knowledge, inference patterns
 - Reactor Core (Nerves) - Training knowledge, optimization patterns
 
 Features:
@@ -38,7 +38,7 @@ Architecture:
     │   ┌─────────────────────────────────────────────────────────┐    │
     │   │                  Knowledge Sources                      │    │
     │   │                                                         │    │
-    │   │  JARVIS         PRIME              REACTOR              │    │
+    │   │  Ironcliw         PRIME              REACTOR              │    │
     │   │  • User prefs   • Model perf       • Training metrics   │    │
     │   │  • Commands     • Inference logs   • Optimization paths │    │
     │   │  • Context      • Embeddings       • Failure patterns   │    │
@@ -52,7 +52,7 @@ Usage:
     await graph.add_node(KnowledgeNode(
         node_type=NodeType.PATTERN,
         content="User prefers concise responses",
-        source=RepoType.JARVIS,
+        source=RepoType.Ironcliw,
     ))
 
     # Query knowledge
@@ -131,7 +131,7 @@ class KnowledgeGraphConfig:
 
 class RepoType(Enum):
     """Trinity repository types."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     PRIME = "prime"
     REACTOR = "reactor"
     SHARED = "shared"
@@ -181,7 +181,7 @@ class KnowledgeNode:
     node_id: str = ""
     node_type: NodeType = NodeType.CONCEPT
     content: str = ""
-    source: RepoType = RepoType.JARVIS
+    source: RepoType = RepoType.Ironcliw
     embedding: Optional[List[float]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     tags: Set[str] = field(default_factory=set)
@@ -309,7 +309,7 @@ class TrinityKnowledgeGraph:
     - Conflict resolution
     """
 
-    def __init__(self, local_repo: RepoType = RepoType.JARVIS):
+    def __init__(self, local_repo: RepoType = RepoType.Ironcliw):
         self.local_repo = local_repo
         self._running = False
 
@@ -338,7 +338,7 @@ class TrinityKnowledgeGraph:
     @classmethod
     async def create(
         cls,
-        local_repo: RepoType = RepoType.JARVIS,
+        local_repo: RepoType = RepoType.Ironcliw,
     ) -> "TrinityKnowledgeGraph":
         """Create and initialize the knowledge graph."""
         graph = cls(local_repo)
@@ -1036,7 +1036,7 @@ _graph: Optional[TrinityKnowledgeGraph] = None
 
 
 async def get_trinity_knowledge_graph(
-    local_repo: RepoType = RepoType.JARVIS,
+    local_repo: RepoType = RepoType.Ironcliw,
 ) -> TrinityKnowledgeGraph:
     """Get or create the global knowledge graph."""
     global _graph

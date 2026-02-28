@@ -1,4 +1,4 @@
-# Installation Guide - Windows Native Layer
+﻿# Installation Guide - Windows Native Layer
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ dotnet --version
 
 ### 2. Python 3.11+
 
-Already required by JARVIS. Verify:
+Already required by Ironcliw. Verify:
 ```bash
 python --version
 # Should output: 3.11.x or higher

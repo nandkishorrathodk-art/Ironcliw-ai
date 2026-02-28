@@ -1,5 +1,5 @@
-"""
-Experience Recorder - Black Box for JARVIS Data Flywheel
+﻿"""
+Experience Recorder - Black Box for Ironcliw Data Flywheel
 
 This module provides a zero-latency async recorder that captures every user
 interaction for RLHF training. The recorded data feeds into reactor-core
@@ -27,7 +27,7 @@ Integration:
     # Later, when user provides feedback
     await recorder.update_outcome(record_id, outcome)
 
-Author: JARVIS v5.0 Data Flywheel
+Author: Ironcliw v5.0 Data Flywheel
 Version: 1.0.0
 """
 
@@ -80,37 +80,37 @@ class ExperienceConfig:
     # Storage
     output_dir: Path = field(default_factory=lambda: Path(
         os.getenv(
-            "JARVIS_EXPERIENCE_DIR",
+            "Ironcliw_EXPERIENCE_DIR",
             str(Path(__file__).parent.parent.parent / "data" / "memories" / "raw")
         )
     ))
 
     # Queue settings
     queue_max_size: int = field(default_factory=lambda: int(
-        os.getenv("JARVIS_EXPERIENCE_QUEUE_SIZE", "1000")
+        os.getenv("Ironcliw_EXPERIENCE_QUEUE_SIZE", "1000")
     ))
 
     # Batching for efficiency
     batch_size: int = field(default_factory=lambda: int(
-        os.getenv("JARVIS_EXPERIENCE_BATCH_SIZE", "50")
+        os.getenv("Ironcliw_EXPERIENCE_BATCH_SIZE", "50")
     ))
     flush_interval: float = field(default_factory=lambda: float(
-        os.getenv("JARVIS_EXPERIENCE_FLUSH_INTERVAL", "1.0")
+        os.getenv("Ironcliw_EXPERIENCE_FLUSH_INTERVAL", "1.0")
     ))
 
     # Outcome tracking
     max_pending_outcomes: int = field(default_factory=lambda: int(
-        os.getenv("JARVIS_EXPERIENCE_MAX_PENDING", "500")
+        os.getenv("Ironcliw_EXPERIENCE_MAX_PENDING", "500")
     ))
 
     # Feature flags
     enabled: bool = field(default_factory=lambda:
-        os.getenv("JARVIS_EXPERIENCE_ENABLED", "true").lower() == "true"
+        os.getenv("Ironcliw_EXPERIENCE_ENABLED", "true").lower() == "true"
     )
 
     # Debug mode
     debug: bool = field(default_factory=lambda:
-        os.getenv("JARVIS_EXPERIENCE_DEBUG", "false").lower() == "true"
+        os.getenv("Ironcliw_EXPERIENCE_DEBUG", "false").lower() == "true"
     )
 
     def __post_init__(self):
@@ -128,7 +128,7 @@ class ExperienceRecorder:
     """
     Zero-latency async Experience Recorder for RLHF training.
 
-    This is the "Black Box" that records JARVIS's life for reactor-core
+    This is the "Black Box" that records Ironcliw's life for reactor-core
     to learn from. Every interaction is captured with:
     - User prompt
     - Agent response
@@ -577,7 +577,7 @@ class ExperienceRecorder:
             tools_used=tools_used,
             reasoning_trace=data.get("reasoning_trace", []),
             execution_time_ms=data.get("execution_time_ms", 0),
-            model_name=data.get("model", os.getenv("JARVIS_MODEL", "unknown")),
+            model_name=data.get("model", os.getenv("Ironcliw_MODEL", "unknown")),
             token_count=data.get("token_count"),
             metadata={
                 "source": "autonomous_agent",
@@ -678,7 +678,7 @@ def get_experience_recorder(
     Get the global ExperienceRecorder singleton.
 
     Thread-safe singleton pattern for consistent recording
-    across all parts of JARVIS.
+    across all parts of Ironcliw.
 
     Args:
         config: Optional configuration (only used on first call)

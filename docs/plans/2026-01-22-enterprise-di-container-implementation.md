@@ -1,4 +1,4 @@
-# Enterprise DI Container Implementation Plan
+﻿# Enterprise DI Container Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -121,7 +121,7 @@ Dependency Injection Protocols and Types
 Defines the core protocols, enums, and dataclasses for the DI container.
 All managed services must implement the AsyncService protocol.
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -462,7 +462,7 @@ class DependencyResolutionError(DIError):
 ```python
 # backend/core/di/__init__.py
 """
-JARVIS Enterprise Dependency Injection Container
+Ironcliw Enterprise Dependency Injection Container
 ================================================
 
 Provides async-native dependency injection with:
@@ -480,7 +480,7 @@ Usage:
 
     service = container.resolve(MyService)
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -775,7 +775,7 @@ Provides topological sorting of service dependencies with:
 - Parallel group identification for concurrent init
 - Shutdown order computation (reverse of init)
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -1307,7 +1307,7 @@ and lifecycle. Provides async-native dependency injection with:
 - Graceful shutdown in reverse order
 - Health monitoring integration
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -1922,7 +1922,7 @@ Lifecycle Event System
 Provides event emission and subscription for service lifecycle events.
 Supports both sync and async handlers with service-type filtering.
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -2242,7 +2242,7 @@ Intelligence Services Registration
 Registers all intelligence layer services with the DI container.
 This replaces the manual instantiation in run_supervisor.py.
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -2277,7 +2277,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
     # COLLABORATION ENGINE
     # =========================================================================
 
-    if os.getenv("JARVIS_COLLABORATION_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_COLLABORATION_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.collaboration_engine import (
                 CollaborationConfig,
@@ -2301,7 +2301,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
             )
 
             # Register cross-repo coordinator (if enabled)
-            if os.getenv("JARVIS_CROSS_REPO_COLLAB", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_COLLAB", "true").lower() == "true":
                 container.register(
                     CrossRepoCollaborationCoordinator,
                     scope=Scope.SINGLETON,
@@ -2318,7 +2318,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
     # CODE OWNERSHIP ENGINE
     # =========================================================================
 
-    if os.getenv("JARVIS_CODE_OWNERSHIP_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_CODE_OWNERSHIP_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.code_ownership import (
                 OwnershipConfig,
@@ -2342,7 +2342,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
             )
 
             # Register cross-repo coordinator
-            if os.getenv("JARVIS_CROSS_REPO_OWNERSHIP", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_OWNERSHIP", "true").lower() == "true":
                 container.register(
                     CrossRepoOwnershipCoordinator,
                     scope=Scope.SINGLETON,
@@ -2359,7 +2359,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
     # REVIEW WORKFLOW ENGINE
     # =========================================================================
 
-    if os.getenv("JARVIS_REVIEW_WORKFLOW_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_REVIEW_WORKFLOW_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.review_workflow import (
                 ReviewWorkflowConfig,
@@ -2383,7 +2383,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
             )
 
             # Register cross-repo coordinator
-            if os.getenv("JARVIS_CROSS_REPO_REVIEW", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_REVIEW", "true").lower() == "true":
                 container.register(
                     CrossRepoReviewCoordinator,
                     scope=Scope.SINGLETON,
@@ -2400,11 +2400,11 @@ def register_intelligence_services(container: ServiceContainer) -> None:
     # LSP SERVER
     # =========================================================================
 
-    if os.getenv("JARVIS_LSP_SERVER_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_LSP_SERVER_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.lsp_server import (
                 LSPServerConfig,
-                JARVISLSPServer,
+                IroncliwLSPServer,
             )
 
             # Register config
@@ -2416,7 +2416,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
 
             # Register LSP server
             container.register(
-                JARVISLSPServer,
+                IroncliwLSPServer,
                 scope=Scope.SINGLETON,
                 criticality=ServiceCriticality.OPTIONAL,
                 dependencies=[LSPServerConfig],
@@ -2431,7 +2431,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
     # IDE INTEGRATION ENGINE
     # =========================================================================
 
-    if os.getenv("JARVIS_IDE_INTEGRATION_ENABLED", "true").lower() == "true":
+    if os.getenv("Ironcliw_IDE_INTEGRATION_ENABLED", "true").lower() == "true":
         try:
             from backend.intelligence.ide_integration import (
                 IDEIntegrationConfig,
@@ -2455,7 +2455,7 @@ def register_intelligence_services(container: ServiceContainer) -> None:
             )
 
             # Register cross-repo coordinator
-            if os.getenv("JARVIS_CROSS_REPO_IDE", "true").lower() == "true":
+            if os.getenv("Ironcliw_CROSS_REPO_IDE", "true").lower() == "true":
                 container.register(
                     CrossRepoIDECoordinator,
                     scope=Scope.SINGLETON,
@@ -2751,7 +2751,7 @@ Testing Utilities for DI Container
 Provides TestContainer and mocking utilities for testing
 services in isolation.
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -2895,7 +2895,7 @@ git commit -m "feat(di): complete enterprise DI container implementation
 - Backward-compatible factory functions
 - Fixed 4 initialization bugs in run_supervisor.py
 
-Closes: JARVIS-XXX"
+Closes: Ironcliw-XXX"
 ```
 
 ---

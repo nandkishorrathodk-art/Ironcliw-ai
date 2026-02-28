@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Resource Management System
 ==============================
 
-Demonstrates strict resource control for JARVIS on 16GB systems.
+Demonstrates strict resource control for Ironcliw on 16GB systems.
 """
 
 import time
@@ -25,7 +25,7 @@ def print_system_status():
 
 def test_resource_management():
     """Test the resource management system"""
-    print("🧪 Testing JARVIS Resource Management")
+    print("🧪 Testing Ironcliw Resource Management")
     print("=" * 60)
     
     # Show initial system state
@@ -89,7 +89,7 @@ def test_resource_management():
     print_system_status()
     
     final_status = rm.get_status()
-    print(f"\n  JARVIS Memory: {final_status.get('jarvis_memory_mb', 0):.1f}MB")
+    print(f"\n  Ironcliw Memory: {final_status.get('jarvis_memory_mb', 0):.1f}MB")
     print(f"  Active Services: {final_status.get('active_services', {})}")
     
     # Test emergency cleanup

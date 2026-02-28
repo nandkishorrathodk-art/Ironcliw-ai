@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Pattern Recognition Agent
+﻿"""
+Ironcliw Neural Mesh - Pattern Recognition Agent
 
 Advanced pattern detection across system data, behaviors, and events.
 Uses statistical analysis and temporal pattern mining to identify

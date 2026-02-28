@@ -1,4 +1,4 @@
-# CaptureResult ValueError Fix - The REAL Problem
+﻿# CaptureResult ValueError Fix - The REAL Problem
 
 ## ✅ **Actual Root Cause Found**
 
@@ -58,18 +58,18 @@ The function now checks for:
 
 ## 🚀 **How to Apply the Fix**
 
-### Option 1: Restart JARVIS (Recommended)
+### Option 1: Restart Ironcliw (Recommended)
 
 ```bash
-# Stop JARVIS (Ctrl+C in the terminal running it)
+# Stop Ironcliw (Ctrl+C in the terminal running it)
 # Then start again:
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 
 ### Option 2: Hot Reload (if supported)
 
-If JARVIS supports hot reload, it should pick up the changes automatically.
+If Ironcliw supports hot reload, it should pick up the changes automatically.
 
 ## ✅ **Expected Behavior After Fix**
 

@@ -1,13 +1,13 @@
-"""
-JARVIS API Clients - Trinity Cross-Repo Integration.
+﻿"""
+Ironcliw API Clients - Trinity Cross-Repo Integration.
 =====================================================
 
 Provides async clients for external service integration:
 - ReactorCoreClient: Training pipeline trigger (the "Ignition Key")
-- JARVISPrimeClient: Cognitive mind integration
+- IroncliwPrimeClient: Cognitive mind integration
 - TrinityBaseClient: Base class with circuit breaker, retry, DLQ
 
-Author: JARVIS Trinity v81.0
+Author: Ironcliw Trinity v81.0
 """
 
 from backend.clients.reactor_core_client import (
@@ -23,8 +23,8 @@ from backend.clients.reactor_core_client import (
 )
 
 from backend.clients.jarvis_prime_client import (
-    JARVISPrimeClient,
-    JARVISPrimeConfig,
+    IroncliwPrimeClient,
+    IroncliwPrimeConfig,
     InferenceMode,
     CognitiveTaskType,
     ModelStatus,
@@ -63,9 +63,9 @@ __all__ = [
     "initialize_reactor_client",
     "shutdown_reactor_client",
     "check_and_trigger_training",
-    # JARVIS Prime Client
-    "JARVISPrimeClient",
-    "JARVISPrimeConfig",
+    # Ironcliw Prime Client
+    "IroncliwPrimeClient",
+    "IroncliwPrimeConfig",
     "InferenceMode",
     "CognitiveTaskType",
     "ModelStatus",

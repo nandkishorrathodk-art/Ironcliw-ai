@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Integrated Assistant with Swift Command Classification
+Ironcliw Integrated Assistant with Swift Command Classification
 Combines Swift NLP, Vision Analysis, and System Control
 """
 
@@ -19,7 +19,7 @@ from swift_bridge.advanced_python_bridge import AdvancedSwiftBridge
 
 # Import existing components
 from jarvis_integrated_assistant import (
-    JARVISIntegratedAssistant, 
+    IroncliwIntegratedAssistant, 
     IntegratedContext, 
     IntegratedResponse
 )
@@ -27,9 +27,9 @@ from vision.proactive_vision_assistant import NotificationEvent
 
 logger = logging.getLogger(__name__)
 
-class JARVISSwiftIntegratedAssistant(JARVISIntegratedAssistant):
+class IroncliwSwiftIntegratedAssistant(IroncliwIntegratedAssistant):
     """
-    Enhanced JARVIS assistant that uses Swift for command classification
+    Enhanced Ironcliw assistant that uses Swift for command classification
     while maintaining all vision integration features
     """
     
@@ -218,12 +218,12 @@ class JARVISSwiftIntegratedAssistant(JARVISIntegratedAssistant):
         return info
 
 async def test_swift_integration():
-    """Test Swift-integrated JARVIS"""
-    print("🚀 Testing JARVIS with Swift Integration")
+    """Test Swift-integrated Ironcliw"""
+    print("🚀 Testing Ironcliw with Swift Integration")
     print("=" * 50)
     
-    # Initialize Swift-enhanced JARVIS
-    jarvis = JARVISSwiftIntegratedAssistant("Sir")
+    # Initialize Swift-enhanced Ironcliw
+    jarvis = IroncliwSwiftIntegratedAssistant("Sir")
     
     # Get system info
     info = jarvis.get_system_info()
@@ -236,7 +236,7 @@ async def test_swift_integration():
     print("\n🎯 Testing Vision Command with Swift:")
     response = await jarvis.process_vision_command("What can you see on my screen?")
     
-    print(f"\n🗣️ JARVIS Response:")
+    print(f"\n🗣️ Ironcliw Response:")
     print(response.verbal_response)
     
     # Check if Swift was used

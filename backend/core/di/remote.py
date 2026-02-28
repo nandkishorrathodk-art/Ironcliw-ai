@@ -1,10 +1,10 @@
-"""
-JARVIS Cross-Repo Coordination Module v1.0
+﻿"""
+Ironcliw Cross-Repo Coordination Module v1.0
 ===========================================
 
-Enterprise-grade cross-repository coordination for the JARVIS Trinity:
-- JARVIS Body (port 8010) - Main agent with voice, screen, actions
-- JARVIS Prime (port 8000) - LLM inference and reasoning
+Enterprise-grade cross-repository coordination for the Ironcliw Trinity:
+- Ironcliw Body (port 8010) - Main agent with voice, screen, actions
+- Ironcliw Prime (port 8000) - LLM inference and reasoning
 - Reactor Core (port 8090) - Training, evolution, learning
 
 Features:
@@ -20,7 +20,7 @@ Architecture:
     +------------------------------------------------------------------+
     |                                                                    |
     |  +--------------+      +---------------+      +---------------+   |
-    |  | JARVIS Body  |<---->| CrossRepoCoord|<---->| JARVIS Prime  |   |
+    |  | Ironcliw Body  |<---->| CrossRepoCoord|<---->| Ironcliw Prime  |   |
     |  | Port: 8010   |      |     inator    |      | Port: 8000    |   |
     |  +--------------+      +-------+-------+      +---------------+   |
     |                               |                                    |
@@ -40,7 +40,7 @@ Thread Safety:
     All components use lazy initialization for asyncio primitives.
     Never create asyncio.Lock() at module or __init__ level.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 (January 2026)
 """
 
@@ -123,15 +123,15 @@ TRINITY_SERVICES: Final[Dict[str, Dict[str, Any]]] = {
         "default_host": "localhost",
         "default_port": 8010,
         "health_path": "/health",
-        "env_host": "JARVIS_HOST",
-        "env_port": "JARVIS_PORT",
+        "env_host": "Ironcliw_HOST",
+        "env_port": "Ironcliw_PORT",
     },
     "jarvis-prime": {
         "default_host": "localhost",
         "default_port": 8000,
         "health_path": "/health",
-        "env_host": "JARVIS_PRIME_HOST",
-        "env_port": "JARVIS_PRIME_PORT",
+        "env_host": "Ironcliw_PRIME_HOST",
+        "env_port": "Ironcliw_PRIME_PORT",
     },
     "reactor-core": {
         "default_host": "localhost",
@@ -1528,7 +1528,7 @@ class RemoteServiceProxy(BaseAsyncService):
 
 class CrossRepoCoordinator(BaseAsyncService):
     """
-    Main coordinator for Trinity (JARVIS, Prime, Reactor).
+    Main coordinator for Trinity (Ironcliw, Prime, Reactor).
 
     Features:
     - Service discovery via registry
@@ -1538,7 +1538,7 @@ class CrossRepoCoordinator(BaseAsyncService):
     - Graceful degradation
 
     Trinity Services:
-    - jarvis-body: Port 8010 - Main JARVIS agent
+    - jarvis-body: Port 8010 - Main Ironcliw agent
     - jarvis-prime: Port 8000 - LLM inference
     - reactor-core: Port 8090 - Training and evolution
 

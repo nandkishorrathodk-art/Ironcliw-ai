@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for Platform Abstraction Layer (PAL)
 
 Tests all three PAL modules:
@@ -131,7 +131,7 @@ class TestPlatformDetector(unittest.TestCase):
         config_dir = detector.get_config_dir()
         self.assertIsInstance(config_dir, str)
         self.assertTrue(len(config_dir) > 0)
-        # Should contain 'jarvis' or 'JARVIS'
+        # Should contain 'jarvis' or 'Ironcliw'
         self.assertTrue('jarvis' in config_dir.lower())
     
     def test_log_dir_path(self):
@@ -233,7 +233,7 @@ class TestSystemCommands(unittest.TestCase):
         commands = get_system_commands()
         
         # Set a test variable
-        test_var = "JARVIS_TEST_VAR_12345"
+        test_var = "Ironcliw_TEST_VAR_12345"
         test_value = "test_value"
         
         result = commands.set_environment_variable(test_var, test_value)

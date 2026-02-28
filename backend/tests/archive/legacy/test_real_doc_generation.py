@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Real Document Generation with Claude API
 """
@@ -104,8 +104,8 @@ async def main():
 
     print("\n" + "=" * 60)
     if success:
-        print("✅ JARVIS can now generate REAL AI content!")
-        print("\nYou can now ask JARVIS to:")
+        print("✅ Ironcliw can now generate REAL AI content!")
+        print("\nYou can now ask Ironcliw to:")
         print('  • "Write me an essay about climate change"')
         print('  • "Create a report on artificial intelligence"')
         print('  • "Draft an MLA paper about renewable energy"')

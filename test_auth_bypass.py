@@ -1,8 +1,8 @@
-"""
+﻿"""
 Test Authentication Bypass System
 ==================================
 
-Tests the authentication bypass handler in the JARVIS root context.
+Tests the authentication bypass handler in the Ironcliw root context.
 """
 import sys
 import asyncio
@@ -17,7 +17,7 @@ from backend.voice_unlock.bypass_handler import AuthBypassHandler
 
 async def main():
     print("=" * 70)
-    print("JARVIS Authentication Bypass System - Test")
+    print("Ironcliw Authentication Bypass System - Test")
     print("=" * 70)
     
     # Test 1: Configuration

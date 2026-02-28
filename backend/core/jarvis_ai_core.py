@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS AI Core - Uses Claude API Exclusively
+Ironcliw AI Core - Uses Claude API Exclusively
 All AI operations go through Anthropic's Claude for consistency and intelligence
 """
 
@@ -19,17 +19,17 @@ from system_control.claude_command_interpreter import ClaudeCommandInterpreter
 
 logger = logging.getLogger(__name__)
 
-class JARVISAICore:
+class IroncliwAICore:
     """
-    Core AI brain for JARVIS - uses Claude API exclusively
+    Core AI brain for Ironcliw - uses Claude API exclusively
     Handles all AI operations: vision, speech, task execution, learning
     """
     
     def __init__(self):
-        """Initialize JARVIS AI Core with Claude API"""
+        """Initialize Ironcliw AI Core with Claude API"""
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY required for JARVIS AI Core")
+            raise ValueError("ANTHROPIC_API_KEY required for Ironcliw AI Core")
         
         # Initialize Claude components
         self.claude = ClaudeChatbot(
@@ -55,7 +55,7 @@ class JARVISAICore:
         self.autonomous_mode = False
         self.continuous_monitoring = False
         
-        logger.info("JARVIS AI Core initialized with Claude API")
+        logger.info("Ironcliw AI Core initialized with Claude API")
     
     async def process_vision(self, screen_data: Any, mode: str = "focused") -> Dict[str, Any]:
         """
@@ -106,7 +106,7 @@ class JARVISAICore:
         """
         try:
             # Build comprehensive prompt for Claude
-            prompt = f"""You are JARVIS, an AI assistant with the personality of Tony Stark's AI from Iron Man.
+            prompt = f"""You are Ironcliw, an AI assistant with the personality of Tony Stark's AI from Iron Man.
             
 Current workspace context: {json.dumps(self.workspace_context, indent=2)}
 User patterns: {json.dumps(self.user_patterns, indent=2)}
@@ -121,7 +121,7 @@ Analyze this command and provide a JSON response with these exact fields:
   "parameters": {{"target": "app name", "other": "params"}},
   "confidence": 0.0 to 1.0,
   "trigger_autonomous": true or false,
-  "response": "What JARVIS should say to the user"
+  "response": "What Ironcliw should say to the user"
 }}
 
 For opening applications, use intent="app_control" and action="open_app"."""
@@ -202,7 +202,7 @@ For opening applications, use intent="app_control" and action="open_app"."""
                         }
             
             # Build execution prompt
-            prompt = f"""As JARVIS, execute the following task intelligently:
+            prompt = f"""As Ironcliw, execute the following task intelligently:
 
 Task: {json.dumps(task, indent=2)}
 Current context: {json.dumps(self.workspace_context, indent=2)}
@@ -311,7 +311,7 @@ Respond in JSON format with 'execution_plan', 'issues', 'expected_outcome', and 
     
     async def _should_take_action(self, item: Dict) -> Dict[str, Any]:
         """Use Claude to decide if an action should be taken"""
-        prompt = f"""As JARVIS in autonomous mode, should I take action on this item?
+        prompt = f"""As Ironcliw in autonomous mode, should I take action on this item?
 
 Item: {json.dumps(item, indent=2)}
 User patterns: {json.dumps(self.user_patterns, indent=2)}
@@ -336,7 +336,7 @@ Respond in JSON with 'should_act' (boolean), 'confidence' (0-1), 'reasoning', an
         """Process detected notifications intelligently"""
         for notification in notifications:
             # Use Claude to understand the notification
-            prompt = f"""As JARVIS, analyze this notification:
+            prompt = f"""As Ironcliw, analyze this notification:
 
 Notification: {json.dumps(notification, indent=2)}
 
@@ -433,9 +433,9 @@ Respond in JSON format."""
 # Singleton instance
 _jarvis_ai_core = None
 
-def get_jarvis_ai_core() -> JARVISAICore:
-    """Get singleton JARVIS AI Core instance"""
+def get_jarvis_ai_core() -> IroncliwAICore:
+    """Get singleton Ironcliw AI Core instance"""
     global _jarvis_ai_core
     if _jarvis_ai_core is None:
-        _jarvis_ai_core = JARVISAICore()
+        _jarvis_ai_core = IroncliwAICore()
     return _jarvis_ai_core

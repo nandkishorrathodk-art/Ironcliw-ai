@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Complete Locked Screen Flow
+Test Ironcliw Complete Locked Screen Flow
 =======================================
 
 Tests the full scenario from the PRD:
 1. Screen is locked
-2. User says "JARVIS, open Safari and search for dogs"
-3. JARVIS detects lock, provides feedback, unlocks, then executes
+2. User says "Ironcliw, open Safari and search for dogs"
+3. Ironcliw detects lock, provides feedback, unlocks, then executes
 """
 
 import asyncio
@@ -15,7 +15,7 @@ import subprocess
 import time
 from datetime import datetime
 
-# Import JARVIS components
+# Import Ironcliw components
 from api.simple_context_handler_enhanced import wrap_with_enhanced_context
 from api.unified_command_processor import UnifiedCommandProcessor
 
@@ -43,12 +43,12 @@ class FlowTestWebSocket:
 async def test_complete_flow():
     """Test the complete locked screen flow"""
     print("\n" + "="*80)
-    print("🚀 Testing Complete JARVIS Locked Screen Flow")
+    print("🚀 Testing Complete Ironcliw Locked Screen Flow")
     print("="*80)
     
-    print("\n📋 Scenario: Mac is locked, user says 'JARVIS, open Safari and search for dogs'")
+    print("\n📋 Scenario: Mac is locked, user says 'Ironcliw, open Safari and search for dogs'")
     print("   Expected flow:")
-    print("   1. JARVIS detects locked state")
+    print("   1. Ironcliw detects locked state")
     print("   2. Says: 'I see your screen is locked. I'll unlock it now...'") 
     print("   3. Attempts unlock")
     print("   4. Executes command")
@@ -63,14 +63,14 @@ async def test_complete_flow():
     print("   Waiting 3 seconds for lock to complete...")
     await asyncio.sleep(3)
     
-    # Step 2: Create JARVIS components
-    print("\n2️⃣ Setting up JARVIS with enhanced context...")
+    # Step 2: Create Ironcliw components
+    print("\n2️⃣ Setting up Ironcliw with enhanced context...")
     processor = UnifiedCommandProcessor()
     context_handler = wrap_with_enhanced_context(processor)
     websocket = FlowTestWebSocket()
     
     # Step 3: Send the command
-    command = "JARVIS, open Safari and search for dogs"
+    command = "Ironcliw, open Safari and search for dogs"
     print(f"\n3️⃣ Sending command: '{command}'")
     
     try:
@@ -111,9 +111,9 @@ async def test_complete_flow():
         
         # Overall success
         if lock_detected and unlock_intent:
-            print("\n✅ SUCCESS! JARVIS properly handled the locked screen scenario!")
+            print("\n✅ SUCCESS! Ironcliw properly handled the locked screen scenario!")
         else:
-            print("\n❌ ISSUE: JARVIS did not follow the expected flow")
+            print("\n❌ ISSUE: Ironcliw did not follow the expected flow")
             
     except Exception as e:
         print(f"\n❌ Error: {e}")
@@ -132,7 +132,7 @@ async def test_quick_check():
     print(f"\nScreen is currently: {'LOCKED' if is_locked else 'UNLOCKED'}")
 
 if __name__ == "__main__":
-    print("🎯 JARVIS Locked Screen Flow Test")
+    print("🎯 Ironcliw Locked Screen Flow Test")
     print("\n⚠️  This test will lock your screen!")
     print("Press Ctrl+C to cancel, or wait 3 seconds...")
     

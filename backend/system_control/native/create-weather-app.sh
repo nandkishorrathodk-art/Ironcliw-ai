@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "Creating JARVIS Weather App..."
+echo "Creating Ironcliw Weather App..."
 
 # Create app bundle structure
-APP_NAME="JARVISWeather"
+APP_NAME="IroncliwWeather"
 APP_DIR="${APP_NAME}.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
@@ -23,11 +23,11 @@ cat > "${CONTENTS_DIR}/Info.plist" << 'EOF'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>JARVISWeather</string>
+    <string>IroncliwWeather</string>
     <key>CFBundleIdentifier</key>
     <string>com.jarvis.weather</string>
     <key>CFBundleName</key>
-    <string>JARVIS Weather</string>
+    <string>Ironcliw Weather</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -39,9 +39,9 @@ cat > "${CONTENTS_DIR}/Info.plist" << 'EOF'
     <key>LSUIElement</key>
     <true/>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>JARVIS needs your location to provide accurate weather information for your area.</string>
+    <string>Ironcliw needs your location to provide accurate weather information for your area.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>JARVIS needs your location to provide accurate weather information for your area.</string>
+    <string>Ironcliw needs your location to provide accurate weather information for your area.</string>
     <key>com.apple.developer.weatherkit</key>
     <true/>
 </dict>
@@ -56,7 +56,7 @@ import CoreLocation
 import WeatherKit
 
 @main
-class JARVISWeatherApp: NSObject, NSApplicationDelegate {
+class IroncliwWeatherApp: NSObject, NSApplicationDelegate {
     var server: WeatherServer?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -107,7 +107,7 @@ EOF
 # Compile the app
 echo "Compiling app..."
 swiftc jarvis-weather-app.swift \
-    -o "${MACOS_DIR}/JARVISWeather" \
+    -o "${MACOS_DIR}/IroncliwWeather" \
     -framework AppKit \
     -framework CoreLocation \
     -framework WeatherKit
@@ -120,7 +120,7 @@ if [ $? -eq 0 ]; then
     echo "   open $APP_DIR"
     echo ""
     echo "2. Then use CLI mode:"
-    echo "   ./$APP_DIR/Contents/MacOS/JARVISWeather --cli"
+    echo "   ./$APP_DIR/Contents/MacOS/IroncliwWeather --cli"
 else
     echo "❌ Build failed"
 fi

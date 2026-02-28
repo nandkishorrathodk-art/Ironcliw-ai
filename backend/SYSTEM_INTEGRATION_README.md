@@ -1,8 +1,8 @@
-# JARVIS System Integration & Performance (Phase 0D)
+﻿# Ironcliw System Integration & Performance (Phase 0D)
 
 ## Overview
 
-The System Integration & Performance layer ensures all JARVIS components work seamlessly together under the strict memory constraints of a 16GB RAM macOS system. This implementation provides dynamic resource management, intelligent error recovery, and graceful degradation strategies without any hardcoding.
+The System Integration & Performance layer ensures all Ironcliw components work seamlessly together under the strict memory constraints of a 16GB RAM macOS system. This implementation provides dynamic resource management, intelligent error recovery, and graceful degradation strategies without any hardcoding.
 
 ## Key Features
 
@@ -64,7 +64,7 @@ The System Integration & Performance layer ensures all JARVIS components work se
 
 ## Quick Start
 
-### 1. Launch JARVIS with Full Optimization
+### 1. Launch Ironcliw with Full Optimization
 
 ```bash
 cd backend
@@ -72,7 +72,7 @@ cd backend
 ```
 
 This will start:
-- Event-driven JARVIS core at http://localhost:8888
+- Event-driven Ironcliw core at http://localhost:8888
 - Performance Dashboard at http://localhost:8889
 - All resource management systems
 
@@ -83,7 +83,7 @@ The system uses `backend/config/resource_management_config.yaml` as the base con
 ```yaml
 system:
   total_memory_gb: 16          # Total system RAM
-  jarvis_max_memory_gb: 12     # Maximum for JARVIS
+  jarvis_max_memory_gb: 12     # Maximum for Ironcliw
   target_usage_percent: 60     # Target memory usage
 
 components:
@@ -95,9 +95,9 @@ components:
 
 ### 3. Environment Variables
 
-- `JARVIS_USER`: User name (default: "Sir")
-- `JARVIS_DEBUG`: Enable debug mode
-- `JARVIS_PERFORMANCE_DASHBOARD`: Enable dashboard
+- `Ironcliw_USER`: User name (default: "Sir")
+- `Ironcliw_DEBUG`: Enable debug mode
+- `Ironcliw_PERFORMANCE_DASHBOARD`: Enable dashboard
 - `ANTHROPIC_API_KEY`: Required for Claude integration
 
 ## Architecture
@@ -324,7 +324,7 @@ This will:
 
 To manually recover from degraded state:
 
-1. Stop non-JARVIS applications
+1. Stop non-Ironcliw applications
 2. Wait for memory to free
 3. Trigger recovery from dashboard
 4. Monitor health status

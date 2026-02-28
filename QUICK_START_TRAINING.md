@@ -1,15 +1,15 @@
-# Quick Start: Advanced Training System
+﻿# Quick Start: Advanced Training System
 
 ## 🚀 One Command to Rule Them All
 
 ```bash
-cd ~/Documents/repos/JARVIS-AI-Agent
+cd ~/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
 This single command:
-- ✅ Starts JARVIS Core
-- ✅ Launches JARVIS Prime (if not running)
+- ✅ Starts Ironcliw Core
+- ✅ Launches Ironcliw Prime (if not running)
 - ✅ Launches Reactor Core (if not running)
 - ✅ Connects all 3 repos
 - ✅ Enables automatic training
@@ -18,7 +18,7 @@ This single command:
 
 ## 📋 What Works Right Now
 
-### ✅ In JARVIS (100% Complete)
+### ✅ In Ironcliw (100% Complete)
 - Experience collection from all interactions
 - Experience forwarding to Reactor Core
 - Auto-trigger when buffer >= 100 experiences
@@ -41,15 +41,15 @@ Reactor Core must implement the API endpoints. See:
 # In ~/.bashrc or ~/.zshrc
 
 # Repo paths (auto-detected if in standard locations)
-export JARVIS_PRIME_PATH=~/Documents/repos/jarvis-prime
+export Ironcliw_PRIME_PATH=~/Documents/repos/jarvis-prime
 export REACTOR_CORE_PATH=~/Documents/repos/reactor-core
 
 # Ports
-export JARVIS_PRIME_PORT=8002
+export Ironcliw_PRIME_PORT=8002
 export REACTOR_CORE_PORT=8090
 
 # Enable/disable repos
-export JARVIS_PRIME_ENABLED=true
+export Ironcliw_PRIME_ENABLED=true
 export REACTOR_CORE_ENABLED=true
 
 # Resource management (prevents OOM)
@@ -73,11 +73,11 @@ export ROLLOUT_STEPS=10,25,50,75,100
 ## 📊 Monitor Training
 
 ```bash
-# View JARVIS logs
+# View Ironcliw logs
 tail -f logs/jarvis*.log | grep -E "Training|Coordinator"
 
 # Check all repos health
-curl http://localhost:5001/health      # JARVIS
+curl http://localhost:5001/health      # Ironcliw
 curl http://localhost:8002/health      # J-Prime
 curl http://localhost:8090/health       # Reactor Core
 
@@ -102,7 +102,7 @@ curl -N http://localhost:8090/api/training/stream/{job_id}
 
 3. **Check training buffer:**
    ```bash
-   # View JARVIS logs for "buffer_size"
+   # View Ironcliw logs for "buffer_size"
    grep "buffer_size" logs/jarvis*.log
    ```
 
@@ -147,8 +147,8 @@ python3 run_supervisor.py
 Cross-Repo Startup Orchestration v1.0
 ======================================================================
 
-📍 PHASE 1: JARVIS Core (starting via supervisor)
-✅ JARVIS Core initialization in progress...
+📍 PHASE 1: Ironcliw Core (starting via supervisor)
+✅ Ironcliw Core initialization in progress...
 
 📍 PHASE 2: External repos startup (parallel)
   → Probing J-Prime...
@@ -163,7 +163,7 @@ Cross-Repo Startup Orchestration v1.0
 
 ======================================================================
 🎯 Startup Summary:
-  JARVIS Core:   ✅ Running
+  Ironcliw Core:   ✅ Running
   J-Prime:       ✅ Running
   Reactor-Core:  ✅ Running
 ======================================================================

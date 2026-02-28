@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
-"""Monitor CPU usage of JARVIS backend"""
+﻿#!/usr/bin/env python3
+"""Monitor CPU usage of Ironcliw backend"""
 
 import psutil
 import time
 import sys
 
 def monitor_cpu(duration=30):
-    print("📊 Monitoring JARVIS CPU Usage...")
+    print("📊 Monitoring Ironcliw CPU Usage...")
     print("=" * 50)
     
     # Find the backend process

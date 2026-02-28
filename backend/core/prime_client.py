@@ -1,9 +1,9 @@
-"""
+﻿"""
 Prime Client v1.0
 =================
 
-Advanced client for communicating with JARVIS-Prime (the Mind component).
-This is THE critical integration point that connects JARVIS to its local AI brain.
+Advanced client for communicating with Ironcliw-Prime (the Mind component).
+This is THE critical integration point that connects Ironcliw to its local AI brain.
 
 FEATURES:
     - Connection pooling via aiohttp for high performance
@@ -91,21 +91,21 @@ def _get_env_bool(key: str, default: bool) -> bool:
 
 def _resolve_prime_host() -> str:
     """
-    Resolve JARVIS Prime host with intelligent priority order.
+    Resolve Ironcliw Prime host with intelligent priority order.
 
     v233.2 ROOT CAUSE FIX: The supervisor sets multiple env vars when GCP VM is ready:
-      - JARVIS_PRIME_URL (full URL like http://34.45.154.209:8000)
-      - JARVIS_INVINCIBLE_NODE_IP (just the IP)
-      - JARVIS_PRIME_HOST (explicit host override)
+      - Ironcliw_PRIME_URL (full URL like http://34.45.154.209:8000)
+      - Ironcliw_INVINCIBLE_NODE_IP (just the IP)
+      - Ironcliw_PRIME_HOST (explicit host override)
 
     Priority order (highest wins):
-      1. JARVIS_PRIME_URL (parse host from full URL — set by _propagate_invincible_node_url)
-      2. JARVIS_INVINCIBLE_NODE_IP (set by supervisor when GCP VM is ready)
-      3. JARVIS_PRIME_HOST (explicit override)
+      1. Ironcliw_PRIME_URL (parse host from full URL — set by _propagate_invincible_node_url)
+      2. Ironcliw_INVINCIBLE_NODE_IP (set by supervisor when GCP VM is ready)
+      3. Ironcliw_PRIME_HOST (explicit override)
       4. "localhost" (fallback)
     """
-    # Priority 1: Parse host from JARVIS_PRIME_URL (set by supervisor)
-    prime_url = os.getenv("JARVIS_PRIME_URL", "")
+    # Priority 1: Parse host from Ironcliw_PRIME_URL (set by supervisor)
+    prime_url = os.getenv("Ironcliw_PRIME_URL", "")
     if prime_url:
         try:
             from urllib.parse import urlparse
@@ -116,29 +116,29 @@ def _resolve_prime_host() -> str:
             pass
 
     # Priority 2: Invincible Node IP (set by supervisor for GCP VMs)
-    invincible_ip = os.getenv("JARVIS_INVINCIBLE_NODE_IP", "")
+    invincible_ip = os.getenv("Ironcliw_INVINCIBLE_NODE_IP", "")
     if invincible_ip:
         return invincible_ip
 
     # Priority 3: Explicit host override
-    return os.getenv("JARVIS_PRIME_HOST", "localhost")
+    return os.getenv("Ironcliw_PRIME_HOST", "localhost")
 
 
 def _resolve_prime_port() -> int:
     """
-    Resolve JARVIS Prime port with intelligent priority order.
+    Resolve Ironcliw Prime port with intelligent priority order.
 
     v233.2 ROOT CAUSE FIX: Same as _resolve_prime_host — ensures port
-    from GCP VM propagation is picked up without requiring explicit JARVIS_PRIME_PORT.
+    from GCP VM propagation is picked up without requiring explicit Ironcliw_PRIME_PORT.
 
     Priority order:
-      1. JARVIS_PRIME_URL (parse port from full URL)
-      2. JARVIS_INVINCIBLE_NODE_PORT (set by supervisor)
-      3. JARVIS_PRIME_PORT (explicit override)
+      1. Ironcliw_PRIME_URL (parse port from full URL)
+      2. Ironcliw_INVINCIBLE_NODE_PORT (set by supervisor)
+      3. Ironcliw_PRIME_PORT (explicit override)
       4. 8000 (fallback)
     """
-    # Priority 1: Parse port from JARVIS_PRIME_URL
-    prime_url = os.getenv("JARVIS_PRIME_URL", "")
+    # Priority 1: Parse port from Ironcliw_PRIME_URL
+    prime_url = os.getenv("Ironcliw_PRIME_URL", "")
     if prime_url:
         try:
             from urllib.parse import urlparse
@@ -149,7 +149,7 @@ def _resolve_prime_port() -> int:
             pass
 
     # Priority 2: Invincible Node port
-    invincible_port = os.getenv("JARVIS_INVINCIBLE_NODE_PORT", "")
+    invincible_port = os.getenv("Ironcliw_INVINCIBLE_NODE_PORT", "")
     if invincible_port:
         try:
             return int(invincible_port)
@@ -157,7 +157,7 @@ def _resolve_prime_port() -> int:
             pass
 
     # Priority 3: Explicit port override
-    return _get_env_int("JARVIS_PRIME_PORT", 8000)
+    return _get_env_int("Ironcliw_PRIME_PORT", 8000)
 
 
 @dataclass
@@ -166,13 +166,13 @@ class PrimeClientConfig:
     Configuration for Prime client.
 
     v233.2: Uses intelligent env var resolution that respects the supervisor's
-    GCP VM propagation (JARVIS_PRIME_URL, JARVIS_INVINCIBLE_NODE_IP/PORT)
-    in addition to the explicit JARVIS_PRIME_HOST/PORT overrides.
+    GCP VM propagation (Ironcliw_PRIME_URL, Ironcliw_INVINCIBLE_NODE_IP/PORT)
+    in addition to the explicit Ironcliw_PRIME_HOST/PORT overrides.
     """
     # Connection settings — resolved dynamically from multiple env var sources
     prime_host: str = field(default_factory=_resolve_prime_host)
     prime_port: int = field(default_factory=_resolve_prime_port)
-    prime_api_version: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_API_VERSION", "v1"))
+    prime_api_version: str = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_API_VERSION", "v1"))
 
     # Connection pool settings
     pool_size: int = field(default_factory=lambda: _get_env_int("PRIME_POOL_SIZE", 10))
@@ -203,7 +203,7 @@ class PrimeClientConfig:
 
     # v236.0: Vision server (LLaVA on dedicated port)
     prime_vision_port: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_PRIME_VISION_PORT", 8001)
+        default_factory=lambda: _get_env_int("Ironcliw_PRIME_VISION_PORT", 8001)
     )
 
     def __post_init__(self):
@@ -217,12 +217,12 @@ class PrimeClientConfig:
 
     def _identify_source(self) -> str:
         """Identify which env var was used to resolve the endpoint."""
-        if os.getenv("JARVIS_PRIME_URL"):
-            return "JARVIS_PRIME_URL"
-        if os.getenv("JARVIS_INVINCIBLE_NODE_IP"):
-            return "JARVIS_INVINCIBLE_NODE_IP/PORT"
-        if os.getenv("JARVIS_PRIME_HOST"):
-            return "JARVIS_PRIME_HOST/PORT"
+        if os.getenv("Ironcliw_PRIME_URL"):
+            return "Ironcliw_PRIME_URL"
+        if os.getenv("Ironcliw_INVINCIBLE_NODE_IP"):
+            return "Ironcliw_INVINCIBLE_NODE_IP/PORT"
+        if os.getenv("Ironcliw_PRIME_HOST"):
+            return "Ironcliw_PRIME_HOST/PORT"
         return "default (localhost)"
 
     @property
@@ -466,7 +466,7 @@ class PrimeConnectionPool:
                     timeout=timeout,
                     headers={
                         "Content-Type": "application/json",
-                        "User-Agent": "JARVIS-AI-Agent/1.0",
+                        "User-Agent": "Ironcliw-AI-Agent/1.0",
                     },
                 )
 
@@ -518,9 +518,9 @@ class PrimeConnectionPool:
 
 class PrimeClient:
     """
-    Advanced client for JARVIS-Prime communication.
+    Advanced client for Ironcliw-Prime communication.
 
-    This is the main integration point between JARVIS and its local AI brain.
+    This is the main integration point between Ironcliw and its local AI brain.
     """
 
     def __init__(self, config: Optional[PrimeClientConfig] = None):
@@ -872,11 +872,11 @@ class PrimeClient:
 
                 # v232.0: Belt-and-suspenders env-var polling for GCP promotion
                 _hollow_active = os.environ.get(
-                    "JARVIS_HOLLOW_CLIENT_ACTIVE", ""
+                    "Ironcliw_HOLLOW_CLIENT_ACTIVE", ""
                 ).lower() == "true"
                 if _hollow_active and self._endpoint_source == "local":
-                    _new_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
-                    _new_port_str = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "")
+                    _new_ip = os.environ.get("Ironcliw_INVINCIBLE_NODE_IP", "")
+                    _new_port_str = os.environ.get("Ironcliw_INVINCIBLE_NODE_PORT", "")
                     if _new_ip and _new_port_str:
                         try:
                             _new_port = int(_new_port_str)
@@ -1253,7 +1253,7 @@ class PrimeClient:
             response = await self._cloud_client.messages.create(
                 model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
                 max_tokens=request.max_tokens,
-                system=request.system_prompt or "You are JARVIS, an intelligent AI assistant.",
+                system=request.system_prompt or "You are Ironcliw, an intelligent AI assistant.",
                 messages=messages,
             )
 

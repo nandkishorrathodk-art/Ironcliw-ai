@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for JARVIS Voice Integration
-Tests the voice endpoints and JARVIS personality
+Test script for Ironcliw Voice Integration
+Tests the voice endpoints and Ironcliw personality
 """
 
 import asyncio
@@ -16,8 +16,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 load_dotenv()
 
 async def test_jarvis_voice():
-    """Test JARVIS voice system"""
-    print("🎯 Testing JARVIS Voice System...")
+    """Test Ironcliw voice system"""
+    print("🎯 Testing Ironcliw Voice System...")
     
     # Check API key
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -29,16 +29,16 @@ async def test_jarvis_voice():
     print("✅ API key found")
     
     try:
-        # Import JARVIS components
-        from backend.voice.jarvis_voice import JARVISVoiceAssistant, VoiceEngine
+        # Import Ironcliw components
+        from backend.voice.jarvis_voice import IroncliwVoiceAssistant, VoiceEngine
         
-        print("\n🚀 Initializing JARVIS...")
-        jarvis = JARVISVoiceAssistant(api_key)
+        print("\n🚀 Initializing Ironcliw...")
+        jarvis = IroncliwVoiceAssistant(api_key)
         
-        print("✅ JARVIS initialized successfully")
+        print("✅ Ironcliw initialized successfully")
         
         # Test personality system
-        print("\n🧠 Testing JARVIS Personality...")
+        print("\n🧠 Testing Ironcliw Personality...")
         
         # Get activation response
         response = jarvis.personality.get_activation_response()
@@ -57,7 +57,7 @@ async def test_jarvis_voice():
         for cmd in test_commands:
             print(f"\nUser: {cmd}")
             response = await jarvis.personality.process_command(cmd)
-            print(f"JARVIS: {response}")
+            print(f"Ironcliw: {response}")
         
         # Test special commands
         print("\n🎮 Testing special commands...")
@@ -78,8 +78,8 @@ async def test_jarvis_voice():
         print("Break reminders:", jarvis.personality.user_preferences['break_reminder'])
         print("Humor level:", jarvis.personality.user_preferences['humor_level'])
         
-        print("\n✅ All tests passed! JARVIS is ready for action.")
-        print("\n💡 To start JARVIS with voice activation:")
+        print("\n✅ All tests passed! Ironcliw is ready for action.")
+        print("\n💡 To start Ironcliw with voice activation:")
         print("   python -m backend.voice.jarvis_voice")
         print("\n💡 Or use the web interface at http://localhost:8000")
         

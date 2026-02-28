@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Intelligent Startup Narrator v3.0 - Intelligent Speech Edition
+Ironcliw Intelligent Startup Narrator v3.0 - Intelligent Speech Edition
 ======================================================================
 
-Provides intelligent, phase-aware voice narration during JARVIS startup.
+Provides intelligent, phase-aware voice narration during Ironcliw startup.
 Coordinates with the visual loading page to provide complementary
 (not redundant) audio feedback.
 
@@ -27,7 +27,7 @@ Features:
 - Parallel execution support
 - UNIFIED VOICE COORDINATION (v2.0+)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 3.0.0
 """
 
@@ -86,7 +86,7 @@ class StartupPhase(str, Enum):
     FLYWHEEL_TRAINING = "flywheel_training"
     FLYWHEEL_COMPLETE = "flywheel_complete"
     LEARNING_GOALS = "learning_goals"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     # v6.2: Enhanced VBIA Visual Security phases
     VBIA_INIT = "vbia_init"
@@ -99,10 +99,10 @@ class StartupPhase(str, Enum):
     CALENDAR_INIT = "calendar_init"
     NEURAL_MESH = "neural_mesh"
     # v93.16: PROJECT TRINITY - Distributed Cognitive Architecture Phases
-    # Trinity represents the unified Mind (Prime), Body (JARVIS), Nerves (Reactor) system
+    # Trinity represents the unified Mind (Prime), Body (Ironcliw), Nerves (Reactor) system
     TRINITY_INIT = "trinity_init"               # Project Trinity initialization starting
-    TRINITY_BODY = "trinity_body"               # JARVIS Body (execution layer)
-    TRINITY_MIND = "trinity_mind"               # JARVIS Prime (cognition layer)
+    TRINITY_BODY = "trinity_body"               # Ironcliw Body (execution layer)
+    TRINITY_MIND = "trinity_mind"               # Ironcliw Prime (cognition layer)
     TRINITY_NERVES = "trinity_nerves"           # Reactor Core (learning/nerve layer)
     TRINITY_HEARTBEAT = "trinity_heartbeat"     # Cross-repo heartbeat system
     TRINITY_IPC = "trinity_ipc"                 # Inter-process communication
@@ -262,7 +262,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
     StartupPhase.SUPERVISOR_INIT: {
         "start": [
             "Lifecycle supervisor online. Initializing core systems.",
-            "Supervisor active. Preparing JARVIS environment.",
+            "Supervisor active. Preparing Ironcliw environment.",
             "System supervisor initialized. Beginning startup sequence.",
         ],
     },
@@ -277,9 +277,9 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
     },
     StartupPhase.SPAWNING: {
         "start": [
-            "Spawning JARVIS core process.",
+            "Spawning Ironcliw core process.",
             "Initializing main system.",
-            "Launching JARVIS backend.",
+            "Launching Ironcliw backend.",
         ],
     },
     StartupPhase.BACKEND_INIT: {
@@ -362,7 +362,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
     },
     StartupPhase.COMPLETE: {
         "complete": [
-            "JARVIS online. All systems operational.",
+            "Ironcliw online. All systems operational.",
             "Good to be back, Sir. How may I assist you?",
             "Systems restored. Ready when you are.",
             "Initialization complete. At your service.",
@@ -371,7 +371,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
     # v5.0: Partial completion messages (accurate, not falsely claiming full readiness)
     StartupPhase.PARTIAL: {
         "partial": [
-            "JARVIS is partially online. Some features may be limited.",
+            "Ironcliw is partially online. Some features may be limited.",
             "Systems are partially ready. A few services are still initializing.",
             "I'm mostly ready, but some capabilities are still loading.",
             "Core systems online. Some advanced features are temporarily unavailable.",
@@ -514,13 +514,13 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
             "Priorities for improvement established.",
         ],
     },
-    StartupPhase.JARVIS_PRIME: {
+    StartupPhase.Ironcliw_PRIME: {
         "start": [
-            "Connecting to JARVIS Prime tier-zero brain.",
+            "Connecting to Ironcliw Prime tier-zero brain.",
             "Initializing intelligent core.",
         ],
         "local": [
-            "JARVIS Prime running locally.",
+            "Ironcliw Prime running locally.",
             "Local intelligence active.",
         ],
         "cloud": [
@@ -528,7 +528,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
             "Cloud-based reasoning online.",
         ],
         "complete": [
-            "JARVIS Prime ready. Intelligence fully online.",
+            "Ironcliw Prime ready. Intelligence fully online.",
             "Tier-zero brain connected.",
         ],
     },
@@ -594,11 +594,11 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
     StartupPhase.CROSS_REPO_INIT: {
         "start": [
             "Establishing cross-repository connections.",
-            "Connecting to JARVIS Prime and Reactor Core.",
+            "Connecting to Ironcliw Prime and Reactor Core.",
             "Initializing multi-system integration.",
         ],
         "prime_connected": [
-            "JARVIS Prime connection established.",
+            "Ironcliw Prime connection established.",
             "Connected to tier-zero intelligence.",
         ],
         "reactor_connected": [
@@ -611,7 +611,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
         ],
         "complete": [
             "Cross-repository integration complete. All systems connected.",
-            "JARVIS, JARVIS Prime, and Reactor Core now operating in harmony.",
+            "Ironcliw, Ironcliw Prime, and Reactor Core now operating in harmony.",
             "Multi-system coordination active. Intelligence shared across all platforms.",
         ],
     },
@@ -748,19 +748,19 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
     StartupPhase.TRINITY_BODY: {
         "start": [
             "Trinity Body initializing. This is the execution layer.",
-            "Activating JARVIS Body. Command and control systems coming online.",
+            "Activating Ironcliw Body. Command and control systems coming online.",
         ],
         "subsystems": [
             "Body subsystems activating. Voice, vision, and motor functions preparing.",
         ],
         "complete": [
             "Trinity Body online. Execution layer ready for commands.",
-            "JARVIS Body fully operational. Ready to execute.",
+            "Ironcliw Body fully operational. Ready to execute.",
         ],
     },
     StartupPhase.TRINITY_MIND: {
         "start": [
-            "Trinity Mind connecting. JARVIS Prime cognition layer initializing.",
+            "Trinity Mind connecting. Ironcliw Prime cognition layer initializing.",
             "Engaging the Mind. Tier-zero intelligence coming online.",
         ],
         "loading_model": [
@@ -775,7 +775,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
         ],
         "complete": [
             "Trinity Mind online. Cognition layer fully operational.",
-            "JARVIS Prime connected. Intelligent reasoning ready.",
+            "Ironcliw Prime connected. Intelligent reasoning ready.",
         ],
     },
     StartupPhase.TRINITY_NERVES: {
@@ -832,7 +832,7 @@ PHASE_NARRATION_TEMPLATES: Dict[StartupPhase, Dict[str, List[str]]] = {
         "complete": [
             "Project Trinity online. Mind, Body, and Nerves unified.",
             "Trinity architecture fully operational. Distributed cognition enabled.",
-            "The Trinity is complete. JARVIS, Prime, and Reactor are one.",
+            "The Trinity is complete. Ironcliw, Prime, and Reactor are one.",
             "Project Trinity connected. Full distributed cognitive architecture active.",
         ],
         "announcement": [
@@ -2040,7 +2040,7 @@ class IntelligentStartupNarrator:
             # ===================================================================
             if confidence == StartupConfidence.EXCELLENT:
                 responses = [
-                    f"{greeting}! JARVIS online in {duration_seconds:.1f} seconds - that was quick! All systems operational.",
+                    f"{greeting}! Ironcliw online in {duration_seconds:.1f} seconds - that was quick! All systems operational.",
                     f"Systems online, {self.user_name}. {duration_seconds:.1f} seconds - that's a fast one! Ready when you are.",
                     f"{greeting}! All systems green in {duration_seconds:.1f} seconds. Everything's running perfectly.",
                     f"Ready for action, {self.user_name}. {duration_seconds:.1f}-second startup! All services up and operational.",
@@ -2052,7 +2052,7 @@ class IntelligentStartupNarrator:
             # ===================================================================
             elif confidence == StartupConfidence.GOOD:
                 responses = [
-                    f"{greeting}! JARVIS online. All systems operational. How can I help today?",
+                    f"{greeting}! Ironcliw online. All systems operational. How can I help today?",
                     f"Systems restored, {self.user_name}. Ready when you are.",
                     f"{greeting}! All systems green. What's first on the agenda?",
                     f"Initialization complete, {self.user_name}. At your service.",
@@ -2067,7 +2067,7 @@ class IntelligentStartupNarrator:
                 responses = [
                     f"{greeting}. I'm ready, {self.user_name}. Took a bit longer than usual ({duration_seconds:.0f} seconds), but everything's working perfectly now.",
                     f"Systems online, {self.user_name}. Startup took {duration_seconds:.0f} seconds - a bit slower, but all services are operational.",
-                    f"{greeting}! JARVIS online. {duration_seconds:.0f}-second startup, but everything's running smoothly now.",
+                    f"{greeting}! Ironcliw online. {duration_seconds:.0f}-second startup, but everything's running smoothly now.",
                 ]
                 text = random.choice(responses)
 
@@ -2173,7 +2173,7 @@ class IntelligentStartupNarrator:
         v5.0: Announce PARTIAL completion (some services unavailable).
         
         This provides ACCURATE feedback instead of falsely claiming
-        "JARVIS is fully ready" when it's not.
+        "Ironcliw is fully ready" when it's not.
         
         v5.0 Integration: Uses IntelligentStartupAnnouncer for dynamic,
         context-aware partial completion messages.
@@ -2278,7 +2278,7 @@ class IntelligentStartupNarrator:
     
     async def announce_hot_reload_restarting(self, target: str = "backend") -> None:
         """
-        v5.0: Announce that JARVIS is restarting due to code changes.
+        v5.0: Announce that Ironcliw is restarting due to code changes.
         
         Args:
             target: What's being restarted
@@ -2396,17 +2396,17 @@ class IntelligentStartupNarrator:
         mode: str = "start",
         tier: Optional[str] = None,
     ) -> None:
-        """v6.0: Announce JARVIS-Prime status."""
-        phase = StartupPhase.JARVIS_PRIME
+        """v6.0: Announce Ironcliw-Prime status."""
+        phase = StartupPhase.Ironcliw_PRIME
 
         if mode == "local":
-            text = self._get_phase_message(phase, "local") or "JARVIS Prime running locally."
+            text = self._get_phase_message(phase, "local") or "Ironcliw Prime running locally."
         elif mode == "cloud":
             text = self._get_phase_message(phase, "cloud") or "Connected to cloud intelligence."
         elif mode == "complete":
-            text = self._get_phase_message(phase, "complete") or "JARVIS Prime ready."
+            text = self._get_phase_message(phase, "complete") or "Ironcliw Prime ready."
         else:
-            text = self._get_phase_message(phase, "start") or "Connecting to JARVIS Prime."
+            text = self._get_phase_message(phase, "start") or "Connecting to Ironcliw Prime."
 
         if tier:
             text = f"{text} Using tier {tier}."
@@ -2439,7 +2439,7 @@ class IntelligentStartupNarrator:
         fallback_message: str,
     ) -> None:
         """
-        v6.0: Generate and announce an intelligent, context-aware message using JARVIS-Prime.
+        v6.0: Generate and announce an intelligent, context-aware message using Ironcliw-Prime.
 
         This delegates to the unified voice orchestrator's intelligent speech function
         for dynamic, non-hardcoded announcements.
@@ -2447,7 +2447,7 @@ class IntelligentStartupNarrator:
         Args:
             context: Rich context about the current situation
             event_type: Type of event (flywheel, training, learning, etc.)
-            fallback_message: Message to use if JARVIS-Prime is unavailable
+            fallback_message: Message to use if Ironcliw-Prime is unavailable
         """
         if not self.config.intelligent_announcements_enabled:
             await self._speak(fallback_message, NarrationPriority.MEDIUM)
@@ -2478,7 +2478,7 @@ class IntelligentStartupNarrator:
         logger.info("[Narrator] Trinity initialization announced")
 
     async def announce_trinity_body(self, mode: str = "start") -> None:
-        """v93.16: Announce Trinity Body (JARVIS execution layer) status."""
+        """v93.16: Announce Trinity Body (Ironcliw execution layer) status."""
         text = self._get_phase_message(StartupPhase.TRINITY_BODY, mode)
         if not text:
             if mode == "complete":
@@ -2488,7 +2488,7 @@ class IntelligentStartupNarrator:
         await self._speak(text, NarrationPriority.MEDIUM)
 
     async def announce_trinity_mind(self, mode: str = "start", is_local: bool = True) -> None:
-        """v93.16: Announce Trinity Mind (JARVIS-Prime cognition layer) status."""
+        """v93.16: Announce Trinity Mind (Ironcliw-Prime cognition layer) status."""
         if mode == "complete":
             text = self._get_phase_message(StartupPhase.TRINITY_MIND, "complete")
         elif is_local:
@@ -2527,11 +2527,11 @@ class IntelligentStartupNarrator:
         v93.16: Announce full Project Trinity completion.
 
         This is the flagship announcement when all three components
-        (Mind/Prime, Body/JARVIS, Nerves/Reactor) are connected.
+        (Mind/Prime, Body/Ironcliw, Nerves/Reactor) are connected.
 
         Args:
-            mind_online: Whether JARVIS-Prime (Mind) is connected
-            body_online: Whether JARVIS (Body) is running
+            mind_online: Whether Ironcliw-Prime (Mind) is connected
+            body_online: Whether Ironcliw (Body) is running
             nerves_online: Whether Reactor-Core (Nerves) is connected
             startup_duration: Total startup time in seconds
         """
@@ -3050,8 +3050,8 @@ STAGE_TO_PHASE: Dict[str, StartupPhase] = {
     "flywheel_complete": StartupPhase.FLYWHEEL_COMPLETE,
     "learning": StartupPhase.LEARNING_GOALS,
     "learning_goals": StartupPhase.LEARNING_GOALS,
-    "jarvis_prime": StartupPhase.JARVIS_PRIME,
-    "prime": StartupPhase.JARVIS_PRIME,
+    "jarvis_prime": StartupPhase.Ironcliw_PRIME,
+    "prime": StartupPhase.Ironcliw_PRIME,
     "reactor_core": StartupPhase.REACTOR_CORE,
     "reactor": StartupPhase.REACTOR_CORE,
     "training": StartupPhase.FLYWHEEL_TRAINING,

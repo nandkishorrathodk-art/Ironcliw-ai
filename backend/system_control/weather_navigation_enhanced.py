@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Enhanced Weather Navigation with Human-like Interaction
 Simulates manual clicking behavior for reliable Toronto selection
@@ -377,5 +377,5 @@ async def test_enhanced_navigation():
 
 if __name__ == "__main__":
     import os
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_enhanced_navigation())

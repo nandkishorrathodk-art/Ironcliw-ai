@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Build script for Advanced Swift Command Classifier
 
 echo "🏗️  Building Advanced Swift Command Classifier..."
@@ -24,7 +24,7 @@ if [ ! -f "Package.swift" ]; then
 import PackageDescription
 
 let package = Package(
-    name: "JARVISAdvancedClassifier",
+    name: "IroncliwAdvancedClassifier",
     platforms: [
         .macOS(.v10_15)
     ],
@@ -73,7 +73,7 @@ struct CommandClassifierCLI {
         let arguments = CommandLine.arguments
         
         if arguments.count > 1 && arguments[1] == "--version" {
-            print("JARVIS Advanced Command Classifier v2.0 - Zero Hardcoding ML System")
+            print("Ironcliw Advanced Command Classifier v2.0 - Zero Hardcoding ML System")
             return
         }
         
@@ -131,7 +131,7 @@ struct CommandClassifierCLI {
             }
         } else {
             // Interactive mode
-            print("🧠 JARVIS Advanced Command Classifier - Interactive Mode")
+            print("🧠 Ironcliw Advanced Command Classifier - Interactive Mode")
             print("   (Zero hardcoding - Everything is learned)")
             print("   Type 'quit' to exit\n")
             

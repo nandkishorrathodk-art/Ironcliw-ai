@@ -1,10 +1,10 @@
-# OOMBridge Fallback Hardening — Implementation Plan
+﻿# OOMBridge Fallback Hardening — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Fix the three-bug cascade where OOMBridge failure + 2.6GB RAM leads to OOM crash by fixing the guard condition, adding retry, forcing sequential init under low RAM, and splitting desired vs effective mode.
 
-**Architecture:** Fix 1 sets `JARVIS_STARTUP_DESIRED_MODE` at initial mode decision and unconditionally degrades effective mode when bridge fails. Fix 2 adds a single retry. Fix 3 forces sequential init in parallel_initializer when bridge unavailable + low RAM. Fix 4 changes GCP probe eligibility to use desired_mode.
+**Architecture:** Fix 1 sets `Ironcliw_STARTUP_DESIRED_MODE` at initial mode decision and unconditionally degrades effective mode when bridge fails. Fix 2 adds a single retry. Fix 3 forces sequential init in parallel_initializer when bridge unavailable + low RAM. Fix 4 changes GCP probe eligibility to use desired_mode.
 
 **Tech Stack:** Python 3, asyncio, psutil, existing unified_supervisor.py and parallel_initializer.py
 
@@ -12,7 +12,7 @@
 
 ---
 
-### Task 1: Set `JARVIS_STARTUP_DESIRED_MODE` at Initial Mode Decision
+### Task 1: Set `Ironcliw_STARTUP_DESIRED_MODE` at Initial Mode Decision
 
 **Files:**
 - Modify: `unified_supervisor.py:63702` (fallback mode-setting)
@@ -22,18 +22,18 @@
 
 **Step 2: Add desired_mode at the ResourceOrchestrator path**
 
-At line 63728, after `os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _startup_mem_mode`, add:
+At line 63728, after `os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _startup_mem_mode`, add:
 
 ```python
-            os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _startup_mem_mode
+            os.environ["Ironcliw_STARTUP_DESIRED_MODE"] = _startup_mem_mode
 ```
 
 **Step 3: Add desired_mode at the fallback path**
 
-At line 63702, after `os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback_mode`, add:
+At line 63702, after `os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _fallback_mode`, add:
 
 ```python
-            os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _fallback_mode
+            os.environ["Ironcliw_STARTUP_DESIRED_MODE"] = _fallback_mode
 ```
 
 **Step 4: Verify**
@@ -47,11 +47,11 @@ Expected: `OK`
 ```bash
 git add unified_supervisor.py
 git commit -m "$(cat <<'EOF'
-feat(startup): set JARVIS_STARTUP_DESIRED_MODE at initial mode decision
+feat(startup): set Ironcliw_STARTUP_DESIRED_MODE at initial mode decision
 
 Captures operator intent / policy separately from runtime safety mode.
-JARVIS_STARTUP_DESIRED_MODE is set once and never modified — it records
-what mode was originally selected. JARVIS_STARTUP_MEMORY_MODE continues
+Ironcliw_STARTUP_DESIRED_MODE is set once and never modified — it records
+what mode was originally selected. Ironcliw_STARTUP_MEMORY_MODE continues
 to be degraded monotonically during startup for safety.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
@@ -75,11 +75,11 @@ Replace lines 64124-64198 (from `# v255.0: OOM Prevention Bridge` through the en
 ```python
         # v255.0 / v266.3: OOM Prevention Bridge — proactive memory check before heavy init.
         # Uses auto_offload=False to avoid GCP network calls during pre-flight.
-        # Only overrides JARVIS_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
+        # Only overrides Ironcliw_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
         # severe than the current mode set by the ResourceOrchestrator (Step 1).
         # v266.3: Single retry on failure, then unconditional degradation to local fallback.
-        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 3.0)
-        _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 5.0)
+        _oom_preflight_timeout = _get_env_float("Ironcliw_OOM_PREFLIGHT_TIMEOUT", 3.0)
+        _oom_retry_timeout = _get_env_float("Ironcliw_OOM_RETRY_TIMEOUT", 5.0)
         self._startup_memory_decision = None
         _oom_attempts = [_oom_preflight_timeout, _oom_retry_timeout]
         _oom_succeeded = False
@@ -101,13 +101,13 @@ Replace lines 64124-64198 (from `# v255.0: OOM Prevention Bridge` through the en
                     "local_full": 0, "local_optimized": 1, "sequential": 2,
                     "cloud_first": 3, "cloud_only": 4, "minimal": 5,
                 }
-                _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _current_mode = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
                 _current_sev = _SEVERITY.get(_current_mode, 0)
 
                 if not _oom_result.can_proceed_locally:
                     _new_mode = "cloud_first"
                     if _SEVERITY.get(_new_mode, 0) > _current_sev:
-                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
+                        os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _new_mode
                     _skip_local_prewarm = True
                     _skip_reason = (
                         f"oom_bridge: {_oom_result.decision.value} "
@@ -116,7 +116,7 @@ Replace lines 64124-64198 (from `# v255.0: OOM Prevention Bridge` through the en
                 elif _oom_result.decision.value == "degraded":
                     _new_mode = "sequential"
                     if _SEVERITY.get(_new_mode, 0) > _current_sev:
-                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
+                        os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _new_mode
 
                 _oom_succeeded = True
                 break  # Success — exit retry loop
@@ -137,7 +137,7 @@ Replace lines 64124-64198 (from `# v255.0: OOM Prevention Bridge` through the en
                 )
                 # v266.3: OOMBridge is broken — cloud modes can't execute without it.
                 # Unconditionally degrade to local fallback regardless of current mode.
-                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _guard_mode
+                os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _guard_mode
 
                 _oom_msg = (
                     f"OOM pre-flight unavailable after {len(_oom_attempts)} attempts: "
@@ -156,7 +156,7 @@ Replace lines 64124-64198 (from `# v255.0: OOM Prevention Bridge` through the en
 
 Key changes vs. original:
 1. Retry loop (2 attempts: 3s then 5s)
-2. On final failure: `os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _guard_mode` — no guard condition, unconditional
+2. On final failure: `os.environ["Ironcliw_STARTUP_MEMORY_MODE"] = _guard_mode` — no guard condition, unconditional
 3. Log message says "degraded to {_guard_mode}" instead of showing the broken mode
 4. `_oom_succeeded` flag for downstream consumers to check
 
@@ -200,7 +200,7 @@ Note: Line numbers will have shifted from Task 2. Grep for `v258.3 (Gap 9): GCP 
 
 Find the line:
 ```python
-        _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        _startup_mode_now = os.environ.get("Ironcliw_STARTUP_MEMORY_MODE", "local_full")
 ```
 
 And the condition:
@@ -213,7 +213,7 @@ Replace both with:
         # v266.3: Use desired_mode (operator intent) not effective_mode (runtime safety).
         # If OOMBridge failed, effective_mode may be degraded to sequential, but
         # operator intended cloud — GCP probe should still run for background recovery.
-        _startup_desired_mode = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full")
+        _startup_desired_mode = os.environ.get("Ironcliw_STARTUP_DESIRED_MODE", "local_full")
 ```
 
 And:
@@ -238,7 +238,7 @@ feat(startup): GCP probe uses desired_mode not effective_mode
 
 When OOMBridge fails and effective mode degrades from cloud_first to
 sequential, the GCP probe was skipped — no cloud recovery path.
-Now uses JARVIS_STARTUP_DESIRED_MODE (operator intent) so cloud
+Now uses Ironcliw_STARTUP_DESIRED_MODE (operator intent) so cloud
 probing survives startup degradation.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
@@ -386,15 +386,15 @@ Expected: `Both files syntax OK`
 python3 -c "
 import os
 # Simulate: initial mode decision sets both vars
-os.environ['JARVIS_STARTUP_DESIRED_MODE'] = 'cloud_first'
-os.environ['JARVIS_STARTUP_MEMORY_MODE'] = 'cloud_first'
+os.environ['Ironcliw_STARTUP_DESIRED_MODE'] = 'cloud_first'
+os.environ['Ironcliw_STARTUP_MEMORY_MODE'] = 'cloud_first'
 # Simulate: OOMBridge fails, effective mode degrades
-os.environ['JARVIS_STARTUP_MEMORY_MODE'] = 'sequential'
+os.environ['Ironcliw_STARTUP_MEMORY_MODE'] = 'sequential'
 # Verify: desired_mode preserved, effective_mode degraded
-assert os.environ['JARVIS_STARTUP_DESIRED_MODE'] == 'cloud_first'
-assert os.environ['JARVIS_STARTUP_MEMORY_MODE'] == 'sequential'
+assert os.environ['Ironcliw_STARTUP_DESIRED_MODE'] == 'cloud_first'
+assert os.environ['Ironcliw_STARTUP_MEMORY_MODE'] == 'sequential'
 # GCP probe should use desired_mode
-_desired = os.environ.get('JARVIS_STARTUP_DESIRED_MODE', 'local_full')
+_desired = os.environ.get('Ironcliw_STARTUP_DESIRED_MODE', 'local_full')
 assert _desired in ('cloud_first', 'cloud_only'), f'GCP probe should run for {_desired}'
 print('Desired vs effective mode split: OK')
 "
@@ -408,8 +408,8 @@ Expected: `Desired vs effective mode split: OK`
 python3 -c "
 import os
 # Default values
-t1 = float(os.getenv('JARVIS_OOM_PREFLIGHT_TIMEOUT', '3.0'))
-t2 = float(os.getenv('JARVIS_OOM_RETRY_TIMEOUT', '5.0'))
+t1 = float(os.getenv('Ironcliw_OOM_PREFLIGHT_TIMEOUT', '3.0'))
+t2 = float(os.getenv('Ironcliw_OOM_RETRY_TIMEOUT', '5.0'))
 print(f'Attempt 1: {t1}s, Attempt 2: {t2}s')
 assert t1 == 3.0 and t2 == 5.0
 print('Retry config: OK')

@@ -1,8 +1,8 @@
-# ✅ Goal Inference + Autonomous Decision Engine Integration Complete
+﻿# ✅ Goal Inference + Autonomous Decision Engine Integration Complete
 
 ## 🎯 Integration Status: FULLY INTEGRATED
 
-The Goal Inference System and Autonomous Decision Engine are now **fully integrated** into JARVIS's main command processing pipeline.
+The Goal Inference System and Autonomous Decision Engine are now **fully integrated** into Ironcliw's main command processing pipeline.
 
 ---
 
@@ -75,7 +75,7 @@ elif command_type == CommandType.DISPLAY:
 ```
 User: "living room tv"
   ↓ (0.7s)
-JARVIS: "Connected to Living Room TV"
+Ironcliw: "Connected to Living Room TV"
 ```
 
 ### **After Integration (New Flow)**
@@ -87,7 +87,7 @@ User: "living room tv"
 [Goal Inference analyzes context]
 [No strong goals detected]
   ↓ (0.5-0.7s)
-JARVIS: "Connected to Living Room TV"
+Ironcliw: "Connected to Living Room TV"
 ```
 
 #### **Scenario B: With Context (Meeting Prep)**
@@ -100,7 +100,7 @@ User: "living room tv"
   ↓
 [High confidence - resources pre-loaded]
   ↓ (<0.3s)
-JARVIS: "Connected to Living Room TV. I anticipated your
+Ironcliw: "Connected to Living Room TV. I anticipated your
          request and pre-loaded resources for faster connection."
 ```
 
@@ -110,12 +110,12 @@ JARVIS: "Connected to Living Room TV. I anticipated your
   ↓
 [Goal Inference: 95% confidence]
   ↓
-JARVIS: "Sir, I've noticed you're preparing for a presentation.
+Ironcliw: "Sir, I've noticed you're preparing for a presentation.
          Shall I connect to Living Room TV?"
   ↓
 User: "yes"
   ↓ (<0.2s)
-JARVIS: "Connected instantly."
+Ironcliw: "Connected instantly."
 ```
 
 ---
@@ -124,7 +124,7 @@ JARVIS: "Connected instantly."
 
 ### **1. Check the Logs**
 
-Run JARVIS and look for these log messages:
+Run Ironcliw and look for these log messages:
 
 ```bash
 # Successful initialization
@@ -230,7 +230,7 @@ python -c "from backend.intelligence.goal_autonomous_uae_integration import get_
 ## ✨ Key Benefits You'll Experience
 
 1. **Faster Responses** - Especially for predicted commands
-2. **Proactive Suggestions** - JARVIS suggests before you ask
+2. **Proactive Suggestions** - Ironcliw suggests before you ask
 3. **Context Understanding** - "display" → knows which display
 4. **Learning System** - Improves with every use
 5. **Automation Offers** - "Want me to do this automatically?"
@@ -253,7 +253,7 @@ After 1 week of use, you should see:
 
 The integration is **COMPLETE and ACTIVE**. To maximize benefits:
 
-1. **Use JARVIS normally** - It's learning in the background
+1. **Use Ironcliw normally** - It's learning in the background
 2. **Accept suggestions** when offered - Reinforces learning
 3. **Be consistent** with patterns - Helps prediction
 4. **Check metrics** weekly - See improvement
@@ -269,8 +269,8 @@ print(integration.get_metrics())
 
 ## 🏆 Bottom Line
 
-**The Goal Inference + Autonomous Decision Engine is NOW INTEGRATED and ACTIVE in JARVIS!**
+**The Goal Inference + Autonomous Decision Engine is NOW INTEGRATED and ACTIVE in Ironcliw!**
 
-Every command you speak is being analyzed for goals, patterns are being learned, and the system is getting smarter with each interaction. You don't need to do anything special - just use JARVIS normally and watch it become more intelligent over time.
+Every command you speak is being analyzed for goals, patterns are being learned, and the system is getting smarter with each interaction. You don't need to do anything special - just use Ironcliw normally and watch it become more intelligent over time.
 
-The future of predictive, proactive AI assistance is now running in your JARVIS system! 🚀
+The future of predictive, proactive AI assistance is now running in your Ironcliw system! 🚀

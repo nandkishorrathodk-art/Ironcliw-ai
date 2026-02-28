@@ -1,8 +1,8 @@
-"""
+﻿"""
 Unified Observability Hub - Langfuse + Helicone Integration
 ============================================================
 
-Provides comprehensive observability for the JARVIS Memory-Aware Hybrid Routing system:
+Provides comprehensive observability for the Ironcliw Memory-Aware Hybrid Routing system:
 
 Features:
 - Langfuse: LLM tracing, prompt management, and evaluation
@@ -137,7 +137,7 @@ class CostEstimate:
 
 class CostModel:
     """
-    Cost model for all JARVIS backends.
+    Cost model for all Ironcliw backends.
 
     Pricing (as of 2024):
     - LOCAL: FREE (your hardware)
@@ -610,7 +610,7 @@ class HeliconeIntegration:
 
 class UnifiedObservabilityHub:
     """
-    Unified Observability Hub for JARVIS.
+    Unified Observability Hub for Ironcliw.
 
     Integrates:
     - Langfuse for tracing and evaluation

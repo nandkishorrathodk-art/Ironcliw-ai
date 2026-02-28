@@ -1,8 +1,8 @@
-"""
-JARVIS Kernel Signal Handling v1.0.0
+﻿"""
+Ironcliw Kernel Signal Handling v1.0.0
 =====================================
 
-Enterprise-grade signal handling for the JARVIS kernel.
+Enterprise-grade signal handling for the Ironcliw kernel.
 Provides signal protection, graceful shutdown coordination, and crash recovery.
 
 This module addresses:
@@ -24,7 +24,7 @@ Signal Reference (POSIX):
     SIGUSR1 (30) - User-defined signal 1
     SIGUSR2 (31) - User-defined signal 2
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -397,7 +397,7 @@ class ShutdownCoordinator:
 
 class KernelSignalHandler:
     """
-    Global signal handler for the JARVIS kernel.
+    Global signal handler for the Ironcliw kernel.
     
     Installs handlers for common signals and coordinates with
     the ShutdownCoordinator for graceful shutdown.

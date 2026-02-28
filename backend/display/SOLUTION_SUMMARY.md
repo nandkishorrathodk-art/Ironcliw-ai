@@ -1,8 +1,8 @@
-# Display Connection Solution Summary
+﻿# Display Connection Solution Summary
 
 ## The Problem
 
-When you told JARVIS "living room tv", the mouse was moving to incorrect coordinates (2475, 15) instead of the correct Control Center position (1235, 10). This was caused by:
+When you told Ironcliw "living room tv", the mouse was moving to incorrect coordinates (2475, 15) instead of the correct Control Center position (1235, 10). This was caused by:
 
 1. **DPI Confusion**: Screenshots at physical pixels (2880x1800) vs PyAutoGUI using logical pixels (1440x900)
 2. **Complex Detection**: Multiple detection methods causing confusion
@@ -90,10 +90,10 @@ This will:
 2. Move to (1393, 177) and click → Screen Mirroring
 3. Move to (1221, 116) and click → Living Room TV
 
-### Test via JARVIS
+### Test via Ironcliw
 ```
 You: "living room tv"
-JARVIS: [Should successfully connect in ~2 seconds]
+Ironcliw: [Should successfully connect in ~2 seconds]
 ```
 
 ## Key Insights from Working Commit
@@ -117,7 +117,7 @@ From commit a7fd379, we learned:
 3. Verify Control Center icon position hasn't moved
 
 ### If connection times out:
-1. Check JARVIS is using the simple clicker
+1. Check Ironcliw is using the simple clicker
 2. Verify UI elements are visible (not obscured)
 3. Check logs for which step failed
 
@@ -134,7 +134,7 @@ When we over-engineered with adaptive detection, vision pipelines, and complex D
 
 ## Next Steps
 
-1. **Test with JARVIS**: Restart JARVIS and test "living room tv" command
+1. **Test with Ironcliw**: Restart Ironcliw and test "living room tv" command
 2. **Monitor logs**: Check that simple clicker is being used
 3. **Verify coordinates**: Ensure mouse goes to correct positions
 4. **Document any issues**: If coordinates need adjustment for your screen

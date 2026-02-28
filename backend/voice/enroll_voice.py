@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Voice Enrollment System for JARVIS
+Advanced Voice Enrollment System for Ironcliw
 Production-grade enrollment with quality validation, resume support, and comprehensive analysis
 
 Features:
@@ -34,7 +34,7 @@ import soundfile as sf
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from intelligence.learning_database import JARVISLearningDatabase
+from intelligence.learning_database import get_learning_database
 from voice.engines.speechbrain_engine import SpeechBrainEngine
 from voice.stt_config import ModelConfig, STTEngine
 
@@ -535,8 +535,7 @@ class VoiceEnrollment:
         logger.info(f"   Session ID: {self.session_id}")
 
         # Initialize learning database
-        self.learning_db = JARVISLearningDatabase()
-        await self.learning_db.initialize()
+        self.learning_db = await get_learning_database()
         logger.info("   ✓ Learning database ready")
 
         # Initialize SpeechBrain engine for real embeddings
@@ -691,7 +690,7 @@ class VoiceEnrollment:
         Advanced enrollment flow with quality validation, resume support, and comprehensive analysis
         """
         print("\n" + "=" * 70)
-        print("🎤 JARVIS ADVANCED VOICE ENROLLMENT")
+        print("🎤 Ironcliw ADVANCED VOICE ENROLLMENT")
         print("=" * 70)
         print(f"\nEnrolling speaker: {self.speaker_name}")
         print(f"Number of samples: {self.num_samples}")
@@ -808,7 +807,7 @@ class VoiceEnrollment:
     def _get_enrollment_phrases(self) -> List[str]:
         """Get phonetically diverse enrollment phrases"""
         return [
-            "Hey JARVIS, what's the weather today?",
+            "Hey Ironcliw, what's the weather today?",
             "Open Safari and search for restaurants",
             "Connect to the living room TV",
             "Set a timer for 10 minutes",
@@ -945,7 +944,7 @@ class VoiceEnrollment:
         print(f"  Samples: {len(real_samples)}")
         print(f"  Embedding Dimensions: {len(avg_embedding)}")
         print(f"  Model: ECAPA-TDNN (SpeechBrain)")
-        print(f"\n🎉 JARVIS can now recognize your voice!")
+        print(f"\n🎉 Ironcliw can now recognize your voice!")
         print("=" * 70)
 
     async def _save_checkpoint(self):
@@ -1060,7 +1059,7 @@ class VoiceEnrollment:
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Advanced Voice Enrollment for JARVIS with quality validation and resume support"
+        description="Advanced Voice Enrollment for Ironcliw with quality validation and resume support"
     )
     parser.add_argument(
         "--speaker",

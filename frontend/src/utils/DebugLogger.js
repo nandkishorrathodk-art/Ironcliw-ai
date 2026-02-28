@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Debug Logger for Frontend
  * ========================
  * Enhanced logging with color coding and filtering
@@ -73,7 +73,7 @@ class DebugLogger {
       };
       
       console.log(
-        '%c🤖 JARVIS Debug Logger Ready',
+        '%c🤖 Ironcliw Debug Logger Ready',
         'color: #ffd700; font-size: 16px; font-weight: bold; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);'
       );
       console.log('Use window.jarvisDebug for debug controls');

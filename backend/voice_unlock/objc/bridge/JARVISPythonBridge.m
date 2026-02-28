@@ -1,42 +1,42 @@
-/**
- * JARVISPythonBridge.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwPythonBridge.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of Python integration bridge.
  */
 
-#import "JARVISPythonBridge.h"
+#import "IroncliwPythonBridge.h"
 #import <os/log.h>
 
 // Python result implementation
-@interface JARVISPythonResult ()
+@interface IroncliwPythonResult ()
 @property (nonatomic, readwrite) BOOL success;
 @property (nonatomic, readwrite, nullable) id result;
 @property (nonatomic, readwrite, nullable) NSError *error;
 @property (nonatomic, readwrite) NSTimeInterval executionTime;
 @end
 
-@implementation JARVISPythonResult
+@implementation IroncliwPythonResult
 @end
 
 // Main implementation
-@interface JARVISPythonBridge ()
+@interface IroncliwPythonBridge ()
 
 @property (nonatomic, strong) NSTask *pythonProcess;
 @property (nonatomic, strong) NSPipe *inputPipe;
 @property (nonatomic, strong) NSPipe *outputPipe;
 @property (nonatomic, strong) NSPipe *errorPipe;
 @property (nonatomic, strong) dispatch_queue_t processingQueue;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, void (^)(JARVISPythonResult *)> *pendingCallbacks;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, void (^)(IroncliwPythonResult *)> *pendingCallbacks;
 @property (nonatomic, strong) os_log_t logger;
 
-@property (nonatomic, readwrite) JARVISPythonBridgeState state;
+@property (nonatomic, readwrite) IroncliwPythonBridgeState state;
 @property (nonatomic, strong) NSMutableData *outputBuffer;
 @property (nonatomic, strong) NSMutableData *errorBuffer;
 
 @end
 
-@implementation JARVISPythonBridge
+@implementation IroncliwPythonBridge
 
 - (instancetype)init {
     self = [super init];
@@ -54,7 +54,7 @@
         _pythonModulePaths = @[];
         _enableDebugLogging = NO;
         
-        _state = JARVISPythonBridgeStateInactive;
+        _state = IroncliwPythonBridgeStateInactive;
     }
     return self;
 }
@@ -66,11 +66,11 @@
 #pragma mark - Bridge Lifecycle
 
 - (BOOL)startBridgeWithError:(NSError **)error {
-    if (self.state == JARVISPythonBridgeStateActive) {
+    if (self.state == IroncliwPythonBridgeStateActive) {
         return YES;
     }
     
-    self.state = JARVISPythonBridgeStateInitializing;
+    self.state = IroncliwPythonBridgeStateInitializing;
     os_log_info(self.logger, "Starting Python bridge");
     
     // Create pipes
@@ -126,10 +126,10 @@
         [self.pythonProcess launch];
     } @catch (NSException *exception) {
         os_log_error(self.logger, "Failed to launch Python process: %@", exception);
-        self.state = JARVISPythonBridgeStateError;
+        self.state = IroncliwPythonBridgeStateError;
         
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISPythonBridge"
+            *error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                          code:1001
                                      userInfo:@{NSLocalizedDescriptionKey: exception.reason ?: @"Failed to launch Python"}];
         }
@@ -153,7 +153,7 @@
         
         if ([self sendMessage:initCommand]) {
             initialized = YES;
-            self.state = JARVISPythonBridgeStateActive;
+            self.state = IroncliwPythonBridgeStateActive;
         }
         dispatch_semaphore_signal(semaphore);
     });
@@ -171,9 +171,9 @@
         
         return YES;
     } else {
-        self.state = JARVISPythonBridgeStateError;
+        self.state = IroncliwPythonBridgeStateError;
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISPythonBridge"
+            *error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                          code:1002
                                      userInfo:@{NSLocalizedDescriptionKey: @"Failed to initialize Python bridge"}];
         }
@@ -182,12 +182,12 @@
 }
 
 - (void)stopBridge {
-    if (self.state == JARVISPythonBridgeStateInactive) {
+    if (self.state == IroncliwPythonBridgeStateInactive) {
         return;
     }
     
     os_log_info(self.logger, "Stopping Python bridge");
-    self.state = JARVISPythonBridgeStateInactive;
+    self.state = IroncliwPythonBridgeStateInactive;
     
     // Send shutdown command
     [self sendMessage:@{@"type": @"shutdown"}];
@@ -248,11 +248,11 @@
         os_log_info(self.logger, "Python process terminated with status %d", task.terminationStatus);
         
         dispatch_async(self.processingQueue, ^{
-            self.state = JARVISPythonBridgeStateInactive;
+            self.state = IroncliwPythonBridgeStateInactive;
             
             if (task.terminationStatus != 0 && 
                 [self.delegate respondsToSelector:@selector(pythonBridgeDidFailWithError:)]) {
-                NSError *error = [NSError errorWithDomain:@"JARVISPythonBridge"
+                NSError *error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                                      code:task.terminationStatus
                                                  userInfo:@{NSLocalizedDescriptionKey: @"Python process terminated unexpectedly"}];
                 
@@ -313,17 +313,17 @@
         }
         
     } else if ([type isEqualToString:@"response"] && messageId) {
-        void (^callback)(JARVISPythonResult *) = self.pendingCallbacks[messageId];
+        void (^callback)(IroncliwPythonResult *) = self.pendingCallbacks[messageId];
         if (callback) {
             [self.pendingCallbacks removeObjectForKey:messageId];
             
-            JARVISPythonResult *result = [[JARVISPythonResult alloc] init];
+            IroncliwPythonResult *result = [[IroncliwPythonResult alloc] init];
             result.success = [message[@"success"] boolValue];
             result.result = message[@"result"];
             
             if (!result.success && message[@"error"]) {
                 NSDictionary *errorInfo = message[@"error"];
-                result.error = [NSError errorWithDomain:@"JARVISPython"
+                result.error = [NSError errorWithDomain:@"IroncliwPython"
                                                   code:[errorInfo[@"code"] integerValue]
                                               userInfo:@{NSLocalizedDescriptionKey: errorInfo[@"message"] ?: @"Unknown error"}];
             }
@@ -341,7 +341,7 @@
 #pragma mark - Message Passing
 
 - (BOOL)isActive {
-    return self.state == JARVISPythonBridgeStateActive;
+    return self.state == IroncliwPythonBridgeStateActive;
 }
 
 - (BOOL)sendMessage:(NSDictionary *)message {
@@ -369,24 +369,24 @@
     }
 }
 
-- (JARVISPythonResult *)sendMessageAndWait:(NSDictionary *)message timeout:(NSTimeInterval)timeout {
+- (IroncliwPythonResult *)sendMessageAndWait:(NSDictionary *)message timeout:(NSTimeInterval)timeout {
     if (!self.isActive) {
-        JARVISPythonResult *result = [[JARVISPythonResult alloc] init];
+        IroncliwPythonResult *result = [[IroncliwPythonResult alloc] init];
         result.success = NO;
-        result.error = [NSError errorWithDomain:@"JARVISPythonBridge"
+        result.error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                           code:1003
                                       userInfo:@{NSLocalizedDescriptionKey: @"Python bridge not active"}];
         return result;
     }
     
-    __block JARVISPythonResult *result = nil;
+    __block IroncliwPythonResult *result = nil;
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     
     NSString *messageId = [[NSUUID UUID] UUIDString];
     NSMutableDictionary *fullMessage = [message mutableCopy];
     fullMessage[@"id"] = messageId;
     
-    self.pendingCallbacks[messageId] = ^(JARVISPythonResult *pythonResult) {
+    self.pendingCallbacks[messageId] = ^(IroncliwPythonResult *pythonResult) {
         result = pythonResult;
         dispatch_semaphore_signal(semaphore);
     };
@@ -394,9 +394,9 @@
     if (![self sendMessage:fullMessage]) {
         [self.pendingCallbacks removeObjectForKey:messageId];
         
-        result = [[JARVISPythonResult alloc] init];
+        result = [[IroncliwPythonResult alloc] init];
         result.success = NO;
-        result.error = [NSError errorWithDomain:@"JARVISPythonBridge"
+        result.error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                           code:1004
                                       userInfo:@{NSLocalizedDescriptionKey: @"Failed to send message"}];
         return result;
@@ -406,9 +406,9 @@
     if (dispatch_semaphore_wait(semaphore, timeoutTime) != 0) {
         [self.pendingCallbacks removeObjectForKey:messageId];
         
-        result = [[JARVISPythonResult alloc] init];
+        result = [[IroncliwPythonResult alloc] init];
         result.success = NO;
-        result.error = [NSError errorWithDomain:@"JARVISPythonBridge"
+        result.error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                           code:1005
                                       userInfo:@{NSLocalizedDescriptionKey: @"Request timeout"}];
     }
@@ -420,7 +420,7 @@
 
 - (void)callPythonFunction:(NSString *)functionName
                 arguments:(nullable NSArray *)arguments
-               completion:(void (^)(JARVISPythonResult *))completion {
+               completion:(void (^)(IroncliwPythonResult *))completion {
     
     NSString *messageId = [[NSUUID UUID] UUIDString];
     NSDictionary *message = @{
@@ -435,9 +435,9 @@
     if (![self sendMessage:message]) {
         [self.pendingCallbacks removeObjectForKey:messageId];
         
-        JARVISPythonResult *result = [[JARVISPythonResult alloc] init];
+        IroncliwPythonResult *result = [[IroncliwPythonResult alloc] init];
         result.success = NO;
-        result.error = [NSError errorWithDomain:@"JARVISPythonBridge"
+        result.error = [NSError errorWithDomain:@"IroncliwPythonBridge"
                                           code:1004
                                       userInfo:@{NSLocalizedDescriptionKey: @"Failed to send function call"}];
         
@@ -451,7 +451,7 @@
                    arguments:(nullable NSArray *)arguments
                        error:(NSError **)error {
     
-    JARVISPythonResult *result = [self sendMessageAndWait:@{
+    IroncliwPythonResult *result = [self sendMessageAndWait:@{
         @"type": @"function_call",
         @"function": functionName,
         @"args": arguments ?: @[]
@@ -472,7 +472,7 @@
         @"audio_data": [audioData base64EncodedStringWithOptions:0]
     };
     
-    JARVISPythonResult *result = [self sendMessageAndWait:message timeout:5.0];
+    IroncliwPythonResult *result = [self sendMessageAndWait:message timeout:5.0];
     
     if (result.success && [result.result isKindOfClass:[NSDictionary class]]) {
         return result.result;
@@ -487,7 +487,7 @@
         @"audio_data": [audioData base64EncodedStringWithOptions:0]
     };
     
-    JARVISPythonResult *result = [self sendMessageAndWait:message timeout:10.0];
+    IroncliwPythonResult *result = [self sendMessageAndWait:message timeout:10.0];
     
     if (result.success && [result.result isKindOfClass:[NSDictionary class]]) {
         return result.result;
@@ -505,7 +505,7 @@
         @"features2": features2
     };
     
-    JARVISPythonResult *result = [self sendMessageAndWait:message timeout:2.0];
+    IroncliwPythonResult *result = [self sendMessageAndWait:message timeout:2.0];
     
     if (result.success && [result.result isKindOfClass:[NSNumber class]]) {
         return [result.result floatValue];
@@ -522,7 +522,7 @@
         @"module": moduleName
     };
     
-    JARVISPythonResult *result = [self sendMessageAndWait:message timeout:10.0];
+    IroncliwPythonResult *result = [self sendMessageAndWait:message timeout:10.0];
     
     if (!result.success && error) {
         *error = result.error;
@@ -560,7 +560,7 @@
     
     // Create basic bridge script
     NSString *bridgeScript = @"#!/usr/bin/env python3\n"
-    @"\"\"\"JARVIS Voice Unlock Python Bridge\"\"\"\n"
+    @"\"\"\"Ironcliw Voice Unlock Python Bridge\"\"\"\n"
     @"\n"
     @"import json\n"
     @"import sys\n"
@@ -602,7 +602,7 @@
     @"            detected = len(audio_data) > 1000  # Simplified check\n"
     @"            send_response(msg_id, True, {\n"
     @"                'detected': detected,\n"
-    @"                'phrase': 'Hello JARVIS, unlock my Mac' if detected else None,\n"
+    @"                'phrase': 'Hello Ironcliw, unlock my Mac' if detected else None,\n"
     @"                'confidence': 0.95 if detected else 0.0\n"
     @"            })\n"
     @"            \n"
@@ -628,7 +628,7 @@
     @"        send_response(msg_id, False, error=str(e))\n"
     @"\n"
     @"def main():\n"
-    @"    logger.info('JARVIS Voice Unlock Python Bridge started')\n"
+    @"    logger.info('Ironcliw Voice Unlock Python Bridge started')\n"
     @"    \n"
     @"    while True:\n"
     @"        try:\n"
@@ -661,14 +661,14 @@
 
 #pragma mark - Voice Processing Extension
 
-@implementation JARVISPythonBridge (VoiceProcessing)
+@implementation IroncliwPythonBridge (VoiceProcessing)
 
 - (void)detectWakePhrase:(NSData *)audioData
               completion:(void (^)(BOOL, NSString *, float))completion {
     
     [self callPythonFunction:@"detect_wake_phrase"
                    arguments:@[[audioData base64EncodedStringWithOptions:0]]
-                  completion:^(JARVISPythonResult *result) {
+                  completion:^(IroncliwPythonResult *result) {
         if (result.success && [result.result isKindOfClass:[NSDictionary class]]) {
             NSDictionary *detection = result.result;
             BOOL detected = [detection[@"detected"] boolValue];
@@ -688,7 +688,7 @@
     
     [self callPythonFunction:@"authenticate_voice"
                    arguments:@[[audioData base64EncodedStringWithOptions:0], userID]
-                  completion:^(JARVISPythonResult *result) {
+                  completion:^(IroncliwPythonResult *result) {
         if (result.success && [result.result isKindOfClass:[NSDictionary class]]) {
             NSDictionary *authResult = result.result;
             BOOL authenticated = [authResult[@"authenticated"] boolValue];
@@ -712,7 +712,7 @@
     
     [self callPythonFunction:@"transcribe_audio"
                    arguments:@[[audioData base64EncodedStringWithOptions:0]]
-                  completion:^(JARVISPythonResult *result) {
+                  completion:^(IroncliwPythonResult *result) {
         if (result.success && [result.result isKindOfClass:[NSDictionary class]]) {
             NSDictionary *transcription = result.result;
             NSString *transcript = transcription[@"transcript"] ?: @"";

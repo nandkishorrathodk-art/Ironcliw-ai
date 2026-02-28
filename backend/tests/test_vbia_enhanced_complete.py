@@ -1,16 +1,16 @@
-"""
+﻿"""
 Complete Enhanced VBIA Integration Test
 ========================================
 
 Tests the full enhanced VBIA integration across:
 1. Visual Security Integration (Computer Use + VBIA)
 2. LangGraph Reasoning with Visual Evidence
-3. Cross-Repo Integration (JARVIS Prime, Reactor Core)
+3. Cross-Repo Integration (Ironcliw Prime, Reactor Core)
 4. Multi-Factor Fusion (ML + Physics + Behavioral + Visual)
 5. Cost Optimization (Helicone caching)
 6. Pattern Learning (ChromaDB storage)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.2.0 - Enhanced VBIA
 """
 
@@ -179,16 +179,16 @@ async def test_2_evidence_collection_with_visual():
 
 
 async def test_3_jarvis_prime_delegation():
-    """Test 3: JARVIS Prime VBIA Delegation"""
+    """Test 3: Ironcliw Prime VBIA Delegation"""
     print("\n" + "="*70)
-    print("TEST 3: JARVIS Prime VBIA Delegation")
+    print("TEST 3: Ironcliw Prime VBIA Delegation")
     print("="*70)
 
     try:
-        # Check if JARVIS Prime is available
+        # Check if Ironcliw Prime is available
         prime_path = Path.home() / "Documents" / "repos" / "jarvis-prime"
         if not prime_path.exists():
-            print(f"⚠️  JARVIS Prime not found at {prime_path}, skipping")
+            print(f"⚠️  Ironcliw Prime not found at {prime_path}, skipping")
             return True
 
         sys.path.insert(0, str(prime_path))
@@ -210,30 +210,30 @@ async def test_3_jarvis_prime_delegation():
         print(f"   Visual security: {delegate.enable_visual_security}")
         print(f"   LangGraph reasoning: {delegate.enable_langgraph_reasoning}")
 
-        # Check JARVIS availability
+        # Check Ironcliw availability
         available = await delegate.check_jarvis_availability()
-        print(f"\n🔍 JARVIS VBIA availability: {available}")
+        print(f"\n🔍 Ironcliw VBIA availability: {available}")
 
         # Get capabilities
         capabilities = await delegate.get_jarvis_capabilities()
-        print(f"\n📊 JARVIS VBIA Capabilities:")
+        print(f"\n📊 Ironcliw VBIA Capabilities:")
         for key, value in capabilities.items():
             print(f"   {key}: {value}")
 
         # Note: We won't actually delegate authentication in test
-        # to avoid requiring full JARVIS to be running
+        # to avoid requiring full Ironcliw to be running
 
         stats = delegate.get_statistics()
         print(f"\n📊 Delegation Statistics:")
         print(f"   Total requests: {stats['total_requests']}")
         print(f"   Authenticated: {stats['authenticated']}")
 
-        print(f"\n✅ TEST 3 PASSED: JARVIS Prime delegation integration verified!")
+        print(f"\n✅ TEST 3 PASSED: Ironcliw Prime delegation integration verified!")
         return True
 
     except ImportError as e:
-        print(f"⚠️  JARVIS Prime import failed: {e}")
-        print(f"   This is expected if JARVIS Prime is not installed")
+        print(f"⚠️  Ironcliw Prime import failed: {e}")
+        print(f"   This is expected if Ironcliw Prime is not installed")
         return True
 
     except Exception as e:
@@ -537,7 +537,7 @@ async def main():
     results['evidence_collection'] = await test_2_evidence_collection_with_visual()
     await asyncio.sleep(1)
 
-    # Test 3: JARVIS Prime Delegation
+    # Test 3: Ironcliw Prime Delegation
     results['jarvis_prime'] = await test_3_jarvis_prime_delegation()
     await asyncio.sleep(1)
 

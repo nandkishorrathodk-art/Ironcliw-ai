@@ -1,6 +1,6 @@
-# ✅ Picovoice Successfully Integrated!
+﻿# ✅ Picovoice Successfully Integrated!
 
-Your JARVIS voice system now has ultra-fast wake word detection with Picovoice!
+Your Ironcliw voice system now has ultra-fast wake word detection with Picovoice!
 
 ## 🎯 What's Working
 
@@ -43,7 +43,7 @@ system = await create_optimized_jarvis(api_key, "16gb_macbook_pro")
 
 ## 🎚️ Adjusting Sensitivity
 
-If JARVIS doesn't respond easily enough:
+If Ironcliw doesn't respond easily enough:
 ```bash
 # Make it more sensitive (default is 0.5)
 export WAKE_WORD_THRESHOLD=0.4  # or even 0.3
@@ -93,7 +93,7 @@ This gives you the best of both worlds:
 3. **Supports variations** - "Jarvis", "Hey Jarvis" both work
 4. **Auto-enabled** - System uses Picovoice automatically
 
-Your JARVIS now responds almost instantly when you say "Hey Jarvis"! 🚀
+Your Ironcliw now responds almost instantly when you say "Hey Jarvis"! 🚀
 
 ---
 

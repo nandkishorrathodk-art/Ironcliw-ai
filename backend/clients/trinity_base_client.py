@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Base Client - Advanced Resilience Patterns for Cross-Repo Communication.
 ==================================================================================
 
@@ -10,9 +10,9 @@ Provides a robust foundation for all Trinity cross-repo clients with:
 - Dead Letter Queue for failed operations
 - Metrics collection and observability
 
-This is the foundation for ReactorCoreClient and JARVISPrimeClient.
+This is the foundation for ReactorCoreClient and IroncliwPrimeClient.
 
-Author: JARVIS Trinity v81.0
+Author: Ironcliw Trinity v81.0
 """
 
 from __future__ import annotations

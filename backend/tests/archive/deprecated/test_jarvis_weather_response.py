@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS weather response in limited mode"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw weather response in limited mode"""
 
 import asyncio
 import json
@@ -8,13 +8,13 @@ import time
 
 async def test_weather_via_websocket():
     """Test weather command through WebSocket"""
-    print("🌤️ Testing JARVIS Weather Response via WebSocket\n")
+    print("🌤️ Testing Ironcliw Weather Response via WebSocket\n")
     
     uri = "ws://localhost:8000/voice/jarvis/stream"
     
     try:
         async with websockets.connect(uri) as websocket:
-            print("✅ Connected to JARVIS WebSocket")
+            print("✅ Connected to Ironcliw WebSocket")
             
             # Wait for greeting
             greeting = await websocket.recv()
@@ -50,7 +50,7 @@ async def test_weather_via_websocket():
             
     except Exception as e:
         print(f"❌ WebSocket error: {e}")
-        print("\nMake sure the JARVIS backend is running with:")
+        print("\nMake sure the Ironcliw backend is running with:")
         print("  cd backend && python main.py")
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import numpy as np
+﻿import numpy as np
 from typing import Optional, Dict, List, Tuple, Union, BinaryIO
 import sounddevice as sd
 import soundfile as sf
@@ -758,7 +758,7 @@ class VoiceAssistant:
         if feedback_audio is not None:
             # Try AudioBus first
             _bus_enabled = os.getenv(
-                "JARVIS_AUDIO_BUS_ENABLED", "false"
+                "Ironcliw_AUDIO_BUS_ENABLED", "false"
             ).lower() in ("true", "1", "yes")
             if _bus_enabled:
                 try:

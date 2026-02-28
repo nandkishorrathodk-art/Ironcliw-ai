@@ -1,7 +1,7 @@
-# Monitoring Command Fix Documentation
+﻿# Monitoring Command Fix Documentation
 
 ## Problem
-When user says "start monitoring my screen", JARVIS gives a long explanation about seeing the interface instead of actually starting monitoring.
+When user says "start monitoring my screen", Ironcliw gives a long explanation about seeing the interface instead of actually starting monitoring.
 
 ## Root Cause
 The command is being processed by the general Claude vision analyzer which sees the text on screen, rather than being intercepted as a monitoring command.
@@ -26,7 +26,7 @@ Updated `vision_command_handler.py` to:
 ```
 User says: "start monitoring my screen"
     ↓
-JARVISVoiceAPI.process_command()
+IroncliwVoiceAPI.process_command()
     ↓
 Quick pattern match detects monitoring command
     ↓
@@ -67,7 +67,7 @@ python test_jarvis_monitoring_command.py
 ## Common Issues
 
 ### Issue: Still getting long response
-**Solution**: Ensure the vision command handler is being called before the general chat handler. Check logs for "[JARVIS API] Detected monitoring command".
+**Solution**: Ensure the vision command handler is being called before the general chat handler. Check logs for "[Ironcliw API] Detected monitoring command".
 
 ### Issue: Vision handler not initialized
 **Solution**: The code now auto-initializes the vision handler if needed, using the API key from environment or app state.
@@ -91,7 +91,7 @@ python test_jarvis_monitoring_command.py
 3. `api/monitoring_endpoint.py` - Direct endpoint (optional fallback)
 
 ### Key Functions
-- `JARVISVoiceAPI.process_command()` - Main entry point
+- `IroncliwVoiceAPI.process_command()` - Main entry point
 - `vision_command_handler.handle_command()` - Vision command processing
 - `_handle_monitoring_command()` - Monitoring-specific logic
 

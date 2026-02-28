@@ -1,4 +1,4 @@
-"""
+﻿"""
 Type Analyzer v1.0 - Deep Type Inference and Checking System
 ============================================================
 
@@ -40,7 +40,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -98,7 +98,7 @@ class TypeAnalyzerConfig:
     CROSS_FILE_INFERENCE: bool = get_env_bool("TYPE_CROSS_FILE", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    Ironcliw_REPO: Path = Path(get_env_str("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")))
     PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
     REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
@@ -1308,12 +1308,12 @@ class CrossRepoTypeAnalyzer:
     """
     Type analysis across multiple repositories.
 
-    Propagates types between JARVIS, JARVIS-Prime, and Reactor-Core.
+    Propagates types between Ironcliw, Ironcliw-Prime, and Reactor-Core.
     """
 
     def __init__(self):
         self._repos: Dict[str, Path] = {
-            "jarvis": TypeAnalyzerConfig.JARVIS_REPO,
+            "jarvis": TypeAnalyzerConfig.Ironcliw_REPO,
             "prime": TypeAnalyzerConfig.PRIME_REPO,
             "reactor": TypeAnalyzerConfig.REACTOR_REPO,
         }

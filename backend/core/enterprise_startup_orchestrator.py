@@ -1,4 +1,4 @@
-# backend/core/enterprise_startup_orchestrator.py
+﻿# backend/core/enterprise_startup_orchestrator.py
 """
 EnterpriseStartupOrchestrator - Main async orchestrator for enterprise-grade startup.
 
@@ -763,7 +763,7 @@ def create_enterprise_orchestrator(
     default components from default_components module.
 
     Args:
-        register_defaults: If True, register JARVIS default components
+        register_defaults: If True, register Ironcliw default components
         startup_context: Optional StartupContext for crash history
 
     Returns:

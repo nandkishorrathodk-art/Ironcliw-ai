@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Unified startup script for JARVIS AI System v15.0.0 - Zero-Touch Edition
+Unified startup script for Ironcliw AI System v15.0.0 - Zero-Touch Edition
 Advanced Browser Automation + v2.0 ML-Powered Intelligence Systems + PRD v2.0 Voice Biometrics
 ⚡ ULTRA-OPTIMIZED: 30% Memory Target (4.8GB on 16GB Systems)
 🤖 AUTONOMOUS: Self-Discovering, Self-Healing, Self-Optimizing
@@ -8,7 +8,7 @@ Advanced Browser Automation + v2.0 ML-Powered Intelligence Systems + PRD v2.0 Vo
 🔐 PRD v2.0: AAM-Softmax + Center Loss + Triplet Loss + Platt/Isotonic Calibration
 🔄 ZERO-TOUCH: Autonomous updates with Dead Man's Switch protection (v15.0)
 
-The JARVIS backend loads 11 critical components + 6 intelligent systems:
+The Ironcliw backend loads 11 critical components + 6 intelligent systems:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
 2. VISION - Real-time screen capture with Multi-Space Desktop Monitoring + YOLOv8
@@ -30,11 +30,11 @@ The JARVIS backend loads 11 critical components + 6 intelligent systems:
    • Bloom Filter, Predictive Engine, Semantic Cache, VSMS integrated
    • Proactive assistance with debugging, research, and workflow optimization
 3. MEMORY - M1-optimized memory management with orchestrator integration
-4. VOICE - Voice activation ("Hey JARVIS") with proactive announcements
+4. VOICE - Voice activation ("Hey Ironcliw") with proactive announcements
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
 6. MONITORING - System health tracking and component metrics
 7. VOICE_UNLOCK - PRD v2.0 BEAST MODE Multi-Modal Biometric Authentication (ADVANCED!)
-   ✨ Manual Unlock: "Hey JARVIS, unlock my screen" - Direct control 24/7
+   ✨ Manual Unlock: "Hey Ironcliw, unlock my screen" - Direct control 24/7
    ✨ Context-Aware: Automatically unlocks when needed for tasks
    🔬 BEAST MODE: Advanced Probabilistic Verification System
    🔐 PRD v2.0: Next-Gen Voice Biometric Intelligence (NEW!)
@@ -86,9 +86,9 @@ The JARVIS backend loads 11 critical components + 6 intelligent systems:
      - Hypothesis Explanations: Explains borderline cases (noise, sick voice, etc.)
      - Infrastructure Status: Monitors Docker, GCP Cloud Run, VM Spot instances
      - Decision Factors: Records confidence breakdown for troubleshooting
-     - Environment-driven: JARVIS_VERBOSE_MODE, JARVIS_DEBUG_VOICE, etc.
+     - Environment-driven: Ironcliw_VERBOSE_MODE, Ironcliw_DEBUG_VOICE, etc.
 
-8. WAKE_WORD - Hands-free 'Hey JARVIS' activation
+8. WAKE_WORD - Hands-free 'Hey Ironcliw' activation
    • Always-listening mode with zero clicks required
    • Multi-engine detection (Porcupine, Vosk, WebRTC)
    • Customizable wake words and responses
@@ -122,7 +122,7 @@ The JARVIS backend loads 11 critical components + 6 intelligent systems:
    • Usage: python start_system.py (fully automatic) OR --goal-preset learning --enable-automation
 
 11. AGI_OS - Autonomous General Intelligence Operating System (NEW!)
-   🧠 JARVIS acts INTELLIGENTLY and AUTONOMOUSLY without prompting
+   🧠 Ironcliw acts INTELLIGENTLY and AUTONOMOUSLY without prompting
    ✨ Only requires user approval (not initiation) via voice
    🎙️ Real-time voice communication with Daniel TTS (British)
    • AGIOSCoordinator: Central coordinator for all AGI OS components
@@ -202,7 +202,7 @@ All 6 systems now integrate with HybridProactiveMonitoringManager & ImplicitRefe
 - Shared Knowledge Graph: Persistent, searchable collective memory with semantic search
 - Agent Registry: Service discovery and health monitoring with auto-recovery
 - Multi-Agent Orchestrator: Workflow coordination and task decomposition
-- JARVIS Bridge: Connects all JARVIS systems (Main, Prime, Reactor Core)
+- Ironcliw Bridge: Connects all Ironcliw systems (Main, Prime, Reactor Core)
 - Google Workspace Agent v2.0 - Chief of Staff Integration:
   • Three-Tier Waterfall: Google API → macOS Local → Computer Use fallback
   • Gmail Integration: Read, search, compose, send emails via natural language
@@ -261,7 +261,7 @@ Browser Automation Features (v13.4.0):
   • "Initializing two-tier security architecture."
   • "Agentic watchdog armed. Kill switch ready."
   • "Voice biometric authentication ready. Visual threat detection enabled."
-- Cross-Repository Integration: Announces when JARVIS systems connect
+- Cross-Repository Integration: Announces when Ironcliw systems connect
   • "Cross-repository integration complete. Intelligence shared across all platforms."
 - Neural Mesh & Google Workspace: Announces multi-agent system status
   • "Initializing Neural Mesh multi-agent system."
@@ -345,14 +345,14 @@ class VenvAutoActivator:
     def __init__(self):
         self.script_dir = Path(__file__).resolve().parent
         self.platform = sys.platform
-        self._already_attempted = os.environ.get("_JARVIS_VENV_ACTIVATED") == "1"
+        self._already_attempted = os.environ.get("_Ironcliw_VENV_ACTIVATED") == "1"
 
     def find_venv(self) -> Optional[Path]:
         """
         Intelligently locate virtual environment.
 
         Priority:
-        1. JARVIS_VENV_PATH environment variable (explicit override)
+        1. Ironcliw_VENV_PATH environment variable (explicit override)
         2. VIRTUAL_ENV environment variable (if already in a venv)
         3. Standard locations search
 
@@ -360,11 +360,11 @@ class VenvAutoActivator:
             Path to valid venv, or None if not found
         """
         # Priority 1: Explicit override via environment
-        if env_path := os.environ.get("JARVIS_VENV_PATH"):
+        if env_path := os.environ.get("Ironcliw_VENV_PATH"):
             venv_path = Path(env_path)
             if self._is_valid_venv(venv_path):
                 return venv_path
-            print(f"⚠️  JARVIS_VENV_PATH invalid: {venv_path}")
+            print(f"⚠️  Ironcliw_VENV_PATH invalid: {venv_path}")
 
         # Priority 2: Check if already in activated venv
         if virtual_env := os.environ.get("VIRTUAL_ENV"):
@@ -374,7 +374,7 @@ class VenvAutoActivator:
 
         # Priority 3: Search standard locations
         search_paths = os.environ.get(
-            "JARVIS_VENV_SEARCH_PATHS",
+            "Ironcliw_VENV_SEARCH_PATHS",
             ":".join(self.DEFAULT_VENV_SEARCH_PATHS)
         ).split(":")
 
@@ -516,7 +516,7 @@ class VenvAutoActivator:
 
         # Set marker to prevent infinite loops
         env = os.environ.copy()
-        env["_JARVIS_VENV_ACTIVATED"] = "1"
+        env["_Ironcliw_VENV_ACTIVATED"] = "1"
 
         # Use Popen for better signal handling instead of run()
         process = subprocess.Popen(
@@ -572,7 +572,7 @@ class VenvAutoActivator:
 
         print(f"\nSearched locations:")
         search_paths = os.environ.get(
-            "JARVIS_VENV_SEARCH_PATHS",
+            "Ironcliw_VENV_SEARCH_PATHS",
             ":".join(self.DEFAULT_VENV_SEARCH_PATHS)
         ).split(":")
 
@@ -588,10 +588,10 @@ class VenvAutoActivator:
         print(f"     pip install -r requirements.txt")
 
         print(f"\n  2. Specify custom venv location:")
-        print(f"     export JARVIS_VENV_PATH=/path/to/venv")
+        print(f"     export Ironcliw_VENV_PATH=/path/to/venv")
 
         print(f"\n  3. Add search paths:")
-        print(f"     export JARVIS_VENV_SEARCH_PATHS=path1:path2:path3")
+        print(f"     export Ironcliw_VENV_SEARCH_PATHS=path1:path2:path3")
 
         if missing:
             print(f"\n  4. Install in current environment:")
@@ -701,7 +701,7 @@ def _fast_supervisor_check():
     uptime_str = f"{int(uptime // 60)}m {int(uptime % 60)}s" if uptime > 60 else f"{int(uptime)}s"
 
     print(f"\n{'='*70}")
-    print(f"✅ JARVIS Supervisor (PID {pid}) is running and healthy")
+    print(f"✅ Ironcliw Supervisor (PID {pid}) is running and healthy")
     print(f"{'='*70}")
     print(f"   Health:  {health_level}")
     print(f"   Uptime:  {uptime_str}")
@@ -1007,7 +1007,7 @@ def _env_list(key: str, default: str, sep: str = ",") -> List[str]:
 @dataclass
 class StartupSystemConfig:
     """
-    v100.0: Ultra-robust configuration for JARVIS startup system.
+    v100.0: Ultra-robust configuration for Ironcliw startup system.
 
     ALL values are environment-driven with sensible defaults.
     Zero hardcoding - everything configurable at runtime.
@@ -1026,120 +1026,120 @@ class StartupSystemConfig:
     # =========================================================================
     # Core System Settings
     # =========================================================================
-    system_name: str = field(default_factory=lambda: _env_str("JARVIS_SYSTEM_NAME", "JARVIS"))
-    system_version: str = field(default_factory=lambda: _env_str("JARVIS_SYSTEM_VERSION", "v100.0"))
+    system_name: str = field(default_factory=lambda: _env_str("Ironcliw_SYSTEM_NAME", "Ironcliw"))
+    system_version: str = field(default_factory=lambda: _env_str("Ironcliw_SYSTEM_VERSION", "v100.0"))
     instance_id: str = field(default_factory=lambda: _env_str(
-        "JARVIS_INSTANCE_ID", f"jarvis_{uuid.uuid4().hex[:8]}"
+        "Ironcliw_INSTANCE_ID", f"jarvis_{uuid.uuid4().hex[:8]}"
     ))
 
     # =========================================================================
     # Port Configuration (Dynamic Discovery)
     # =========================================================================
     # Primary ports (check first)
-    main_api_port: int = field(default_factory=lambda: _env_int("JARVIS_API_PORT", 8010))
-    websocket_port: int = field(default_factory=lambda: _env_int("JARVIS_WEBSOCKET_PORT", 8001))
-    frontend_port: int = field(default_factory=lambda: _env_int("JARVIS_FRONTEND_PORT", 3000))
-    llama_cpp_port: int = field(default_factory=lambda: _env_int("JARVIS_LLAMA_PORT", 8080))
-    event_ui_port: int = field(default_factory=lambda: _env_int("JARVIS_EVENT_UI_PORT", 8888))
+    main_api_port: int = field(default_factory=lambda: _env_int("Ironcliw_API_PORT", 8010))
+    websocket_port: int = field(default_factory=lambda: _env_int("Ironcliw_WEBSOCKET_PORT", 8001))
+    frontend_port: int = field(default_factory=lambda: _env_int("Ironcliw_FRONTEND_PORT", 3000))
+    llama_cpp_port: int = field(default_factory=lambda: _env_int("Ironcliw_LLAMA_PORT", 8080))
+    event_ui_port: int = field(default_factory=lambda: _env_int("Ironcliw_EVENT_UI_PORT", 8888))
 
     # Fallback ports (if primary is busy)
     api_fallback_ports: List[int] = field(default_factory=lambda: [
-        _env_int(f"JARVIS_API_FALLBACK_{i}", p)
+        _env_int(f"Ironcliw_API_FALLBACK_{i}", p)
         for i, p in enumerate([8011, 8000, 8001, 8080, 8888])
     ])
 
     # Dynamic port allocation range (if all fallbacks fail)
-    dynamic_port_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_DYNAMIC_PORTS", True))
-    dynamic_port_start: int = field(default_factory=lambda: _env_int("JARVIS_DYNAMIC_PORT_START", 8100))
-    dynamic_port_end: int = field(default_factory=lambda: _env_int("JARVIS_DYNAMIC_PORT_END", 8199))
+    dynamic_port_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_DYNAMIC_PORTS", True))
+    dynamic_port_start: int = field(default_factory=lambda: _env_int("Ironcliw_DYNAMIC_PORT_START", 8100))
+    dynamic_port_end: int = field(default_factory=lambda: _env_int("Ironcliw_DYNAMIC_PORT_END", 8199))
 
     # =========================================================================
     # Host Configuration (Multi-Environment)
     # =========================================================================
-    host: str = field(default_factory=lambda: _env_str("JARVIS_HOST", "localhost"))
-    bind_address: str = field(default_factory=lambda: _env_str("JARVIS_BIND_ADDRESS", "0.0.0.0"))
-    protocol: str = field(default_factory=lambda: _env_str("JARVIS_PROTOCOL", "http"))
+    host: str = field(default_factory=lambda: _env_str("Ironcliw_HOST", "localhost"))
+    bind_address: str = field(default_factory=lambda: _env_str("Ironcliw_BIND_ADDRESS", "0.0.0.0"))
+    protocol: str = field(default_factory=lambda: _env_str("Ironcliw_PROTOCOL", "http"))
 
     # Auto-detect Docker environment
-    docker_mode: bool = field(default_factory=lambda: _env_bool("JARVIS_DOCKER_MODE", False) or
+    docker_mode: bool = field(default_factory=lambda: _env_bool("Ironcliw_DOCKER_MODE", False) or
                               Path("/.dockerenv").exists())
 
     # =========================================================================
     # Timeout Configuration (Adaptive)
     # =========================================================================
-    startup_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_STARTUP_TIMEOUT", 180.0))
-    component_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_COMPONENT_TIMEOUT", 60.0))
-    health_check_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_HEALTH_TIMEOUT", 10.0))
-    shutdown_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_SHUTDOWN_TIMEOUT", 30.0))
-    process_cleanup_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_CLEANUP_TIMEOUT", 5.0))
+    startup_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_STARTUP_TIMEOUT", 180.0))
+    component_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_COMPONENT_TIMEOUT", 60.0))
+    health_check_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_HEALTH_TIMEOUT", 10.0))
+    shutdown_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_SHUTDOWN_TIMEOUT", 30.0))
+    process_cleanup_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_CLEANUP_TIMEOUT", 5.0))
 
     # Adaptive timeout (adjust based on system load)
-    adaptive_timeout_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_ADAPTIVE_TIMEOUT", True))
+    adaptive_timeout_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_ADAPTIVE_TIMEOUT", True))
     adaptive_timeout_max_multiplier: float = field(default_factory=lambda: _env_float(
-        "JARVIS_ADAPTIVE_TIMEOUT_MAX", 3.0
+        "Ironcliw_ADAPTIVE_TIMEOUT_MAX", 3.0
     ))
 
     # =========================================================================
     # Retry Configuration
     # =========================================================================
-    max_retries: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RETRIES", 3))
-    retry_base_delay_sec: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_BASE_DELAY", 1.0))
-    retry_max_delay_sec: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_MAX_DELAY", 30.0))
-    retry_exponential_base: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_EXPONENTIAL_BASE", 2.0))
-    retry_jitter_factor: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_JITTER", 0.1))
+    max_retries: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_RETRIES", 3))
+    retry_base_delay_sec: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_BASE_DELAY", 1.0))
+    retry_max_delay_sec: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_MAX_DELAY", 30.0))
+    retry_exponential_base: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_EXPONENTIAL_BASE", 2.0))
+    retry_jitter_factor: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_JITTER", 0.1))
 
     # =========================================================================
     # Logging Configuration (Organized Output)
     # =========================================================================
-    log_level: str = field(default_factory=lambda: _env_str("JARVIS_LOG_LEVEL", "INFO"))
+    log_level: str = field(default_factory=lambda: _env_str("Ironcliw_LOG_LEVEL", "INFO"))
     log_format: str = field(default_factory=lambda: _env_str(
-        "JARVIS_LOG_FORMAT", "structured"  # "structured", "json", "simple"
+        "Ironcliw_LOG_FORMAT", "structured"  # "structured", "json", "simple"
     ))
     log_dir: Path = field(default_factory=lambda: Path(_env_str(
-        "JARVIS_LOG_DIR", str(Path.home() / ".jarvis" / "logs")
+        "Ironcliw_LOG_DIR", str(Path.home() / ".jarvis" / "logs")
     )))
-    log_rotation_size_mb: int = field(default_factory=lambda: _env_int("JARVIS_LOG_ROTATION_SIZE_MB", 10))
-    log_retention_days: int = field(default_factory=lambda: _env_int("JARVIS_LOG_RETENTION_DAYS", 7))
+    log_rotation_size_mb: int = field(default_factory=lambda: _env_int("Ironcliw_LOG_ROTATION_SIZE_MB", 10))
+    log_retention_days: int = field(default_factory=lambda: _env_int("Ironcliw_LOG_RETENTION_DAYS", 7))
 
     # Log sections (organized output)
-    log_show_timestamps: bool = field(default_factory=lambda: _env_bool("JARVIS_LOG_TIMESTAMPS", True))
-    log_show_component: bool = field(default_factory=lambda: _env_bool("JARVIS_LOG_COMPONENT", True))
-    log_color_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_LOG_COLOR", True))
-    log_section_separator: str = field(default_factory=lambda: _env_str("JARVIS_LOG_SEPARATOR", "─" * 60))
+    log_show_timestamps: bool = field(default_factory=lambda: _env_bool("Ironcliw_LOG_TIMESTAMPS", True))
+    log_show_component: bool = field(default_factory=lambda: _env_bool("Ironcliw_LOG_COMPONENT", True))
+    log_color_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_LOG_COLOR", True))
+    log_section_separator: str = field(default_factory=lambda: _env_str("Ironcliw_LOG_SEPARATOR", "─" * 60))
 
     # =========================================================================
     # Resource Limits
     # =========================================================================
-    max_memory_mb: int = field(default_factory=lambda: _env_int("JARVIS_MAX_MEMORY_MB", 4096))
-    max_cpu_percent: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CPU_PERCENT", 80))
-    max_file_descriptors: int = field(default_factory=lambda: _env_int("JARVIS_MAX_FD", 4096))
-    max_concurrent_tasks: int = field(default_factory=lambda: _env_int("JARVIS_MAX_TASKS", 100))
+    max_memory_mb: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_MEMORY_MB", 4096))
+    max_cpu_percent: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_CPU_PERCENT", 80))
+    max_file_descriptors: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_FD", 4096))
+    max_concurrent_tasks: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_TASKS", 100))
 
     # =========================================================================
     # Health Monitoring
     # =========================================================================
-    health_check_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_HEALTH_ENABLED", True))
-    health_check_interval_sec: float = field(default_factory=lambda: _env_float("JARVIS_HEALTH_INTERVAL", 30.0))
-    health_check_http_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_HEALTH_HTTP", True))
-    health_check_process_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_HEALTH_PROCESS", True))
+    health_check_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_HEALTH_ENABLED", True))
+    health_check_interval_sec: float = field(default_factory=lambda: _env_float("Ironcliw_HEALTH_INTERVAL", 30.0))
+    health_check_http_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_HEALTH_HTTP", True))
+    health_check_process_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_HEALTH_PROCESS", True))
 
     # =========================================================================
     # Distributed Tracing
     # =========================================================================
-    tracing_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_TRACING_ENABLED", True))
-    trace_sample_rate: float = field(default_factory=lambda: _env_float("JARVIS_TRACE_SAMPLE_RATE", 1.0))
+    tracing_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_TRACING_ENABLED", True))
+    trace_sample_rate: float = field(default_factory=lambda: _env_float("Ironcliw_TRACE_SAMPLE_RATE", 1.0))
 
     # =========================================================================
     # Graceful Degradation
     # =========================================================================
     graceful_degradation_enabled: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_GRACEFUL_DEGRADATION", True
+        "Ironcliw_GRACEFUL_DEGRADATION", True
     ))
     continue_on_partial_failure: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_CONTINUE_PARTIAL_FAILURE", True
+        "Ironcliw_CONTINUE_PARTIAL_FAILURE", True
     ))
     optional_components: List[str] = field(default_factory=lambda: _env_list(
-        "JARVIS_OPTIONAL_COMPONENTS",
+        "Ironcliw_OPTIONAL_COMPONENTS",
         "voice,wake_word,display_monitor,goal_inference,agi_os"
     ))
 
@@ -1147,11 +1147,11 @@ class StartupSystemConfig:
     # Process Management
     # =========================================================================
     process_cleanup_patterns: List[str] = field(default_factory=lambda: _env_list(
-        "JARVIS_PROCESS_PATTERNS",
+        "Ironcliw_PROCESS_PATTERNS",
         "jarvis,uvicorn,python,node"
     ))
-    zombie_detection_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_ZOMBIE_DETECTION", True))
-    zombie_kill_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_ZOMBIE_KILL_TIMEOUT", 5.0))
+    zombie_detection_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_ZOMBIE_DETECTION", True))
+    zombie_kill_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_ZOMBIE_KILL_TIMEOUT", 5.0))
 
     def __post_init__(self):
         """Validate configuration and create necessary directories."""
@@ -1665,7 +1665,7 @@ sys.path.insert(0, str(_project_root / "backend"))
 # CRITICAL: Early Shutdown Hook Registration (Triple-Lock Safety System)
 # =============================================================================
 # Register shutdown hook as early as possible to ensure GCP VMs are cleaned up
-# even if JARVIS crashes during startup. This provides the "Local Cleanup" layer
+# even if Ironcliw crashes during startup. This provides the "Local Cleanup" layer
 # of the Triple-Lock safety system for preventing orphaned VMs.
 #
 # Triple-Lock Safety:
@@ -2455,7 +2455,7 @@ class DynamicRAMMonitor:
 
 class GlobalSessionManager:
     """
-    Async-safe singleton manager for JARVIS session tracking.
+    Async-safe singleton manager for Ironcliw session tracking.
 
     This manager is initialized early and provides guaranteed access to
     session tracking functionality throughout the application lifecycle,
@@ -2949,9 +2949,9 @@ def is_session_manager_available() -> bool:
 
 class VMSessionTracker:
     """
-    Track VM ownership per JARVIS session to prevent multi-terminal conflicts.
+    Track VM ownership per Ironcliw session to prevent multi-terminal conflicts.
 
-    Each JARVIS instance (terminal session) gets a unique session_id.
+    Each Ironcliw instance (terminal session) gets a unique session_id.
     VMs are tagged with their owning session, ensuring cleanup only affects
     VMs owned by the terminating session.
 
@@ -3403,7 +3403,7 @@ class HybridWorkloadRouter:
 
         return f"""#!/bin/bash
 set -e
-echo "🚀 JARVIS GCP Auto-Deployment Starting..."
+echo "🚀 Ironcliw GCP Auto-Deployment Starting..."
 
 # Install dependencies
 sudo apt-get update -qq
@@ -3420,7 +3420,7 @@ LATEST_COMMIT=$(gcloud storage cat $DEPLOYMENT_BUCKET/latest-{branch}.txt 2>/dev
 
 if [ -z "$LATEST_COMMIT" ]; then
     echo "⚠️  No deployment found for branch {branch}, falling back to git clone..."
-    REPO_URL="{gcp_config.get('repo_url', 'https://github.com/drussell23/JARVIS-AI-Agent.git')}"
+    REPO_URL="{gcp_config.get('repo_url', 'https://github.com/drussell23/Ironcliw-AI-Agent.git')}"
     if [ -d "$PROJECT_DIR" ]; then
         cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/{branch}
     else
@@ -3462,9 +3462,9 @@ fi
 
 # Configure environment
 cat > "$PROJECT_DIR/backend/.env.gcp" <<EOF
-JARVIS_HYBRID_MODE=true
+Ironcliw_HYBRID_MODE=true
 GCP_INSTANCE=true
-JARVIS_DB_TYPE=cloudsql
+Ironcliw_DB_TYPE=cloudsql
 EOF
 
 # Start Cloud SQL Proxy (if config available)
@@ -3484,7 +3484,7 @@ for i in {{1..30}}; do
     sleep 2
     if curl -sf http://localhost:8010/health > /dev/null; then
         INSTANCE_IP=$(curl -sf http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -H "Metadata-Flavor: Google" || echo "unknown")
-        echo "✅ JARVIS Ready at http://$INSTANCE_IP:8010"
+        echo "✅ Ironcliw Ready at http://$INSTANCE_IP:8010"
         exit 0
     fi
 done
@@ -5435,7 +5435,7 @@ class SemanticVoiceCacheManager:
             self._collection = self._chroma_client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={
-                    "description": "JARVIS voice biometric embeddings cache",
+                    "description": "Ironcliw voice biometric embeddings cache",
                     "version": "2.5",
                     "hnsw:space": "cosine"  # Use cosine similarity for voice embeddings
                 }
@@ -6770,13 +6770,13 @@ def get_tiered_storage_manager() -> TieredStorageManager:
 
 class IntelligentChromeIncognitoManager:
     """
-    Advanced Chrome Incognito Window Manager for JARVIS.
+    Advanced Chrome Incognito Window Manager for Ironcliw.
 
     DESIGN PHILOSOPHY: INCOGNITO ONLY, SINGLE WINDOW, ZERO DUPLICATES
 
     This manager ensures:
     1. ONLY Chrome Incognito mode is used - NEVER regular Chrome windows
-    2. EXACTLY ONE incognito window/tab with JARVIS at any time
+    2. EXACTLY ONE incognito window/tab with Ironcliw at any time
     3. Intelligent deduplication - closes ALL duplicates automatically
     4. Cache-free experience - bypasses all cached CSS, JS, assets
     5. Robust async operations with retry logic and error recovery
@@ -6789,8 +6789,8 @@ class IntelligentChromeIncognitoManager:
     - Automatic cleanup on system restart
     """
 
-    # URL patterns that identify JARVIS tabs (dynamically loaded, no hardcoding)
-    JARVIS_URL_PATTERNS = None  # Loaded from config
+    # URL patterns that identify Ironcliw tabs (dynamically loaded, no hardcoding)
+    Ironcliw_URL_PATTERNS = None  # Loaded from config
 
     # Default patterns as fallback
     DEFAULT_URL_PATTERNS = [
@@ -6816,7 +6816,7 @@ class IntelligentChromeIncognitoManager:
         logger.info("🔒 IntelligentChromeIncognitoManager initialized (INCOGNITO-ONLY mode)")
 
     def _load_url_patterns(self):
-        """Load JARVIS URL patterns from configuration file."""
+        """Load Ironcliw URL patterns from configuration file."""
         config_paths = [
             Path(__file__).parent / 'backend' / 'config' / 'startup_progress_config.json',
             Path(__file__).parent / 'backend' / 'config' / 'browser_config.json',
@@ -6830,23 +6830,23 @@ class IntelligentChromeIncognitoManager:
                         patterns = data.get('jarvis_url_patterns',
                                           data.get('browser_config', {}).get('url_patterns'))
                         if patterns:
-                            self.JARVIS_URL_PATTERNS = patterns
+                            self.Ironcliw_URL_PATTERNS = patterns
                             logger.debug(f"Loaded {len(patterns)} URL patterns from {config_path.name}")
                             return
             except Exception as e:
                 logger.debug(f"Could not load URL patterns from {config_path}: {e}")
 
         # Use defaults
-        self.JARVIS_URL_PATTERNS = self.DEFAULT_URL_PATTERNS.copy()
-        logger.debug(f"Using default URL patterns: {len(self.JARVIS_URL_PATTERNS)} patterns")
+        self.Ironcliw_URL_PATTERNS = self.DEFAULT_URL_PATTERNS.copy()
+        logger.debug(f"Using default URL patterns: {len(self.Ironcliw_URL_PATTERNS)} patterns")
 
     async def ensure_single_incognito_window(self, url: str, force_new: bool = False) -> dict:
         """
-        Ensure exactly ONE Chrome Incognito window with JARVIS.
+        Ensure exactly ONE Chrome Incognito window with Ironcliw.
 
         This is the main entry point. It will:
-        1. Close ALL regular Chrome windows with JARVIS tabs
-        2. Close ALL duplicate incognito windows with JARVIS tabs
+        1. Close ALL regular Chrome windows with Ironcliw tabs
+        2. Close ALL duplicate incognito windows with Ironcliw tabs
         3. Keep or create exactly ONE incognito window
         4. Navigate that window to the specified URL
 
@@ -6960,20 +6960,20 @@ class IntelligentChromeIncognitoManager:
                             result['action'] = 'created'
                             return result
 
-                    # Step 2: Close ALL regular Chrome windows with JARVIS tabs
+                    # Step 2: Close ALL regular Chrome windows with Ironcliw tabs
                     if scan_result['regular_jarvis_windows']:
                         closed = await self._close_regular_jarvis_windows(
                             scan_result['regular_jarvis_windows']
                         )
                         result['regular_windows_closed'] = closed
-                        logger.info(f"🗑️ Closed {closed} regular Chrome windows with JARVIS tabs")
+                        logger.info(f"🗑️ Closed {closed} regular Chrome windows with Ironcliw tabs")
 
                     # Step 3: Handle incognito windows
-                    # CRITICAL: Use ALL incognito windows, not just JARVIS ones!
+                    # CRITICAL: Use ALL incognito windows, not just Ironcliw ones!
                     all_incognito = scan_result.get('all_incognito_windows', [])
                     jarvis_incognito = scan_result['incognito_jarvis_windows']
 
-                    logger.info(f"🔍 Found {len(all_incognito)} total incognito, {len(jarvis_incognito)} with JARVIS URLs")
+                    logger.info(f"🔍 Found {len(all_incognito)} total incognito, {len(jarvis_incognito)} with Ironcliw URLs")
 
                     if force_new:
                         # Force new: close ALL incognito windows and create fresh
@@ -7130,20 +7130,20 @@ class IntelligentChromeIncognitoManager:
         """
         Scan all Chrome windows and categorize them.
 
-        ENHANCED: Now scans for ALL incognito windows, not just those with JARVIS URLs.
+        ENHANCED: Now scans for ALL incognito windows, not just those with Ironcliw URLs.
         This ensures we can reuse any existing incognito window instead of creating duplicates.
 
         Returns:
             dict: {
                 'chrome_running': bool,
-                'regular_jarvis_windows': list of window indices (with JARVIS URLs),
-                'incognito_jarvis_windows': list of window indices (with JARVIS URLs),
+                'regular_jarvis_windows': list of window indices (with Ironcliw URLs),
+                'incognito_jarvis_windows': list of window indices (with Ironcliw URLs),
                 'all_incognito_windows': list of ALL incognito window indices,
                 'total_windows': int
             }
         """
         # Build pattern list for AppleScript
-        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+        patterns_str = ', '.join(f'"{p}"' for p in self.Ironcliw_URL_PATTERNS)
 
         applescript = f'''
         tell application "System Events"
@@ -7165,12 +7165,12 @@ class IntelligentChromeIncognitoManager:
                     set windowMode to mode of w
                     set isIncognito to (windowMode is "incognito")
 
-                    -- Track ALL incognito windows (for reuse even if not JARVIS)
+                    -- Track ALL incognito windows (for reuse even if not Ironcliw)
                     if isIncognito then
                         set end of allIncognito to windowIndex
                     end if
 
-                    -- Check tabs in this window for JARVIS URLs
+                    -- Check tabs in this window for Ironcliw URLs
                     set foundJarvis to false
                     repeat with t in tabs of w
                         if not foundJarvis then
@@ -7229,7 +7229,7 @@ class IntelligentChromeIncognitoManager:
                     all_incognito_count = int(parts[6]) if len(parts) > 6 else 0
                     all_incognito_indices = self._parse_applescript_list(parts[7]) if len(parts) > 7 else []
 
-                    logger.info(f"🔍 Chrome scan: {total} windows, {all_incognito_count} incognito, {incognito_jarvis_count} with JARVIS URLs")
+                    logger.info(f"🔍 Chrome scan: {total} windows, {all_incognito_count} incognito, {incognito_jarvis_count} with Ironcliw URLs")
 
                     return {
                         'chrome_running': True,
@@ -7274,7 +7274,7 @@ class IntelligentChromeIncognitoManager:
         Launch a fresh Chrome Incognito window with the specified URL in FULLSCREEN mode.
 
         Uses command-line approach for maximum reliability.
-        Always opens in fullscreen for immersive JARVIS experience.
+        Always opens in fullscreen for immersive Ironcliw experience.
 
         CRITICAL: Only launches ONCE to prevent duplicate windows. Verification
         retries do NOT create new windows - they just wait for the existing one.
@@ -7469,12 +7469,12 @@ class IntelligentChromeIncognitoManager:
             return False
 
     async def _close_regular_jarvis_windows(self, window_indices: list) -> int:
-        """Close regular (non-incognito) Chrome windows that have JARVIS tabs."""
+        """Close regular (non-incognito) Chrome windows that have Ironcliw tabs."""
         if not window_indices:
             return 0
 
         # Build pattern list for AppleScript
-        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+        patterns_str = ', '.join(f'"{p}"' for p in self.Ironcliw_URL_PATTERNS)
 
         applescript = f'''
         tell application "Google Chrome"
@@ -7529,11 +7529,11 @@ class IntelligentChromeIncognitoManager:
             return 0
 
     async def _close_incognito_windows(self, window_indices: list) -> int:
-        """Close specified incognito windows with JARVIS tabs."""
+        """Close specified incognito windows with Ironcliw tabs."""
         if not window_indices:
             return 0
 
-        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+        patterns_str = ', '.join(f'"{p}"' for p in self.Ironcliw_URL_PATTERNS)
 
         applescript = f'''
         tell application "Google Chrome"
@@ -7542,7 +7542,7 @@ class IntelligentChromeIncognitoManager:
             set windowsToClose to {{}}
             set skipFirst to true
 
-            -- Collect incognito JARVIS windows (skip the first one we find)
+            -- Collect incognito Ironcliw windows (skip the first one we find)
             repeat with windowIndex from (count of windows) to 1 by -1
                 set w to window windowIndex
                 try
@@ -7596,12 +7596,12 @@ class IntelligentChromeIncognitoManager:
         Redirect an existing incognito window to the specified URL.
 
         ENHANCED: More robust window detection and URL navigation.
-        - First tries to find a tab with JARVIS URL and redirect it
+        - First tries to find a tab with Ironcliw URL and redirect it
         - If not found, uses the active tab of the first incognito window
         - Brings window to front and activates Chrome
         - Handles the case where URL is already loaded (just activates)
         """
-        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+        patterns_str = ', '.join(f'"{p}"' for p in self.Ironcliw_URL_PATTERNS)
 
         applescript = f'''
         tell application "Google Chrome"
@@ -7609,7 +7609,7 @@ class IntelligentChromeIncognitoManager:
             set foundWindow to false
             set targetURL to "{url}"
 
-            -- First pass: Find incognito window with JARVIS tab
+            -- First pass: Find incognito window with Ironcliw tab
             repeat with w in windows
                 try
                     if mode of w is "incognito" then
@@ -7625,10 +7625,10 @@ class IntelligentChromeIncognitoManager:
                                 exit repeat
                             end if
 
-                            -- Check if this is a JARVIS tab we can redirect
+                            -- Check if this is a Ironcliw tab we can redirect
                             repeat with pattern in jarvisPatterns
                                 if tabURL contains pattern then
-                                    -- Found JARVIS tab - redirect it
+                                    -- Found Ironcliw tab - redirect it
                                     set URL of t to targetURL
                                     set active tab index of w to (index of t)
                                     set index of w to 1
@@ -7643,7 +7643,7 @@ class IntelligentChromeIncognitoManager:
                 if foundWindow then exit repeat
             end repeat
 
-            -- Second pass: If no JARVIS tab found, use first incognito window's active tab
+            -- Second pass: If no Ironcliw tab found, use first incognito window's active tab
             if not foundWindow then
                 repeat with w in windows
                     try
@@ -7689,8 +7689,8 @@ class IntelligentChromeIncognitoManager:
             return False
 
     async def close_all_jarvis_windows(self) -> int:
-        """Close ALL Chrome windows (regular and incognito) with JARVIS tabs."""
-        patterns_str = ', '.join(f'"{p}"' for p in self.JARVIS_URL_PATTERNS)
+        """Close ALL Chrome windows (regular and incognito) with Ironcliw tabs."""
+        patterns_str = ', '.join(f'"{p}"' for p in self.Ironcliw_URL_PATTERNS)
 
         applescript = f'''
         tell application "Google Chrome"
@@ -7733,11 +7733,11 @@ class IntelligentChromeIncognitoManager:
 
             result = stdout.decode().strip()
             closed = int(result) if result.isdigit() else 0
-            logger.info(f"🗑️ Closed {closed} JARVIS windows")
+            logger.info(f"🗑️ Closed {closed} Ironcliw windows")
             return closed
 
         except Exception as e:
-            logger.warning(f"Failed to close JARVIS windows: {e}")
+            logger.warning(f"Failed to close Ironcliw windows: {e}")
             return 0
 
     def get_stats(self) -> dict:
@@ -7747,7 +7747,7 @@ class IntelligentChromeIncognitoManager:
             'operation_count': self._operation_count,
             'error_count': self._error_count,
             'last_operation': self._last_operation_time.isoformat() if self._last_operation_time else None,
-            'url_patterns_count': len(self.JARVIS_URL_PATTERNS)
+            'url_patterns_count': len(self.Ironcliw_URL_PATTERNS)
         }
 
 
@@ -7769,7 +7769,7 @@ def get_chrome_incognito_manager() -> IntelligentChromeIncognitoManager:
 
 class DynamicPortManager:
     """
-    v100.0: Ultra-robust Dynamic Port Manager for JARVIS startup.
+    v100.0: Ultra-robust Dynamic Port Manager for Ironcliw startup.
 
     Features:
     - Environment-driven configuration (zero hardcoding)
@@ -8227,10 +8227,10 @@ class ProcessRestartManager:
     - All thresholds configurable via environment variables
 
     Environment Variables:
-        JARVIS_MAX_RESTARTS: Maximum restart attempts (default: 5)
-        JARVIS_MAX_BACKOFF: Maximum backoff delay in seconds (default: 30.0)
-        JARVIS_RESTART_COOLDOWN: Seconds of stability before resetting restart count (default: 300.0)
-        JARVIS_BASE_BACKOFF: Initial backoff delay in seconds (default: 1.0)
+        Ironcliw_MAX_RESTARTS: Maximum restart attempts (default: 5)
+        Ironcliw_MAX_BACKOFF: Maximum backoff delay in seconds (default: 30.0)
+        Ironcliw_RESTART_COOLDOWN: Seconds of stability before resetting restart count (default: 300.0)
+        Ironcliw_BASE_BACKOFF: Initial backoff delay in seconds (default: 1.0)
     """
 
     def __init__(self):
@@ -8240,10 +8240,10 @@ class ProcessRestartManager:
         self._shutdown_requested = False
 
         # Environment-driven configuration (no hardcoding)
-        self.max_restarts = int(os.getenv("JARVIS_MAX_RESTARTS", "5"))
-        self.max_backoff = float(os.getenv("JARVIS_MAX_BACKOFF", "30.0"))
-        self.restart_cooldown = float(os.getenv("JARVIS_RESTART_COOLDOWN", "300.0"))
-        self.base_backoff = float(os.getenv("JARVIS_BASE_BACKOFF", "1.0"))
+        self.max_restarts = int(os.getenv("Ironcliw_MAX_RESTARTS", "5"))
+        self.max_backoff = float(os.getenv("Ironcliw_MAX_BACKOFF", "30.0"))
+        self.restart_cooldown = float(os.getenv("Ironcliw_RESTART_COOLDOWN", "300.0"))
+        self.base_backoff = float(os.getenv("Ironcliw_BASE_BACKOFF", "1.0"))
 
         # Logger
         self._logger = logging.getLogger("ProcessRestartManager")
@@ -8564,7 +8564,7 @@ class AsyncSystemManager:
 
         # Hybrid Cloud Intelligence Coordinator
         self.hybrid_coordinator = None
-        self.hybrid_enabled = os.getenv("JARVIS_HYBRID_MODE", "auto") in ["auto", "true", "1"]
+        self.hybrid_enabled = os.getenv("Ironcliw_HYBRID_MODE", "auto") in ["auto", "true", "1"]
         if self.hybrid_enabled:
             try:
                 self.hybrid_coordinator = HybridIntelligenceCoordinator()
@@ -8581,7 +8581,7 @@ class AsyncSystemManager:
         # Provides comprehensive situational awareness that's always active:
         # - System resources monitoring (RAM, CPU, disk)
         # - Workspace/space tracking (via Yabai)
-        # - Cross-repo status (JARVIS Prime, Reactor Core)
+        # - Cross-repo status (Ironcliw Prime, Reactor Core)
         # - Process coordination status
         # - Intelligent predictions
         # =====================================================================
@@ -8599,7 +8599,7 @@ class AsyncSystemManager:
             except Exception as e:
                 logger.warning(f"Enhanced SAI initialization deferred: {e}")
 
-        # Cloud SQL Proxy Manager - manages proxy lifecycle tied to JARVIS
+        # Cloud SQL Proxy Manager - manages proxy lifecycle tied to Ironcliw
         self.cloud_sql_proxy_manager = None
         self.cloud_sql_proxy_enabled = Path.home().joinpath(".jarvis/gcp/database_config.json").exists()
 
@@ -8767,7 +8767,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.HEADER}{'='*70}")
         version = "v14.0.0 - AUTONOMOUS" if self.autonomous_mode else "v13.4.0"
         print(
-            f"{Colors.BOLD}🤖 JARVIS AI Agent {version} - Advanced Browser Automation 🚀{Colors.ENDC}"
+            f"{Colors.BOLD}🤖 Ironcliw AI Agent {version} - Advanced Browser Automation 🚀{Colors.ENDC}"
         )
         if self.autonomous_mode:
             print(
@@ -8881,7 +8881,7 @@ class AsyncSystemManager:
         print(f"   • {Colors.GREEN}✓ Swift Audio:{Colors.ENDC} ~1ms processing (was 50ms)")
         print(f"   • {Colors.CYAN}✓ Memory:{Colors.ENDC} 350MB (was 1.6GB), model swapping")
         print(f"   • {Colors.GREEN}✓ CPU:{Colors.ENDC} <1% idle with Swift vDSP")
-        print(f"   • {Colors.PURPLE}✓ Works:{Colors.ENDC} Say 'Hey JARVIS' - instant response!")
+        print(f"   • {Colors.PURPLE}✓ Works:{Colors.ENDC} Say 'Hey Ironcliw' - instant response!")
 
         # Intelligent Voice-Authenticated Unlock
         print(f"\n{Colors.BOLD}🔐 INTELLIGENT VOICE-AUTHENTICATED UNLOCK:{Colors.ENDC}")
@@ -8908,7 +8908,7 @@ class AsyncSystemManager:
             f"   • {Colors.YELLOW}✓ Fail-Closed:{Colors.ENDC} Denies unlock if voice doesn't match"
         )
         print(
-            f"   • {Colors.PURPLE}✓ Command:{Colors.ENDC} 'Hey JARVIS, unlock my screen' (voice verified)"
+            f"   • {Colors.PURPLE}✓ Command:{Colors.ENDC} 'Hey Ironcliw, unlock my screen' (voice verified)"
         )
 
         # Physics-Aware Voice Authentication (v2.5)
@@ -9094,8 +9094,8 @@ class AsyncSystemManager:
         """Clean up stuck processes before starting with enhanced recovery"""
         # ═══════════════════════════════════════════════════════════════════
         # CRITICAL: Check if supervisor already cleaned up
-        # When run_supervisor.py starts JARVIS, it performs its own comprehensive
-        # parallel cleanup and sets JARVIS_CLEANUP_DONE=1 to signal completion.
+        # When run_supervisor.py starts Ironcliw, it performs its own comprehensive
+        # parallel cleanup and sets Ironcliw_CLEANUP_DONE=1 to signal completion.
         # Skipping redundant cleanup prevents:
         # 1. The "already running on port 8010" warning
         # 2. Race conditions where ports aren't fully released yet
@@ -9138,8 +9138,8 @@ class AsyncSystemManager:
             print(f"{Colors.YELLOW}   CoordHub check failed (falling back to legacy): {e}{Colors.ENDC}")
 
         # Legacy fallback: Check env vars directly
-        if os.environ.get("JARVIS_CLEANUP_DONE") == "1":
-            cleanup_timestamp = float(os.environ.get("JARVIS_CLEANUP_TIMESTAMP", "0"))
+        if os.environ.get("Ironcliw_CLEANUP_DONE") == "1":
+            cleanup_timestamp = float(os.environ.get("Ironcliw_CLEANUP_TIMESTAMP", "0"))
             age_seconds = time.time() - cleanup_timestamp if cleanup_timestamp else 0
 
             # Only trust the cleanup flag if it was set recently (within 60 seconds)
@@ -9167,9 +9167,9 @@ class AsyncSystemManager:
             print(f"{Colors.CYAN}   Checking for code changes and process cleanup needs...{Colors.ENDC}")
             
             # v15.0: Zero-Touch state awareness (read directly from environment)
-            zero_touch_active = os.environ.get("JARVIS_ZERO_TOUCH_ACTIVE", "false").lower() == "true"
-            zero_touch_phase = os.environ.get("JARVIS_ZERO_TOUCH_PHASE", "idle")
-            dms_active = os.environ.get("JARVIS_DMS_ACTIVE", "false").lower() == "true"
+            zero_touch_active = os.environ.get("Ironcliw_ZERO_TOUCH_ACTIVE", "false").lower() == "true"
+            zero_touch_phase = os.environ.get("Ironcliw_ZERO_TOUCH_PHASE", "idle")
+            dms_active = os.environ.get("Ironcliw_DMS_ACTIVE", "false").lower() == "true"
             
             # v15.0: Show Zero-Touch awareness
             if zero_touch_active:
@@ -9189,13 +9189,13 @@ class AsyncSystemManager:
             if dms_active:
                 supervisor_state["dms"] = {
                     "active": True,
-                    "probation_remaining": float(os.environ.get("JARVIS_DMS_PROBATION_REMAINING", "0")),
+                    "probation_remaining": float(os.environ.get("Ironcliw_DMS_PROBATION_REMAINING", "0")),
                 }
             if supervisor_state:
                 manager._supervisor_state.update_from_supervisor(supervisor_state)
             
             # v15.0: Validate resources if in Zero-Touch mode or before restart
-            if zero_touch_active or os.environ.get("JARVIS_VALIDATE_RESOURCES", "false").lower() == "true":
+            if zero_touch_active or os.environ.get("Ironcliw_VALIDATE_RESOURCES", "false").lower() == "true":
                 print(f"\n{Colors.CYAN}🔬 Validating system resources for update...{Colors.ENDC}")
                 try:
                     validation = await validate_resources_for_update()
@@ -9250,7 +9250,7 @@ class AsyncSystemManager:
 
             # DISABLED: Cleanup operations that hang on macOS
             # These operations try to access network connections and use lsof
-            # which are blocked by macOS security, causing JARVIS to hang
+            # which are blocked by macOS security, causing Ironcliw to hang
             print(f"{Colors.GREEN}   ✓ Process management system ready{Colors.ENDC}")
 
             # Set empty state to skip cleanup
@@ -9303,7 +9303,7 @@ class AsyncSystemManager:
                     p for p in state.get("jarvis_processes", []) if p["age_seconds"] > 300
                 ]
                 if old_jarvis:
-                    print(f"  • {len(old_jarvis)} old JARVIS processes")
+                    print(f"  • {len(old_jarvis)} old Ironcliw processes")
 
                 # Clean up automatically or ask for confirmation
                 if self.auto_cleanup:
@@ -9331,9 +9331,9 @@ class AsyncSystemManager:
                 print(f"{Colors.GREEN}✓ No stuck processes found{Colors.ENDC}")
 
             # Step 3: Final check - ensure we can start fresh
-            # Skip if supervisor already verified (JARVIS_CLEANUP_DONE is set)
-            if os.environ.get("JARVIS_CLEANUP_DONE") == "1":
-                cleanup_ts = float(os.environ.get("JARVIS_CLEANUP_TIMESTAMP", "0"))
+            # Skip if supervisor already verified (Ironcliw_CLEANUP_DONE is set)
+            if os.environ.get("Ironcliw_CLEANUP_DONE") == "1":
+                cleanup_ts = float(os.environ.get("Ironcliw_CLEANUP_TIMESTAMP", "0"))
                 if cleanup_ts and (time.time() - cleanup_ts) < 60:
                     print(f"{Colors.GREEN}✓ Supervisor verified ports are clear{Colors.ENDC}")
                     return True  # Trust supervisor's verification
@@ -9743,7 +9743,7 @@ class AsyncSystemManager:
         print(f"{Colors.CYAN}{'='*70}{Colors.ENDC}\n")
 
         # LEGACY PROXY STARTUP REMOVED - Now handled by CloudSQLProxyManager in run()
-        # The proxy is now managed properly with lifecycle tied to JARVIS startup/shutdown
+        # The proxy is now managed properly with lifecycle tied to Ironcliw startup/shutdown
         print(f"{Colors.CYAN}🔍 Cloud SQL proxy managed by CloudSQLProxyManager{Colors.ENDC}")
         print(f"{Colors.GREEN}   ✓ Proxy lifecycle handled automatically{Colors.ENDC}")
 
@@ -9764,20 +9764,20 @@ class AsyncSystemManager:
                     db_config = json.load(f)
 
                 # Set environment variables for Cloud SQL BEFORE importing
-                os.environ["JARVIS_DB_TYPE"] = "cloudsql"
-                os.environ["JARVIS_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
-                os.environ["JARVIS_DB_HOST"] = "127.0.0.1"  # Always use localhost for proxy
-                os.environ["JARVIS_DB_PORT"] = str(db_config["cloud_sql"]["port"])
-                os.environ["JARVIS_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
+                os.environ["Ironcliw_DB_TYPE"] = "cloudsql"
+                os.environ["Ironcliw_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
+                os.environ["Ironcliw_DB_HOST"] = "127.0.0.1"  # Always use localhost for proxy
+                os.environ["Ironcliw_DB_PORT"] = str(db_config["cloud_sql"]["port"])
+                os.environ["Ironcliw_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
             else:
                 logger.warning("⚠️ Database config not found, skipping Cloud SQL setup")
 
-            print(f"{Colors.CYAN}   └─ Initializing JARVIS Learning Database...{Colors.ENDC}")
-            from intelligence.learning_database import JARVISLearningDatabase
+            print(f"{Colors.CYAN}   └─ Initializing Ironcliw Learning Database...{Colors.ENDC}")
+            from intelligence.learning_database import IroncliwLearningDatabase
             from voice.speaker_verification_service import SpeakerVerificationService
 
             # Initialize learning database with Cloud SQL + Phase 2 features
-            learning_db = JARVISLearningDatabase()
+            learning_db = IroncliwLearningDatabase()
             await learning_db.initialize()
             print(f"{Colors.GREEN}      ✓ Learning database initialized{Colors.ENDC}")
 
@@ -9974,7 +9974,7 @@ class AsyncSystemManager:
         reload_manager_path = self.backend_dir / "jarvis_reload_manager.py"
         if (
             reload_manager_path.exists()
-            and os.getenv("JARVIS_USE_RELOAD_MANAGER", "true").lower() == "true"
+            and os.getenv("Ironcliw_USE_RELOAD_MANAGER", "true").lower() == "true"
         ):
             print(
                 f"{Colors.CYAN}🔄 Using intelligent reload manager for auto-updates...{Colors.ENDC}"
@@ -9982,9 +9982,9 @@ class AsyncSystemManager:
 
             # Import and use the reload manager
             try:
-                from backend.jarvis_reload_manager import JARVISReloadManager
+                from backend.jarvis_reload_manager import IroncliwReloadManager
 
-                reload_manager = JARVISReloadManager()
+                reload_manager = IroncliwReloadManager()
 
                 # Check for code changes (hot-reload vs cold-restart separation)
                 has_hot_changes, hot_files, cold_files = reload_manager.detect_code_changes()
@@ -10005,7 +10005,7 @@ class AsyncSystemManager:
                         f"{Colors.CYAN}📦 Cold-restart files changed (dependencies): {cold_files}{Colors.ENDC}"
                     )
 
-                # Kill any existing JARVIS process if hot-reload code changed
+                # Kill any existing Ironcliw process if hot-reload code changed
                 if has_hot_changes:
                     await reload_manager.stop_jarvis(force=True)
                     print(f"{Colors.GREEN}✅ Cleared old instances for fresh start{Colors.ENDC}")
@@ -10044,7 +10044,7 @@ class AsyncSystemManager:
 
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
-        env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
+        env["Ironcliw_USER"] = os.getenv("Ironcliw_USER", "Sir")
 
         # Set the backend port explicitly
         env["BACKEND_PORT"] = str(self.ports["main_api"])
@@ -10174,11 +10174,11 @@ class AsyncSystemManager:
             with open(config_path, "r") as f:
                 db_config = json.load(f)
 
-            env["JARVIS_DB_TYPE"] = "cloudsql"
-            env["JARVIS_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
-            env["JARVIS_DB_HOST"] = "127.0.0.1"  # Always use localhost for proxy
-            env["JARVIS_DB_PORT"] = str(db_config["cloud_sql"]["port"])
-            env["JARVIS_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
+            env["Ironcliw_DB_TYPE"] = "cloudsql"
+            env["Ironcliw_DB_CONNECTION_NAME"] = db_config["cloud_sql"]["connection_name"]
+            env["Ironcliw_DB_HOST"] = "127.0.0.1"  # Always use localhost for proxy
+            env["Ironcliw_DB_PORT"] = str(db_config["cloud_sql"]["port"])
+            env["Ironcliw_DB_PASSWORD"] = db_config["cloud_sql"]["password"]
 
             print(f"{Colors.GREEN}   ✓ Database config loaded from {config_path}{Colors.ENDC}")
             print(
@@ -10198,10 +10198,10 @@ class AsyncSystemManager:
                     print(f"{Colors.GREEN}   ✓ Backups: {storage['backup_bucket']}{Colors.ENDC}")
         else:
             # Fallback to environment variable if config not found
-            env["JARVIS_DB_TYPE"] = "cloudsql"
-            env["JARVIS_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
-            if "JARVIS_DB_PASSWORD" in os.environ:
-                env["JARVIS_DB_PASSWORD"] = os.environ["JARVIS_DB_PASSWORD"]
+            env["Ironcliw_DB_TYPE"] = "cloudsql"
+            env["Ironcliw_DB_CONNECTION_NAME"] = "jarvis-473803:us-central1:jarvis-learning-db"
+            if "Ironcliw_DB_PASSWORD" in os.environ:
+                env["Ironcliw_DB_PASSWORD"] = os.environ["Ironcliw_DB_PASSWORD"]
             print(
                 f"{Colors.YELLOW}   ⚠️  Config not found, using environment variables{Colors.ENDC}"
             )
@@ -10210,7 +10210,7 @@ class AsyncSystemManager:
         env["OPTIMIZE_STARTUP"] = "true"
         env["LAZY_LOAD_MODELS"] = "false"  # Don't lazy load - we pre-loaded them
         env["PARALLEL_INIT"] = "true"
-        env["JARVIS_AUTO_RELOAD"] = "true"  # Enable auto-reload for code changes
+        env["Ironcliw_AUTO_RELOAD"] = "true"  # Enable auto-reload for code changes
         env["FAST_STARTUP"] = "true"
         env["ML_LOGGING_ENABLED"] = "true"
         env["BACKEND_PARALLEL_IMPORTS"] = "true"
@@ -10220,7 +10220,7 @@ class AsyncSystemManager:
 
         # CRITICAL: Enable parallel startup mode (v1.0.0)
         # This makes uvicorn start immediately and run heavy init in background
-        env["JARVIS_PARALLEL_STARTUP"] = "true"
+        env["Ironcliw_PARALLEL_STARTUP"] = "true"
 
         # Set Swift library path
         swift_lib_path = str(self.backend_dir / "swift_bridge" / ".build" / "release")
@@ -10518,7 +10518,7 @@ class AsyncSystemManager:
                                 f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Intelligent voice-authenticated unlock (Speaker Recognition + CAI + SAI)"
                             )
                             print(
-                                f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active"
+                                f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey Ironcliw' detection active"
                             )
                             print(
                                 f"  {Colors.GREEN}✅ DISPLAY_MONITOR{Colors.ENDC} - Living Room TV monitoring active"
@@ -10539,9 +10539,9 @@ class AsyncSystemManager:
             # Broadcast complete
             await broadcast_progress(
                 "complete",
-                "JARVIS is online - All systems operational",
+                "Ironcliw is online - All systems operational",
                 100,
-                {"icon": "🚀", "label": "JARVIS Online", "sublabel": "Ready for commands", "success": True, "redirect_url": f"http://localhost:3000"}
+                {"icon": "🚀", "label": "Ironcliw Online", "sublabel": "Ready for commands", "success": True, "redirect_url": f"http://localhost:3000"}
             )
 
         return process
@@ -10707,7 +10707,7 @@ class AsyncSystemManager:
         env["SKIP_PREFLIGHT_CHECK"] = "true"  # Skip CRA preflight checks
 
         # Configure Node memory dynamically (default 4GB, configurable via env)
-        frontend_memory = os.getenv("JARVIS_FRONTEND_MEMORY_MB", "4096")
+        frontend_memory = os.getenv("Ironcliw_FRONTEND_MEMORY_MB", "4096")
         env["NODE_OPTIONS"] = f"--max-old-space-size={frontend_memory}"
 
         env["GENERATE_SOURCEMAP"] = "false"  # Disable source maps to reduce memory
@@ -10742,7 +10742,7 @@ class AsyncSystemManager:
         # v6.0: Wait for frontend to actually be ready (listening on port)
         # ROOT FIX - don't return until webpack compilation is complete
         # Increased from 90 to 120 seconds - webpack can take 30-60+ seconds on first run
-        max_startup_time = int(os.getenv("JARVIS_FRONTEND_STARTUP_TIMEOUT", "120"))  # 120 seconds default
+        max_startup_time = int(os.getenv("Ironcliw_FRONTEND_STARTUP_TIMEOUT", "120"))  # 120 seconds default
         check_interval = 1.0
         start_time = time.time()
 
@@ -11375,7 +11375,7 @@ class AsyncSystemManager:
     def print_access_info(self):
         """Print access information"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🎯 JARVIS is ready!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🎯 Ironcliw is ready!{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
 
         print(f"\n{Colors.CYAN}Access Points:{Colors.ENDC}")
@@ -11409,7 +11409,7 @@ class AsyncSystemManager:
             )
 
         print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
-        print(f"  • Say '{Colors.GREEN}Hey JARVIS{Colors.ENDC}' to activate")
+        print(f"  • Say '{Colors.GREEN}Hey Ironcliw{Colors.ENDC}' to activate")
         print(f"  • '{Colors.GREEN}What can you do?{Colors.ENDC}' - List capabilities")
         print(f"  • '{Colors.GREEN}Can you see my screen?{Colors.ENDC}' - Vision test")
         print(f"\n{Colors.CYAN}🌐 Browser Automation Commands (NEW!):{Colors.ENDC}")
@@ -12044,7 +12044,7 @@ class AsyncSystemManager:
         Checks if voice unlock is properly configured:
         1. Learning Database initialized
         2. Voice profiles loaded from CloudSQL
-        3. Keychain password stored (JARVIS_Screen_Unlock service)
+        3. Keychain password stored (Ironcliw_Screen_Unlock service)
         4. Password typer functional
 
         Returns:
@@ -12065,8 +12065,8 @@ class AsyncSystemManager:
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking Learning Database...")
             try:
-                from intelligence.learning_database import JARVISLearningDatabase
-                test_db = JARVISLearningDatabase()
+                from intelligence.learning_database import IroncliwLearningDatabase
+                test_db = IroncliwLearningDatabase()
                 await test_db.initialize()
 
                 status['detailed_checks']['learning_db'] = {
@@ -12087,8 +12087,8 @@ class AsyncSystemManager:
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking voice profiles...")
             try:
-                from intelligence.learning_database import JARVISLearningDatabase
-                db = JARVISLearningDatabase()
+                from intelligence.learning_database import IroncliwLearningDatabase
+                db = IroncliwLearningDatabase()
                 await db.initialize()
 
                 # Query speaker profiles
@@ -12288,8 +12288,8 @@ class AsyncSystemManager:
             try:
                 # Check if we can load speaker embeddings from database
                 if status['detailed_checks'].get('voice_profiles', {}).get('loaded'):
-                    from intelligence.learning_database import JARVISLearningDatabase
-                    db = JARVISLearningDatabase()
+                    from intelligence.learning_database import IroncliwLearningDatabase
+                    db = IroncliwLearningDatabase()
                     await db.initialize()
 
                     profiles = await db.get_all_speaker_profiles()
@@ -12624,12 +12624,12 @@ class AsyncSystemManager:
 
                     # Additional verbose tips
                     if not transparency_config['verbose_mode']:
-                        logger.info("[VOICE UNLOCK]    💡 TIP: Set JARVIS_VERBOSE_MODE=true for detailed spoken feedback")
+                        logger.info("[VOICE UNLOCK]    💡 TIP: Set Ironcliw_VERBOSE_MODE=true for detailed spoken feedback")
                     if not transparency_config['debug_voice']:
-                        logger.info("[VOICE UNLOCK]    💡 TIP: Set JARVIS_DEBUG_VOICE=true for phase-by-phase announcements")
+                        logger.info("[VOICE UNLOCK]    💡 TIP: Set Ironcliw_DEBUG_VOICE=true for phase-by-phase announcements")
                 else:
                     logger.warning("[VOICE UNLOCK] ⚠️  Transparency Engine: DISABLED")
-                    logger.info("[VOICE UNLOCK]    💡 Set JARVIS_TRANSPARENCY_ENABLED=true to enable")
+                    logger.info("[VOICE UNLOCK]    💡 Set Ironcliw_TRANSPARENCY_ENABLED=true to enable")
 
             except ImportError as e:
                 status['detailed_checks']['transparency_engine'] = {
@@ -13949,7 +13949,7 @@ class AsyncSystemManager:
                     print(f"       │   ├─ Emergency unlock (urgent)")
                     print(f"       │   └─ Suspicious activity (security alert)")
                     print(f"       │")
-                    print(f"       ├─ {Colors.BLUE}[7] Password Retrieval{Colors.ENDC} → Keychain (JARVIS_Screen_Unlock)")
+                    print(f"       ├─ {Colors.BLUE}[7] Password Retrieval{Colors.ENDC} → Keychain (Ironcliw_Screen_Unlock)")
                     print(f"       │   └─ Password: ************* (13 chars)")
                     print(f"       │")
                     print(f"       ├─ {Colors.BLUE}[8] Secure Typing{Colors.ENDC} → CoreGraphics API")
@@ -14063,7 +14063,7 @@ class AsyncSystemManager:
                                         print(f"    │  └─ Analyzing {len(deep_diagnostic.get('bugs_detected', []))} bugs...")
                                         print(f"    │     ├─ Checking {len(deep_diagnostic.get('missing_components', []))} missing components...")
                                 # Show intelligent recommendations
-                                print(f"    ├─ 💡 JARVIS Recommendations:")
+                                print(f"    ├─ 💡 Ironcliw Recommendations:")
                                 for i, rec in enumerate(ai_analysis['recommendations'][:3]):
                                     priority_icon = "🔴" if rec['priority'] == 'critical' else "🟡" if rec['priority'] == 'high' else "🟢"
                                     auto_fix = f" {Colors.GREEN}[AUTO-FIX AVAILABLE]{Colors.ENDC}" if rec.get('auto_fix_available') else ""
@@ -14104,7 +14104,7 @@ class AsyncSystemManager:
         try:
             # Create a small JavaScript file to clear the cache
             clear_cache_js = """
-// Clear JARVIS configuration cache
+// Clear Ironcliw configuration cache
 if (typeof localStorage !== 'undefined') {
     const cached = localStorage.getItem('jarvis_dynamic_config');
     if (cached) {
@@ -14113,12 +14113,12 @@ if (typeof localStorage !== 'undefined') {
             // Check if cache points to wrong port
             if (config.API_BASE_URL && (config.API_BASE_URL.includes(':8001') || config.API_BASE_URL.includes(':8000'))) {
                 localStorage.removeItem('jarvis_dynamic_config');
-                console.log('[JARVIS] Cleared stale configuration cache pointing to wrong port');
+                console.log('[Ironcliw] Cleared stale configuration cache pointing to wrong port');
             }
         } catch (e) {
             // Invalid cache, clear it
             localStorage.removeItem('jarvis_dynamic_config');
-            console.log('[JARVIS] Cleared invalid configuration cache');
+            console.log('[Ironcliw] Cleared invalid configuration cache');
         }
     }
 }
@@ -14206,7 +14206,7 @@ if (typeof localStorage !== 'undefined') {
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
                 
                 if process.returncode == 0:
-                    print(f"{Colors.GREEN}🔒 Opened JARVIS in Chrome Incognito window{Colors.ENDC}")
+                    print(f"{Colors.GREEN}🔒 Opened Ironcliw in Chrome Incognito window{Colors.ENDC}")
                     logger.info(f"✅ Chrome Incognito opened successfully")
                     # Give Chrome a moment to open the incognito window
                     await asyncio.sleep(1)
@@ -14243,7 +14243,7 @@ if (typeof localStorage !== 'undefined') {
             end tell
             
             tell application "Safari"
-                -- Close any existing JARVIS private windows
+                -- Close any existing Ironcliw private windows
                 set jarvisPatterns to {{"localhost:3000", "localhost:3001", "localhost:8010", "127.0.0.1:3000", "127.0.0.1:3001"}}
                 
                 repeat with w in windows
@@ -14334,7 +14334,7 @@ if (typeof localStorage !== 'undefined') {
             
             if process.returncode == 0 and result != "false":
                 browser_name = {"chrome": "Chrome", "safari": "Safari", "arc": "Arc"}.get(browser, browser)
-                print(f"{Colors.GREEN}🔒 Opened JARVIS in {browser_name} Incognito/Private window{Colors.ENDC}")
+                print(f"{Colors.GREEN}🔒 Opened Ironcliw in {browser_name} Incognito/Private window{Colors.ENDC}")
                 logger.info(f"✅ Opened incognito window in {browser_name}")
                 return True
             
@@ -14376,7 +14376,7 @@ if (typeof localStorage !== 'undefined') {
                                 stdout=asyncio.subprocess.DEVNULL,
                                 stderr=asyncio.subprocess.DEVNULL
                             )
-                            print(f"{Colors.GREEN}🔒 Opened JARVIS in Chrome Incognito{Colors.ENDC}")
+                            print(f"{Colors.GREEN}🔒 Opened Ironcliw in Chrome Incognito{Colors.ENDC}")
                             return True
                             
                 elif browser == "firefox":
@@ -14386,7 +14386,7 @@ if (typeof localStorage !== 'undefined') {
                             stdout=asyncio.subprocess.DEVNULL,
                             stderr=asyncio.subprocess.DEVNULL
                         )
-                        print(f"{Colors.GREEN}🔒 Opened JARVIS in Firefox Private Window{Colors.ENDC}")
+                        print(f"{Colors.GREEN}🔒 Opened Ironcliw in Firefox Private Window{Colors.ENDC}")
                         return True
                         
             except Exception as e:
@@ -14463,9 +14463,9 @@ if (typeof localStorage !== 'undefined') {
             # Get the intelligent incognito manager
             incognito_manager = get_chrome_incognito_manager()
 
-            # Ensure exactly ONE incognito window with JARVIS
+            # Ensure exactly ONE incognito window with Ironcliw
             # This will:
-            # 1. Close ALL regular Chrome windows with JARVIS tabs
+            # 1. Close ALL regular Chrome windows with Ironcliw tabs
             # 2. Close ALL duplicate incognito windows
             # 3. Keep/create exactly ONE incognito window
             # 4. Navigate to the specified URL
@@ -14810,11 +14810,11 @@ if (typeof localStorage !== 'undefined') {
 
         # Create .env template
         print(f"{Colors.WARNING}Creating .env template...{Colors.ENDC}")
-        env_content = """# JARVIS Environment Configuration
+        env_content = """# Ironcliw Environment Configuration
 ANTHROPIC_API_KEY=your_claude_api_key_here
 
 # Get your API key from: https://console.anthropic.com/
-# Then restart JARVIS
+# Then restart Ironcliw
 """
         env_path = Path("backend/.env")
         env_path.parent.mkdir(exist_ok=True)
@@ -14949,7 +14949,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             f"\n{Colors.BLUE}╔══════════════════════════════════════════════════════════════╗{Colors.ENDC}"
         )
         print(
-            f"{Colors.BLUE}║         Shutting down JARVIS gracefully...                  ║{Colors.ENDC}"
+            f"{Colors.BLUE}║         Shutting down Ironcliw gracefully...                  ║{Colors.ENDC}"
         )
         print(
             f"{Colors.BLUE}╚══════════════════════════════════════════════════════════════╝{Colors.ENDC}\n"
@@ -15263,7 +15263,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             print(f"   └─ {Colors.GREEN}✓ No ports to clean{Colors.ENDC}")
 
         # Clean up any lingering Node.js and Python processes
-        print(f"\n{Colors.CYAN}🧹 [5/6] Cleaning up JARVIS-related processes...{Colors.ENDC}")
+        print(f"\n{Colors.CYAN}🧹 [5/6] Cleaning up Ironcliw-related processes...{Colors.ENDC}")
         try:
             # Kill npm processes
             print(f"   ├─ Killing npm processes...")
@@ -15361,7 +15361,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             f"\n{Colors.GREEN}╔══════════════════════════════════════════════════════════════╗{Colors.ENDC}"
         )
         print(
-            f"{Colors.GREEN}║         ✓ All JARVIS services stopped                       ║{Colors.ENDC}"
+            f"{Colors.GREEN}║         ✓ All Ironcliw services stopped                       ║{Colors.ENDC}"
         )
         print(
             f"{Colors.GREEN}╚══════════════════════════════════════════════════════════════╝{Colors.ENDC}"
@@ -15615,7 +15615,7 @@ except Exception as e:
         # - This ensures single source of truth and accurate progress
         # =================================================================
         progress_bridge = None
-        supervisor_mode = os.environ.get("JARVIS_SUPERVISED") == "1"
+        supervisor_mode = os.environ.get("Ironcliw_SUPERVISED") == "1"
 
         if supervisor_mode:
             try:
@@ -15789,7 +15789,7 @@ except Exception as e:
                 await self.enhanced_sai.start()
                 print(f"   • {Colors.GREEN}✓{Colors.ENDC} SAI monitoring active (continuous awareness)")
                 print(f"   • {Colors.GREEN}✓{Colors.ENDC} Resource monitoring: RAM, CPU, Disk")
-                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Cross-repo awareness: JARVIS Prime, Reactor Core")
+                print(f"   • {Colors.GREEN}✓{Colors.ENDC} Cross-repo awareness: Ironcliw Prime, Reactor Core")
                 print(f"   • {Colors.GREEN}✓{Colors.ENDC} Workspace intelligence: Yabai integration")
             except Exception as e:
                 logger.warning(f"Enhanced SAI start failed: {e}")
@@ -15814,9 +15814,9 @@ except Exception as e:
             supervised = await setup_supervisor_integration()
             
             # v15.0: Check Zero-Touch configuration
-            zero_touch_enabled = os.environ.get("JARVIS_ZERO_TOUCH_ENABLED", "false").lower() == "true"
-            dms_enabled = os.environ.get("JARVIS_DMS_ENABLED", "true").lower() == "true"
-            agi_os_enabled = os.environ.get("JARVIS_AGI_OS_ENABLED", "true").lower() == "true"
+            zero_touch_enabled = os.environ.get("Ironcliw_ZERO_TOUCH_ENABLED", "false").lower() == "true"
+            dms_enabled = os.environ.get("Ironcliw_DMS_ENABLED", "true").lower() == "true"
+            agi_os_enabled = os.environ.get("Ironcliw_AGI_OS_ENABLED", "true").lower() == "true"
             
             if supervised:
                 print(f"\n{Colors.CYAN}🔄 Zero-Touch Lifecycle Manager Active{Colors.ENDC}")
@@ -15831,7 +15831,7 @@ except Exception as e:
                 
                 # DMS status
                 if dms_enabled:
-                    probation_sec = int(os.environ.get("JARVIS_DMS_PROBATION_SECONDS", "30"))
+                    probation_sec = int(os.environ.get("Ironcliw_DMS_PROBATION_SECONDS", "30"))
                     print(f"   • {Colors.GREEN}✓{Colors.ENDC} Dead Man's Switch: {Colors.GREEN}ENABLED{Colors.ENDC} ({probation_sec}s probation)")
                 else:
                     print(f"   • {Colors.YELLOW}⚠{Colors.ENDC} Dead Man's Switch: {Colors.YELLOW}DISABLED{Colors.ENDC}")
@@ -16694,7 +16694,7 @@ except Exception as e:
             # Wait for frontend with retries
             # v5.2: Make frontend wait non-blocking when FRONTEND_OPTIONAL is set
             frontend_optional = os.getenv("FRONTEND_OPTIONAL", "false").lower() == "true"
-            frontend_timeout = int(os.getenv("JARVIS_FRONTEND_TIMEOUT", "60"))
+            frontend_timeout = int(os.getenv("Ironcliw_FRONTEND_TIMEOUT", "60"))
 
             if frontend_optional:
                 # Non-blocking: Start frontend check as background task, don't wait
@@ -16709,7 +16709,7 @@ except Exception as e:
 
         # NOW broadcast 100% completion - frontend may or may not be ready
         # CRITICAL: Skip if supervisor is handling loading page (avoid duplicate completion signals)
-        supervisor_handling_loading = os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1"
+        supervisor_handling_loading = os.environ.get("Ironcliw_SUPERVISOR_LOADING") == "1"
 
         if supervisor_handling_loading:
             print(f"{Colors.CYAN}📡 Supervisor controls completion - skipping broadcast{Colors.ENDC}")
@@ -16721,12 +16721,12 @@ except Exception as e:
                 # v5.2: Choose redirect URL based on frontend availability
                 if frontend_ready:
                     redirect_url = f"http://localhost:{self.ports['frontend']}"
-                    message = "JARVIS is ready!"
+                    message = "Ironcliw is ready!"
                     sublabel = "System ready!"
                 else:
                     # Redirect to backend API if frontend not available
                     redirect_url = f"http://localhost:{self.ports['main_api']}"
-                    message = "JARVIS ready (backend mode)"
+                    message = "Ironcliw ready (backend mode)"
                     sublabel = "Frontend not available - using backend API"
 
                 data = {
@@ -16804,7 +16804,7 @@ except Exception as e:
             print(f"  • Successful heals: {successful_heals}")
             if successful_heals > 0:
                 print(
-                    f"  • {Colors.GREEN}✅ Self-healing helped JARVIS start successfully!{Colors.ENDC}"
+                    f"  • {Colors.GREEN}✅ Self-healing helped Ironcliw start successfully!{Colors.ENDC}"
                 )
 
             # Show what was healed
@@ -16846,7 +16846,7 @@ except Exception as e:
 
             # Handle browser opening based on restart status
             # CRITICAL: Skip browser operations if supervisor is handling loading page
-            supervisor_handling_loading = os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1"
+            supervisor_handling_loading = os.environ.get("Ironcliw_SUPERVISOR_LOADING") == "1"
 
             if supervisor_handling_loading:
                 print(f"{Colors.CYAN}📡 Supervisor controls browser/loading - skipping browser operations{Colors.ENDC}")
@@ -17049,7 +17049,7 @@ async def shutdown_handler():
             # Give cleanup 90 seconds to complete gracefully
             # This allows time for GCP VM deletion which can take 30-60 seconds
             await asyncio.wait_for(_manager.cleanup(), timeout=90.0)
-            logger.info("✅ JARVIS stopped gracefully")
+            logger.info("✅ Ironcliw stopped gracefully")
         except asyncio.TimeoutError:
             logger.warning("⚠️  Cleanup timeout (90s exceeded) - forcing shutdown...")
         except Exception as e:
@@ -18326,9 +18326,9 @@ async def ensure_docker_ecapa_service(
                     result["endpoint"] = "http://localhost:8010/api/ml"
 
                     # Set environment for CloudECAPAClient to use local Docker
-                    os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = "http://localhost:8010/api/ml"
-                    os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
-                    print(f"  {Colors.GREEN}✓ Set JARVIS_CLOUD_ML_ENDPOINT=http://localhost:8010/api/ml{Colors.ENDC}")
+                    os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = "http://localhost:8010/api/ml"
+                    os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "true"
+                    print(f"  {Colors.GREEN}✓ Set Ironcliw_CLOUD_ML_ENDPOINT=http://localhost:8010/api/ml{Colors.ENDC}")
 
                     return result
             except:
@@ -18343,8 +18343,8 @@ async def ensure_docker_ecapa_service(
         result["endpoint"] = "http://localhost:8010/api/ml"
 
         # Still set the endpoint - it might become healthy soon
-        os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = "http://localhost:8010/api/ml"
-        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+        os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = "http://localhost:8010/api/ml"
+        os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "true"
 
         return result
 
@@ -18411,10 +18411,10 @@ async def validate_system_for_zero_touch_update() -> dict:
         # Run the validation
         validation = await validate_resources_for_update()
         
-        # Add JARVIS-specific checks
+        # Add Ironcliw-specific checks
         import psutil
         
-        # Check if JARVIS is currently processing
+        # Check if Ironcliw is currently processing
         jarvis_busy = False
         try:
             import aiohttp
@@ -18426,10 +18426,10 @@ async def validate_system_for_zero_touch_update() -> dict:
                         jarvis_busy = data.get('busy', False)
                         if jarvis_busy:
                             active_tasks = data.get('active_tasks', 0)
-                            validation['issues'].append(f"JARVIS is busy ({active_tasks} active tasks)")
+                            validation['issues'].append(f"Ironcliw is busy ({active_tasks} active tasks)")
                             validation['valid'] = False
         except Exception:
-            # Can't reach JARVIS - that's actually OK for update
+            # Can't reach Ironcliw - that's actually OK for update
             pass
         
         # Check available disk space (need at least 1GB for staging)
@@ -18448,7 +18448,7 @@ async def validate_system_for_zero_touch_update() -> dict:
         # Determine recommendation
         if not validation['valid']:
             if any('busy' in issue.lower() for issue in validation['issues']):
-                validation['recommendation'] = 'defer'  # Wait for JARVIS to be idle
+                validation['recommendation'] = 'defer'  # Wait for Ironcliw to be idle
             else:
                 validation['recommendation'] = 'cleanup_first'
         else:
@@ -18531,7 +18531,7 @@ async def main():
     parser.add_argument(
         "--emergency-cleanup",
         action="store_true",
-        help="Perform emergency cleanup of all JARVIS processes and exit",
+        help="Perform emergency cleanup of all Ironcliw processes and exit",
     )
     parser.add_argument(
         "--cleanup-only",
@@ -18546,7 +18546,7 @@ async def main():
     parser.add_argument(
         "--restart",
         action="store_true",
-        help="Restart JARVIS: kill old instances, load fresh async code (fixes 'Processing...' hangs from blocking encode_batch), and verify intelligent system",
+        help="Restart Ironcliw: kill old instances, load fresh async code (fixes 'Processing...' hangs from blocking encode_batch), and verify intelligent system",
     )
     parser.add_argument(
         "--incognito",
@@ -18650,21 +18650,21 @@ async def main():
     import os
 
     auto_detected = False
-    if not args.goal_preset and not os.getenv("JARVIS_GOAL_PRESET"):
+    if not args.goal_preset and not os.getenv("Ironcliw_GOAL_PRESET"):
         # Auto-detect best preset based on system state
         auto_preset = _auto_detect_preset()
         args.goal_preset = auto_preset
         auto_detected = True
         print(f"\n{Colors.BLUE}🎯 Auto-detected Goal Inference Preset: {auto_preset}{Colors.ENDC}")
         print(
-            f"{Colors.CYAN}   (Override with --goal-preset or JARVIS_GOAL_PRESET environment variable){Colors.ENDC}"
+            f"{Colors.CYAN}   (Override with --goal-preset or Ironcliw_GOAL_PRESET environment variable){Colors.ENDC}"
         )
 
     # Auto-configure automation if not specified
     if (
         not args.enable_automation
         and not args.disable_automation
-        and not os.getenv("JARVIS_GOAL_AUTOMATION")
+        and not os.getenv("Ironcliw_GOAL_AUTOMATION")
     ):
         # Auto-detect automation based on preset and session count
         auto_automation = _auto_detect_automation(args.goal_preset)
@@ -18675,17 +18675,17 @@ async def main():
 
     # Apply Goal Inference preset if specified
     if args.goal_preset:
-        os.environ["JARVIS_GOAL_PRESET"] = args.goal_preset
+        os.environ["Ironcliw_GOAL_PRESET"] = args.goal_preset
         if not auto_detected:  # Only print if not auto-detected (manual override)
             print(f"\n{Colors.BLUE}🎯 Goal Inference Preset: {args.goal_preset}{Colors.ENDC}")
 
     # Apply Goal Inference automation settings
     if args.enable_automation:
         # Will be applied in main.py during initialization
-        os.environ["JARVIS_GOAL_AUTOMATION"] = "true"
+        os.environ["Ironcliw_GOAL_AUTOMATION"] = "true"
         print(f"{Colors.GREEN}✓ Goal Inference Automation: ENABLED{Colors.ENDC}")
     elif args.disable_automation:
-        os.environ["JARVIS_GOAL_AUTOMATION"] = "false"
+        os.environ["Ironcliw_GOAL_AUTOMATION"] = "false"
         print(f"{Colors.YELLOW}⚠️ Goal Inference Automation: DISABLED{Colors.ENDC}")
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -18760,9 +18760,9 @@ async def main():
                 )
                 _v85_trinity_managed_externally = True
                 # Set env var so downstream components know
-                os.environ["JARVIS_MANAGED_EXTERNALLY"] = "1"
-                os.environ["JARVIS_MANAGER_PID"] = str(owner_pid)
-                os.environ["JARVIS_MANAGER_ENTRY"] = owner_entry
+                os.environ["Ironcliw_MANAGED_EXTERNALLY"] = "1"
+                os.environ["Ironcliw_MANAGER_PID"] = str(owner_pid)
+                os.environ["Ironcliw_MANAGER_ENTRY"] = owner_entry
             else:
                 _v85_trinity_managed_externally = False
         else:
@@ -18785,7 +18785,7 @@ async def main():
 
             if acquired:
                 _v85_ownership_acquired = True
-                logger.info("[v85.0] ✅ Acquired JARVIS ownership (start_system)")
+                logger.info("[v85.0] ✅ Acquired Ironcliw ownership (start_system)")
                 print(f"{Colors.GREEN}[v85.0] ✓ Exclusive ownership acquired{Colors.ENDC}")
 
                 _v85_heartbeat_task = await _v85_state_coordinator.start_heartbeat_loop(
@@ -18803,9 +18803,9 @@ async def main():
                         f"{existing_owner.entry_point} (PID: {existing_owner.pid}){Colors.ENDC}"
                     )
                     _v85_trinity_managed_externally = True
-                    os.environ["JARVIS_MANAGED_EXTERNALLY"] = "1"
-                    os.environ["JARVIS_MANAGER_PID"] = str(existing_owner.pid)
-                    os.environ["JARVIS_MANAGER_ENTRY"] = existing_owner.entry_point
+                    os.environ["Ironcliw_MANAGED_EXTERNALLY"] = "1"
+                    os.environ["Ironcliw_MANAGER_PID"] = str(existing_owner.pid)
+                    os.environ["Ironcliw_MANAGER_ENTRY"] = existing_owner.entry_point
 
         # Resource pre-flight check
         can_proceed, issues = await ResourceChecker.check_resources_for_component("jarvis")
@@ -18861,8 +18861,8 @@ async def main():
 
     # Early check for multiple instances (before creating manager)
     # Skip check if --restart or --force-start is used
-    # Also skip if running under supervisor (JARVIS_SUPERVISED=1)
-    is_supervised = os.environ.get("JARVIS_SUPERVISED") == "1"
+    # Also skip if running under supervisor (Ironcliw_SUPERVISED=1)
+    is_supervised = os.environ.get("Ironcliw_SUPERVISED") == "1"
     
     if not args.force_start and not args.restart and not is_supervised:
         # Check PID file first (faster and more reliable than ps)
@@ -18877,7 +18877,7 @@ async def main():
                         proc = psutil.Process(existing_pid)
                         cmdline = " ".join(proc.cmdline()).lower()
                         if "start_system.py" in cmdline or "main.py" in cmdline:
-                            print(f"\n{Colors.FAIL}❌ JARVIS is already running!{Colors.ENDC}")
+                            print(f"\n{Colors.FAIL}❌ Ironcliw is already running!{Colors.ENDC}")
                             print(
                                 f"{Colors.WARNING}Master instance PID: {existing_pid}{Colors.ENDC}\n"
                             )
@@ -18893,7 +18893,7 @@ async def main():
                             )
                             return 1
                     except psutil.NoSuchProcess:
-                        # PID exists but not JARVIS - stale lock file
+                        # PID exists but not Ironcliw - stale lock file
                         print(
                             f"{Colors.YELLOW}⚠️ Removing stale PID lock from process {existing_pid}{Colors.ENDC}"
                         )
@@ -18922,7 +18922,7 @@ async def main():
             ]
 
             if jarvis_processes:
-                print(f"\n{Colors.FAIL}❌ JARVIS is already running!{Colors.ENDC}")
+                print(f"\n{Colors.FAIL}❌ Ironcliw is already running!{Colors.ENDC}")
                 print(
                     f"{Colors.WARNING}Found {len(jarvis_processes)} existing instance(s):{Colors.ENDC}\n"
                 )
@@ -18944,7 +18944,7 @@ async def main():
                 return 1
 
             print(
-                f"\n{Colors.GREEN}✓ No existing JARVIS instances found - safe to start{Colors.ENDC}"
+                f"\n{Colors.GREEN}✓ No existing Ironcliw instances found - safe to start{Colors.ENDC}"
             )
         except subprocess.TimeoutExpired:
             print(f"{Colors.WARNING}⚠️ Instance check timed out - proceeding anyway{Colors.ENDC}")
@@ -18964,7 +18964,7 @@ async def main():
                     with open(vm_lock_file, "r") as f:
                         lock_info = f.read()
                         print(
-                            f"{Colors.FAIL}⚠️  DANGER: Another JARVIS instance has the VM creation lock!{Colors.ENDC}"
+                            f"{Colors.FAIL}⚠️  DANGER: Another Ironcliw instance has the VM creation lock!{Colors.ENDC}"
                         )
                         print(f"   Lock info: {lock_info.strip()}")
                         print(
@@ -19014,7 +19014,7 @@ async def main():
     # Handle emergency cleanup first (before creating manager)
     if args.emergency_cleanup:
         print(f"\n{Colors.FAIL}🚨 EMERGENCY CLEANUP MODE{Colors.ENDC}")
-        print("This will forcefully kill ALL JARVIS-related processes.\n")
+        print("This will forcefully kill ALL Ironcliw-related processes.\n")
 
         try:
             # Add backend to path
@@ -19036,13 +19036,13 @@ async def main():
                 print(f"  • ⚠️ Errors: {len(results['errors'])}")
 
             print(
-                f"\n{Colors.GREEN}System is now clean. You can start JARVIS normally.{Colors.ENDC}"
+                f"\n{Colors.GREEN}System is now clean. You can start Ironcliw normally.{Colors.ENDC}"
             )
             return 0
 
         except ImportError:
             print(f"{Colors.FAIL}Error: process_cleanup_manager.py not found!{Colors.ENDC}")
-            print("Make sure you're running from the JARVIS-AI-Agent directory.")
+            print("Make sure you're running from the Ironcliw-AI-Agent directory.")
             return 1
         except Exception as e:
             print(f"{Colors.FAIL}Emergency cleanup failed: {e}{Colors.ENDC}")
@@ -19069,7 +19069,7 @@ async def main():
             # Check for code changes and perform intelligent cleanup
             # If --restart flag is used, FORCE cleanup regardless of code changes
             if args.restart:
-                print(f"\n{Colors.YELLOW}🔄 FORCE RESTART MODE - Killing all JARVIS processes...{Colors.ENDC}")
+                print(f"\n{Colors.YELLOW}🔄 FORCE RESTART MODE - Killing all Ironcliw processes...{Colors.ENDC}")
                 code_cleanup = manager.force_restart_cleanup()
             else:
                 print(f"\n{Colors.BLUE}🔄 Checking for code changes...{Colors.ENDC}")
@@ -19108,7 +19108,7 @@ async def main():
             print(f"\n{Colors.CYAN}System State:{Colors.ENDC}")
             print(f"  • CPU: {state['cpu_percent']:.1f}%")
             print(f"  • Memory: {state['memory_percent']:.1f}%")
-            print(f"  • JARVIS processes: {len(state['jarvis_processes'])}")
+            print(f"  • Ironcliw processes: {len(state['jarvis_processes'])}")
             print(f"  • Stuck processes: {len(state['stuck_processes'])}")
             print(f"  • Zombie processes: {len(state['zombie_processes'])}")
 
@@ -19139,17 +19139,17 @@ async def main():
             print(f"{Colors.FAIL}Cleanup failed: {e}{Colors.ENDC}")
             return 1
 
-    # Auto-detect and restart existing JARVIS instances (unless specific flags used)
+    # Auto-detect and restart existing Ironcliw instances (unless specific flags used)
     skip_auto_restart = args.cleanup_only or args.emergency_cleanup or args.check_only
 
     if not skip_auto_restart:
-        # Check for existing JARVIS processes
+        # Check for existing Ironcliw processes
         jarvis_processes = []
         for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
             try:
                 cmdline = proc.info.get("cmdline")
                 if cmdline and any("main.py" in arg for arg in cmdline):
-                    if any("JARVIS-AI-Agent/backend" in arg for arg in cmdline):
+                    if any("Ironcliw-AI-Agent/backend" in arg for arg in cmdline):
                         jarvis_processes.append(
                             {
                                 "pid": proc.info["pid"],
@@ -19161,7 +19161,7 @@ async def main():
 
         # If existing instances found, automatically restart
         if jarvis_processes:
-            print(f"\n{Colors.YELLOW}⚡ Existing JARVIS instance(s) detected{Colors.ENDC}")
+            print(f"\n{Colors.YELLOW}⚡ Existing Ironcliw instance(s) detected{Colors.ENDC}")
             print(f"Found {len(jarvis_processes)} process(es) - will restart automatically\n")
 
             # Kill old processes
@@ -19188,8 +19188,8 @@ async def main():
     loading_server_process = None
     
     # v15.0: Zero-Touch state awareness
-    _zero_touch_active = os.environ.get("JARVIS_ZERO_TOUCH_ACTIVE", "false").lower() == "true"
-    _zero_touch_phase = os.environ.get("JARVIS_ZERO_TOUCH_PHASE", "idle")
+    _zero_touch_active = os.environ.get("Ironcliw_ZERO_TOUCH_ACTIVE", "false").lower() == "true"
+    _zero_touch_phase = os.environ.get("Ironcliw_ZERO_TOUCH_PHASE", "idle")
 
     # Helper function to broadcast progress to loading server
     async def broadcast_to_loading_server(stage, message, progress, metadata=None):
@@ -19198,12 +19198,12 @@ async def main():
         
         v15.0: Now Zero-Touch aware - includes Zero-Touch state in broadcasts.
 
-        CRITICAL: When JARVIS_SUPERVISOR_LOADING=1, the supervisor is the authority
+        CRITICAL: When Ironcliw_SUPERVISOR_LOADING=1, the supervisor is the authority
         for progress updates. start_system.py should NOT broadcast progress in this mode
         to avoid conflicting signals that cause premature completion.
         """
         # Skip if supervisor is handling loading page
-        if os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1":
+        if os.environ.get("Ironcliw_SUPERVISOR_LOADING") == "1":
             # Only print to console for visibility, don't broadcast
             zt_indicator = " [ZT]" if _zero_touch_active else ""
             print(f"  {Colors.CYAN}📊 [Supervisor Mode{zt_indicator}] {progress}% - {message}{Colors.ENDC}")
@@ -19273,7 +19273,7 @@ async def main():
     # - Adaptively throttles GCP, CloudSQL, and Claude API calls with PID control
     # - Schedules requests with priority-based queuing
     # ═══════════════════════════════════════════════════════════════════════════
-    rate_orchestrator_enabled = os.getenv("JARVIS_RATE_ORCHESTRATOR_ENABLED", "true").lower() == "true"
+    rate_orchestrator_enabled = os.getenv("Ironcliw_RATE_ORCHESTRATOR_ENABLED", "true").lower() == "true"
     
     if rate_orchestrator_enabled:
         try:
@@ -19301,17 +19301,17 @@ async def main():
             print(f"{Colors.CYAN}   • Throttling: PID control with adaptive adjustment{Colors.ENDC}")
             
             # Propagate to child processes
-            os.environ["JARVIS_ML_RATE_FORECASTING"] = "true"
+            os.environ["Ironcliw_ML_RATE_FORECASTING"] = "true"
             
         except ImportError as e:
             logger.warning(f"⚠️ Intelligent Rate Orchestrator not available: {e}")
             print(f"{Colors.YELLOW}⚠️ Rate Limiting: Basic mode (ML forecasting unavailable){Colors.ENDC}")
-            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+            os.environ["Ironcliw_RATE_ORCHESTRATOR_ENABLED"] = "false"
         except Exception as e:
             logger.error(f"❌ Failed to initialize Rate Orchestrator: {e}")
-            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+            os.environ["Ironcliw_RATE_ORCHESTRATOR_ENABLED"] = "false"
     else:
-        print(f"{Colors.YELLOW}ℹ️ Rate Limiting: Disabled (JARVIS_RATE_ORCHESTRATOR_ENABLED=false){Colors.ENDC}")
+        print(f"{Colors.YELLOW}ℹ️ Rate Limiting: Disabled (Ironcliw_RATE_ORCHESTRATOR_ENABLED=false){Colors.ENDC}")
 
     print(f"\n{Colors.CYAN}{'='*60}{Colors.ENDC}")
     print(f"{Colors.CYAN}🧠 Intelligent ECAPA Backend Orchestrator v19.0.0{Colors.ENDC}")
@@ -19333,13 +19333,13 @@ async def main():
     # based on available system resources and propagates it via environment vars.
     # We respect that decision here to ensure coordinated behavior.
     # ═══════════════════════════════════════════════════════════════════════════
-    startup_mode = os.getenv("JARVIS_STARTUP_MODE", "local_full")
-    cloud_activated = os.getenv("JARVIS_CLOUD_ACTIVATED", "").lower() == "true"
-    available_ram = float(os.getenv("JARVIS_AVAILABLE_RAM_GB", "8.0"))
-    total_ram = float(os.getenv("JARVIS_TOTAL_RAM_GB", "16.0"))
+    startup_mode = os.getenv("Ironcliw_STARTUP_MODE", "local_full")
+    cloud_activated = os.getenv("Ironcliw_CLOUD_ACTIVATED", "").lower() == "true"
+    available_ram = float(os.getenv("Ironcliw_AVAILABLE_RAM_GB", "8.0"))
+    total_ram = float(os.getenv("Ironcliw_TOTAL_RAM_GB", "16.0"))
 
     # Log startup mode if set by supervisor
-    if os.getenv("JARVIS_STARTUP_MODE"):
+    if os.getenv("Ironcliw_STARTUP_MODE"):
         mode_display = {
             "local_full": "🏠 Full Local Mode",
             "cloud_first": "☁️  Cloud-First Mode",
@@ -19351,8 +19351,8 @@ async def main():
         print(f"{Colors.CYAN}   Available RAM: {available_ram:.1f}GB / {total_ram:.1f}GB{Colors.ENDC}")
 
     # Get configuration from args/environment (with smart defaults)
-    force_docker = getattr(args, 'local_docker', False) or os.getenv("JARVIS_USE_LOCAL_DOCKER", "").lower() == "true"
-    skip_docker = getattr(args, 'no_docker', False) or os.getenv("JARVIS_SKIP_DOCKER", "").lower() == "true"
+    force_docker = getattr(args, 'local_docker', False) or os.getenv("Ironcliw_USE_LOCAL_DOCKER", "").lower() == "true"
+    skip_docker = getattr(args, 'no_docker', False) or os.getenv("Ironcliw_SKIP_DOCKER", "").lower() == "true"
     docker_rebuild = getattr(args, 'docker_rebuild', False)
 
     # Prefer cloud based on supervisor decision or environment
@@ -19363,13 +19363,13 @@ async def main():
     elif startup_mode == "cloud_first" or cloud_activated:
         prefer_cloud = True
     else:
-        prefer_cloud = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
+        prefer_cloud = os.getenv("Ironcliw_PREFER_CLOUD_RUN", "true").lower() == "true"
 
     # Get Cloud Run endpoint from environment
     # Note: Cloud Run URLs use project NUMBER (888774109345), not project ID (jarvis-473803)
     gcp_project_number = os.getenv("GCP_PROJECT_NUMBER", "888774109345")
     cloud_run_endpoint = os.getenv(
-        "JARVIS_CLOUD_ML_ENDPOINT",
+        "Ironcliw_CLOUD_ML_ENDPOINT",
         f"https://jarvis-ml-{gcp_project_number}.us-central1.run.app/api/ml"
     )
 
@@ -19945,24 +19945,24 @@ async def main():
     print(f"\n{Colors.CYAN}   Phase 3: Configuring selected backend...{Colors.ENDC}")
 
     if selected_backend == "docker":
-        os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = selected_endpoint
-        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
-        os.environ["JARVIS_ECAPA_BACKEND"] = "docker"
+        os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = selected_endpoint
+        os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "true"
+        os.environ["Ironcliw_ECAPA_BACKEND"] = "docker"
         print(f"   {Colors.GREEN}✅ Selected: Docker ECAPA{Colors.ENDC}")
         print(f"   {Colors.GREEN}   → Endpoint: {selected_endpoint}{Colors.ENDC}")
         print(f"   {Colors.GREEN}   → Reason: {decision_reason}{Colors.ENDC}")
 
     elif selected_backend == "cloud_run":
-        os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = selected_endpoint
-        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
-        os.environ["JARVIS_ECAPA_BACKEND"] = "cloud_run"
+        os.environ["Ironcliw_CLOUD_ML_ENDPOINT"] = selected_endpoint
+        os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
+        os.environ["Ironcliw_ECAPA_BACKEND"] = "cloud_run"
         print(f"   {Colors.GREEN}✅ Selected: Cloud Run ECAPA{Colors.ENDC}")
         print(f"   {Colors.GREEN}   → Endpoint: {selected_endpoint}{Colors.ENDC}")
         print(f"   {Colors.GREEN}   → Reason: {decision_reason}{Colors.ENDC}")
 
     elif selected_backend == "local":
-        os.environ["JARVIS_ECAPA_BACKEND"] = "local"
-        os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+        os.environ["Ironcliw_ECAPA_BACKEND"] = "local"
+        os.environ["Ironcliw_DOCKER_ECAPA_ACTIVE"] = "false"
         print(f"   {Colors.YELLOW}⚠️  Selected: Local ECAPA (fallback){Colors.ENDC}")
         print(f"   {Colors.YELLOW}   → Uses system RAM (~2GB){Colors.ENDC}")
         print(f"   {Colors.YELLOW}   → Reason: {decision_reason}{Colors.ENDC}")
@@ -19993,12 +19993,12 @@ async def main():
 
         # Get cloud ML endpoint from environment (dynamic, no hardcoding)
         cloud_ml_endpoint = os.getenv(
-            "JARVIS_CLOUD_ML_ENDPOINT",
+            "Ironcliw_CLOUD_ML_ENDPOINT",
             "https://jarvis-ml-jarvis-473803.us-central1.run.app/api/ml"
         )
 
         # Check if cloud backend is enabled
-        cloud_enabled = os.getenv("JARVIS_PREFER_CLOUD_RUN", "true").lower() == "true"
+        cloud_enabled = os.getenv("Ironcliw_PREFER_CLOUD_RUN", "true").lower() == "true"
 
         if cloud_enabled:
             print(f"{Colors.CYAN}   Initializing CloudECAPAClient v18.2.0...{Colors.ENDC}")
@@ -20015,7 +20015,7 @@ async def main():
                 if init_success:
                     cloud_ecapa_status["initialized"] = True
                     # Get backend info from client state
-                    selected_backend_name = os.getenv("JARVIS_ECAPA_BACKEND", "cloud_run")
+                    selected_backend_name = os.getenv("Ironcliw_ECAPA_BACKEND", "cloud_run")
                     cloud_ecapa_status["backend"] = selected_backend_name
 
                     print(f"{Colors.GREEN}   ✅ CloudECAPAClient initialized successfully{Colors.ENDC}")
@@ -20033,7 +20033,7 @@ async def main():
                 print(f"{Colors.YELLOW}   ⚠️  CloudECAPAClient could not be created{Colors.ENDC}")
                 print(f"{Colors.YELLOW}   → Voice unlock will use local processing{Colors.ENDC}")
         else:
-            print(f"{Colors.CYAN}   Cloud ECAPA disabled (JARVIS_PREFER_CLOUD_RUN=false){Colors.ENDC}")
+            print(f"{Colors.CYAN}   Cloud ECAPA disabled (Ironcliw_PREFER_CLOUD_RUN=false){Colors.ENDC}")
             print(f"{Colors.CYAN}   → Voice unlock will use local ECAPA encoder{Colors.ENDC}")
 
     except ImportError as e:
@@ -20167,7 +20167,7 @@ async def main():
         "embedding_extraction_tested": False,
         "embedding_shape": None,
         "verification_pipeline_ready": False,
-        "selected_backend": os.getenv("JARVIS_ECAPA_BACKEND", "unknown"),
+        "selected_backend": os.getenv("Ironcliw_ECAPA_BACKEND", "unknown"),
         "errors": [],
     }
 
@@ -20217,7 +20217,7 @@ async def main():
         
         # Default Cloud Run endpoint (updated 2024-12 to new URL format)
         default_cloud_url = "https://jarvis-ml-888774109345.us-central1.run.app"
-        cloud_endpoint = os.getenv("JARVIS_CLOUD_ML_ENDPOINT", default_cloud_url)
+        cloud_endpoint = os.getenv("Ironcliw_CLOUD_ML_ENDPOINT", default_cloud_url)
         
         # Configuration for wait-for-ready (all configurable via env vars)
         ECAPA_WAIT_TIMEOUT = float(os.getenv("ECAPA_STARTUP_WAIT_TIMEOUT", "90"))  # Max 90s to wait
@@ -20371,7 +20371,7 @@ async def main():
                 ecapa_verification_result["embedding_shape"] = str(embedding.shape if hasattr(embedding, 'shape') else len(embedding))
                 print(f"{Colors.GREEN}   ✅ Embedding extraction successful!{Colors.ENDC}")
                 print(f"{Colors.GREEN}      → Embedding shape: {ecapa_verification_result['embedding_shape']}{Colors.ENDC}")
-                print(f"{Colors.GREEN}      → Backend used: {os.getenv('JARVIS_ECAPA_BACKEND', 'unknown')}{Colors.ENDC}")
+                print(f"{Colors.GREEN}      → Backend used: {os.getenv('Ironcliw_ECAPA_BACKEND', 'unknown')}{Colors.ENDC}")
             else:
                 ecapa_verification_result["errors"].append("Embedding extraction returned None/empty")
                 print(f"{Colors.FAIL}   ❌ Embedding extraction returned None/empty{Colors.ENDC}")
@@ -20467,8 +20467,8 @@ async def main():
     print(f"   • Pipeline Ready: {'✅ YES' if ecapa_verification_result['verification_pipeline_ready'] else '❌ NO'}")
 
     # Store in environment for other components to check
-    os.environ["JARVIS_ECAPA_VERIFIED"] = "true" if ecapa_verification_result["verification_pipeline_ready"] else "false"
-    os.environ["JARVIS_ECAPA_EMBEDDING_TESTED"] = "true" if ecapa_verification_result["embedding_extraction_tested"] else "false"
+    os.environ["Ironcliw_ECAPA_VERIFIED"] = "true" if ecapa_verification_result["verification_pipeline_ready"] else "false"
+    os.environ["Ironcliw_ECAPA_EMBEDDING_TESTED"] = "true" if ecapa_verification_result["embedding_extraction_tested"] else "false"
 
     print(f"{Colors.CYAN}{'='*60}{Colors.ENDC}\n")
 
@@ -20486,18 +20486,18 @@ async def main():
 
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
-        print("Restarting JARVIS with intelligent system verification...\n")
+        print("Restarting Ironcliw with intelligent system verification...\n")
 
         # Step 0: Start standalone loading server BEFORE killing processes
         loading_server_url = "http://localhost:3001"
 
         # CRITICAL: Check if supervisor is handling the loading page
-        # When JARVIS_SUPERVISOR_LOADING=1, the supervisor already:
+        # When Ironcliw_SUPERVISOR_LOADING=1, the supervisor already:
         # 1. Started the loading server
         # 2. Opened the Chrome window
         # 3. Is broadcasting progress updates
         # We must NOT duplicate these operations!
-        supervisor_handling_loading = os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1"
+        supervisor_handling_loading = os.environ.get("Ironcliw_SUPERVISOR_LOADING") == "1"
 
         if supervisor_handling_loading:
             print(f"{Colors.CYAN}📡 Supervisor is handling loading page - skipping browser/loading server{Colors.ENDC}")
@@ -20555,9 +20555,9 @@ async def main():
                             # Get the intelligent incognito manager
                             incognito_manager = get_chrome_incognito_manager()
 
-                            # Ensure exactly ONE incognito window with JARVIS
+                            # Ensure exactly ONE incognito window with Ironcliw
                             # This will:
-                            # 1. Close ALL regular Chrome windows with JARVIS tabs
+                            # 1. Close ALL regular Chrome windows with Ironcliw tabs
                             # 2. Close ALL duplicate incognito windows
                             # 3. Keep/create exactly ONE incognito window
                             # 4. Navigate to loading page
@@ -20629,7 +20629,7 @@ async def main():
             # Progress: 1% - Started (EXTREME DETAIL)
             await broadcast_to_loading_server(
                 "initializing",
-                "Starting JARVIS restart sequence - preparing environment cleanup",
+                "Starting Ironcliw restart sequence - preparing environment cleanup",
                 1,
                 metadata={"icon": "⚡", "label": "Initializing", "sublabel": "System check initiated"}
             )
@@ -20647,13 +20647,13 @@ async def main():
             # Progress: 3% - Detecting
             await broadcast_to_loading_server(
                 "detecting",
-                "Scanning system for existing JARVIS processes using AdvancedProcessDetector",
+                "Scanning system for existing Ironcliw processes using AdvancedProcessDetector",
                 3,
                 metadata={"icon": "🔍", "label": "Process Detection", "sublabel": "Scanning PID table"}
             )
 
-            # Step 1: Advanced JARVIS process detection with multiple strategies
-            print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection (using AdvancedProcessDetector)...{Colors.ENDC}")
+            # Step 1: Advanced Ironcliw process detection with multiple strategies
+            print(f"{Colors.YELLOW}1️⃣ Advanced Ironcliw instance detection (using AdvancedProcessDetector)...{Colors.ENDC}")
 
             try:
                 from core.process_detector import (
@@ -20676,12 +20676,12 @@ async def main():
                 result = await detect_and_kill_jarvis_processes(dry_run=True)
 
                 jarvis_processes = result["processes"]
-                print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} JARVIS processes{Colors.ENDC}")
+                print(f"\n  {Colors.GREEN}✓ Detected {result['total_detected']} Ironcliw processes{Colors.ENDC}")
 
                 # Progress: 5% - Process scan in progress
                 await broadcast_to_loading_server(
                     "scanning_ports",
-                    "Scanning active network ports (3000, 8010) for JARVIS services",
+                    "Scanning active network ports (3000, 8010) for Ironcliw services",
                     5,
                     metadata={"icon": "🔌", "label": "Port Scan", "sublabel": "Checking listeners"}
                 )
@@ -20689,7 +20689,7 @@ async def main():
                 # Progress: 7% - Process enumeration
                 await broadcast_to_loading_server(
                     "enumerating",
-                    f"Enumerating system processes - found {result['total_detected']} JARVIS instances",
+                    f"Enumerating system processes - found {result['total_detected']} Ironcliw instances",
                     7,
                     metadata={"icon": "📊", "label": "Enumeration", "sublabel": f"{result['total_detected']} processes"}
                 )
@@ -20697,7 +20697,7 @@ async def main():
                 # Progress: 8% - Detection complete
                 await broadcast_to_loading_server(
                     "detected",
-                    f"Process detection complete: {result['total_detected']} JARVIS processes identified (frontend, backend, minimal)",
+                    f"Process detection complete: {result['total_detected']} Ironcliw processes identified (frontend, backend, minimal)",
                     8,
                     metadata={"icon": "✓", "label": "Detection Complete", "sublabel": f"{result['total_detected']} PIDs captured"}
                 )
@@ -20766,7 +20766,7 @@ async def main():
                             and "backend" in cmdline_str
                         )
 
-                        # Also check if process is in JARVIS directory
+                        # Also check if process is in Ironcliw directory
                         is_jarvis_dir = "jarvis" in cmdline_str.lower()
 
                         if (is_start_system or is_backend) and is_jarvis_dir:
@@ -20785,7 +20785,7 @@ async def main():
 
             if jarvis_processes:
                 print(
-                    f"\n{Colors.YELLOW}Found {len(jarvis_processes)} JARVIS process(es):{Colors.ENDC}"
+                    f"\n{Colors.YELLOW}Found {len(jarvis_processes)} Ironcliw process(es):{Colors.ENDC}"
                 )
                 for idx, proc in enumerate(jarvis_processes, 1):
                     age_str = (
@@ -20804,7 +20804,7 @@ async def main():
                 # Progress: 12% - Starting termination
                 await broadcast_to_loading_server(
                     "terminating",
-                    f"Sending SIGTERM to {len(jarvis_processes)} JARVIS processes - graceful shutdown initiated",
+                    f"Sending SIGTERM to {len(jarvis_processes)} Ironcliw processes - graceful shutdown initiated",
                     12,
                     metadata={"icon": "⚔️", "label": "Terminating", "sublabel": f"SIGTERM → {len(jarvis_processes)} PIDs"}
                 )
@@ -20897,7 +20897,7 @@ async def main():
                     metadata={"icon": "🧹", "label": "Resource Cleanup", "sublabel": "Deallocating memory"}
                 )
             else:
-                print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
+                print(f"{Colors.GREEN}No old Ironcliw processes found{Colors.ENDC}")
                 await broadcast_to_loading_server(
                     "cleanup", "No existing processes found, proceeding...", 25,
                     metadata={
@@ -20985,7 +20985,7 @@ async def main():
             # Progress: 32% - Scanning cloud resources
             await broadcast_to_loading_server(
                 "scanning_vms",
-                "Querying GCP Compute Engine for orphaned JARVIS VMs (jarvis-auto-*, jarvis-backend-*)",
+                "Querying GCP Compute Engine for orphaned Ironcliw VMs (jarvis-auto-*, jarvis-backend-*)",
                 32,
                 metadata={"icon": "☁️", "label": "Cloud Scan", "sublabel": "Listing GCP instances"}
             )
@@ -21073,7 +21073,7 @@ async def main():
 
             print(f"\n{'='*50}")
             print(
-                f"{Colors.GREEN}🎉 Old instances cleaned up - starting fresh JARVIS...{Colors.ENDC}"
+                f"{Colors.GREEN}🎉 Old instances cleaned up - starting fresh Ironcliw...{Colors.ENDC}"
             )
             print(f"{'='*50}\n")
 
@@ -21101,7 +21101,7 @@ async def main():
             # Optimize system for faster startup
             print(f"{Colors.CYAN}⚡ Optimizing system for fast startup...{Colors.ENDC}")
             try:
-                # Reduce CPU throttling by giving JARVIS higher priority
+                # Reduce CPU throttling by giving Ironcliw higher priority
                 subprocess.run(
                     ["sudo", "-n", "renice", "-n", "-10", "-p", str(os.getpid())],
                     capture_output=True,
@@ -21147,7 +21147,7 @@ async def main():
     if args.no_incognito:
         # Warn user that --no-incognito is deprecated
         print(f"{Colors.YELLOW}⚠️  --no-incognito flag is deprecated and ignored.{Colors.ENDC}")
-        print(f"{Colors.YELLOW}   JARVIS now ALWAYS uses Chrome Incognito for cache-free operation.{Colors.ENDC}")
+        print(f"{Colors.YELLOW}   Ironcliw now ALWAYS uses Chrome Incognito for cache-free operation.{Colors.ENDC}")
 
     print(f"{Colors.CYAN}🔒 Browser: Chrome Incognito only (cache-free mode enforced){Colors.ENDC}")
 
@@ -21277,7 +21277,7 @@ async def main():
                 logger.info(f"🧹 Removing stale PID file (process {old_pid} not running)")
                 pid_file.unlink()
             else:
-                # Check if it's actually a JARVIS process
+                # Check if it's actually a Ironcliw process
                 try:
                     proc = psutil.Process(old_pid)
                     cmdline = " ".join(proc.cmdline())
@@ -21288,7 +21288,7 @@ async def main():
                         if not is_responsive:
                             # Zombie process - clean it up automatically
                             print(
-                                f"{Colors.YELLOW}🧹 Detected unresponsive JARVIS instance (PID {old_pid}) - cleaning up...{Colors.ENDC}"
+                                f"{Colors.YELLOW}🧹 Detected unresponsive Ironcliw instance (PID {old_pid}) - cleaning up...{Colors.ENDC}"
                             )
                             cleanup_success = await cleanup_zombie_process(old_pid)
                             if cleanup_success:
@@ -21302,9 +21302,9 @@ async def main():
                                 return 1
                         else:
                             # Process is responsive - genuine conflict
-                            logger.warning(f"⚠️  Another JARVIS instance is running (PID {old_pid})")
+                            logger.warning(f"⚠️  Another Ironcliw instance is running (PID {old_pid})")
                             print(
-                                f"{Colors.YELLOW}⚠️  Another JARVIS instance is running (PID {old_pid}){Colors.ENDC}"
+                                f"{Colors.YELLOW}⚠️  Another Ironcliw instance is running (PID {old_pid}){Colors.ENDC}"
                             )
                             print(f"   Use --force-start to override, or kill PID {old_pid} first")
                             return 1
@@ -21362,7 +21362,7 @@ async def main():
 
 class AdvancedStartupBootstrapper:
     """
-    Advanced Startup Bootstrapper for JARVIS AI System.
+    Advanced Startup Bootstrapper for Ironcliw AI System.
 
     Features:
     - 🔍 Dynamic path discovery (zero hardcoding)
@@ -21429,7 +21429,7 @@ class AdvancedStartupBootstrapper:
         cwd = Path.cwd().resolve()
 
         # Method 3: Environment variable override
-        env_root = os.environ.get('JARVIS_ROOT')
+        env_root = os.environ.get('Ironcliw_ROOT')
 
         # Determine project root by checking for marker files/dirs
         candidate_roots = [script_dir, cwd]
@@ -21477,7 +21477,7 @@ class AdvancedStartupBootstrapper:
         self._paths['venv_python'] = self._discover_venv_python()
 
     def _is_project_root(self, path: Path) -> bool:
-        """Check if path is the JARVIS project root."""
+        """Check if path is the Ironcliw project root."""
         markers = [
             path / 'backend' / 'main.py',
             path / 'start_system.py',
@@ -21522,7 +21522,7 @@ class AdvancedStartupBootstrapper:
         Priority: CLI arg → ENV var → git branch → default
         """
         # Check environment variable
-        env_var = os.environ.get('JARVIS_ENV', '').lower()
+        env_var = os.environ.get('Ironcliw_ENV', '').lower()
         for env_name, patterns in self.ENV_PATTERNS.items():
             if env_var in patterns:
                 return env_name
@@ -21621,15 +21621,15 @@ class AdvancedStartupBootstrapper:
         overrides = {}
 
         env_mappings = {
-            'JARVIS_BACKEND_PORT': ('backend', 'port', int),
-            'JARVIS_FRONTEND_PORT': ('frontend', 'port', int),
-            'JARVIS_HOST': ('backend', 'host', str),
-            'JARVIS_WORKERS': ('backend', 'workers', int),
-            'JARVIS_LOG_LEVEL': ('logging', 'level', str),
-            'JARVIS_PARALLEL_INIT': ('startup', 'parallel_init', lambda x: x.lower() == 'true'),
-            'JARVIS_VOICE_UNLOCK': ('features', 'voice_unlock', lambda x: x.lower() == 'true'),
-            'JARVIS_VISION': ('features', 'vision', lambda x: x.lower() == 'true'),
-            'JARVIS_AUTONOMOUS': ('features', 'autonomous', lambda x: x.lower() == 'true'),
+            'Ironcliw_BACKEND_PORT': ('backend', 'port', int),
+            'Ironcliw_FRONTEND_PORT': ('frontend', 'port', int),
+            'Ironcliw_HOST': ('backend', 'host', str),
+            'Ironcliw_WORKERS': ('backend', 'workers', int),
+            'Ironcliw_LOG_LEVEL': ('logging', 'level', str),
+            'Ironcliw_PARALLEL_INIT': ('startup', 'parallel_init', lambda x: x.lower() == 'true'),
+            'Ironcliw_VOICE_UNLOCK': ('features', 'voice_unlock', lambda x: x.lower() == 'true'),
+            'Ironcliw_VISION': ('features', 'vision', lambda x: x.lower() == 'true'),
+            'Ironcliw_AUTONOMOUS': ('features', 'autonomous', lambda x: x.lower() == 'true'),
         }
 
         for env_key, (section, key, converter) in env_mappings.items():
@@ -22003,7 +22003,7 @@ class AdvancedStartupBootstrapper:
 
     async def run(self) -> int:
         """
-        Main entry point for running JARVIS.
+        Main entry point for running Ironcliw.
         Returns exit code.
         """
         if not self._initialized:
@@ -22033,7 +22033,7 @@ class AdvancedStartupBootstrapper:
     def _print_banner(self) -> None:
         """Print startup banner with discovered configuration."""
         print(f"\n{Colors.CYAN}{'═' * 70}{Colors.ENDC}")
-        print(f"{Colors.HEADER}  🚀 JARVIS Advanced Startup Bootstrapper{Colors.ENDC}")
+        print(f"{Colors.HEADER}  🚀 Ironcliw Advanced Startup Bootstrapper{Colors.ENDC}")
         print(f"{Colors.CYAN}{'═' * 70}{Colors.ENDC}")
         print(f"  {Colors.GREEN}Environment:{Colors.ENDC} {self._environment}")
         print(f"  {Colors.GREEN}Project Root:{Colors.ENDC} {self._paths['project_root']}")
@@ -22069,7 +22069,7 @@ def get_bootstrapper() -> AdvancedStartupBootstrapper:
 
 
 async def _bootstrap_and_run() -> int:
-    """Bootstrap and run JARVIS."""
+    """Bootstrap and run Ironcliw."""
     bootstrapper = get_bootstrapper()
     return await bootstrapper.run()
 
@@ -22107,7 +22107,7 @@ if __name__ == "__main__":
                 uptime_str = f"{int(uptime // 60)}m {int(uptime % 60)}s" if uptime > 60 else f"{int(uptime)}s"
 
                 print(f"\n{'='*70}")
-                print(f"✅ JARVIS Supervisor (PID {existing_state.get('pid')}) is running and healthy")
+                print(f"✅ Ironcliw Supervisor (PID {existing_state.get('pid')}) is running and healthy")
                 print(f"{'='*70}")
                 print(f"   Health:  {health_data.get('health_level', 'unknown')}")
                 print(f"   Uptime:  {uptime_str}")
@@ -22122,7 +22122,7 @@ if __name__ == "__main__":
             else:
                 # Supervisor exists but unhealthy - show warning
                 print(f"\n{'='*70}")
-                print(f"⚠️  JARVIS SUPERVISOR DETECTED (but unhealthy/unreachable)")
+                print(f"⚠️  Ironcliw SUPERVISOR DETECTED (but unhealthy/unreachable)")
                 print(f"{'='*70}")
                 print(f"   Entry Point: {existing_state.get('entry_point', 'unknown')}")
                 print(f"   PID:         {existing_state.get('pid', 'unknown')}")
@@ -22239,7 +22239,7 @@ if __name__ == "__main__":
 
         # CRITICAL: Cleanup GCP VMs synchronously (works even if asyncio is dead)
         # MULTI-TERMINAL SAFE: Only deletes VMs owned by THIS session
-        # ONLY RUN IF JARVIS FULLY INITIALIZED (skip on early exit)
+        # ONLY RUN IF Ironcliw FULLY INITIALIZED (skip on early exit)
         print(
             f"\n{Colors.CYAN}╔══════════════════════════════════════════════════════════════╗{Colors.ENDC}"
         )

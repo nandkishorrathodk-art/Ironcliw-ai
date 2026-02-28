@@ -1,4 +1,4 @@
-import JarvisConnectionService from './JarvisConnectionService';
+﻿import JarvisConnectionService from './JarvisConnectionService';
 
 describe('JarvisConnectionService control-plane recovery discovery', () => {
   let initSpy;
@@ -9,7 +9,7 @@ describe('JarvisConnectionService control-plane recovery discovery', () => {
       .spyOn(JarvisConnectionService.prototype, '_initializeAsync')
       .mockImplementation(() => {});
     localStorage.clear();
-    delete window.JARVIS_LOADING_SERVER_PORT;
+    delete window.Ironcliw_LOADING_SERVER_PORT;
     delete process.env.REACT_APP_LOADING_SERVER_PORT;
     delete process.env.REACT_APP_LOADING_SERVER_PORT_RANGE;
     window.history.pushState({}, '', '/');
@@ -25,7 +25,7 @@ describe('JarvisConnectionService control-plane recovery discovery', () => {
   });
 
   test('includes unified supervisor loading ports and loopback variants', () => {
-    window.JARVIS_LOADING_SERVER_PORT = 8080;
+    window.Ironcliw_LOADING_SERVER_PORT = 8080;
 
     const service = new JarvisConnectionService();
     service.backendUrl = 'http://localhost:8010';

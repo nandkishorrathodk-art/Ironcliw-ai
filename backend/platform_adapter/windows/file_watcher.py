@@ -1,5 +1,5 @@
-"""
-JARVIS Windows File Watcher
+﻿"""
+Ironcliw Windows File Watcher
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows file system monitoring using ReadDirectoryChangesW via watchdog.
@@ -21,7 +21,7 @@ Event Types:
     - deleted: File or directory deleted
     - moved: File or directory moved (reported as deleted + created)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations

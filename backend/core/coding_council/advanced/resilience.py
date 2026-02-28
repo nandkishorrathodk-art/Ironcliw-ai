@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.2: Resilience Module - Circuit Breaker & Error Handling
 ============================================================
 
@@ -19,7 +19,7 @@ Features:
     - Graceful shutdown handling
     - Retry policies with limits
 
-Author: JARVIS v77.2
+Author: Ironcliw v77.2
 """
 
 from __future__ import annotations

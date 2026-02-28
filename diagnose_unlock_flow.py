@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive Voice Unlock Diagnostic
 Traces the entire flow from frontend → backend → verification
@@ -98,8 +98,8 @@ async def diagnose_unlock_flow():
     # 7. Check log files
     print("\n7️⃣  Checking recent logs for unlock commands...")
     log_files = [
-        "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/logs/jarvis_optimized_*.log",
-        "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/jarvis_startup.log"
+        "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/logs/jarvis_optimized_*.log",
+        "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/jarvis_startup.log"
     ]
 
     import glob

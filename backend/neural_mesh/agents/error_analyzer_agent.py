@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Error Analyzer Agent
+﻿"""
+Ironcliw Neural Mesh - Error Analyzer Agent
 
 Intelligent error analysis, pattern recognition, and solution suggestion.
 Uses semantic memory to find similar past errors and their solutions.

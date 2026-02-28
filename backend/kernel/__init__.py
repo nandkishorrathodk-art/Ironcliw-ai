@@ -1,8 +1,8 @@
-"""
-JARVIS Kernel Package v1.0.0
+﻿"""
+Ironcliw Kernel Package v1.0.0
 ============================
 
-Enterprise-grade modular kernel for the JARVIS AI Operating System.
+Enterprise-grade modular kernel for the Ironcliw AI Operating System.
 
 This package provides a clean, modular architecture extracted from the 
 monolithic unified_supervisor.py (65K+ lines). The goal is to enable:
@@ -55,7 +55,7 @@ Migration Strategy:
        eventually become a thin facade over backend.kernel)
     3. Gradually move functionality from unified_supervisor to kernel modules
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
-# JARVIS "Invincible Node" Deployment Script v1.0
+# Ironcliw "Invincible Node" Deployment Script v1.0
 # ================================================
 #
 # Deploys a persistent GCP Spot VM with STOP termination action.
@@ -28,7 +28,7 @@
 #   GCP_VM_MACHINE_TYPE    - Machine type (default: e2-highmem-4 = 32GB RAM)
 #   GCP_VM_INSTANCE_NAME   - Instance name (default: jarvis-prime-node)
 #   GCP_VM_STATIC_IP_NAME  - Static IP name (default: jarvis-prime-static)
-#   JARVIS_PRIME_PORT      - Port for health endpoint (default: 8000)
+#   Ironcliw_PRIME_PORT      - Port for health endpoint (default: 8000)
 #
 # REQUIREMENTS:
 # - gcloud CLI authenticated with appropriate permissions
@@ -60,7 +60,7 @@ ZONE="${GCP_ZONE:-us-central1-a}"
 MACHINE_TYPE="${GCP_VM_MACHINE_TYPE:-e2-highmem-4}"  # 4 vCPU, 32GB RAM
 INSTANCE_NAME="${GCP_VM_INSTANCE_NAME:-jarvis-prime-node}"
 STATIC_IP_NAME="${GCP_VM_STATIC_IP_NAME:-jarvis-prime-static}"
-PRIME_PORT="${JARVIS_PRIME_PORT:-8000}"
+PRIME_PORT="${Ironcliw_PRIME_PORT:-8000}"
 
 # Image Configuration
 IMAGE_PROJECT="${GCP_IMAGE_PROJECT:-ubuntu-os-cloud}"
@@ -203,7 +203,7 @@ ensure_static_ip() {
     if ! gcloud compute addresses create "$STATIC_IP_NAME" \
         --project="$PROJECT_ID" \
         --region="$REGION" \
-        --description="JARVIS Prime Invincible Node Static IP"; then
+        --description="Ironcliw Prime Invincible Node Static IP"; then
         log_error "Failed to reserve static IP" >&2
         exit 1
     fi
@@ -238,7 +238,7 @@ ensure_firewall_rule() {
         --allow="tcp:${PRIME_PORT}" \
         --target-tags="jarvis-node" \
         --source-ranges="0.0.0.0/0" \
-        --description="Allow JARVIS Prime health checks and inference on port ${PRIME_PORT}"; then
+        --description="Allow Ironcliw Prime health checks and inference on port ${PRIME_PORT}"; then
         log_error "Failed to create firewall rule"
         exit 1
     fi
@@ -372,7 +372,7 @@ main() {
                 shift
                 ;;
             --help|-h)
-                echo "JARVIS Invincible Node Deployment Script"
+                echo "Ironcliw Invincible Node Deployment Script"
                 echo ""
                 echo "Usage: $0 [options]"
                 echo ""
@@ -388,7 +388,7 @@ main() {
                 echo "  GCP_VM_MACHINE_TYPE    Machine type (default: e2-highmem-4)"
                 echo "  GCP_VM_INSTANCE_NAME   Instance name (default: jarvis-prime-node)"
                 echo "  GCP_VM_STATIC_IP_NAME  Static IP name (default: jarvis-prime-static)"
-                echo "  JARVIS_PRIME_PORT      Port (default: 8000)"
+                echo "  Ironcliw_PRIME_PORT      Port (default: 8000)"
                 exit 0
                 ;;
             *)

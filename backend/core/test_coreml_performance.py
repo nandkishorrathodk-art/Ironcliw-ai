@@ -1,4 +1,4 @@
-"""
+﻿"""
 CoreML Performance Benchmarking
 ================================
 
@@ -14,7 +14,7 @@ Expected speedups on M1:
 - CoreML vs sklearn: 15x
 - Total: CoreML vs Python = ~750x
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio

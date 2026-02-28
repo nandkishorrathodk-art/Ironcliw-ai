@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simplified God Mode Test - Diagnostic Version
 ==============================================
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.getcwd(), "backend"))
 
 def speak(message: str):
     """Simple synchronous speak function."""
-    print(f"🗣️  JARVIS: {message}")
+    print(f"🗣️  Ironcliw: {message}")
     try:
         subprocess.run(
             ["say", "-v", "Daniel", "-r", "200", message],
@@ -34,7 +34,7 @@ async def test_god_mode_simple():
     """Simple God Mode test with minimal dependencies."""
 
     print("\n" + "="*70)
-    print("🧪 JARVIS GOD MODE - SIMPLIFIED DIAGNOSTIC TEST")
+    print("🧪 Ironcliw GOD MODE - SIMPLIFIED DIAGNOSTIC TEST")
     print("="*70)
     print()
 

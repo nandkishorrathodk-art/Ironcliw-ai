@@ -1,5 +1,5 @@
-/**
- * Fast Screen Capture Streaming Engine for JARVIS Vision System
+﻿/**
+ * Fast Screen Capture Streaming Engine for Ironcliw Vision System
  * Persistent ScreenCaptureKit streams for continuous 60 FPS surveillance
  *
  * Design Principles:
@@ -11,8 +11,8 @@
  * - Resource efficient: Automatic cleanup and memory management
  */
 
-#ifndef JARVIS_FAST_CAPTURE_STREAM_H
-#define JARVIS_FAST_CAPTURE_STREAM_H
+#ifndef Ironcliw_FAST_CAPTURE_STREAM_H
+#define Ironcliw_FAST_CAPTURE_STREAM_H
 
 #include "fast_capture.h"
 #include <queue>
@@ -235,4 +235,4 @@ size_t estimate_stream_memory(const StreamConfig& config, int width, int height)
 } // namespace vision
 } // namespace jarvis
 
-#endif // JARVIS_FAST_CAPTURE_STREAM_H
+#endif // Ironcliw_FAST_CAPTURE_STREAM_H

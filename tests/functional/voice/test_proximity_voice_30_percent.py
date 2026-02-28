@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Proximity + Voice Unlock with 30% Memory Target
 ===================================================
@@ -60,7 +60,7 @@ async def simulate_proximity_voice_unlock():
     print_memory_status("(Initial)")
     
     # Initialize backend
-    print("\n🚀 Initializing JARVIS backend...")
+    print("\n🚀 Initializing Ironcliw backend...")
     await initialize_backend()
     
     # Get resource manager
@@ -100,7 +100,7 @@ async def simulate_proximity_voice_unlock():
     
     # Step 2: Voice Command Detection
     print("\n2️⃣ Listening for voice command...")
-    print("   👤 User says: \"Hey JARVIS, unlock my Mac\"")
+    print("   👤 User says: \"Hey Ironcliw, unlock my Mac\"")
     print("   🎙️ Capturing audio...")
     time.sleep(1)
     
@@ -139,8 +139,8 @@ async def simulate_proximity_voice_unlock():
         print("   ✅ Voice Match: Authenticated (John)")
         print("   🔓 Mac Unlocked!")
         
-        # JARVIS response
-        print("\n🤖 JARVIS: \"Welcome back, Sir. Your Mac is now unlocked.\"")
+        # Ironcliw response
+        print("\n🤖 Ironcliw: \"Welcome back, Sir. Your Mac is now unlocked.\"")
         
     except Exception as e:
         print(f"\n❌ Authentication failed: {e}")
@@ -173,7 +173,7 @@ async def simulate_proximity_voice_unlock():
         
     print("\n📝 Key Features Demonstrated:")
     print("  • Apple Watch proximity detection")
-    print("  • Voice command: \"Hey JARVIS, unlock my Mac\"")
+    print("  • Voice command: \"Hey Ironcliw, unlock my Mac\"")
     print("  • Ultra-aggressive memory management")
     print("  • One ML model at a time")
     print("  • Automatic resource cleanup")

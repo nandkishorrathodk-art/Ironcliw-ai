@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Debug Lock Detection Issue
 ==========================
 
-Test to understand why JARVIS isn't detecting locked screens
+Test to understand why Ironcliw isn't detecting locked screens
 """
 
 import asyncio
@@ -54,7 +54,7 @@ async def test_actual_lock_detection():
     
     if not is_locked_after:
         print("\n❌ PROBLEM: Screen should be locked but detection says UNLOCKED!")
-        print("   This is why JARVIS doesn't detect the lock!")
+        print("   This is why Ironcliw doesn't detect the lock!")
     else:
         print("\n✅ Lock detection is working correctly")
 

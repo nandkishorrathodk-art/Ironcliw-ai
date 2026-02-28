@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS monitoring through WebSocket"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw monitoring through WebSocket"""
 
 import asyncio
 import websockets
@@ -11,7 +11,7 @@ async def test_websocket_monitoring():
     
     try:
         async with websockets.connect(uri) as websocket:
-            print("✅ Connected to JARVIS WebSocket")
+            print("✅ Connected to Ironcliw WebSocket")
             
             # Wait for connected message
             message = await websocket.recv()

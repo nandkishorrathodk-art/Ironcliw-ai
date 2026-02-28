@@ -1,7 +1,7 @@
-# Vision "Can You See My Screen?" Hang - Root Cause Analysis
+﻿# Vision "Can You See My Screen?" Hang - Root Cause Analysis
 
 ## Problem
-When asking "can you see my screen?", JARVIS hangs indefinitely during vision system initialization.
+When asking "can you see my screen?", Ironcliw hangs indefinitely during vision system initialization.
 
 ## Root Cause Found
 **Circular Import / Slow Import Chain** in the vision system causing 20+ second hangs during module loading.

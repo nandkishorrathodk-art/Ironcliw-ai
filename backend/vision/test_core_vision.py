@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test core vision functionality without optional dependencies"""
 
 import asyncio
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     success = asyncio.run(test_core())
     if success:
         print("\n🎉 Core vision system is working perfectly!")
-        print("\nYou can now use the vision analyzer for JARVIS with:")
+        print("\nYou can now use the vision analyzer for Ironcliw with:")
         print("  from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer")
         print("\nAll wrapper methods are available directly from the main class.")
     else:

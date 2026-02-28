@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Biometric Semantic Cache with Continuous Learning
 ========================================================
 
@@ -25,7 +25,7 @@ Security:
 
 Continuous Learning:
 - ALL authentication attempts (including cache hits) are recorded to SQLite
-- This enables JARVIS to continuously improve voice recognition
+- This enables Ironcliw to continuously improve voice recognition
 - Cache provides SPEED, Database provides LEARNING
 - Fire-and-forget async recording to avoid latency impact
 
@@ -506,7 +506,7 @@ class VoiceBiometricCache:
         Fire-and-forget database recording for continuous voice learning.
 
         This is called for EVERY authentication attempt (cache hit or miss)
-        so JARVIS can continuously learn and improve voice recognition.
+        so Ironcliw can continuously learn and improve voice recognition.
 
         Args:
             speaker_name: Identified speaker name
@@ -725,7 +725,7 @@ class VoiceBiometricCache:
             self._update_timing_stats(start_time)
 
             # 🎯 CONTINUOUS LEARNING: Record cache miss to database
-            # This helps JARVIS learn about failed attempts too
+            # This helps Ironcliw learn about failed attempts too
             self._schedule_db_recording(
                 speaker_name="unknown",  # Will be identified by full verification
                 confidence=0.0,

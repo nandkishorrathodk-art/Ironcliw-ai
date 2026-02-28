@@ -1,4 +1,4 @@
-# Workspace Overview Fix - Multi-Space List Response
+﻿# Workspace Overview Fix - Multi-Space List Response
 
 ## 🎯 **Problem**
 
@@ -7,7 +7,7 @@ When asking queries like:
 - "List all my desktop spaces"
 - "How many desktop spaces do I have?"
 
-JARVIS was giving **detailed single-screen analysis** instead of a **simple multi-space overview list**.
+Ironcliw was giving **detailed single-screen analysis** instead of a **simple multi-space overview list**.
 
 ### **What You Got:**
 ```
@@ -22,7 +22,7 @@ Sir, you're working across 5 desktop spaces:
 
 • Space 1: Finder - File browsing
 • Space 2: Google Chrome - Web browsing
-• Space 3: Cursor - Code editing (JARVIS-AI-Agent project)
+• Space 3: Cursor - Code editing (Ironcliw-AI-Agent project)
 • Space 4 (current): VS Code - Development work
 • Space 5: Terminal - Running Jupyter Notebook
 
@@ -119,18 +119,18 @@ async def _generate_workspace_overview(
 
 ## 🚀 **How to Apply**
 
-### **Option 1: Restart JARVIS (Recommended)**
+### **Option 1: Restart Ironcliw (Recommended)**
 
 ```bash
-# Stop JARVIS (Ctrl+C)
+# Stop Ironcliw (Ctrl+C)
 # Then restart:
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 ```
 
 ### **Option 2: Hot Reload (if supported)**
 
-If JARVIS supports hot reload, it should automatically pick up the changes.
+If Ironcliw supports hot reload, it should automatically pick up the changes.
 
 ## ✅ **Expected Behavior After Fix**
 

@@ -1,5 +1,5 @@
-"""
-Vision-Based Weather Extractor for JARVIS
+﻿"""
+Vision-Based Weather Extractor for Ironcliw
 Extracts weather data by visually reading the macOS Weather app
 Bypasses Core Location restrictions using computer vision
 """

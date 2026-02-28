@@ -1,8 +1,8 @@
-# Predictive/Analytical Queries Integration
+﻿# Predictive/Analytical Queries Integration
 
 ## Overview
 
-The predictive/analytical query system provides JARVIS with advanced capabilities to analyze progress, detect bugs, recommend next steps, and provide semantic code understanding using Claude Vision.
+The predictive/analytical query system provides Ironcliw with advanced capabilities to analyze progress, detect bugs, recommend next steps, and provide semantic code understanding using Claude Vision.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ User Query → Intent Analyzer → Context-Aware Handler → Predictive Query Ha
 - Manages screen lock state
 - Formats responses
 
-### 5. JARVIS Integration (`integrations/jarvis_integration.py`)
+### 5. Ironcliw Integration (`integrations/jarvis_integration.py`)
 - Routes predictive queries through voice command pipeline
 - Manages WebSocket updates
 - Integrates with command queue
@@ -127,10 +127,10 @@ User Query → Intent Analyzer → Context-Aware Handler → Predictive Query Ha
 
 ### Via Voice Command
 ```python
-# Automatically routed through JARVIS integration
-"JARVIS, am I making progress?"
-"JARVIS, what should I work on next?"
-"JARVIS, are there any bugs?"
+# Automatically routed through Ironcliw integration
+"Ironcliw, am I making progress?"
+"Ironcliw, what should I work on next?"
+"Ironcliw, are there any bugs?"
 ```
 
 ### Programmatic API
@@ -223,7 +223,7 @@ handler = initialize_predictive_handler(
 - Routes predictive queries to specialized handler
 - Manages screen access requirements
 
-### 3. JARVIS Integration
+### 3. Ironcliw Integration
 `backend/context_intelligence/integrations/jarvis_integration.py:107-121`
 - Detects predictive queries early in pipeline
 - Routes to appropriate handler
@@ -357,4 +357,4 @@ To add new query types:
 
 ## License
 
-Part of JARVIS AI Assistant project.
+Part of Ironcliw AI Assistant project.

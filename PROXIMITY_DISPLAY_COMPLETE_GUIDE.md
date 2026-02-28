@@ -1,20 +1,20 @@
-# 🎯 Proximity-Aware Display Connection - COMPLETE GUIDE
+﻿# 🎯 Proximity-Aware Display Connection - COMPLETE GUIDE
 
 ## ❓ **Your Question Answered**
 
-> "So basically if when I run JARVIS and JARVIS can detect that my MacBook is in close distance to the Sony TV (if the TV is on), JARVIS would ask me if I want to connect to it via screen sharing and basically I should reply 'yes' to connect or 'no' not to connect, correct?"
+> "So basically if when I run Ironcliw and Ironcliw can detect that my MacBook is in close distance to the Sony TV (if the TV is on), Ironcliw would ask me if I want to connect to it via screen sharing and basically I should reply 'yes' to connect or 'no' not to connect, correct?"
 
 ### **Answer: YES - With Important Details** ✅
 
 **The Flow:**
 ```
 1. You walk near Sony TV with Apple Watch
-2. JARVIS detects your proximity (2.5m away)
-3. JARVIS checks if Sony TV is available (on and connected)
-4. JARVIS: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
+2. Ironcliw detects your proximity (2.5m away)
+3. Ironcliw checks if Sony TV is available (on and connected)
+4. Ironcliw: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 5. YOU: "Yes" or "No"
 6. If YES → Display extends to TV automatically (background)
-7. If NO → JARVIS won't ask again for 5 minutes
+7. If NO → Ironcliw won't ask again for 5 minutes
 ```
 
 ---
@@ -49,7 +49,7 @@
 
 ### **2. Sony TV Must Be Pre-Connected**
 
-**JARVIS cannot turn on your TV or establish initial connection.**
+**Ironcliw cannot turn on your TV or establish initial connection.**
 
 **Initial Setup Required:**
 ```bash
@@ -64,7 +64,7 @@
 3. TV appears as available display
 ```
 
-**Then register in JARVIS:**
+**Then register in Ironcliw:**
 ```bash
 curl -X POST http://localhost:8000/api/proximity-display/register \
   -H "Content-Type: application/json" \
@@ -90,7 +90,7 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 - Remote desktop to another Mac over network
 - Not needed for your use case
 
-**What JARVIS Does:**
+**What Ironcliw Does:**
 - **Mirror Mode:** Sony TV shows same content as MacBook
 - **Extend Mode:** Sony TV becomes second screen (recommended)
 
@@ -104,8 +104,8 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 PREREQUISITES:
 ✅ Sony TV is on and connected (HDMI or AirPlay)
 ✅ Apple Watch is on your wrist
-✅ Sony TV is registered in JARVIS config
-✅ JARVIS backend is running
+✅ Sony TV is registered in Ironcliw config
+✅ Ironcliw backend is running
 
 ───────────────────────────────────────────────────
 
@@ -114,47 +114,47 @@ STEP 1: You walk into living room
   → RSSI: -55 dBm
   → Calculated distance: 2.5 meters from MacBook
 
-STEP 2: JARVIS correlates your location with TV
+STEP 2: Ironcliw correlates your location with TV
   → MacBook is in living room
   → Sony TV is configured at living room location
   → Expected TV proximity range: 2-8 meters
   → Your distance: 2.5m ✅ (within range)
 
-STEP 3: JARVIS checks if Sony TV is available
+STEP 3: Ironcliw checks if Sony TV is available
   → Queries macOS display list
   → Sony TV (display ID: 23) found ✅
   → Status: Online and ready
 
-STEP 4: JARVIS makes connection decision
+STEP 4: Ironcliw makes connection decision
   → Distance: 2.5m (NEAR zone)
   → Confidence: 0.75
   → Action: PROMPT_USER
 
-STEP 5: JARVIS prompts you via voice
-  JARVIS: "Sir, I see you're near the Sony Living Room TV, 
+STEP 5: Ironcliw prompts you via voice
+  Ironcliw: "Sir, I see you're near the Sony Living Room TV, 
            about 2.5 meters away. Shall I connect?"
 
 STEP 6: You respond via voice
   YOU: "Yes"
 
-STEP 7: JARVIS connects (backend automation)
+STEP 7: Ironcliw connects (backend automation)
   → AppleScript opens System Preferences (background)
   → Unchecks "Mirror Displays" (extend mode)
   → Display extends to Sony TV
   → Execution time: ~2-3 seconds
 
-STEP 8: JARVIS confirms
-  JARVIS: "Connecting to Sony Living Room TV... Done, sir."
+STEP 8: Ironcliw confirms
+  Ironcliw: "Connecting to Sony Living Room TV... Done, sir."
 
 ───────────────────────────────────────────────────
 
 ALTERNATIVE: You say "No"
   YOU: "No"
   
-  JARVIS: "Understood, sir. I won't ask again for a few minutes."
+  Ironcliw: "Understood, sir. I won't ask again for a few minutes."
   
   → User override registered (5 min cooldown)
-  → JARVIS won't prompt again until cooldown expires
+  → Ironcliw won't prompt again until cooldown expires
 ```
 
 ---
@@ -195,7 +195,7 @@ Distance calculation:
 }
 ```
 
-**JARVIS correlates:**
+**Ironcliw correlates:**
 ```
 Your distance from MacBook: 2.5m
 Sony TV expected range: 2.0-8.0m
@@ -205,19 +205,19 @@ Proximity score: 0.85 (high)
 
 ### **3. TV On/Off Detection** 🔌
 
-**How JARVIS knows if TV is on:**
+**How Ironcliw knows if TV is on:**
 ```
-JARVIS queries: macOS display list (CoreGraphics API)
+Ironcliw queries: macOS display list (CoreGraphics API)
 
 If TV is ON and connected:
   → Display ID 23 appears in list ✅
   → Status: "available"
-  → JARVIS can prompt you
+  → Ironcliw can prompt you
 
 If TV is OFF or unplugged:
   → Display ID 23 NOT in list ❌
   → Status: "offline"
-  → JARVIS: "The Sony TV appears to be offline. Please ensure it's powered on."
+  → Ironcliw: "The Sony TV appears to be offline. Please ensure it's powered on."
 ```
 
 **Limitation:** 
@@ -229,7 +229,7 @@ If TV is OFF or unplugged:
 **Prompt Generation:**
 ```python
 # When proximity detected and TV available
-JARVIS: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
+Ironcliw: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 
 # State changes to: WAITING_FOR_RESPONSE
 # Timeout: 30 seconds
@@ -244,7 +244,7 @@ Negative (skips):
   - "no", "nope", "don't", "skip", "cancel", "not now"
 
 Unclear:
-  JARVIS: "Sir, I didn't quite catch that. Please say 'yes' or 'no'."
+  Ironcliw: "Sir, I didn't quite catch that. Please say 'yes' or 'no'."
 ```
 
 **Auto-Timeout:**
@@ -339,15 +339,15 @@ curl http://localhost:8000/api/proximity-display/status
 #### **Scenario: You walk into living room**
 
 ```
-1. JARVIS automatically detects your Apple Watch proximity
+1. Ironcliw automatically detects your Apple Watch proximity
 
-2. JARVIS speaks:
+2. Ironcliw speaks:
    "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 
 3. You respond:
    YOU: "Yes"
    
-4. JARVIS connects:
+4. Ironcliw connects:
    "Connecting to Sony Living Room TV... Done, sir."
    → Display extends to TV in ~2-3 seconds
    → You can now use TV as second screen
@@ -355,9 +355,9 @@ curl http://localhost:8000/api/proximity-display/status
 
 #### **If You Say "No":**
 ```
-1. JARVIS: "Understood, sir. I won't ask again for a few minutes."
+1. Ironcliw: "Understood, sir. I won't ask again for a few minutes."
 2. 5-minute cooldown activated
-3. Even if you stay near TV, JARVIS won't prompt again
+3. Even if you stay near TV, Ironcliw won't prompt again
 4. After 5 min, cooldown expires, prompting re-enabled
 ```
 
@@ -367,7 +367,7 @@ curl http://localhost:8000/api/proximity-display/status
 
 ### **Connection Prompts (Automatic):**
 ```
-JARVIS: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
+Ironcliw: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 
 Your Options:
   ✅ "Yes" → Connects
@@ -391,7 +391,7 @@ YOU: "Connect to Living Room TV"
 YOU: "Extend to Sony TV"
 YOU: "Mirror to the TV"
 
-→ JARVIS connects immediately (no prompt)
+→ Ironcliw connects immediately (no prompt)
 ```
 
 ### **Manual Disconnect:**
@@ -399,7 +399,7 @@ YOU: "Mirror to the TV"
 YOU: "Disconnect from TV"
 YOU: "Stop mirroring to TV"
 
-→ JARVIS disconnects + registers user override
+→ Ironcliw disconnects + registers user override
 ```
 
 ---
@@ -416,10 +416,10 @@ YOU: "Stop mirroring to TV"
 - ✅ macOS (current version)
 - ✅ Bluetooth enabled on MacBook
 - ✅ Accessibility permissions (for AppleScript automation)
-  - System Settings → Privacy & Security → Accessibility → Enable for Terminal/JARVIS
+  - System Settings → Privacy & Security → Accessibility → Enable for Terminal/Ironcliw
 
 ### **Configuration:**
-- ✅ Sony TV must be registered in JARVIS config (one-time setup)
+- ✅ Sony TV must be registered in Ironcliw config (one-time setup)
 - ✅ Apple Watch must be paired and nearby
 
 ---
@@ -466,16 +466,16 @@ YOU: "Stop mirroring to TV"
 ### **TV Availability Detection:**
 
 ```
-JARVIS checks: Is Sony TV in macOS display list?
+Ironcliw checks: Is Sony TV in macOS display list?
 
 If TV is ON and connected (HDMI/AirPlay):
   → macOS sees display ID 23 ✅
-  → JARVIS: "TV is available"
+  → Ironcliw: "TV is available"
   → Can prompt for connection
 
 If TV is OFF or unplugged:
   → macOS does NOT see display ID 23 ❌
-  → JARVIS: "Sony TV appears to be offline"
+  → Ironcliw: "Sony TV appears to be offline"
   → Won't prompt for connection
 ```
 
@@ -510,7 +510,7 @@ DAY 1 - SETUP:
 
 1. You connect Sony TV to MacBook via HDMI cable
 2. You turn on Sony TV
-3. You register the TV in JARVIS:
+3. You register the TV in Ironcliw:
    
    curl -X POST http://localhost:8000/api/proximity-display/register \
      -d '{"display_id": 23, "location_name": "Sony Living Room TV", ...}'
@@ -535,19 +535,19 @@ DAY 2 - DAILY USE:
   → Match: ✅ You're in TV range
   → Sony TV proximity score: 0.85 (high)
 
-8:16 PM - JARVIS detects proximity
+8:16 PM - Ironcliw detects proximity
   → Checks if TV is on: ✅ (display ID 23 in macOS list)
   → Decision: PROMPT_USER
   → Generates prompt
 
-  JARVIS (via voice):
+  Ironcliw (via voice):
   "Sir, I see you're near the Sony Living Room TV, 
    about 2.5 meters away. Shall I connect?"
 
 8:16 PM - You respond
   YOU: "Yes"
 
-8:16 PM - JARVIS connects (2.5 seconds)
+8:16 PM - Ironcliw connects (2.5 seconds)
   → AppleScript runs (background)
   → Display extends to Sony TV
   → Voice: "Connecting to Sony Living Room TV... Done, sir."
@@ -556,7 +556,7 @@ DAY 2 - DAILY USE:
 10:00 PM - You're done watching
   YOU: "Disconnect from TV"
   
-  JARVIS: "Understood, sir."
+  Ironcliw: "Understood, sir."
   → User override registered
   → Won't prompt again for 5 minutes
 ```
@@ -567,7 +567,7 @@ DAY 2 - DAILY USE:
 
 ### **Automatic Prompts (When Near TV):**
 ```
-JARVIS: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
+Ironcliw: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 
 Your responses:
   "Yes" / "Yeah" / "Sure" / "Connect" → Connects
@@ -612,7 +612,7 @@ YOU: "Stop mirroring"
 
 **Parameters Explained:**
 - `display_id`: From macOS (use `/displays` endpoint to find)
-- `location_name`: What JARVIS calls it in voice
+- `location_name`: What Ironcliw calls it in voice
 - `zone`: Location zone (living_room, office, bedroom, etc.)
 - `expected_proximity_range`: [min, max] distance in meters when you're "near" this TV
 - `auto_connect_enabled`: Allow auto-connection (set to `false` for prompt-only)
@@ -623,7 +623,7 @@ YOU: "Stop mirroring"
 
 ## 🐛 **Troubleshooting**
 
-### **"JARVIS isn't detecting my proximity"**
+### **"Ironcliw isn't detecting my proximity"**
 
 **Check:**
 1. Apple Watch is on and paired
@@ -645,7 +645,7 @@ YOU: "Stop mirroring"
    curl http://localhost:8000/api/proximity-display/displays
    ```
 
-### **"JARVIS isn't prompting me"**
+### **"Ironcliw isn't prompting me"**
 
 **Possible reasons:**
 1. You're too far from TV (> 8m)
@@ -667,7 +667,7 @@ curl http://localhost:8000/api/proximity-display/display-availability/23
 **Check:**
 1. Accessibility permissions granted
 2. System Preferences → Privacy & Security → Accessibility
-3. Enable for Terminal or JARVIS process
+3. Enable for Terminal or Ironcliw process
 4. Manual test:
    ```bash
    curl -X POST "http://localhost:8000/api/proximity-display/connect?display_id=23&mode=extend&force=true"
@@ -706,7 +706,7 @@ curl -X POST "http://localhost:8000/api/proximity-display/connect?display_id=23&
 ## 🎊 **Summary**
 
 ### **What You Asked:**
-> "When I run JARVIS and my MacBook is near Sony TV, JARVIS asks if I want to connect, I say yes/no"
+> "When I run Ironcliw and my MacBook is near Sony TV, Ironcliw asks if I want to connect, I say yes/no"
 
 ### **What's Implemented:**
 
@@ -715,13 +715,13 @@ curl -X POST "http://localhost:8000/api/proximity-display/connect?display_id=23&
 **Requirements:**
 - ✅ Apple Watch (or iPhone) on you (tracks YOUR movement)
 - ✅ Sony TV connected first (HDMI or AirPlay)
-- ✅ TV registered in JARVIS config (one-time)
+- ✅ TV registered in Ironcliw config (one-time)
 
 **The Flow:**
 1. ✅ You walk near TV with Apple Watch
-2. ✅ JARVIS detects proximity (2.5m away)
-3. ✅ JARVIS checks if TV is on/available
-4. ✅ JARVIS prompts: "Would you like to connect?"
+2. ✅ Ironcliw detects proximity (2.5m away)
+3. ✅ Ironcliw checks if TV is on/available
+4. ✅ Ironcliw prompts: "Would you like to connect?"
 5. ✅ You say: "Yes" or "No"
 6. ✅ If YES → Auto-connects (extend mode, ~2-3s)
 7. ✅ If NO → Skips (5 min cooldown)

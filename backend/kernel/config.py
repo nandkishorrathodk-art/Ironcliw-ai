@@ -1,8 +1,8 @@
-"""
-JARVIS Kernel Configuration v1.0.0
+﻿"""
+Ironcliw Kernel Configuration v1.0.0
 ===================================
 
-Enterprise-grade configuration management for the JARVIS kernel.
+Enterprise-grade configuration management for the Ironcliw kernel.
 Zero hardcoding - all values from environment variables with intelligent defaults.
 
 This module provides:
@@ -12,18 +12,18 @@ This module provides:
 4. Configuration validation
 
 Environment Variables:
-    JARVIS_MODE                 - Startup mode (development/production)
-    JARVIS_DEBUG                - Enable debug mode
-    JARVIS_SKIP_DOCKER          - Skip Docker initialization
-    JARVIS_SKIP_GCP             - Skip GCP initialization
-    JARVIS_SKIP_TRINITY         - Skip Trinity cross-repo startup
-    JARVIS_BACKEND_PORT         - Backend API port
-    JARVIS_FRONTEND_PORT        - Frontend port
-    JARVIS_HOT_RELOAD           - Enable hot reload
-    JARVIS_VOICE_ENABLED        - Enable voice features
-    JARVIS_LOADING_SERVER_PORT  - Loading server port
+    Ironcliw_MODE                 - Startup mode (development/production)
+    Ironcliw_DEBUG                - Enable debug mode
+    Ironcliw_SKIP_DOCKER          - Skip Docker initialization
+    Ironcliw_SKIP_GCP             - Skip GCP initialization
+    Ironcliw_SKIP_TRINITY         - Skip Trinity cross-repo startup
+    Ironcliw_BACKEND_PORT         - Backend API port
+    Ironcliw_FRONTEND_PORT        - Frontend port
+    Ironcliw_HOT_RELOAD           - Enable hot reload
+    Ironcliw_VOICE_ENABLED        - Enable voice features
+    Ironcliw_LOADING_SERVER_PORT  - Loading server port
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -123,15 +123,15 @@ def _env_list(key: str, default: List[str], separator: str = ",") -> List[str]:
 @dataclass
 class SystemKernelConfig:
     """
-    Configuration for the JARVIS System Kernel.
+    Configuration for the Ironcliw System Kernel.
     
     All values are loaded from environment variables with intelligent defaults.
     No hardcoding - the configuration is fully dynamic.
     
     Usage:
         config = SystemKernelConfig()
-        print(config.backend_port)  # 8010 (or JARVIS_BACKEND_PORT env var)
-        print(config.mode)  # StartupMode.DEVELOPMENT (or JARVIS_MODE env var)
+        print(config.backend_port)  # 8010 (or Ironcliw_BACKEND_PORT env var)
+        print(config.mode)  # StartupMode.DEVELOPMENT (or Ironcliw_MODE env var)
     """
     
     # =========================================================================
@@ -139,33 +139,33 @@ class SystemKernelConfig:
     # =========================================================================
     
     mode: StartupMode = field(default_factory=lambda: StartupMode(
-        _env_str("JARVIS_MODE", "development")
-    ) if _env_str("JARVIS_MODE", "development") in [m.value for m in StartupMode] else StartupMode.DEVELOPMENT)
+        _env_str("Ironcliw_MODE", "development")
+    ) if _env_str("Ironcliw_MODE", "development") in [m.value for m in StartupMode] else StartupMode.DEVELOPMENT)
     
-    debug: bool = field(default_factory=lambda: _env_bool("JARVIS_DEBUG", False))
-    verbose: bool = field(default_factory=lambda: _env_bool("JARVIS_VERBOSE", False))
+    debug: bool = field(default_factory=lambda: _env_bool("Ironcliw_DEBUG", False))
+    verbose: bool = field(default_factory=lambda: _env_bool("Ironcliw_VERBOSE", False))
     
     # =========================================================================
     # Paths
     # =========================================================================
     
     project_root: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_PROJECT_ROOT", 
+        "Ironcliw_PROJECT_ROOT", 
         Path(__file__).parent.parent.parent  # backend/kernel/config.py -> project root
     ))
     
     jarvis_dir: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_DIR",
+        "Ironcliw_DIR",
         Path.home() / ".jarvis"
     ))
     
     locks_dir: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_LOCKS_DIR",
+        "Ironcliw_LOCKS_DIR",
         Path.home() / ".jarvis" / "locks"
     ))
     
     cache_dir: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_CACHE_DIR",
+        "Ironcliw_CACHE_DIR",
         Path.home() / ".jarvis" / "cache"
     ))
     
@@ -173,31 +173,31 @@ class SystemKernelConfig:
     # Ports
     # =========================================================================
     
-    backend_port: int = field(default_factory=lambda: _env_int("JARVIS_BACKEND_PORT", 8010))
-    frontend_port: int = field(default_factory=lambda: _env_int("JARVIS_FRONTEND_PORT", 3000))
-    loading_server_port: int = field(default_factory=lambda: _env_int("JARVIS_LOADING_SERVER_PORT", 3001))
-    websocket_port: int = field(default_factory=lambda: _env_int("JARVIS_WEBSOCKET_PORT", 8765))
+    backend_port: int = field(default_factory=lambda: _env_int("Ironcliw_BACKEND_PORT", 8010))
+    frontend_port: int = field(default_factory=lambda: _env_int("Ironcliw_FRONTEND_PORT", 3000))
+    loading_server_port: int = field(default_factory=lambda: _env_int("Ironcliw_LOADING_SERVER_PORT", 3001))
+    websocket_port: int = field(default_factory=lambda: _env_int("Ironcliw_WEBSOCKET_PORT", 8765))
     
     # =========================================================================
     # Feature Flags
     # =========================================================================
     
-    skip_docker: bool = field(default_factory=lambda: _env_bool("JARVIS_SKIP_DOCKER", False))
-    skip_gcp: bool = field(default_factory=lambda: _env_bool("JARVIS_SKIP_GCP", False))
-    skip_trinity: bool = field(default_factory=lambda: _env_bool("JARVIS_SKIP_TRINITY", False))
-    skip_frontend: bool = field(default_factory=lambda: _env_bool("JARVIS_SKIP_FRONTEND", False))
-    skip_intelligence: bool = field(default_factory=lambda: _env_bool("JARVIS_SKIP_INTELLIGENCE", False))
+    skip_docker: bool = field(default_factory=lambda: _env_bool("Ironcliw_SKIP_DOCKER", False))
+    skip_gcp: bool = field(default_factory=lambda: _env_bool("Ironcliw_SKIP_GCP", False))
+    skip_trinity: bool = field(default_factory=lambda: _env_bool("Ironcliw_SKIP_TRINITY", False))
+    skip_frontend: bool = field(default_factory=lambda: _env_bool("Ironcliw_SKIP_FRONTEND", False))
+    skip_intelligence: bool = field(default_factory=lambda: _env_bool("Ironcliw_SKIP_INTELLIGENCE", False))
     
-    trinity_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_TRINITY_ENABLED", True))
-    hot_reload: bool = field(default_factory=lambda: _env_bool("JARVIS_HOT_RELOAD", True))
-    voice_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_VOICE_ENABLED", True))
+    trinity_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_TRINITY_ENABLED", True))
+    hot_reload: bool = field(default_factory=lambda: _env_bool("Ironcliw_HOT_RELOAD", True))
+    voice_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_VOICE_ENABLED", True))
     
     # =========================================================================
     # Trinity Cross-Repo Settings
     # =========================================================================
     
     jarvis_prime_path: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_PRIME_PATH",
+        "Ironcliw_PRIME_PATH",
         Path.home() / "Documents" / "repos" / "jarvis-prime"
     ))
     
@@ -206,32 +206,32 @@ class SystemKernelConfig:
         Path.home() / "Documents" / "repos" / "reactor-core"
     ))
     
-    jarvis_prime_port: int = field(default_factory=lambda: _env_int("JARVIS_PRIME_PORT", 8001))
+    jarvis_prime_port: int = field(default_factory=lambda: _env_int("Ironcliw_PRIME_PORT", 8001))
     reactor_core_port: int = field(default_factory=lambda: _env_int("REACTOR_CORE_PORT", 8090))
     
     # =========================================================================
     # Timeouts (in seconds)
     # =========================================================================
     
-    startup_timeout: float = field(default_factory=lambda: _env_float("JARVIS_STARTUP_TIMEOUT", 300.0))
-    health_check_timeout: float = field(default_factory=lambda: _env_float("JARVIS_HEALTH_CHECK_TIMEOUT", 10.0))
-    graceful_shutdown_timeout: float = field(default_factory=lambda: _env_float("JARVIS_SHUTDOWN_TIMEOUT", 30.0))
-    process_spawn_timeout: float = field(default_factory=lambda: _env_float("JARVIS_SPAWN_TIMEOUT", 60.0))
+    startup_timeout: float = field(default_factory=lambda: _env_float("Ironcliw_STARTUP_TIMEOUT", 300.0))
+    health_check_timeout: float = field(default_factory=lambda: _env_float("Ironcliw_HEALTH_CHECK_TIMEOUT", 10.0))
+    graceful_shutdown_timeout: float = field(default_factory=lambda: _env_float("Ironcliw_SHUTDOWN_TIMEOUT", 30.0))
+    process_spawn_timeout: float = field(default_factory=lambda: _env_float("Ironcliw_SPAWN_TIMEOUT", 60.0))
     
     # =========================================================================
     # Resource Limits
     # =========================================================================
     
-    max_concurrent_processes: int = field(default_factory=lambda: _env_int("JARVIS_MAX_PROCESSES", 10))
-    max_memory_percent: float = field(default_factory=lambda: _env_float("JARVIS_MAX_MEMORY_PCT", 80.0))
+    max_concurrent_processes: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_PROCESSES", 10))
+    max_memory_percent: float = field(default_factory=lambda: _env_float("Ironcliw_MAX_MEMORY_PCT", 80.0))
     
     # =========================================================================
     # Retry Settings
     # =========================================================================
     
-    max_retries: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RETRIES", 3))
-    retry_delay: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_DELAY", 1.0))
-    retry_max_delay: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_MAX_DELAY", 30.0))
+    max_retries: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_RETRIES", 3))
+    retry_delay: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_DELAY", 1.0))
+    retry_max_delay: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_MAX_DELAY", 30.0))
     
     # =========================================================================
     # Hardware Detection (computed at runtime)

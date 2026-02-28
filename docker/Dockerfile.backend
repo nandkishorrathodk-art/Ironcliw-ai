@@ -1,7 +1,7 @@
-# JARVIS AI Agent Backend - Production Container
+﻿# Ironcliw AI Agent Backend - Production Container
 # ==============================================
 #
-# Multi-stage build for the JARVIS backend with:
+# Multi-stage build for the Ironcliw backend with:
 # - Python 3.11 with all ML dependencies
 # - Voice biometric support (ECAPA-TDNN)
 # - Neural Mesh multi-agent system
@@ -19,8 +19,8 @@
 # =============================================================================
 FROM python:3.11-slim-bookworm AS base
 
-LABEL maintainer="JARVIS AI Agent Team"
-LABEL description="JARVIS AI Agent Backend Server"
+LABEL maintainer="Ironcliw AI Agent Team"
+LABEL description="Ironcliw AI Agent Backend Server"
 LABEL version="9.4.0"
 
 # System dependencies
@@ -87,9 +87,9 @@ RUN mkdir -p /app/data/training_db /app/data/logs /app/models /app/cache && \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
-ENV JARVIS_DOCKER=true
-ENV JARVIS_DATA_DIR=/app/data
-ENV JARVIS_MODELS_DIR=/app/models
+ENV Ironcliw_DOCKER=true
+ENV Ironcliw_DATA_DIR=/app/data
+ENV Ironcliw_MODELS_DIR=/app/models
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Direct fix for vision monitoring commands in JARVIS
+Direct fix for vision monitoring commands in Ironcliw
 This ensures screen monitoring commands work immediately
 """
 
@@ -97,7 +97,7 @@ async def handle_vision_monitoring_command(command: str) -> Dict[str, Any]:
 
 
 def patch_jarvis_command_handling():
-    """Patch JARVIS to handle vision commands directly"""
+    """Patch Ironcliw to handle vision commands directly"""
     global _patched
     if _patched:
         return
@@ -106,7 +106,7 @@ def patch_jarvis_command_handling():
         import api.jarvis_voice_api
         
         # Store original process_command
-        original_process = api.jarvis_voice_api.JARVISVoiceAPI.process_command
+        original_process = api.jarvis_voice_api.IroncliwVoiceAPI.process_command
         
         async def patched_process_command(self, command):
             """Patched command processor that checks vision first"""
@@ -126,12 +126,12 @@ def patch_jarvis_command_handling():
             return await original_process(self, command)
         
         # Apply patch
-        api.jarvis_voice_api.JARVISVoiceAPI.process_command = patched_process_command
-        logger.info("Applied vision command patch to JARVIS")
+        api.jarvis_voice_api.IroncliwVoiceAPI.process_command = patched_process_command
+        logger.info("Applied vision command patch to Ironcliw")
         _patched = True
         
     except Exception as e:
-        logger.error(f"Failed to patch JARVIS: {e}")
+        logger.error(f"Failed to patch Ironcliw: {e}")
 
 
 # Auto-patch on import

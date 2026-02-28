@@ -1,4 +1,4 @@
-"""
+﻿"""
 v86.0: Advanced Startup Orchestrator - Ultra-Parallel Trinity Initialization
 ================================================================================
 
@@ -13,7 +13,7 @@ Addresses ROOT ISSUES:
 - Heartbeat verification -> Trinity heartbeat file monitoring
 - Connection verification -> HTTP endpoint health checks
 
-Author: JARVIS Trinity v86.0
+Author: Ironcliw Trinity v86.0
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 
 class TrinityRepo(str, Enum):
     """Trinity repository identifiers."""
-    JARVIS = "jarvis"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw = "jarvis"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
 
 
@@ -440,8 +440,8 @@ class DynamicConfigDiscovery:
 
         # Strategy 1: Environment variables
         env_mappings = {
-            TrinityRepo.JARVIS: "JARVIS_REPO_PATH",
-            TrinityRepo.JARVIS_PRIME: "JARVIS_PRIME_REPO_PATH",
+            TrinityRepo.Ironcliw: "Ironcliw_REPO_PATH",
+            TrinityRepo.Ironcliw_PRIME: "Ironcliw_PRIME_REPO_PATH",
             TrinityRepo.REACTOR_CORE: "REACTOR_CORE_PATH",
         }
 
@@ -454,30 +454,30 @@ class DynamicConfigDiscovery:
                     continue
 
         # Strategy 2: Find from current file location
-        if TrinityRepo.JARVIS not in paths:
+        if TrinityRepo.Ironcliw not in paths:
             # Walk up to find .git directory
             current = Path(__file__).resolve()
             for _ in range(10):
                 if (current / ".git").exists():
-                    paths[TrinityRepo.JARVIS] = current
+                    paths[TrinityRepo.Ironcliw] = current
                     break
                 if current.parent == current:
                     break
                 current = current.parent
 
-        # Strategy 3: Check sibling directories for JARVIS-Prime and Reactor-Core
-        if TrinityRepo.JARVIS in paths:
-            parent = paths[TrinityRepo.JARVIS].parent
+        # Strategy 3: Check sibling directories for Ironcliw-Prime and Reactor-Core
+        if TrinityRepo.Ironcliw in paths:
+            parent = paths[TrinityRepo.Ironcliw].parent
 
-            # JARVIS-Prime detection patterns
+            # Ironcliw-Prime detection patterns
             jprime_patterns = [
-                "JARVIS-Prime", "jarvis-prime", "jarvis_prime",
+                "Ironcliw-Prime", "jarvis-prime", "jarvis_prime",
                 "j-prime", "jprime"
             ]
             for pattern in jprime_patterns:
                 jprime_path = parent / pattern
                 if jprime_path.exists() and (jprime_path / ".git").exists():
-                    paths[TrinityRepo.JARVIS_PRIME] = jprime_path
+                    paths[TrinityRepo.Ironcliw_PRIME] = jprime_path
                     break
 
             # Reactor-Core detection patterns
@@ -506,8 +506,8 @@ class DynamicConfigDiscovery:
     def _discover_ports(self) -> Dict[str, int]:
         """Discover ports from environment."""
         return {
-            "jarvis_backend": int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
-            "jarvis_prime": int(os.getenv("JARVIS_PRIME_PORT", "8000")),
+            "jarvis_backend": int(os.getenv("Ironcliw_BACKEND_PORT", "8010")),
+            "jarvis_prime": int(os.getenv("Ironcliw_PRIME_PORT", "8000")),
             "reactor_core": int(os.getenv("REACTOR_CORE_PORT", "8090")),
         }
 

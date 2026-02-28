@@ -1,7 +1,7 @@
-/**
- * Dynamic Favicon Manager for JARVIS
+﻿/**
+ * Dynamic Favicon Manager for Ironcliw
  * 
- * Changes the browser favicon based on JARVIS state:
+ * Changes the browser favicon based on Ironcliw state:
  * - idle: Green arc reactor (default)
  * - processing: Blue spinning rings (thinking)
  * - listening: Orange pulsing with microphone (voice input)
@@ -109,8 +109,8 @@ export function setFaviconListening() {
 
 /**
  * React hook for managing favicon state
- * @param {boolean} isProcessing - Whether JARVIS is processing
- * @param {boolean} isListening - Whether JARVIS is listening
+ * @param {boolean} isProcessing - Whether Ironcliw is processing
+ * @param {boolean} isListening - Whether Ironcliw is listening
  */
 export function useDynamicFavicon(isProcessing, isListening) {
   // Initialize on first render

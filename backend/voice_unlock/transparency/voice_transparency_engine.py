@@ -1,8 +1,8 @@
-"""
+﻿"""
 Voice Transparency Engine v1.0
 ==============================
 
-Provides comprehensive voice communication and transparency for JARVIS
+Provides comprehensive voice communication and transparency for Ironcliw
 voice authentication system. Enables debugging, decision tracing, and
 intelligent verbal feedback.
 
@@ -16,17 +16,17 @@ Features:
 - Fully async with observability hooks
 
 Configuration (Environment Variables):
-- JARVIS_TRANSPARENCY_ENABLED: Enable transparency engine (default: true)
-- JARVIS_VERBOSE_MODE: Enable verbose spoken feedback (default: false)
-- JARVIS_DEBUG_VOICE: Speak debug info during auth (default: false)
-- JARVIS_TRACE_RETENTION_HOURS: How long to keep traces (default: 24)
-- JARVIS_CLOUD_STATUS_ENABLED: Report cloud infra status (default: true)
-- JARVIS_EXPLAIN_DECISIONS: Explain why decisions were made (default: true)
-- JARVIS_ANNOUNCE_CONFIDENCE: Always announce confidence (default: borderline)
-- JARVIS_ANNOUNCE_LATENCY: Announce processing time (default: false)
-- JARVIS_ANNOUNCE_INFRASTRUCTURE: Mention cloud status (default: false)
+- Ironcliw_TRANSPARENCY_ENABLED: Enable transparency engine (default: true)
+- Ironcliw_VERBOSE_MODE: Enable verbose spoken feedback (default: false)
+- Ironcliw_DEBUG_VOICE: Speak debug info during auth (default: false)
+- Ironcliw_TRACE_RETENTION_HOURS: How long to keep traces (default: 24)
+- Ironcliw_CLOUD_STATUS_ENABLED: Report cloud infra status (default: true)
+- Ironcliw_EXPLAIN_DECISIONS: Explain why decisions were made (default: true)
+- Ironcliw_ANNOUNCE_CONFIDENCE: Always announce confidence (default: borderline)
+- Ironcliw_ANNOUNCE_LATENCY: Announce processing time (default: false)
+- Ironcliw_ANNOUNCE_INFRASTRUCTURE: Mention cloud status (default: false)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations
@@ -56,52 +56,52 @@ class TransparencyConfig:
     @staticmethod
     def is_enabled() -> bool:
         """Whether transparency engine is enabled."""
-        return os.getenv("JARVIS_TRANSPARENCY_ENABLED", "true").lower() == "true"
+        return os.getenv("Ironcliw_TRANSPARENCY_ENABLED", "true").lower() == "true"
 
     @staticmethod
     def verbose_mode() -> bool:
         """Whether to use verbose spoken feedback."""
-        return os.getenv("JARVIS_VERBOSE_MODE", "false").lower() == "true"
+        return os.getenv("Ironcliw_VERBOSE_MODE", "false").lower() == "true"
 
     @staticmethod
     def debug_voice() -> bool:
         """Whether to speak debug information during authentication."""
-        return os.getenv("JARVIS_DEBUG_VOICE", "false").lower() == "true"
+        return os.getenv("Ironcliw_DEBUG_VOICE", "false").lower() == "true"
 
     @staticmethod
     def trace_retention_hours() -> int:
         """How many hours to retain decision traces."""
-        return int(os.getenv("JARVIS_TRACE_RETENTION_HOURS", "24"))
+        return int(os.getenv("Ironcliw_TRACE_RETENTION_HOURS", "24"))
 
     @staticmethod
     def cloud_status_enabled() -> bool:
         """Whether to check and report cloud infrastructure status."""
-        return os.getenv("JARVIS_CLOUD_STATUS_ENABLED", "true").lower() == "true"
+        return os.getenv("Ironcliw_CLOUD_STATUS_ENABLED", "true").lower() == "true"
 
     @staticmethod
     def explain_decisions() -> bool:
         """Whether to explain WHY decisions were made."""
-        return os.getenv("JARVIS_EXPLAIN_DECISIONS", "true").lower() == "true"
+        return os.getenv("Ironcliw_EXPLAIN_DECISIONS", "true").lower() == "true"
 
     @staticmethod
     def announce_confidence() -> str:
         """When to announce confidence: always, never, borderline."""
-        return os.getenv("JARVIS_ANNOUNCE_CONFIDENCE", "borderline")
+        return os.getenv("Ironcliw_ANNOUNCE_CONFIDENCE", "borderline")
 
     @staticmethod
     def announce_latency() -> bool:
         """Whether to announce processing latency."""
-        return os.getenv("JARVIS_ANNOUNCE_LATENCY", "false").lower() == "true"
+        return os.getenv("Ironcliw_ANNOUNCE_LATENCY", "false").lower() == "true"
 
     @staticmethod
     def announce_infrastructure() -> bool:
         """Whether to mention cloud infrastructure in announcements."""
-        return os.getenv("JARVIS_ANNOUNCE_INFRASTRUCTURE", "false").lower() == "true"
+        return os.getenv("Ironcliw_ANNOUNCE_INFRASTRUCTURE", "false").lower() == "true"
 
     @staticmethod
     def max_trace_history() -> int:
         """Maximum number of traces to keep in memory."""
-        return int(os.getenv("JARVIS_MAX_TRACE_HISTORY", "100"))
+        return int(os.getenv("Ironcliw_MAX_TRACE_HISTORY", "100"))
 
     @staticmethod
     def gcp_project_id() -> Optional[str]:
@@ -140,8 +140,8 @@ class TransparencyConfig:
 
     @staticmethod
     def jarvis_backend_url() -> str:
-        """JARVIS backend API URL."""
-        return os.getenv("JARVIS_BACKEND_URL", "http://localhost:8000")
+        """Ironcliw backend API URL."""
+        return os.getenv("Ironcliw_BACKEND_URL", "http://localhost:8000")
 
 
 # =============================================================================
@@ -1125,21 +1125,21 @@ class SecurityIncidentReporter:
     - Time-aware incident summaries
 
     Configuration:
-    - JARVIS_SECURITY_INCIDENT_REPORTING: Enable incident reporting (default: true)
-    - JARVIS_OFFER_AUDIO_CLIPS: Offer audio clips in reports (default: true)
-    - JARVIS_INCIDENT_CLUSTER_WINDOW_MINUTES: Clustering time window (default: 10)
+    - Ironcliw_SECURITY_INCIDENT_REPORTING: Enable incident reporting (default: true)
+    - Ironcliw_OFFER_AUDIO_CLIPS: Offer audio clips in reports (default: true)
+    - Ironcliw_INCIDENT_CLUSTER_WINDOW_MINUTES: Clustering time window (default: 10)
     """
 
     def __init__(self):
         self.logger = logger
         self.cluster_window_minutes = int(
-            os.getenv("JARVIS_INCIDENT_CLUSTER_WINDOW_MINUTES", "10")
+            os.getenv("Ironcliw_INCIDENT_CLUSTER_WINDOW_MINUTES", "10")
         )
         self.reporting_enabled = (
-            os.getenv("JARVIS_SECURITY_INCIDENT_REPORTING", "true").lower() == "true"
+            os.getenv("Ironcliw_SECURITY_INCIDENT_REPORTING", "true").lower() == "true"
         )
         self.offer_audio_clips_enabled = (
-            os.getenv("JARVIS_OFFER_AUDIO_CLIPS", "true").lower() == "true"
+            os.getenv("Ironcliw_OFFER_AUDIO_CLIPS", "true").lower() == "true"
         )
 
     async def generate_incident_summary(
@@ -1554,7 +1554,7 @@ class InfrastructureStatusChecker:
 
     Supports:
     - Docker container status
-    - JARVIS Backend API
+    - Ironcliw Backend API
     - Local ML services
     - GCP Cloud Run services (ECAPA, etc.)
     - GCP VM Spot GPU instances
@@ -1566,7 +1566,7 @@ class InfrastructureStatusChecker:
     - CLOUD_RUN_REGION: GCP Cloud Run region (default: us-central1)
     - GCP_VM_SPOT_GPU_URL: GCP VM Spot GPU instance URL
     - GCP_VM_SPOT_ZONE: GCP VM Spot zone (default: us-central1-a)
-    - JARVIS_BACKEND_URL: JARVIS backend API URL
+    - Ironcliw_BACKEND_URL: Ironcliw backend API URL
     """
 
     def __init__(self):
@@ -1618,7 +1618,7 @@ class InfrastructureStatusChecker:
         )
 
     async def _check_jarvis_backend(self) -> InfrastructureTrace:
-        """Check JARVIS backend API status."""
+        """Check Ironcliw backend API status."""
         backend_url = TransparencyConfig.jarvis_backend_url()
 
         try:
@@ -1659,7 +1659,7 @@ class InfrastructureStatusChecker:
                             details={"url": backend_url, "http_status": resp.status}
                         )
         except Exception as e:
-            logger.debug(f"JARVIS backend check failed: {e}")
+            logger.debug(f"Ironcliw backend check failed: {e}")
 
         return InfrastructureTrace(
             component="jarvis_backend",

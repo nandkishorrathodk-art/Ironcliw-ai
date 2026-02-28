@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Vision Action Handler for JARVIS - Dynamic ML-Based System
+Vision Action Handler for Ironcliw - Dynamic ML-Based System
 Zero hardcoding - all actions are discovered and learned
 """
 

@@ -1,11 +1,11 @@
-"""
-JARVIS Neural Mesh - System Integration Module
+﻿"""
+Ironcliw Neural Mesh - System Integration Module
 
-Provides clean integration points for the Neural Mesh with the existing JARVIS system.
+Provides clean integration points for the Neural Mesh with the existing Ironcliw system.
 
 This module handles:
 - Lazy initialization of Neural Mesh components
-- Integration with existing JARVIS agents
+- Integration with existing Ironcliw agents
 - Startup/shutdown lifecycle management
 - Health monitoring integration
 """
@@ -45,11 +45,11 @@ async def initialize_neural_mesh(
     Initialize the Neural Mesh system.
 
     This is the main entry point for integrating Neural Mesh
-    with the existing JARVIS system.
+    with the existing Ironcliw system.
 
     Args:
         config: Configuration options
-        jarvis_instance: Optional JARVIS instance to integrate
+        jarvis_instance: Optional Ironcliw instance to integrate
 
     Returns:
         Dict with status and component references
@@ -69,14 +69,14 @@ async def initialize_neural_mesh(
     components_loaded = []
 
     try:
-        logger.info("🧠 Initializing JARVIS Neural Mesh...")
+        logger.info("🧠 Initializing Ironcliw Neural Mesh...")
 
         # Import Neural Mesh components
         from neural_mesh import NeuralMeshCoordinator, NeuralMeshConfig as CoordinatorConfig
 
         # Create coordinator
         coordinator_config = CoordinatorConfig(
-            name="JARVIS-Neural-Mesh",
+            name="Ironcliw-Neural-Mesh",
             enable_monitoring=config.enable_monitoring,
             enable_knowledge_graph=config.enable_knowledge_graph,
             enable_communication_bus=config.enable_communication_bus,
@@ -99,10 +99,10 @@ async def initialize_neural_mesh(
             components_loaded.append("crew")
             logger.info("  ✓ Crew Multi-Agent System initialized")
 
-        # Register existing JARVIS agents if provided
+        # Register existing Ironcliw agents if provided
         if jarvis_instance:
             registered = await _register_jarvis_agents(jarvis_instance)
-            logger.info(f"  ✓ Registered {registered} JARVIS agents")
+            logger.info(f"  ✓ Registered {registered} Ironcliw agents")
 
         # Set up monitoring integration
         if config.enable_monitoring:
@@ -143,10 +143,10 @@ async def _initialize_crew_system():
             DelegationStrategy,
         )
 
-        # Create the main JARVIS crew with dynamic process
+        # Create the main Ironcliw crew with dynamic process
         jarvis_crew = (CrewBuilder()
-            .name("JARVIS Intelligence Crew")
-            .description("Multi-agent collaboration system for JARVIS")
+            .name("Ironcliw Intelligence Crew")
+            .description("Multi-agent collaboration system for Ironcliw")
             .process(ProcessType.DYNAMIC)
             .delegation_strategy(DelegationStrategy.HYBRID)
             .memory_enabled(True)
@@ -191,7 +191,7 @@ async def _initialize_crew_system():
 
 
 async def _register_jarvis_agents(jarvis_instance: Any) -> int:
-    """Register existing JARVIS agents with the Neural Mesh."""
+    """Register existing Ironcliw agents with the Neural Mesh."""
     registered = 0
 
     if not _neural_mesh_coordinator:
@@ -225,7 +225,7 @@ async def _register_jarvis_agents(jarvis_instance: Any) -> int:
 
 
 async def _setup_monitoring_integration():
-    """Set up monitoring integration with existing JARVIS monitoring."""
+    """Set up monitoring integration with existing Ironcliw monitoring."""
     try:
         from neural_mesh.monitoring import get_metrics_collector, get_health_monitor
 

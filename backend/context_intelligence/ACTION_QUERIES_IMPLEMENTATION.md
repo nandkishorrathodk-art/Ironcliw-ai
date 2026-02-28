@@ -1,4 +1,4 @@
-# Action-Oriented Queries Implementation Guide
+﻿# Action-Oriented Queries Implementation Guide
 
 ## ✅ What's Been Implemented
 
@@ -207,7 +207,7 @@ class ActionQueryHandler:
 
 ---
 
-## 🔌 Integration with JARVIS
+## 🔌 Integration with Ironcliw
 
 ### Update Intent Analyzer
 
@@ -253,7 +253,7 @@ async def _handle_action_query(self, command):
     return await self.action_handler.handle_action_query(command, context)
 ```
 
-### Update JARVIS Integration
+### Update Ironcliw Integration
 
 ```python
 # In integrations/jarvis_integration.py
@@ -289,7 +289,7 @@ if intent.type.value == "action_query":
 ```python
 # Fix error - needs resolution
 User: "What's wrong?"
-JARVIS: [shows error from space 3]
+Ironcliw: [shows error from space 3]
 User: "Fix it"
 
 → ActionType.FIX_ERROR, requires_resolution=True
@@ -305,7 +305,7 @@ User: "Close the browser in space 2"
 
 # Complex with pronouns
 User: "What's on space 4?"
-JARVIS: [shows Terminal with error]
+Ironcliw: [shows Terminal with error]
 User: "Close that"
 
 → ActionType.CLOSE_WINDOW, requires_resolution=True
@@ -457,7 +457,7 @@ User: "Close that"
    - `safety/action_safety_manager.py`
    - `handlers/action_query_handler.py`
 
-2. **Integrate into JARVIS pipeline**:
+2. **Integrate into Ironcliw pipeline**:
    - Update `intent_analyzer.py`
    - Update `context_aware_handler.py`
    - Update `jarvis_integration.py`

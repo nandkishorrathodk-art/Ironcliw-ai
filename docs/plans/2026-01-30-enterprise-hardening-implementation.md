@@ -1,4 +1,4 @@
-# Enterprise Hardening Implementation Plan
+﻿# Enterprise Hardening Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -6,7 +6,7 @@
 
 **Architecture:** Two parallel tracks - Track 1 provides immediate log noise relief via surgical fixes, while Track 2 builds the foundational ComponentRegistry infrastructure. Track 1 code becomes a thin bridge that gets replaced once Track 2 completes.
 
-**Tech Stack:** Python 3.9+, asyncio, dataclasses, JSON for state persistence, existing JARVIS logging infrastructure.
+**Tech Stack:** Python 3.9+, asyncio, dataclasses, JSON for state persistence, existing Ironcliw logging infrastructure.
 
 ---
 
@@ -32,7 +32,7 @@ class TestComponentCriticality:
     def test_normalize_component_name_kebab_case(self):
         from backend.core.log_severity_bridge import _normalize_component_name
         assert _normalize_component_name("jarvis_prime") == "jarvis-prime"
-        assert _normalize_component_name("JARVIS_PRIME") == "jarvis-prime"
+        assert _normalize_component_name("Ironcliw_PRIME") == "jarvis-prime"
         assert _normalize_component_name("Jarvis Prime") == "jarvis-prime"
         assert _normalize_component_name("jarvis-prime") == "jarvis-prime"
 
@@ -97,7 +97,7 @@ class TestLogComponentFailure:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.worktrees/enterprise-hardening && python3 -m pytest tests/unit/core/test_log_severity_bridge.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/.worktrees/enterprise-hardening && python3 -m pytest tests/unit/core/test_log_severity_bridge.py -v`
 
 Expected: FAIL with "ModuleNotFoundError: No module named 'backend.core.log_severity_bridge'"
 
@@ -178,7 +178,7 @@ def _normalize_component_name(name: str) -> str:
 
     Examples:
         "jarvis_prime" -> "jarvis-prime"
-        "JARVIS_PRIME" -> "jarvis-prime"
+        "Ironcliw_PRIME" -> "jarvis-prime"
         "Jarvis Prime" -> "jarvis-prime"
     """
     return name.lower().replace("_", "-").replace(" ", "-")
@@ -243,14 +243,14 @@ def is_component_optional(component: str) -> bool:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.worktrees/enterprise-hardening && python3 -m pytest tests/unit/core/test_log_severity_bridge.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/.worktrees/enterprise-hardening && python3 -m pytest tests/unit/core/test_log_severity_bridge.py -v`
 
 Expected: All tests PASS
 
 **Step 5: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.worktrees/enterprise-hardening
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/.worktrees/enterprise-hardening
 git add backend/core/log_severity_bridge.py tests/unit/core/test_log_severity_bridge.py
 git commit -m "feat(core): add log severity bridge for criticality-based logging
 
@@ -331,7 +331,7 @@ log_component_failure(
 
 **Step 5: Run existing tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.worktrees/enterprise-hardening && python3 -m pytest tests/integration/ -k "orchestrator" -v --tb=short 2>&1 | head -50`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/.worktrees/enterprise-hardening && python3 -m pytest tests/integration/ -k "orchestrator" -v --tb=short 2>&1 | head -50`
 
 Expected: Existing tests still pass (or skip gracefully if dependencies missing)
 
@@ -536,7 +536,7 @@ class TestComponentDefinition:
             startup_timeout=120.0,
             retry_max_attempts=3,
             fallback_for_capabilities={"inference": "claude-api"},
-            disable_env_var="JARVIS_PRIME_ENABLED",
+            disable_env_var="Ironcliw_PRIME_ENABLED",
         )
         assert defn.name == "jarvis-prime"
         assert len(defn.dependencies) == 2
@@ -849,7 +849,7 @@ Expected: FAIL - ComponentRegistry class doesn't exist
 
 class ComponentRegistry:
     """
-    Central registry for all JARVIS components.
+    Central registry for all Ironcliw components.
 
     Provides:
     - Component registration and lookup
@@ -2041,7 +2041,7 @@ Due to length, I'll summarize the remaining tasks:
 
 **Task 14: Create Default Component Definitions**
 - File: `backend/core/default_components.py`
-- Implements: Pre-defined ComponentDefinitions for all JARVIS components
+- Implements: Pre-defined ComponentDefinitions for all Ironcliw components
 - Includes: jarvis-core, jarvis-prime, reactor-core, redis, trinity, etc.
 
 ---

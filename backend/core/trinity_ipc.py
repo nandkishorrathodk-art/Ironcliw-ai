@@ -1,10 +1,10 @@
-"""
+﻿"""
 Trinity IPC Layer v81.0 - Atomic File Operations for Cross-Repo Communication
 =============================================================================
 
 Provides atomic file-based IPC for communication between Trinity components:
-- JARVIS Body (execution layer)
-- JARVIS Prime (cognitive mind)
+- Ironcliw Body (execution layer)
+- Ironcliw Prime (cognitive mind)
 - Reactor Core (training nerves)
 
 FEATURES:
@@ -22,7 +22,7 @@ ZERO HARDCODING - All configuration via environment variables:
     TRINITY_FILE_OPERATION_TIMEOUT  - File operation timeout (default: 10.0s)
     TRINITY_IPC_POLL_INTERVAL       - IPC polling interval (default: 0.1s)
 
-Author: JARVIS v81.0
+Author: Ironcliw v81.0
 """
 
 from __future__ import annotations
@@ -100,8 +100,8 @@ def _env_path(key: str, default: Path) -> Path:
 
 class ComponentType(str, Enum):
     """Trinity component types."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     CODING_COUNCIL = "coding_council"
 
@@ -229,7 +229,7 @@ class HeartbeatData:
             try:
                 component_type = ComponentType(component_type)
             except ValueError:
-                component_type = ComponentType.JARVIS_BODY
+                component_type = ComponentType.Ironcliw_BODY
 
         return cls(
             component_type=component_type,
@@ -756,14 +756,14 @@ class TrinityIPCBus:
 
         # Publish heartbeat
         await bus.publish_heartbeat(
-            component=ComponentType.JARVIS_BODY,
+            component=ComponentType.Ironcliw_BODY,
             status="ready",
             pid=os.getpid(),
             metrics={"requests": 100}
         )
 
         # Read heartbeat
-        heartbeat = await bus.read_heartbeat(ComponentType.JARVIS_PRIME)
+        heartbeat = await bus.read_heartbeat(ComponentType.Ironcliw_PRIME)
         if heartbeat and heartbeat.is_alive:
             print(f"J-Prime is {heartbeat.status}")
 

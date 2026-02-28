@@ -1,8 +1,8 @@
-"""
+﻿"""
 Wake Word Service
 =================
 
-Main service for managing wake word detection and JARVIS activation.
+Main service for managing wake word detection and Ironcliw activation.
 
 This module provides the core wake word detection service that orchestrates
 audio processing, wake word detection, and activation responses. It manages
@@ -76,12 +76,12 @@ class ActivationEvent:
 
 
 class WakeWordService:
-    """Main service orchestrating wake word detection and JARVIS activation.
+    """Main service orchestrating wake word detection and Ironcliw activation.
     
     This service manages the complete wake word detection pipeline including
     audio processing, detection engines, activation responses, and command
     listening states. It provides callbacks for integration with the main
-    JARVIS system.
+    Ironcliw system.
     
     Attributes:
         config: Configuration object for wake word settings
@@ -474,7 +474,7 @@ class WakeWordService:
         """
         # This would integrate with your existing TTS system
         logger.info(f"Speaking: {response}")
-        # TODO: Integrate with JARVISVoiceAPI
+        # TODO: Integrate with IroncliwVoiceAPI
     
     async def _play_activation_sound(self):
         """Play activation sound effect.

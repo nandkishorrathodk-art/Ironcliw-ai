@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # =============================================================================
 # ECAPA Cloud Service - GCP Cloud Run Deployment Script
 # =============================================================================
@@ -180,7 +180,7 @@ if ! gcloud artifacts repositories describe "$AR_REPO" --location="$AR_LOCATION"
     run_cmd gcloud artifacts repositories create "$AR_REPO" \
         --repository-format=docker \
         --location="$AR_LOCATION" \
-        --description="JARVIS ML containers"
+        --description="Ironcliw ML containers"
 fi
 
 # Build image
@@ -251,7 +251,7 @@ log "Test with:"
 log "  curl $SERVICE_URL/health"
 log ""
 log "Update .env.gcp with:"
-log "  JARVIS_CLOUD_ML_ENDPOINT=${SERVICE_URL}/api/ml"
+log "  Ironcliw_CLOUD_ML_ENDPOINT=${SERVICE_URL}/api/ml"
 log "============================================================"
 
 # Verify deployment

@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Async Architecture - Dynamic Event-Driven Command Pipeline
 
-Ultra-robust, adaptive, zero-hardcoding async processing system for JARVIS.
+Ultra-robust, adaptive, zero-hardcoding async processing system for Ironcliw.
 Provides a comprehensive pipeline for processing voice commands with dynamic
 stage registration, circuit breaker patterns, event-driven architecture,
 and intelligent error handling.
@@ -596,7 +596,7 @@ class AdvancedAsyncPipeline:
     middleware injection, and context-aware processing.
 
     Attributes:
-        jarvis: Reference to main JARVIS instance
+        jarvis: Reference to main Ironcliw instance
         config: Pipeline configuration dictionary
         event_bus: Event bus for publish-subscribe messaging
         circuit_breaker: Circuit breaker for fault tolerance
@@ -614,7 +614,7 @@ class AdvancedAsyncPipeline:
         """Initialize the advanced async pipeline.
 
         Args:
-            jarvis_instance: Reference to main JARVIS instance
+            jarvis_instance: Reference to main Ironcliw instance
             config: Configuration dictionary for pipeline settings
         """
         self.jarvis = jarvis_instance
@@ -693,7 +693,7 @@ class AdvancedAsyncPipeline:
         """Register default pipeline stages with appropriate timeouts and requirements."""
         try:
             processing_timeout = float(
-                os.getenv("JARVIS_PIPELINE_PROCESSING_STAGE_TIMEOUT", "60.0")
+                os.getenv("Ironcliw_PIPELINE_PROCESSING_STAGE_TIMEOUT", "60.0")
             )
         except (TypeError, ValueError):
             processing_timeout = 60.0
@@ -702,7 +702,7 @@ class AdvancedAsyncPipeline:
             # Processing can trigger side effects (email send, app actions, etc.).
             # Default to 0 retries unless explicitly configured.
             processing_retries = max(
-                0, int(os.getenv("JARVIS_PIPELINE_PROCESSING_RETRIES", "0"))
+                0, int(os.getenv("Ironcliw_PIPELINE_PROCESSING_RETRIES", "0"))
             )
         except (TypeError, ValueError):
             processing_retries = 0
@@ -852,7 +852,7 @@ class AdvancedAsyncPipeline:
             else:
                 try:
                     default_budget = float(
-                        os.getenv("JARVIS_PIPELINE_PROCESSING_TIMEOUT", "45.0")
+                        os.getenv("Ironcliw_PIPELINE_PROCESSING_TIMEOUT", "45.0")
                     )
                 except (TypeError, ValueError):
                     default_budget = 45.0
@@ -1066,7 +1066,7 @@ class AdvancedAsyncPipeline:
             )
 
             # Get AGI OS components (v259.0: timeout to prevent indefinite hang)
-            _getter_timeout = float(os.environ.get("JARVIS_AGI_GETTER_TIMEOUT", "15"))
+            _getter_timeout = float(os.environ.get("Ironcliw_AGI_GETTER_TIMEOUT", "15"))
             try:
                 self._agi_event_stream = await asyncio.wait_for(get_event_stream(), timeout=_getter_timeout)
             except asyncio.TimeoutError:
@@ -1438,7 +1438,7 @@ class AdvancedAsyncPipeline:
         # =====================================================================
         # Transparently detect if screen is locked and handle unlock + continuation
         # This enables autonomous workflows like:
-        #   "Hey JARVIS, search for dogs" → detect lock → verify voice → unlock → search
+        #   "Hey Ironcliw, search for dogs" → detect lock → verify voice → unlock → search
         # =====================================================================
         if not (metadata or {}).get("screen_just_unlocked", False):
             # Skip if we just completed an unlock to prevent infinite loops
@@ -1603,8 +1603,8 @@ class AdvancedAsyncPipeline:
     # PROACTIVE UNLOCK + POST-UNLOCK RE-ENTRY (CAI Integration)
     # =========================================================================
     # This enables autonomous workflows like:
-    #   User: "Hey JARVIS, search for dogs"
-    #   JARVIS: [detects locked screen] → [verifies voice] → [unlocks]
+    #   User: "Hey Ironcliw, search for dogs"
+    #   Ironcliw: [detects locked screen] → [verifies voice] → [unlocks]
     #           → [continues executing "search for dogs"]
     # =========================================================================
 
@@ -1755,11 +1755,11 @@ class AdvancedAsyncPipeline:
             logger.info(f"🎤 [PROACTIVE-CAI] Acknowledgment: '{acknowledgment}'")
 
             # Speak the acknowledgment and WAIT for completion
-            # This ensures the microphone doesn't pick up JARVIS's voice during VBI
+            # This ensures the microphone doesn't pick up Ironcliw's voice during VBI
             await self._speak_acknowledgment(acknowledgment, wait_for_completion=True)
             
             # v8.0: Brief pause after speech to let audio echo dissipate
-            # This prevents the VBI from processing any trailing audio of JARVIS's voice
+            # This prevents the VBI from processing any trailing audio of Ironcliw's voice
             await asyncio.sleep(0.5)
 
             # ─────────────────────────────────────────────────────────────────
@@ -2004,15 +2004,15 @@ class AdvancedAsyncPipeline:
                 Execute the original command as a completely separate transaction.
                 This runs AFTER the unlock result has been returned to the frontend.
                 
-                v8.0: Waits for any JARVIS speech to complete before executing,
+                v8.0: Waits for any Ironcliw speech to complete before executing,
                 preventing self-voice interference with command processing.
                 """
                 try:
                     # Brief pause to ensure frontend has processed unlock response
                     await asyncio.sleep(0.5)
                     
-                    # v8.0: Wait for any JARVIS speech to complete before continuing
-                    # This prevents the continuation from being affected by JARVIS's voice
+                    # v8.0: Wait for any Ironcliw speech to complete before continuing
+                    # This prevents the continuation from being affected by Ironcliw's voice
                     try:
                         from core.unified_speech_state import get_speech_state_manager_sync
                         speech_manager = get_speech_state_manager_sync()
@@ -2021,7 +2021,7 @@ class AdvancedAsyncPipeline:
                         max_wait = 10.0
                         waited = 0.0
                         while speech_manager.is_busy and waited < max_wait:
-                            logger.debug(f"🔇 [PROACTIVE-CAI] Waiting for JARVIS speech to complete...")
+                            logger.debug(f"🔇 [PROACTIVE-CAI] Waiting for Ironcliw speech to complete...")
                             await asyncio.sleep(0.5)
                             waited += 0.5
                         
@@ -2488,7 +2488,7 @@ class AdvancedAsyncPipeline:
 
         Tries multiple TTS backends in order of preference:
         1. AGI OS voice communicator (if available) - already integrates with speech state
-        2. JARVIS voice API (if available)
+        2. Ironcliw voice API (if available)
         3. Direct macOS `say` command (fallback)
 
         Args:
@@ -2512,7 +2512,7 @@ class AdvancedAsyncPipeline:
                 await self._agi_voice_communicator.speak(message, priority="high")
                 return
 
-            # Try JARVIS voice API
+            # Try Ironcliw voice API
             try:
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
@@ -2963,7 +2963,7 @@ class AdvancedAsyncPipeline:
                     # =====================================================================
                     logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Attempting enhanced VBI verification...")
                     _strict_unlock = os.getenv(
-                        "JARVIS_STRICT_VOICE_UNLOCK", "true"
+                        "Ironcliw_STRICT_VOICE_UNLOCK", "true"
                     ).lower() in ("1", "true", "yes", "on")
                     _trusted_unlock_context = bool(
                         (metadata or {}).get("unlock_preverified")
@@ -3607,7 +3607,7 @@ def get_async_pipeline(jarvis_instance=None) -> AdvancedAsyncPipeline:
     """Get or create the global async pipeline instance.
 
     Args:
-        jarvis_instance: Optional JARVIS instance to use
+        jarvis_instance: Optional Ironcliw instance to use
 
     Returns:
         AdvancedAsyncPipeline: The global pipeline instance

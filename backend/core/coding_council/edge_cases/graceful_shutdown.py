@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Graceful Shutdown - Gaps #36, #37
 =========================================
 
@@ -9,7 +9,7 @@ Graceful shutdown and signal handling:
 - Resource cleanup
 - Drain and close pattern
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

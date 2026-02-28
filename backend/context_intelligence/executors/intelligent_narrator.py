@@ -1,19 +1,19 @@
-"""
-Intelligent Narrator for JARVIS Document Creation v2.0
+﻿"""
+Intelligent Narrator for Ironcliw Document Creation v2.0
 =======================================================
 
 Advanced AI-powered narration system with:
-- Dynamic, context-aware message generation using Claude/JARVIS-Prime
+- Dynamic, context-aware message generation using Claude/Ironcliw-Prime
 - Adaptive timing based on activity and progress
 - Content analysis for relevant updates
 - Anti-repetition and engagement optimization
 - Zero hardcoding - fully intelligent decision making
-- JARVIS-Prime tier-0 brain integration for intelligent responses
+- Ironcliw-Prime tier-0 brain integration for intelligent responses
 - Data Flywheel awareness for self-improvement narration
-- Cross-repo integration with JARVIS, JARVIS-Prime, and reactor-core
+- Cross-repo integration with Ironcliw, Ironcliw-Prime, and reactor-core
 
 v2.0 ENHANCEMENTS:
-- JARVIS-Prime integration for intelligent, context-aware responses
+- Ironcliw-Prime integration for intelligent, context-aware responses
 - Flywheel-aware narration (training, learning goals)
 - Memory-aware routing (local vs cloud)
 - Async-parallel message generation
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 class NarratorBackend(str, Enum):
     """Backend options for intelligent narration."""
     CLAUDE = "claude"           # Anthropic Claude API
-    JARVIS_PRIME = "jarvis_prime"  # JARVIS-Prime local/cloud
+    Ironcliw_PRIME = "jarvis_prime"  # Ironcliw-Prime local/cloud
     GEMINI = "gemini"           # Google Gemini fallback
     FALLBACK = "fallback"       # Static templates
 
@@ -127,7 +127,7 @@ class IntelligentNarrator:
     """
     AI-powered narrator with adaptive, context-aware communication.
 
-    v2.0: Now supports multiple backends (Claude, JARVIS-Prime, Gemini)
+    v2.0: Now supports multiple backends (Claude, Ironcliw-Prime, Gemini)
     with automatic fallback and memory-aware routing.
     """
 
@@ -139,10 +139,10 @@ class IntelligentNarrator:
         self._mode: NarratorMode = NarratorMode.DOCUMENT
 
         # Backend preference (dynamically adjusted based on memory/availability)
-        self._preferred_backend: NarratorBackend = NarratorBackend.JARVIS_PRIME
+        self._preferred_backend: NarratorBackend = NarratorBackend.Ironcliw_PRIME
         self._backend_available: Dict[NarratorBackend, bool] = {
             NarratorBackend.CLAUDE: False,
-            NarratorBackend.JARVIS_PRIME: False,
+            NarratorBackend.Ironcliw_PRIME: False,
             NarratorBackend.GEMINI: False,
             NarratorBackend.FALLBACK: True,
         }
@@ -171,7 +171,7 @@ class IntelligentNarrator:
         self._on_learning_event: List[Callable] = []
 
         # v2.0: Memory thresholds for backend routing
-        self._memory_threshold_gb = float(os.getenv("JARVIS_PRIME_MEMORY_THRESHOLD_GB", "8.0"))
+        self._memory_threshold_gb = float(os.getenv("Ironcliw_PRIME_MEMORY_THRESHOLD_GB", "8.0"))
         
     async def initialize(
         self,
@@ -190,7 +190,7 @@ class IntelligentNarrator:
 
         if jarvis_prime_client:
             self._jarvis_prime = jarvis_prime_client
-            self._backend_available[NarratorBackend.JARVIS_PRIME] = True
+            self._backend_available[NarratorBackend.Ironcliw_PRIME] = True
 
         self._mode = mode
 
@@ -212,15 +212,15 @@ class IntelligentNarrator:
 
     async def _detect_available_backends(self) -> None:
         """Detect which backends are available and set preferences."""
-        # Check JARVIS-Prime availability
+        # Check Ironcliw-Prime availability
         if not self._jarvis_prime:
             try:
                 from core.jarvis_prime_client import get_jarvis_prime_client
                 self._jarvis_prime = get_jarvis_prime_client()
-                self._backend_available[NarratorBackend.JARVIS_PRIME] = True
-                logger.debug("[INTELLIGENT NARRATOR] JARVIS-Prime client loaded")
+                self._backend_available[NarratorBackend.Ironcliw_PRIME] = True
+                logger.debug("[INTELLIGENT NARRATOR] Ironcliw-Prime client loaded")
             except ImportError:
-                logger.debug("[INTELLIGENT NARRATOR] JARVIS-Prime not available")
+                logger.debug("[INTELLIGENT NARRATOR] Ironcliw-Prime not available")
 
         # Check Gemini availability
         try:
@@ -233,8 +233,8 @@ class IntelligentNarrator:
             pass
 
         # Set preferred backend based on availability and memory
-        if self._backend_available[NarratorBackend.JARVIS_PRIME]:
-            self._preferred_backend = NarratorBackend.JARVIS_PRIME
+        if self._backend_available[NarratorBackend.Ironcliw_PRIME]:
+            self._preferred_backend = NarratorBackend.Ironcliw_PRIME
         elif self._backend_available[NarratorBackend.CLAUDE]:
             self._preferred_backend = NarratorBackend.CLAUDE
         elif self._backend_available[NarratorBackend.GEMINI]:
@@ -360,7 +360,7 @@ class IntelligentNarrator:
         """
         Generate intelligent, context-aware narration using multi-backend AI.
 
-        v2.0: Now supports JARVIS-Prime, Claude, Gemini with automatic fallback.
+        v2.0: Now supports Ironcliw-Prime, Claude, Gemini with automatic fallback.
         """
         if not self._context:
             return "Processing..."
@@ -379,14 +379,14 @@ class IntelligentNarrator:
             narration = None
             used_backend = NarratorBackend.FALLBACK
 
-            # Try JARVIS-Prime first (preferred for intelligent responses)
-            if self._backend_available[NarratorBackend.JARVIS_PRIME] and self._jarvis_prime:
+            # Try Ironcliw-Prime first (preferred for intelligent responses)
+            if self._backend_available[NarratorBackend.Ironcliw_PRIME] and self._jarvis_prime:
                 try:
                     narration = await self._generate_with_jarvis_prime(prompt)
-                    used_backend = NarratorBackend.JARVIS_PRIME
-                    logger.debug(f"[INTELLIGENT NARRATOR] Used JARVIS-Prime")
+                    used_backend = NarratorBackend.Ironcliw_PRIME
+                    logger.debug(f"[INTELLIGENT NARRATOR] Used Ironcliw-Prime")
                 except Exception as e:
-                    logger.debug(f"[INTELLIGENT NARRATOR] JARVIS-Prime failed: {e}")
+                    logger.debug(f"[INTELLIGENT NARRATOR] Ironcliw-Prime failed: {e}")
 
             # Fallback to Claude
             if not narration and self._backend_available[NarratorBackend.CLAUDE] and self._claude:
@@ -420,7 +420,7 @@ class IntelligentNarrator:
             # Check for repetition
             if self._is_too_similar_to_recent(narration):
                 logger.debug(f"[INTELLIGENT NARRATOR] Regenerating to avoid repetition")
-                if used_backend == NarratorBackend.JARVIS_PRIME:
+                if used_backend == NarratorBackend.Ironcliw_PRIME:
                     narration = await self._generate_with_variation_prime(prompt, narration)
                 elif used_backend == NarratorBackend.CLAUDE:
                     narration = await self._generate_with_variation(prompt, narration)
@@ -445,7 +445,7 @@ class IntelligentNarrator:
         # Analyze what to emphasize
         emphasis = self._determine_emphasis(phase, progress)
         
-        prompt = f"""You are JARVIS, Tony Stark's AI assistant. Generate a single, natural sentence (8-15 words) to update the user about document writing progress.
+        prompt = f"""You are Ironcliw, Tony Stark's AI assistant. Generate a single, natural sentence (8-15 words) to update the user about document writing progress.
 
 Context:
 - Topic: {self._context.topic}
@@ -468,7 +468,7 @@ Personality guidelines:
 - Be encouraging but not overly enthusiastic
 - Sound like you're actively watching and understanding the content
 
-Generate ONE natural sentence that JARVIS would say right now:"""
+Generate ONE natural sentence that Ironcliw would say right now:"""
 
         return prompt
     
@@ -508,9 +508,9 @@ Generate ONE natural sentence that JARVIS would say right now:"""
 
     async def _generate_with_jarvis_prime(self, prompt: str) -> str:
         """
-        v2.0: Generate narration using JARVIS-Prime (local or cloud).
+        v2.0: Generate narration using Ironcliw-Prime (local or cloud).
 
-        Uses the memory-aware routing from JARVIS-Prime client.
+        Uses the memory-aware routing from Ironcliw-Prime client.
         """
         try:
             response = await self._jarvis_prime.complete(
@@ -522,15 +522,15 @@ Generate ONE natural sentence that JARVIS would say right now:"""
             if response.success and response.content:
                 content = response.content.strip().strip('"\'')
                 logger.debug(
-                    f"[INTELLIGENT NARRATOR] JARVIS-Prime response "
+                    f"[INTELLIGENT NARRATOR] Ironcliw-Prime response "
                     f"(backend: {response.backend}, latency: {response.latency_ms:.0f}ms)"
                 )
                 return content
             else:
-                raise Exception(response.error or "Empty response from JARVIS-Prime")
+                raise Exception(response.error or "Empty response from Ironcliw-Prime")
 
         except Exception as e:
-            logger.debug(f"[INTELLIGENT NARRATOR] JARVIS-Prime error: {e}")
+            logger.debug(f"[INTELLIGENT NARRATOR] Ironcliw-Prime error: {e}")
             raise
 
     async def _generate_with_gemini(self, prompt: str) -> str:
@@ -545,7 +545,7 @@ Generate ONE natural sentence that JARVIS would say right now:"""
                 raise Exception("No Gemini API key")
 
             client = genai.Client(api_key=gemini_key)
-            model = os.getenv("JARVIS_PRIME_GEMINI_MODEL", "gemini-2.0-flash-lite")
+            model = os.getenv("Ironcliw_PRIME_GEMINI_MODEL", "gemini-2.0-flash-lite")
 
             response = await asyncio.to_thread(
                 client.models.generate_content,
@@ -569,7 +569,7 @@ Generate ONE natural sentence that JARVIS would say right now:"""
         return await self._generate_with_claude(varied_prompt)
 
     async def _generate_with_variation_prime(self, prompt: str, avoid: str) -> str:
-        """v2.0: Regenerate with JARVIS-Prime with variation instruction."""
+        """v2.0: Regenerate with Ironcliw-Prime with variation instruction."""
         varied_prompt = f"{prompt}\n\nIMPORTANT: Do NOT say anything similar to: \"{avoid}\"\nGenerate something COMPLETELY different:"
 
         return await self._generate_with_jarvis_prime(varied_prompt)
@@ -710,8 +710,8 @@ Generate ONE natural sentence that JARVIS would say right now:"""
         try:
             narration = None
 
-            # Try JARVIS-Prime first for intelligent flywheel narration
-            if self._backend_available[NarratorBackend.JARVIS_PRIME] and self._jarvis_prime:
+            # Try Ironcliw-Prime first for intelligent flywheel narration
+            if self._backend_available[NarratorBackend.Ironcliw_PRIME] and self._jarvis_prime:
                 narration = await self._generate_with_jarvis_prime(prompt)
 
             if not narration and self._backend_available[NarratorBackend.CLAUDE] and self._claude:
@@ -739,7 +739,7 @@ Generate ONE natural sentence that JARVIS would say right now:"""
         topic = details.get('topic', 'general knowledge')
         progress = details.get('progress', 0)
 
-        prompt = f"""You are JARVIS, an advanced AI assistant. Generate a single, natural sentence (8-15 words) about a self-improvement event.
+        prompt = f"""You are Ironcliw, an advanced AI assistant. Generate a single, natural sentence (8-15 words) about a self-improvement event.
 
 Event Type: {event_type}
 Details:
@@ -759,7 +759,7 @@ Personality guidelines:
 - Reference specific numbers when meaningful
 - Show excitement for learning milestones
 
-Generate ONE natural sentence JARVIS would speak about this self-improvement event:"""
+Generate ONE natural sentence Ironcliw would speak about this self-improvement event:"""
 
         return prompt
 
@@ -787,7 +787,7 @@ Generate ONE natural sentence JARVIS would speak about this self-improvement eve
             if goal_topic not in self._context.learning_goals:
                 self._context.learning_goals.append(goal_topic)
 
-        prompt = f"""You are JARVIS, an advanced AI assistant. Generate a single, natural sentence (8-15 words) about a learning goal.
+        prompt = f"""You are Ironcliw, an advanced AI assistant. Generate a single, natural sentence (8-15 words) about a learning goal.
 
 Learning Goal: {goal_topic}
 Action: {action}
@@ -804,12 +804,12 @@ Personality guidelines:
 - Use "Sir" occasionally (15% of time)
 - Sound like a scholar discovering something interesting
 
-Generate ONE natural sentence JARVIS would speak about this learning goal:"""
+Generate ONE natural sentence Ironcliw would speak about this learning goal:"""
 
         try:
             narration = None
 
-            if self._backend_available[NarratorBackend.JARVIS_PRIME] and self._jarvis_prime:
+            if self._backend_available[NarratorBackend.Ironcliw_PRIME] and self._jarvis_prime:
                 narration = await self._generate_with_jarvis_prime(prompt)
 
             if not narration and self._backend_available[NarratorBackend.CLAUDE] and self._claude:
@@ -864,7 +864,7 @@ def get_intelligent_narrator(
     """
     Get or create global intelligent narrator with multi-backend support.
 
-    v2.0: Now supports JARVIS-Prime client for intelligent responses.
+    v2.0: Now supports Ironcliw-Prime client for intelligent responses.
     """
     global _narrator_instance
     if _narrator_instance is None:
@@ -875,7 +875,7 @@ def get_intelligent_narrator(
             _narrator_instance._backend_available[NarratorBackend.CLAUDE] = True
         if jarvis_prime_client and not _narrator_instance._jarvis_prime:
             _narrator_instance._jarvis_prime = jarvis_prime_client
-            _narrator_instance._backend_available[NarratorBackend.JARVIS_PRIME] = True
+            _narrator_instance._backend_available[NarratorBackend.Ironcliw_PRIME] = True
     return _narrator_instance
 
 

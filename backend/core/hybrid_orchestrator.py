@@ -1,5 +1,5 @@
-"""
-JARVIS Hybrid Orchestrator - UAE/SAI/CAI Integrated with LangGraph Chain-of-Thought
+﻿"""
+Ironcliw Hybrid Orchestrator - UAE/SAI/CAI Integrated with LangGraph Chain-of-Thought
 Main entry point for hybrid local/cloud architecture
 Coordinates between local Mac and GCP backends with intelligent routing
 
@@ -11,7 +11,7 @@ Integrated Intelligence Systems:
 - LangGraph Chain-of-Thought: Multi-step reasoning with explicit thought chains
 - UnifiedIntelligenceOrchestrator: Coordinated intelligence fusion
 
-This module provides the main orchestration layer for JARVIS, handling:
+This module provides the main orchestration layer for Ironcliw, handling:
 - Intelligent request routing between local and cloud backends
 - Integration with multiple AI systems (UAE, SAI, CAI)
 - Chain-of-thought reasoning for transparent decision-making
@@ -530,7 +530,7 @@ def get_intelligence_mode() -> IntelligenceMode:
 
 
 class HybridOrchestrator:
-    """Main orchestrator for JARVIS hybrid architecture.
+    """Main orchestrator for Ironcliw hybrid architecture.
     
     This class coordinates between local Mac and GCP backends, providing:
     - Intelligent request routing based on context and capabilities
@@ -1237,16 +1237,16 @@ class HybridOrchestrator:
     ) -> Dict[str, Any]:
         """Execute command using multi-branch reasoning with failure recovery.
 
-        This method provides JARVIS's most advanced reasoning capability:
+        This method provides Ironcliw's most advanced reasoning capability:
         - Generates multiple solution branches simultaneously
         - Automatically tries alternatives when approaches fail
         - Learns from failures to generate better solutions
         - Narrates the thinking process in real-time
 
         Example flow:
-            User: "JARVIS, the build is failing"
+            User: "Ironcliw, the build is failing"
 
-            JARVIS: "I'm analyzing three potential causes:
+            Ironcliw: "I'm analyzing three potential causes:
                      1. Type mismatch on line 47
                      2. Missing dependency import
                      3. Environment variable not set
@@ -1891,7 +1891,7 @@ async def authenticate_voice(
 ) -> Dict[str, Any]:
     """Convenience function for voice biometric authentication.
 
-    Provides easy access to JARVIS's voice authentication system with:
+    Provides easy access to Ironcliw's voice authentication system with:
     - LangGraph reasoning for borderline cases
     - Multi-factor fallback chain
     - ChromaDB pattern memory

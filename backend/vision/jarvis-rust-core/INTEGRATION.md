@@ -1,8 +1,8 @@
-# JARVIS Rust Core Integration Guide
+﻿# Ironcliw Rust Core Integration Guide
 
 ## Overview
 
-The JARVIS Rust core has been successfully fixed and integrated with the Python backend. This advanced implementation provides high-performance capabilities for CPU usage optimization and memory leak prevention without any hardcoding.
+The Ironcliw Rust core has been successfully fixed and integrated with the Python backend. This advanced implementation provides high-performance capabilities for CPU usage optimization and memory leak prevention without any hardcoding.
 
 ## Key Features Implemented
 

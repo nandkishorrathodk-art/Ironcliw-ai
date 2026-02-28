@@ -1,4 +1,4 @@
-"""
+﻿"""
 v78.0: Advanced Coding Council Module
 ======================================
 
@@ -41,7 +41,7 @@ Advanced Patterns:
 - File-based atomic queues with deduplication
 - Context-aware retry strategies
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 # v77.1 Modules
@@ -185,10 +185,10 @@ from .atomic_command_queue import (
     LockAcquisitionError as AtomicLockError,
     get_atomic_queue,
     get_atomic_queue_sync,
-    JARVIS_TO_JPRIME,
-    JPRIME_TO_JARVIS,
-    JARVIS_TO_REACTOR,
-    REACTOR_TO_JARVIS,
+    Ironcliw_TO_JPRIME,
+    JPRIME_TO_Ironcliw,
+    Ironcliw_TO_REACTOR,
+    REACTOR_TO_Ironcliw,
 )
 
 # v78.0 Modules - Cross-Repo Transaction Coordinator
@@ -351,10 +351,10 @@ __all__ = [
     "AtomicLockError",
     "get_atomic_queue",
     "get_atomic_queue_sync",
-    "JARVIS_TO_JPRIME",
-    "JPRIME_TO_JARVIS",
-    "JARVIS_TO_REACTOR",
-    "REACTOR_TO_JARVIS",
+    "Ironcliw_TO_JPRIME",
+    "JPRIME_TO_Ironcliw",
+    "Ironcliw_TO_REACTOR",
+    "REACTOR_TO_Ironcliw",
     # Cross-Repo Transaction Coordinator (v78.0)
     "CrossRepoTransactionCoordinator",
     "Transaction",

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for the enhanced process cleanup manager.
-Run this to clean up stuck JARVIS processes and verify the system is ready.
+Run this to clean up stuck Ironcliw processes and verify the system is ready.
 """
 
 import sys
@@ -16,7 +16,7 @@ from process_cleanup_manager import (
 
 def main():
     print("=" * 60)
-    print("🧹 JARVIS Process Cleanup Test")
+    print("🧹 Ironcliw Process Cleanup Test")
     print("=" * 60)
     
     manager = ProcessCleanupManager()
@@ -33,7 +33,7 @@ def main():
     state = manager.analyze_system_state()
     print(f"   • CPU: {state['cpu_percent']:.1f}%")
     print(f"   • Memory: {state['memory_percent']:.1f}%")
-    print(f"   • JARVIS processes: {len(state['jarvis_processes'])}")
+    print(f"   • Ironcliw processes: {len(state['jarvis_processes'])}")
     print(f"   • Stuck processes: {len(state['stuck_processes'])}")
     print(f"   • Zombie processes: {len(state['zombie_processes'])}")
     
@@ -64,14 +64,14 @@ def main():
             print("   Run with --auto flag to perform automatic cleanup")
             print("   Example: python test_cleanup.py --auto")
     else:
-        print("\n✅ System is clean and ready for JARVIS!")
+        print("\n✅ System is clean and ready for Ironcliw!")
     
     # Step 5: Ensure fresh instance
-    print("\n4️⃣ Checking for fresh JARVIS instance...")
+    print("\n4️⃣ Checking for fresh Ironcliw instance...")
     if ensure_fresh_jarvis_instance():
-        print("   ✅ Ready to start fresh JARVIS instance")
+        print("   ✅ Ready to start fresh Ironcliw instance")
     else:
-        print("   ⚠️  Another JARVIS instance is running")
+        print("   ⚠️  Another Ironcliw instance is running")
     
     print("\n" + "=" * 60)
     print("Test complete!")

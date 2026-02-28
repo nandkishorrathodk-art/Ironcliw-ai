@@ -1,11 +1,11 @@
-# JARVIS Workspace Routing System v10.0
+﻿# Ironcliw Workspace Routing System v10.0
 **"Iron Man" Context-Aware Execution**
 
 ## 🎯 Overview
 
 The Workspace Routing System solves the problem where commands like **"Draft an email"** were falling back to generic Vision handlers instead of being routed to the specialized **GoogleWorkspaceAgent** with visual execution.
 
-This system provides the "Iron Man" experience: JARVIS physically switches to Gmail and types visibly on screen.
+This system provides the "Iron Man" experience: Ironcliw physically switches to Gmail and types visibly on screen.
 
 ---
 
@@ -299,7 +299,7 @@ async def _draft_email_visual(self, payload: Dict[str, Any]) -> Dict[str, Any]:
 
 **Key Features:**
 - **Spatial awareness** - Finds and switches to Gmail across all macOS Spaces
-- **Visual feedback** - User sees JARVIS typing in real-time
+- **Visual feedback** - User sees Ironcliw typing in real-time
 - **Graceful fallback** - If Computer Use fails, falls back to Gmail API
 - **Detailed metrics** - Returns action count, execution time, tier used
 
@@ -371,7 +371,7 @@ if execution_mode == "visual_preferred":
         goal="Navigate to Gmail, click Compose, fill in To: john, Subject: meeting"
     )
 
-    # User sees JARVIS typing on screen!
+    # User sees Ironcliw typing on screen!
 ```
 
 **Step 5: Result**
@@ -417,7 +417,7 @@ if execution_mode == "visual_preferred":
 ✅ **Visual execution preferred** for drafting (Computer Use)
 ✅ **Spatial awareness** - Finds and switches to Gmail across all Spaces
 ✅ **Entity extraction** - Automatically parses recipient, subject, date
-✅ **"Iron Man" experience** - User sees JARVIS typing on screen
+✅ **"Iron Man" experience** - User sees Ironcliw typing on screen
 ✅ **Graceful fallback** - Falls back to API if visual fails
 
 ---
@@ -518,7 +518,7 @@ python3 -m py_compile backend/neural_mesh/agents/google_workspace_agent.py  # �
 
 ---
 
-**Author:** Claude Sonnet 4.5 (JARVIS AI Assistant)
+**Author:** Claude Sonnet 4.5 (Ironcliw AI Assistant)
 **Date:** 2025-12-27
 **Version:** v10.0 - Workspace Routing Intelligence
 **Status:** ✅ PRODUCTION READY

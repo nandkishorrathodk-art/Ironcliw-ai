@@ -1,4 +1,4 @@
-# GCP Pressure-Driven Lifecycle — Implementation Plan
+﻿# GCP Pressure-Driven Lifecycle — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -73,7 +73,7 @@ def check_vm_protection(self, vm_name: str, action: VMAction, reason: str = "") 
 
     if action == VMAction.STOP:
         # STOP is allowed for session shutdown when session lifecycle is enabled
-        session_lifecycle = _get_env_bool("JARVIS_GCP_SESSION_LIFECYCLE", True)
+        session_lifecycle = _get_env_bool("Ironcliw_GCP_SESSION_LIFECYCLE", True)
         is_session_reason = reason in ("session_shutdown", "supervisor_cleanup", "emergency_shutdown")
 
         if session_lifecycle and is_session_reason:
@@ -774,7 +774,7 @@ async def _unload_local_model_after_stability(self) -> None:
             if model_serving and hasattr(model_serving, 'stop'):
                 await model_serving.stop()
                 self.logger.info("[VMLifecycle] Local model unloaded — RAM reclaimed")
-                os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                os.environ["Ironcliw_GCP_OFFLOAD_ACTIVE"] = "true"
         except ImportError:
             self.logger.debug("UnifiedModelServing not available for unload")
         except Exception as e:
@@ -810,7 +810,7 @@ if old_state == VMLifecycleState.ACTIVE and new_state != VMLifecycleState.ACTIVE
     if hasattr(self, '_model_unload_task') and self._model_unload_task and not self._model_unload_task.done():
         self._model_unload_task.cancel()
     # Clear offload flag
-    os.environ.pop("JARVIS_GCP_OFFLOAD_ACTIVE", None)
+    os.environ.pop("Ironcliw_GCP_OFFLOAD_ACTIVE", None)
 ```
 
 **Step 4: Commit**
@@ -847,7 +847,7 @@ Delete the entire block from the comment `# v258.3 (Gap 10): PROACTIVE SPOT VM W
 
 This is a larger block that includes the `_early_wake_invincible_node` inner function, the golden image decision tree, and the local prime prewarm launch.
 
-**Important:** The local Prime prewarm (`JARVIS_EARLY_PRIME_PREWARM`) logic around lines 64040-64300 should be KEPT — it's for local model prewarming, not GCP. Only delete:
+**Important:** The local Prime prewarm (`Ironcliw_EARLY_PRIME_PREWARM`) logic around lines 64040-64300 should be KEPT — it's for local model prewarming, not GCP. Only delete:
 - The `_early_wake_invincible_node` async def and its task creation (lines ~64315-64495)
 - The GCP-specific env var checks that gate it (the `_early_gcp_golden` and `_early_gcp_on` conditions)
 
@@ -877,7 +877,7 @@ git commit -m "refactor(startup): remove eager GCP VM pre-warm from supervisor
 Delete early_invincible_node_prewarm and early_spot_vm_warm task blocks.
 VM creation is now demand-driven by GCPHybridPrimeRouter's pressure-driven
 state machine. GCPInstanceManager still syncs existing VMs in Phase 2.
-Local Prime prewarm (JARVIS_EARLY_PRIME_PREWARM) is preserved."
+Local Prime prewarm (Ironcliw_EARLY_PRIME_PREWARM) is preserved."
 ```
 
 ---
@@ -966,7 +966,7 @@ git commit -m "feat(shutdown): STOP all GCP VMs on supervisor shutdown
 
 Both normal cleanup() and _emergency_shutdown() now call terminate_vm()
 with action=VMAction.STOP for all tracked running VMs. This ensures VMs
-are STOPPED (not deleted) when JARVIS exits, preserving disk and IP for
+are STOPPED (not deleted) when Ironcliw exits, preserving disk and IP for
 fast 30s restart while eliminating 24/7 compute charges."
 ```
 
@@ -975,17 +975,17 @@ fast 30s restart while eliminating 24/7 compute charges."
 ## Task 10: Update .env.gcp Defaults
 
 **Files:**
-- Modify: `.env.gcp:90` (JARVIS_INVINCIBLE_NODE_ENABLED)
+- Modify: `.env.gcp:90` (Ironcliw_INVINCIBLE_NODE_ENABLED)
 
 **Step 1: Change default**
 
 At line 90, change:
 ```
-JARVIS_INVINCIBLE_NODE_ENABLED=true
+Ironcliw_INVINCIBLE_NODE_ENABLED=true
 ```
 To:
 ```
-JARVIS_INVINCIBLE_NODE_ENABLED=false
+Ironcliw_INVINCIBLE_NODE_ENABLED=false
 ```
 
 Add a comment explaining the change:
@@ -995,7 +995,7 @@ Add a comment explaining the change:
 # VM provisioning is now pressure-driven by GCPHybridPrimeRouter
 # when memory exceeds 85% sustained. Set to true to re-enable
 # eager prewarm (not recommended for dev/testing).
-JARVIS_INVINCIBLE_NODE_ENABLED=false
+Ironcliw_INVINCIBLE_NODE_ENABLED=false
 ```
 
 **Step 2: Commit**
@@ -1004,7 +1004,7 @@ JARVIS_INVINCIBLE_NODE_ENABLED=false
 git add .env.gcp
 git commit -m "config: disable eager Invincible Node in .env.gcp
 
-Set JARVIS_INVINCIBLE_NODE_ENABLED=false. VM provisioning is now
+Set Ironcliw_INVINCIBLE_NODE_ENABLED=false. VM provisioning is now
 pressure-driven. This eliminates the primary cost driver ($21/mo
 from 24/7 VM) during development and testing."
 ```

@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Google Workspace Agent
+﻿"""
+Ironcliw Neural Mesh - Google Workspace Agent
 =============================================
 
 A production agent specialized in Google Workspace administration and communication.
@@ -41,7 +41,7 @@ Capabilities:
 - read_spreadsheet: Read data from Google Sheets
 - write_spreadsheet: Write data to Google Sheets
 
-This agent handles all "Admin" and "Communication" tasks, enabling JARVIS to:
+This agent handles all "Admin" and "Communication" tasks, enabling Ironcliw to:
 - "Check my schedule"
 - "Draft an email to Mitra"
 - "Reply to this email" (with visual context)
@@ -49,7 +49,7 @@ This agent handles all "Admin" and "Communication" tasks, enabling JARVIS to:
 - "Write an essay on dogs"
 - "Read the sales data from my spreadsheet"
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0 (Trinity Integration + Sheets)
 """
 
@@ -634,15 +634,15 @@ class GoogleWorkspaceConfig:
     retry_delay_seconds: float = 1.0
     # API time budgets
     operation_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_GOOGLE_OPERATION_TIMEOUT", "15.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_GOOGLE_OPERATION_TIMEOUT", "15.0"))
     )
     workspace_summary_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_WORKSPACE_SUMMARY_TIMEOUT", "12.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_WORKSPACE_SUMMARY_TIMEOUT", "12.0"))
     )
     # OAuth behavior: interactive browser login should be opt-in, not default.
     oauth_interactive_auth: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GOOGLE_INTERACTIVE_AUTH", "false"
+            "Ironcliw_GOOGLE_INTERACTIVE_AUTH", "false"
         ).lower() in {"1", "true", "yes"}
     )
 
@@ -2167,7 +2167,7 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
     - Tier 2: macOS Local (CalendarBridge, native apps)
     - Tier 3: Computer Use (visual automation)
 
-    Even if Google APIs are unavailable, JARVIS can still check your
+    Even if Google APIs are unavailable, Ironcliw can still check your
     calendar by opening the Calendar app and reading it visually.
 
     Usage:
@@ -2402,7 +2402,7 @@ Return ONLY a JSON object with these keys (use null if not found):
         """
         Log an experience to Reactor Core for training.
 
-        This enables the Trinity Loop - JARVIS learns from every interaction
+        This enables the Trinity Loop - Ironcliw learns from every interaction
         and improves over time through Reactor Core's training pipeline.
 
         Args:
@@ -2972,7 +2972,7 @@ EMAIL BODY:"""
         """
         v10.0: Draft email using Computer Use (visual execution).
 
-        This provides the "Iron Man" experience - JARVIS physically switches
+        This provides the "Iron Man" experience - Ironcliw physically switches
         to Gmail and types the email visibly on screen using spatial awareness
         and Computer Use.
 
@@ -3133,7 +3133,7 @@ EMAIL BODY:"""
         3. Computer Use (visual - open Calendar app)
 
         This is a "Never-Fail" operation - even if Google is down,
-        JARVIS can still check your local calendar.
+        Ironcliw can still check your local calendar.
         """
         date_str = payload.get("date", "today")
         days = payload.get("days", 1)

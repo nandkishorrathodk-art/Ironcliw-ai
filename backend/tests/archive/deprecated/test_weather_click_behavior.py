@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test to understand why automated clicks don't work like manual clicks"""
 
 import asyncio
@@ -165,5 +165,5 @@ async def test_click_behavior():
     print("selection persistence or click registration.")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_click_behavior())

@@ -1,4 +1,4 @@
-name: Sync Learning Databases
+﻿name: Sync Learning Databases
 
 on:
   # Run every 6 hours
@@ -53,14 +53,14 @@ jobs:
       - name: Check if GCP VM exists
         id: check_vm
         run: |
-          # Check if any JARVIS VMs are running
+          # Check if any Ironcliw VMs are running
           VM_COUNT=$(gcloud compute instances list \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --filter="name~'jarvis-auto-.*' AND status=RUNNING" \
             --format="value(name)" | wc -l)
 
           if [ "$VM_COUNT" -eq 0 ]; then
-            echo "⚠️  No JARVIS VMs currently running"
+            echo "⚠️  No Ironcliw VMs currently running"
             echo "vm_exists=false" >> $GITHUB_OUTPUT
           else
             VM_NAME=$(gcloud compute instances list \
@@ -197,7 +197,7 @@ jobs:
             echo "- **Status:** ⏭️ Skipped (No VMs running)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Info" >> $GITHUB_STEP_SUMMARY
-            echo "- No JARVIS VMs currently running" >> $GITHUB_STEP_SUMMARY
+            echo "- No Ironcliw VMs currently running" >> $GITHUB_STEP_SUMMARY
             echo "- VMs are created on-demand when needed" >> $GITHUB_STEP_SUMMARY
             echo "- Database sync will run when VM is active" >> $GITHUB_STEP_SUMMARY
           fi

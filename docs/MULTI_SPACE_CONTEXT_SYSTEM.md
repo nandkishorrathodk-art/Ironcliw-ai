@@ -1,11 +1,11 @@
-## Multi-Space Context Tracking System
-**Foundation for JARVIS Workspace Intelligence**
+﻿## Multi-Space Context Tracking System
+**Foundation for Ironcliw Workspace Intelligence**
 
 ---
 
 ## Overview
 
-The Multi-Space Context Tracking System is the **foundational intelligence layer** that enables JARVIS to:
+The Multi-Space Context Tracking System is the **foundational intelligence layer** that enables Ironcliw to:
 
 1. **Track activity across all macOS Spaces simultaneously**
 2. **Preserve temporal context** (what happened 3-5 minutes ago)
@@ -13,7 +13,7 @@ The Multi-Space Context Tracking System is the **foundational intelligence layer
 4. **Answer natural language queries** like "what does it say?"
 5. **Adapt dynamically** - no hardcoding, fully responsive to any workspace configuration
 
-This system implements the **"Invisible Assistant" philosophy** from the JARVIS vision document:
+This system implements the **"Invisible Assistant" philosophy** from the Ironcliw vision document:
 - Intelligence over automation
 - Assistance over intrusion
 - Privacy by design (all data stays local)
@@ -388,7 +388,7 @@ async def natural_language_demo():
     for query in queries:
         response = await bridge.answer_query(query)
         print(f"\nUser: {query}")
-        print(f"JARVIS: {response}")
+        print(f"Ironcliw: {response}")
 
     await bridge.stop()
 ```
@@ -405,7 +405,7 @@ async def natural_language_demo():
 response = await bridge.answer_query("what does it say?")
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 ```
 The error in Terminal (Space 1) is:
 ModuleNotFoundError: No module named 'requests'
@@ -421,7 +421,7 @@ This happened when you ran: `python app.py`
 response = await bridge.answer_query("what's the error?")
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 ```
 The error in Terminal (Space 1) is:
 TypeError: Cannot read property 'verify' of undefined
@@ -439,7 +439,7 @@ I can suggest a fix if you'd like.
 response = await bridge.answer_query("what's happening?")
 ```
 
-**JARVIS Response:**
+**Ironcliw Response:**
 ```
 In Space 2:
 
@@ -564,10 +564,10 @@ async def handle_follow_up(user_query: str):
         pass
 ```
 
-### 4. Integrate with Main JARVIS System
+### 4. Integrate with Main Ironcliw System
 
 ```python
-# In your main JARVIS initialization
+# In your main Ironcliw initialization
 from backend.core.context.context_integration_bridge import initialize_integration_bridge
 
 async def initialize_jarvis():
@@ -712,7 +712,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 ## Summary
 
-The Multi-Space Context Tracking System is the **foundation** for JARVIS's workspace intelligence. It enables:
+The Multi-Space Context Tracking System is the **foundation** for Ironcliw's workspace intelligence. It enables:
 
 ✅ **"What does it say?"** queries by preserving temporal context
 ✅ **Cross-space understanding** by correlating activities
@@ -720,12 +720,12 @@ The Multi-Space Context Tracking System is the **foundation** for JARVIS's works
 ✅ **Dynamic adaptation** with no hardcoding
 ✅ **Privacy-first design** with local-only storage
 
-This system transforms JARVIS from a reactive tool into a **proactive workspace companion** that truly understands what you're working on.
+This system transforms Ironcliw from a reactive tool into a **proactive workspace companion** that truly understands what you're working on.
 
 ---
 
 **Next Steps:**
 1. Run the demo: `python backend/examples/multi_space_context_demo.py`
 2. Run the tests: `python backend/tests/test_multi_space_context_graph.py`
-3. Integrate with your JARVIS setup (see Integration Points section)
+3. Integrate with your Ironcliw setup (see Integration Points section)
 4. Customize configuration for your workflow

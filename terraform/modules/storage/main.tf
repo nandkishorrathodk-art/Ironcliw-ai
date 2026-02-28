@@ -1,12 +1,12 @@
-# =============================================================================
-# JARVIS Cloud Memorystore (Redis) - Optional for Solo Developer
+﻿# =============================================================================
+# Ironcliw Cloud Memorystore (Redis) - Optional for Solo Developer
 # =============================================================================
 #
 # ⚠️ COST WARNING: Cloud Memorystore costs ~$0.02/hour minimum (~$15/month)
 #
 # For development, consider using:
 # - Local Redis via Docker: docker run -p 6379:6379 redis:alpine
-# - In-memory caching in Python (already built into JARVIS)
+# - In-memory caching in Python (already built into Ironcliw)
 #
 # Only enable this when you need:
 # - Shared caching across multiple VMs
@@ -59,7 +59,7 @@ resource "google_redis_instance" "cache" {
   connect_mode       = "DIRECT_PEERING"
 
   redis_version = "REDIS_7_0"
-  display_name  = "JARVIS Intelligence Cache"
+  display_name  = "Ironcliw Intelligence Cache"
 
   # Maintenance window - early morning on Sunday to minimize disruption
   maintenance_policy {
@@ -94,7 +94,7 @@ output "redis_port" {
 }
 
 output "redis_connection_string" {
-  description = "Redis connection string for JARVIS"
+  description = "Redis connection string for Ironcliw"
   value       = "redis://${google_redis_instance.cache.host}:${google_redis_instance.cache.port}"
 }
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for Enhanced Vision System
 Demonstrates the revolutionary capabilities of Claude-powered vision
@@ -18,7 +18,7 @@ from backend.vision.enhanced_vision_system import EnhancedVisionSystem, Intellig
 async def test_enhanced_vision():
     """Test the enhanced vision capabilities."""
     
-    print("🚀 JARVIS Enhanced Vision System Test")
+    print("🚀 Ironcliw Enhanced Vision System Test")
     print("=" * 50)
     print("This demonstrates how Claude's intelligence transforms screen understanding")
     print()
@@ -85,7 +85,7 @@ async def test_enhanced_vision():
         
         try:
             response = await commands.process_command(test['query'])
-            print(f"\n   JARVIS: {response}")
+            print(f"\n   Ironcliw: {response}")
         except Exception as e:
             print(f"   Error: {e}")
             
@@ -151,7 +151,7 @@ async def test_enhanced_vision():
     
     print("\n\n✨ Summary:")
     print("=" * 50)
-    print("The Enhanced Vision System transforms JARVIS from a screen")
+    print("The Enhanced Vision System transforms Ironcliw from a screen")
     print("reader into an intelligent visual assistant that understands")
     print("context, provides insights, and helps you work more efficiently.")
     print("\nOne permission, infinite intelligence. 🚀")
@@ -170,7 +170,7 @@ async def interactive_demo():
     
     print("\n🎯 Interactive Enhanced Vision Demo")
     print("=" * 50)
-    print("Ask JARVIS anything about your screen using natural language!")
+    print("Ask Ironcliw anything about your screen using natural language!")
     print("Type 'quit' to exit\n")
     
     while True:
@@ -183,13 +183,13 @@ async def interactive_demo():
         if not query:
             continue
             
-        print("JARVIS: Analyzing your screen...")
+        print("Ironcliw: Analyzing your screen...")
         
         try:
             response = await commands.process_command(query)
-            print(f"JARVIS: {response}\n")
+            print(f"Ironcliw: {response}\n")
         except Exception as e:
-            print(f"JARVIS: I encountered an error: {e}\n")
+            print(f"Ironcliw: I encountered an error: {e}\n")
 
 
 if __name__ == "__main__":

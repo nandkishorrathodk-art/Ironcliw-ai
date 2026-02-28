@@ -1,5 +1,5 @@
-"""
-Progress Reporter Client for JARVIS Loading Server v212.0
+﻿"""
+Progress Reporter Client for Ironcliw Loading Server v212.0
 ==========================================================
 
 Client library for external callers to report progress to the loading server.
@@ -30,7 +30,7 @@ Usage:
         stage.update(50, "Loading models...")
         stage.update(100, "Complete")
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

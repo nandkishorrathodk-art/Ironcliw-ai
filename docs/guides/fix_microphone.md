@@ -1,4 +1,4 @@
-# Microphone Permission Fix for JARVIS
+﻿# Microphone Permission Fix for Ironcliw
 
 ## Quick Steps:
 
@@ -27,10 +27,10 @@
 
 ## Test After Fixing:
 
-1. Reload the JARVIS page
+1. Reload the Ironcliw page
 2. Click "Enable Wake Word"
 3. You should NOT see "audio-capture" error
-4. Say "Hey JARVIS" to test
+4. Say "Hey Ironcliw" to test
 
 ## Still Having Issues?
 

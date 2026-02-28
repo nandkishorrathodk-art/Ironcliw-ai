@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: File Locker - Gap #25
 =============================
 
@@ -9,7 +9,7 @@ Advisory file locking with conflict resolution:
 - Conflict detection and resolution
 - Lock inheritance for directory operations
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

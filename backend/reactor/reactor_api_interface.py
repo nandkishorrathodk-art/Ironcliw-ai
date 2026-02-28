@@ -1,9 +1,9 @@
-"""
+﻿"""
 Reactor Core FastAPI Interface v3.0 - Drop-in API Router for Training Services
 ===============================================================================
 
 This module provides a FastAPI router that Reactor Core can import to expose
-training APIs compatible with JARVIS's Advanced Training Coordinator v3.0.
+training APIs compatible with Ironcliw's Advanced Training Coordinator v3.0.
 
 Features:
 - 🚀 Drop-in FastAPI router for Reactor Core
@@ -56,7 +56,7 @@ Usage in Reactor Core:
 
     app.include_router(router)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0
 """
 
@@ -471,7 +471,7 @@ async def register_with_service_registry(
     health_endpoint: str
 ) -> bool:
     """
-    Register this service with the JARVIS service registry.
+    Register this service with the Ironcliw service registry.
 
     This enables dynamic discovery by the Training Coordinator.
     """
@@ -720,7 +720,7 @@ def create_standalone_app():
 
     app = FastAPI(
         title="Reactor Core Training API",
-        description="Enterprise-grade training API for JARVIS ecosystem",
+        description="Enterprise-grade training API for Ironcliw ecosystem",
         version="3.0.0"
     )
 

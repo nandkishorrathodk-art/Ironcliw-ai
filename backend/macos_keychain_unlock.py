@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 macOS Keychain Integration for Screen Unlock
 =============================================
@@ -41,7 +41,7 @@ class KeychainServiceConfig:
     SERVICES: List[Tuple[str, str, int]] = [
         ("com.jarvis.voiceunlock", "unlock_token", 0),      # Primary
         ("jarvis_voice_unlock", "jarvis", 1),               # Alternative
-        ("JARVIS_Screen_Unlock", "jarvis_user", 2),         # Legacy
+        ("Ironcliw_Screen_Unlock", "jarvis_user", 2),         # Legacy
     ]
 
     # Cache configuration
@@ -215,7 +215,7 @@ class MacOSKeychainUnlock:
         # Primary service info (for backwards compatibility)
         self.service_name = "com.jarvis.voiceunlock"
         self.account_name = "unlock_token"
-        self.keychain_item_name = "JARVIS Voice Unlock"
+        self.keychain_item_name = "Ironcliw Voice Unlock"
 
         # Cache state
         self._cache: Optional[CachedPassword] = None
@@ -710,13 +710,13 @@ class MacOSKeychainUnlock:
 
         type_script = """
         tell application "System Events"
-            keystroke (system attribute "JARVIS_UNLOCK_PASS")
+            keystroke (system attribute "Ironcliw_UNLOCK_PASS")
             delay 0.1
             key code 36
         end tell
         """
         env = os.environ.copy()
-        env["JARVIS_UNLOCK_PASS"] = password
+        env["Ironcliw_UNLOCK_PASS"] = password
 
         await asyncio.create_subprocess_exec(
             "osascript", "-e", type_script,
@@ -810,10 +810,10 @@ class MacOSKeychainUnlock:
         import getpass
 
         print("\n" + "=" * 60)
-        print("JARVIS SCREEN UNLOCK SETUP")
+        print("Ironcliw SCREEN UNLOCK SETUP")
         print("=" * 60)
         print("\nThis will securely store your login password in macOS Keychain")
-        print("so JARVIS can unlock your screen when you're verified by voice.\n")
+        print("so Ironcliw can unlock your screen when you're verified by voice.\n")
 
         username = input(f"macOS username [{self.account_name}]: ").strip() or self.account_name
         self.account_name = username
@@ -827,7 +827,7 @@ class MacOSKeychainUnlock:
                 print("\nSuccess! Password stored in Keychain")
                 print(f"  - Service: {self.service_name}")
                 print(f"  - Account: {self.account_name}")
-                print("  - JARVIS can now unlock your screen\n")
+                print("  - Ironcliw can now unlock your screen\n")
 
                 # Test retrieval
                 test_pwd = await self.get_password_from_keychain()

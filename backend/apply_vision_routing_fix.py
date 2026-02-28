@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Apply ML Vision Routing Fix
 Fixes the issue where vision commands are misrouted to system handler
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def apply_vision_routing_fix():
     """
-    Apply the ML-based vision routing fix to JARVIS
+    Apply the ML-based vision routing fix to Ironcliw
     """
     print("\n🔧 Applying ML Vision Routing Fix...")
     print("=" * 60)
@@ -207,13 +207,13 @@ def apply_vision_routing_fix():
     print("  • ✅ Adaptive threshold based on performance")
     
     print("\nTest commands that now work:")
-    print("  • 'Hey JARVIS, describe what's on my screen'")
+    print("  • 'Hey Ironcliw, describe what's on my screen'")
     print("  • 'Can you analyze the current window?'")
     print("  • 'What am I looking at?'")
     print("  • 'Check my screen for notifications'")
     print("  • 'Tell me what you see'")
     
-    print("\n🚀 Restart JARVIS to activate the fix!")
+    print("\n🚀 Restart Ironcliw to activate the fix!")
 
 def create_test_script():
     """Create a test script for the vision routing fix"""

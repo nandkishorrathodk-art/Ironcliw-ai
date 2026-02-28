@@ -1,5 +1,5 @@
-"""
-Query Handler for JARVIS v2.0
+﻿"""
+Query Handler for Ironcliw v2.0
 ==============================
 
 Handles natural language queries with Trinity integration.
@@ -12,14 +12,14 @@ ROUTING ARCHITECTURE:
     Prime Router (Trinity Integration)
          ↓
     ┌──────────────────────────────────┐
-    │  Local JARVIS-Prime (preferred)   │
+    │  Local Ironcliw-Prime (preferred)   │
     │  Cloud Claude (fallback)          │
     └──────────────────────────────────┘
          ↓
     Response with source tracking
 
 v236.0: Adaptive Prompt System
-    Static JARVIS_SYSTEM_PROMPT replaced with AdaptivePromptBuilder.
+    Static Ironcliw_SYSTEM_PROMPT replaced with AdaptivePromptBuilder.
     System prompt, max_tokens, and temperature are now dynamically
     adapted based on QueryComplexity classification:
     - SIMPLE (e.g., "5+5"): 64 tokens, temp 0.0, terse prompt
@@ -55,18 +55,18 @@ class AdaptivePromptBuilder:
     v236.0: Builds complexity-adaptive system prompts, max_tokens, and temperature.
 
     Uses QueryComplexity classification to tailor LLM behavior.
-    For SIMPLE queries, the JARVIS identity is intentionally omitted
+    For SIMPLE queries, the Ironcliw identity is intentionally omitted
     to prevent 7B models from generating conversational filler when
     the instruction says "reply with ONLY the answer."
     """
 
-    _JARVIS_IDENTITY = os.getenv(
-        "JARVIS_BASE_IDENTITY",
-        "You are JARVIS, an advanced AI assistant created by Derek Russell."
+    _Ironcliw_IDENTITY = os.getenv(
+        "Ironcliw_BASE_IDENTITY",
+        "You are Ironcliw, an advanced AI assistant created by Derek Russell."
     )
 
     # SIMPLE: No identity prefix — avoids 7B model conflict between
-    # "You are JARVIS" (conversational) and "ONLY the number" (terse).
+    # "You are Ironcliw" (conversational) and "ONLY the number" (terse).
     # Uses inline prose example to avoid Q:/A: pattern completion.
     _BEHAVIOR = {
         "SIMPLE": (
@@ -147,11 +147,11 @@ class AdaptivePromptBuilder:
         behavior = cls._BEHAVIOR.get(level_name, cls._BEHAVIOR["MODERATE"])
 
         # SIMPLE: omit identity to avoid 7B model conflict between
-        # "You are JARVIS" (conversational) and "ONLY the number" (terse)
+        # "You are Ironcliw" (conversational) and "ONLY the number" (terse)
         if level_name == "SIMPLE":
             system_prompt = behavior
         else:
-            system_prompt = f"{cls._JARVIS_IDENTITY}\n{behavior}"
+            system_prompt = f"{cls._Ironcliw_IDENTITY}\n{behavior}"
 
         stop_seqs = cls._STOP_SEQUENCES.get(level_name)
 
@@ -401,7 +401,7 @@ async def handle_query(
     Handle a natural language query with Trinity-aware routing.
 
     This function routes queries through the Prime Router, which will:
-    1. Try local JARVIS-Prime first (free, fast, private)
+    1. Try local Ironcliw-Prime first (free, fast, private)
     2. Fall back to cloud Claude if Prime unavailable
     3. Use graceful degradation if both fail
 

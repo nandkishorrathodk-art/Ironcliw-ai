@@ -1,4 +1,4 @@
-"""
+﻿"""
 Proxy Lifecycle Controller - Layer 3 of Distributed Proxy System
 
 Manages Cloud SQL proxy process with:
@@ -8,7 +8,7 @@ Manages Cloud SQL proxy process with:
 - Predictive restart using EMA latency tracking
 - Integration with existing CloudSQLProxyManager
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -130,7 +130,7 @@ class ProxyConfig:
     LAUNCHD_THROTTLE_INTERVAL: Final[int] = int(os.getenv("PROXY_RESTART_THROTTLE", "30"))
 
     # State persistence
-    STATE_DIR: Final[Path] = Path(os.getenv("JARVIS_STATE_DIR", str(Path.home() / ".jarvis")))
+    STATE_DIR: Final[Path] = Path(os.getenv("Ironcliw_STATE_DIR", str(Path.home() / ".jarvis")))
     PID_FILE: Final[Path] = STATE_DIR / "proxy" / "cloudsql-proxy.pid"
     STATE_FILE: Final[Path] = STATE_DIR / "proxy" / "lifecycle_state.json"
 

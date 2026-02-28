@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS vision integration
+Test Ironcliw vision integration
 """
 
 import asyncio
@@ -8,15 +8,15 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath('.'))
 
-from backend.voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import IroncliwAgentVoice
 
 
 async def test_vision_commands():
-    """Test vision commands through JARVIS"""
-    print("🤖 Testing JARVIS Vision Integration\n")
+    """Test vision commands through Ironcliw"""
+    print("🤖 Testing Ironcliw Vision Integration\n")
     
-    # Initialize JARVIS
-    jarvis = JARVISAgentVoice(user_name="Sir")
+    # Initialize Ironcliw
+    jarvis = IroncliwAgentVoice(user_name="Sir")
     
     # Check if vision is enabled
     print(f"Vision enabled: {jarvis.vision_enabled}")
@@ -38,7 +38,7 @@ async def test_vision_commands():
         print(f"\n🎤 Command: '{command}'")
         try:
             response = await jarvis._handle_vision_command(command)
-            print(f"🤖 JARVIS: {response}")
+            print(f"🤖 Ironcliw: {response}")
         except Exception as e:
             print(f"❌ Error: {e}")
             import traceback

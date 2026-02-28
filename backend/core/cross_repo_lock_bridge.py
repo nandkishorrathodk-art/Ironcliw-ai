@@ -1,23 +1,23 @@
-"""
+﻿"""
 Cross-Repo Lock Bridge v1.0
 ============================
 
 Provides a simple, unified API for acquiring distributed locks across
-JARVIS, JARVIS-Prime, and Reactor-Core repositories.
+Ironcliw, Ironcliw-Prime, and Reactor-Core repositories.
 
 This module can be imported by any of the three repos to participate in
 the unified cross-repo locking system.
 
 Usage (from any repo):
-    # Option 1: Import directly (if JARVIS is in PYTHONPATH)
+    # Option 1: Import directly (if Ironcliw is in PYTHONPATH)
     from backend.core.cross_repo_lock_bridge import (
         acquire_trinity_lock,
         TrinityLockManager,
     )
 
-    # Option 2: Add JARVIS repo to path first
+    # Option 2: Add Ironcliw repo to path first
     import sys
-    sys.path.insert(0, "/path/to/JARVIS-AI-Agent")
+    sys.path.insert(0, "/path/to/Ironcliw-AI-Agent")
     from backend.core.cross_repo_lock_bridge import acquire_trinity_lock
 
     # Acquire lock
@@ -33,7 +33,7 @@ Features:
 - Optional keepalive for long-running operations
 - Thread-safe singleton pattern
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -86,7 +86,7 @@ def detect_repo_source() -> str:
         One of: "jarvis", "jarvis-prime", "reactor-core"
     """
     # Check environment variable first
-    env_repo = os.getenv("JARVIS_REPO_SOURCE")
+    env_repo = os.getenv("Ironcliw_REPO_SOURCE")
     if env_repo:
         return env_repo
 
@@ -112,8 +112,8 @@ class TrinityLockManager:
     Cross-repo lock manager wrapper for Trinity architecture.
 
     Provides a consistent interface for lock management across:
-    - JARVIS (Body): Main orchestration
-    - JARVIS-Prime (Mind): LLM inference and learning
+    - Ironcliw (Body): Main orchestration
+    - Ironcliw-Prime (Mind): LLM inference and learning
     - Reactor-Core (Nerves): Training and fine-tuning
 
     Usage:
@@ -293,7 +293,7 @@ async def acquire_trinity_lock(
     Yields:
         Tuple of (acquired: bool, metadata: Optional[LockMetadata])
 
-    Example (from JARVIS-Prime):
+    Example (from Ironcliw-Prime):
         async with acquire_trinity_lock("model_sync", repo="jarvis-prime") as (acquired, meta):
             if acquired:
                 # Safe to sync model - we have the lock
@@ -330,7 +330,7 @@ class TrinityLocks:
     TRAINING_DATA_EXPORT = "trinity:training_data_export"
     CHECKPOINT_SAVE = "trinity:checkpoint_save"
 
-    # Inference operations (JARVIS-Prime)
+    # Inference operations (Ironcliw-Prime)
     INFERENCE_BATCH = "trinity:inference_batch"
     CACHE_UPDATE = "trinity:cache_update"
 
@@ -339,7 +339,7 @@ class TrinityLocks:
     CONFIG_UPDATE = "trinity:config_update"
     HEALTH_CHECK = "trinity:health_check"
 
-    # VBIA operations (JARVIS)
+    # VBIA operations (Ironcliw)
     VBIA_EVENTS = "trinity:vbia_events"
     SPEAKER_PROFILE = "trinity:speaker_profile"
     AUTH_STATE = "trinity:auth_state"

@@ -1,12 +1,12 @@
-"""
+﻿"""
 PROJECT TRINITY: ReactorCoreBridge - The Nervous System
 
-This module provides the communication bridge between JARVIS (Body) and the
+This module provides the communication bridge between Ironcliw (Body) and the
 Trinity architecture (J-Prime Mind + Reactor Core Nerves).
 
 ARCHITECTURE:
 ┌────────────┐    JSON Commands    ┌──────────────┐    Triggers    ┌────────────┐
-│  J-PRIME   │ ────────────────────│ REACTOR CORE │ ──────────────│   JARVIS   │
+│  J-PRIME   │ ────────────────────│ REACTOR CORE │ ──────────────│   Ironcliw   │
 │   (Mind)   │                     │   (Nerves)   │               │   (Body)   │
 └────────────┘    Status Updates   └──────────────┘    Heartbeat  └────────────┘
 
@@ -68,7 +68,7 @@ class TrinitySource(Enum):
     """Source component in Trinity architecture."""
     J_PRIME = "j_prime"         # The Mind
     REACTOR_CORE = "reactor_core"  # The Nerves
-    JARVIS_BODY = "jarvis_body"   # The Body
+    Ironcliw_BODY = "jarvis_body"   # The Body
     USER = "user"                 # External user
     SYSTEM = "system"             # System events
 
@@ -136,7 +136,7 @@ class TrinityCommand:
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
-    source: TrinitySource = TrinitySource.JARVIS_BODY
+    source: TrinitySource = TrinitySource.Ironcliw_BODY
     intent: TrinityIntent = TrinityIntent.PING
     payload: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -204,7 +204,7 @@ class TrinityCommand:
     def create_ack(self, success: bool = True, message: str = "") -> "TrinityCommand":
         """Create an ACK/NACK response to this command."""
         return TrinityCommand(
-            source=TrinitySource.JARVIS_BODY,
+            source=TrinitySource.Ironcliw_BODY,
             intent=TrinityIntent.ACK if success else TrinityIntent.NACK,
             target=self.source,
             response_to=self.id,
@@ -296,7 +296,7 @@ class FileTransport(TrinityTransport):
 
     def __init__(
         self,
-        source: TrinitySource = TrinitySource.JARVIS_BODY,
+        source: TrinitySource = TrinitySource.Ironcliw_BODY,
         base_dir: Optional[Path] = None,
         cleanup_hours: int = 24,
     ):
@@ -429,7 +429,7 @@ class RedisTransport(TrinityTransport):
 
     def __init__(
         self,
-        source: TrinitySource = TrinitySource.JARVIS_BODY,
+        source: TrinitySource = TrinitySource.Ironcliw_BODY,
         host: str = "localhost",
         port: int = 6379,
         channel_prefix: str = "trinity",
@@ -549,7 +549,7 @@ class ReactorCoreBridge:
     """
     PROJECT TRINITY: The Nervous System Bridge.
 
-    Connects JARVIS (Body) to the Trinity architecture, enabling:
+    Connects Ironcliw (Body) to the Trinity architecture, enabling:
     - Receipt of commands from J-Prime (Mind)
     - Publication of state heartbeats
     - Command acknowledgment
@@ -571,7 +571,7 @@ class ReactorCoreBridge:
         self._initialized = True
 
         # Configuration
-        self.source = TrinitySource.JARVIS_BODY
+        self.source = TrinitySource.Ironcliw_BODY
         self.heartbeat_interval = float(os.getenv("TRINITY_HEARTBEAT_INTERVAL", "5.0"))
         self.redis_enabled = os.getenv("TRINITY_REDIS_ENABLED", "true").lower() == "true"
         self.redis_host = os.getenv("TRINITY_REDIS_HOST", "localhost")

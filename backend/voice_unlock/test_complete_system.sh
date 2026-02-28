@@ -1,8 +1,8 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Complete Voice Unlock System Test
 # =================================
 
-echo "🧪 JARVIS Voice Unlock - Complete System Test"
+echo "🧪 Ironcliw Voice Unlock - Complete System Test"
 echo "============================================="
 echo
 
@@ -54,7 +54,7 @@ echo "-----------------------------------"
 
 # Kill any existing processes
 pkill -f websocket_server.py
-pkill -f JARVISVoiceUnlockDaemon
+pkill -f IroncliwVoiceUnlockDaemon
 sleep 2
 
 # Start WebSocket server
@@ -73,7 +73,7 @@ fi
 
 # Start daemon
 echo "Starting Voice Unlock daemon..."
-./objc/bin/JARVISVoiceUnlockDaemon > /tmp/daemon_test.log 2>&1 &
+./objc/bin/IroncliwVoiceUnlockDaemon > /tmp/daemon_test.log 2>&1 &
 DAEMON_PID=$!
 sleep 3
 
@@ -109,9 +109,9 @@ if [ $? -eq 0 ]; then
     echo "4️⃣ Testing Voice Unlock..."
     echo "-------------------------"
     echo "Say one of these phrases:"
-    echo "  • 'Hello JARVIS, unlock my Mac'"
-    echo "  • 'JARVIS, this is Derek'"  
-    echo "  • 'Open sesame, JARVIS'"
+    echo "  • 'Hello Ironcliw, unlock my Mac'"
+    echo "  • 'Ironcliw, this is Derek'"  
+    echo "  • 'Open sesame, Ironcliw'"
     echo
     echo "The system should unlock your screen!"
     echo
@@ -130,7 +130,7 @@ cleanup() {
     kill $DAEMON_PID 2>/dev/null
     kill $WS_PID 2>/dev/null
     pkill -f websocket_server.py
-    pkill -f JARVISVoiceUnlockDaemon
+    pkill -f IroncliwVoiceUnlockDaemon
     echo "✅ Cleanup complete"
 }
 

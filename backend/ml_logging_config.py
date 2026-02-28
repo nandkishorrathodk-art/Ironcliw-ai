@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 ML Model Loading Real-Time Logging Configuration
 ===============================================
@@ -245,7 +245,7 @@ class MemoryVisualizationLogger:
         lines = [
             "",
             "=" * 70,
-            "JARVIS ML MEMORY MONITOR",
+            "Ironcliw ML MEMORY MONITOR",
             "=" * 70,
             "",
             f"System Memory Usage: {system_percent:.1f}% of 16GB",

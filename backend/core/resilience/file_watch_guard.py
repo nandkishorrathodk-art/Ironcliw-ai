@@ -1,4 +1,4 @@
-"""
+﻿"""
 Robust File Watch Guard with Event Deduplication
 ================================================
 
@@ -12,7 +12,7 @@ Features:
     - Checksum-based change detection (avoid false positives)
     - Comprehensive metrics and health status
 
-Author: JARVIS Cross-Repo Resilience
+Author: Ironcliw Cross-Repo Resilience
 """
 
 from __future__ import annotations
@@ -112,7 +112,7 @@ class WatchMetrics:
 
 class GlobalWatchRegistry:
     """
-    v16.0: Centralized registry for all file watches across JARVIS.
+    v16.0: Centralized registry for all file watches across Ironcliw.
 
     Prevents FSEvents "Cannot add watch - it is already scheduled" errors
     by providing a single point of truth for which directories are being watched.
@@ -239,7 +239,7 @@ class FileWatchGuard:
           Fixes "There is no current event loop in thread" errors.
 
     v2.1 (v16.0): Uses GlobalWatchRegistry to prevent duplicate watches across
-          all JARVIS components (FileWatchGuard, ReactorCoreReceiver, etc.)
+          all Ironcliw components (FileWatchGuard, ReactorCoreReceiver, etc.)
 
     Usage:
         config = FileWatchConfig(patterns=["*.json"])
@@ -299,7 +299,7 @@ class FileWatchGuard:
         """
         Start file watching.
 
-        v2.1 (v16.0): Uses GlobalWatchRegistry to coordinate with ALL JARVIS
+        v2.1 (v16.0): Uses GlobalWatchRegistry to coordinate with ALL Ironcliw
               components that use file watching (ReactorCoreReceiver, etc.)
 
         Returns:

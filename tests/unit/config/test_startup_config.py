@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for StartupConfig dataclass in backend.config.startup_timeouts.
 
 These tests verify that:
@@ -29,11 +29,11 @@ def clean_env():
     """
     Fixture to ensure clean environment for each test.
 
-    Removes all JARVIS_ env vars and resets the singletons.
+    Removes all Ironcliw_ env vars and resets the singletons.
     """
     # Store original values
     original_env = {}
-    jarvis_vars = [key for key in os.environ if key.startswith("JARVIS_")]
+    jarvis_vars = [key for key in os.environ if key.startswith("Ironcliw_")]
     for key in jarvis_vars:
         original_env[key] = os.environ.pop(key)
 
@@ -142,61 +142,61 @@ class TestConfigEnvOverride:
     """Tests for environment variable configuration overrides."""
 
     def test_trinity_enabled_env_override_false(self, clean_env) -> None:
-        """Test JARVIS_TRINITY_ENABLED=false override."""
+        """Test Ironcliw_TRINITY_ENABLED=false override."""
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "false"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "false"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.trinity_enabled is False
 
     def test_trinity_enabled_env_override_true(self, clean_env) -> None:
-        """Test JARVIS_TRINITY_ENABLED=true override."""
+        """Test Ironcliw_TRINITY_ENABLED=true override."""
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "true"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "true"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.trinity_enabled is True
 
     def test_gcp_enabled_env_override_true(self, clean_env) -> None:
-        """Test JARVIS_GCP_ENABLED=true override."""
+        """Test Ironcliw_GCP_ENABLED=true override."""
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_GCP_ENABLED": "true"}):
+        with patch.dict(os.environ, {"Ironcliw_GCP_ENABLED": "true"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.gcp_enabled is True
 
     def test_gcp_enabled_env_override_1(self, clean_env) -> None:
-        """Test JARVIS_GCP_ENABLED=1 override (numeric true)."""
+        """Test Ironcliw_GCP_ENABLED=1 override (numeric true)."""
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_GCP_ENABLED": "1"}):
+        with patch.dict(os.environ, {"Ironcliw_GCP_ENABLED": "1"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.gcp_enabled is True
 
     def test_trinity_enabled_env_override_0(self, clean_env) -> None:
-        """Test JARVIS_TRINITY_ENABLED=0 override (numeric false)."""
+        """Test Ironcliw_TRINITY_ENABLED=0 override (numeric false)."""
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "0"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "0"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.trinity_enabled is False
 
     def test_hollow_ram_threshold_env_override(self, clean_env) -> None:
-        """Test JARVIS_HOLLOW_RAM_THRESHOLD_GB override."""
+        """Test Ironcliw_HOLLOW_RAM_THRESHOLD_GB override."""
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_HOLLOW_RAM_THRESHOLD_GB": "64.0"}):
+        with patch.dict(os.environ, {"Ironcliw_HOLLOW_RAM_THRESHOLD_GB": "64.0"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.hollow_ram_threshold_gb == 64.0
@@ -207,14 +207,14 @@ class TestConfigEnvOverride:
 
         # Test "yes"
         reset_startup_config()
-        with patch.dict(os.environ, {"JARVIS_GCP_ENABLED": "yes"}):
+        with patch.dict(os.environ, {"Ironcliw_GCP_ENABLED": "yes"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.gcp_enabled is True
 
         # Test "no"
         reset_startup_config()
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "no"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "no"}):
             config = StartupConfig()
             assert config.trinity_enabled is False
 
@@ -224,14 +224,14 @@ class TestConfigEnvOverride:
 
         # Test "on"
         reset_startup_config()
-        with patch.dict(os.environ, {"JARVIS_GCP_ENABLED": "on"}):
+        with patch.dict(os.environ, {"Ironcliw_GCP_ENABLED": "on"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.gcp_enabled is True
 
         # Test "off"
         reset_startup_config()
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "off"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "off"}):
             config = StartupConfig()
             assert config.trinity_enabled is False
 
@@ -240,13 +240,13 @@ class TestConfigEnvOverride:
         from backend.config.startup_timeouts import reset_startup_config
 
         reset_startup_config()
-        with patch.dict(os.environ, {"JARVIS_GCP_ENABLED": "TRUE"}):
+        with patch.dict(os.environ, {"Ironcliw_GCP_ENABLED": "TRUE"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.gcp_enabled is True
 
         reset_startup_config()
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "FALSE"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "FALSE"}):
             config = StartupConfig()
             assert config.trinity_enabled is False
 
@@ -255,7 +255,7 @@ class TestConfigEnvOverride:
         from backend.config.startup_timeouts import reset_startup_config
         reset_startup_config()
 
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "invalid"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "invalid"}):
             from backend.config.startup_timeouts import StartupConfig
             config = StartupConfig()
             assert config.trinity_enabled is True  # Default
@@ -419,8 +419,8 @@ class TestCreateTimeoutCalculator:
 
         # Create config with specific flags
         with patch.dict(os.environ, {
-            "JARVIS_TRINITY_ENABLED": "false",
-            "JARVIS_GCP_ENABLED": "true",
+            "Ironcliw_TRINITY_ENABLED": "false",
+            "Ironcliw_GCP_ENABLED": "true",
         }):
             config = StartupConfig()
             calculator = config.create_timeout_calculator()
@@ -500,7 +500,7 @@ class TestStartupConfigSingleton:
         assert initial.trinity_enabled is True  # Default
 
         # Change env and reset
-        with patch.dict(os.environ, {"JARVIS_TRINITY_ENABLED": "false"}):
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_ENABLED": "false"}):
             reset_startup_config()
             updated = get_startup_config()
 
@@ -590,8 +590,8 @@ class TestStartupConfigIntegration:
     def test_config_with_all_flags_disabled(self, clean_env) -> None:
         """Test config with trinity and GCP disabled."""
         with patch.dict(os.environ, {
-            "JARVIS_TRINITY_ENABLED": "false",
-            "JARVIS_GCP_ENABLED": "false",
+            "Ironcliw_TRINITY_ENABLED": "false",
+            "Ironcliw_GCP_ENABLED": "false",
         }):
             from backend.config.startup_timeouts import StartupConfig
 
@@ -606,8 +606,8 @@ class TestStartupConfigIntegration:
     def test_config_with_all_flags_enabled(self, clean_env) -> None:
         """Test config with trinity and GCP enabled."""
         with patch.dict(os.environ, {
-            "JARVIS_TRINITY_ENABLED": "true",
-            "JARVIS_GCP_ENABLED": "true",
+            "Ironcliw_TRINITY_ENABLED": "true",
+            "Ironcliw_GCP_ENABLED": "true",
         }):
             from backend.config.startup_timeouts import StartupConfig
 

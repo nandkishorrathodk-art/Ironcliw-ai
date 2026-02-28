@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Intelligent Command Handler for JARVIS
+Intelligent Command Handler for Ironcliw
 Uses Swift classifier for intelligent command routing without hardcoding
 """
 
@@ -158,7 +158,7 @@ except ImportError:
         logger.debug(f"CryostasisManager (v69.0) not available: {e}")
 
 # PROJECT TRINITY: Import ReactorCoreBridge for cross-repo communication
-# Enables J-Prime (Mind) -> Reactor Core (Nerves) -> JARVIS (Body) command flow
+# Enables J-Prime (Mind) -> Reactor Core (Nerves) -> Ironcliw (Body) command flow
 TRINITY_AVAILABLE = False
 get_reactor_bridge = None
 TrinityIntent = None
@@ -369,7 +369,7 @@ class IntelligentCommandHandler:
         # ROOT CAUSE FIX: Async Safety - Timeout protection for agent init
         # =====================================================================
         # Prevent voice thread hang if agent initialization gets stuck
-        agent_init_timeout = float(os.getenv("JARVIS_AGENT_INIT_TIMEOUT", "10"))
+        agent_init_timeout = float(os.getenv("Ironcliw_AGENT_INIT_TIMEOUT", "10"))
 
         try:
             logger.info(f"Initializing VisualMonitorAgent (timeout: {agent_init_timeout}s)...")
@@ -893,7 +893,7 @@ class IntelligentCommandHandler:
 
         This method replaces hardcoded alias lists with dynamic system queries.
         Benefits:
-        - Install new app → JARVIS knows it instantly
+        - Install new app → Ironcliw knows it instantly
         - Zero maintenance required
         - Handles ALL apps, not just ones in our alias list
         - Detects running vs installed state
@@ -1464,7 +1464,7 @@ class IntelligentCommandHandler:
                     from backend.vision.yabai_space_detector import get_shadow_display_index
                     ghost_display_id = get_shadow_display_index()
                 except ImportError:
-                    ghost_display_id = int(os.environ.get("JARVIS_SHADOW_DISPLAY", "2"))
+                    ghost_display_id = int(os.environ.get("Ironcliw_SHADOW_DISPLAY", "2"))
                 logger.info(f"[v70.0] 🔍 Space query empty - trying display-based query (Display {ghost_display_id})")
                 
                 try:
@@ -2206,7 +2206,7 @@ class IntelligentCommandHandler:
         Determine appropriate response style based on time of day and context.
 
         Returns:
-            ResponseStyle enum indicating how JARVIS should communicate
+            ResponseStyle enum indicating how Ironcliw should communicate
         """
         hour = datetime.now().hour
 
@@ -2861,12 +2861,12 @@ class IntelligentCommandHandler:
             # - base: 5 seconds for initial setup
             # - per_window: 3 seconds per window (capture init + validation)
             # - buffer: 15 seconds for teleportation and rescue operations
-            TIMEOUT_BASE = float(os.getenv("JARVIS_WATCH_TIMEOUT_BASE", "5"))
-            TIMEOUT_PER_WINDOW = float(os.getenv("JARVIS_WATCH_TIMEOUT_PER_WINDOW", "3"))
-            TIMEOUT_BUFFER = float(os.getenv("JARVIS_WATCH_TIMEOUT_BUFFER", "15"))
-            TIMEOUT_MIN = float(os.getenv("JARVIS_WATCH_TIMEOUT_MIN", "15"))
+            TIMEOUT_BASE = float(os.getenv("Ironcliw_WATCH_TIMEOUT_BASE", "5"))
+            TIMEOUT_PER_WINDOW = float(os.getenv("Ironcliw_WATCH_TIMEOUT_PER_WINDOW", "3"))
+            TIMEOUT_BUFFER = float(os.getenv("Ironcliw_WATCH_TIMEOUT_BUFFER", "15"))
+            TIMEOUT_MIN = float(os.getenv("Ironcliw_WATCH_TIMEOUT_MIN", "15"))
             # v32.0: Reduced MAX from 90 to 75 to fit inside parent timeout chain
-            TIMEOUT_MAX = float(os.getenv("JARVIS_WATCH_TIMEOUT_MAX", "75"))
+            TIMEOUT_MAX = float(os.getenv("Ironcliw_WATCH_TIMEOUT_MAX", "75"))
 
             dynamic_timeout = TIMEOUT_BASE + (estimated_window_count * TIMEOUT_PER_WINDOW) + TIMEOUT_BUFFER
             watch_timeout = max(TIMEOUT_MIN, min(dynamic_timeout, TIMEOUT_MAX))

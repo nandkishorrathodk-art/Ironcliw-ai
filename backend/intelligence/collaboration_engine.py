@@ -1,4 +1,4 @@
-"""
+﻿"""
 Collaboration Engine - Multi-User Conflict Resolution
 ======================================================
 
@@ -31,7 +31,7 @@ Architecture:
     │                                                                          │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -63,7 +63,7 @@ from typing import (
     Union,
 )
 
-logger = logging.getLogger("JARVIS.Collaboration")
+logger = logging.getLogger("Ironcliw.Collaboration")
 
 
 # =============================================================================
@@ -1263,7 +1263,7 @@ class CollaborationEngine:
 
 class CrossRepoCollaborationCoordinator:
     """
-    Coordinates collaboration across JARVIS, JARVIS-Prime, and Reactor-Core.
+    Coordinates collaboration across Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
     Enables:
     - Cross-repo editing sessions

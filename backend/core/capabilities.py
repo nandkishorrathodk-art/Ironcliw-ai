@@ -1,4 +1,4 @@
-"""
+﻿"""
 System Capabilities Detection
 ==============================
 
@@ -190,7 +190,7 @@ class SystemCapabilities:
         import os
         
         # Check environment variables
-        if os.getenv("JARVIS_DEV_MODE", "").lower() == "true":
+        if os.getenv("Ironcliw_DEV_MODE", "").lower() == "true":
             return True
         if os.getenv("DEBUG", "").lower() == "true":
             return True

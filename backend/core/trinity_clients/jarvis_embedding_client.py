@@ -1,8 +1,8 @@
-"""
-JARVIS Embedding Client for Cross-Repo Usage
+﻿"""
+Ironcliw Embedding Client for Cross-Repo Usage
 ==============================================
 
-This module allows jarvis-prime and reactor-core to use JARVIS's centralized
+This module allows jarvis-prime and reactor-core to use Ironcliw's centralized
 embedding service instead of loading their own SentenceTransformer instances.
 
 PROBLEM:
@@ -12,7 +12,7 @@ PROBLEM:
     3. Potential OOM kills on memory-constrained systems
 
 SOLUTION:
-    Use JARVIS's centralized EmbeddingService via:
+    Use Ironcliw's centralized EmbeddingService via:
     1. Unix socket (fastest, recommended)
     2. HTTP API (fallback when socket unavailable)
     3. Direct Python import (when running in same process)
@@ -23,7 +23,7 @@ Usage in jarvis-prime/reactor-core:
     
     embeddings = await get_embeddings(["text1", "text2"])
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -52,13 +52,13 @@ logger = logging.getLogger(__name__)
 EMBEDDING_SOCKET = "/tmp/jarvis_embedding_service.sock"
 
 # HTTP fallback endpoint
-EMBEDDING_HTTP_URL = os.getenv("JARVIS_EMBEDDING_URL", "http://127.0.0.1:8010/api/embeddings")
+EMBEDDING_HTTP_URL = os.getenv("Ironcliw_EMBEDDING_URL", "http://127.0.0.1:8010/api/embeddings")
 
 # Timeout for socket operations
-SOCKET_TIMEOUT = float(os.getenv("JARVIS_EMBEDDING_TIMEOUT", "30.0"))
+SOCKET_TIMEOUT = float(os.getenv("Ironcliw_EMBEDDING_TIMEOUT", "30.0"))
 
-# Whether to fall back to local model if JARVIS is unavailable
-ALLOW_LOCAL_FALLBACK = os.getenv("JARVIS_EMBEDDING_LOCAL_FALLBACK", "false").lower() == "true"
+# Whether to fall back to local model if Ironcliw is unavailable
+ALLOW_LOCAL_FALLBACK = os.getenv("Ironcliw_EMBEDDING_LOCAL_FALLBACK", "false").lower() == "true"
 
 
 # =============================================================================
@@ -67,7 +67,7 @@ ALLOW_LOCAL_FALLBACK = os.getenv("JARVIS_EMBEDDING_LOCAL_FALLBACK", "false").low
 
 class UnixSocketEmbeddingClient:
     """
-    Client for JARVIS embedding service via Unix socket.
+    Client for Ironcliw embedding service via Unix socket.
     
     This is the fastest method for cross-repo embedding access.
     """
@@ -82,7 +82,7 @@ class UnixSocketEmbeddingClient:
     
     async def encode(self, texts: Union[str, List[str]]) -> Optional[np.ndarray]:
         """
-        Encode texts using JARVIS embedding service via Unix socket.
+        Encode texts using Ironcliw embedding service via Unix socket.
         
         Args:
             texts: Text or list of texts to encode
@@ -152,7 +152,7 @@ class UnixSocketEmbeddingClient:
 
 class HttpEmbeddingClient:
     """
-    Fallback HTTP client for JARVIS embedding service.
+    Fallback HTTP client for Ironcliw embedding service.
     
     Used when Unix socket is not available.
     """
@@ -194,12 +194,12 @@ class HttpEmbeddingClient:
 # UNIFIED CLIENT
 # =============================================================================
 
-class JARVISEmbeddingClient:
+class IroncliwEmbeddingClient:
     """
     Unified embedding client that tries multiple transport methods.
     
     Priority:
-    1. Direct import (if running in JARVIS process)
+    1. Direct import (if running in Ironcliw process)
     2. Unix socket (fastest cross-process)
     3. HTTP API (fallback)
     4. Local SentenceTransformer (if allowed and all else fails)
@@ -213,7 +213,7 @@ class JARVISEmbeddingClient:
         self._direct_service = None
     
     async def _try_direct_import(self):
-        """Try to import JARVIS embedding service directly."""
+        """Try to import Ironcliw embedding service directly."""
         if self._tried_direct_import:
             return self._direct_service
         
@@ -303,14 +303,14 @@ class JARVISEmbeddingClient:
 # CONVENIENCE FUNCTIONS
 # =============================================================================
 
-_client: Optional[JARVISEmbeddingClient] = None
+_client: Optional[IroncliwEmbeddingClient] = None
 
 
-def get_embedding_client() -> JARVISEmbeddingClient:
+def get_embedding_client() -> IroncliwEmbeddingClient:
     """Get the global embedding client singleton."""
     global _client
     if _client is None:
-        _client = JARVISEmbeddingClient()
+        _client = IroncliwEmbeddingClient()
     return _client
 
 
@@ -341,7 +341,7 @@ def cleanup_embedding_client():
 # =============================================================================
 
 __all__ = [
-    "JARVISEmbeddingClient",
+    "IroncliwEmbeddingClient",
     "UnixSocketEmbeddingClient",
     "HttpEmbeddingClient",
     "get_embedding_client",

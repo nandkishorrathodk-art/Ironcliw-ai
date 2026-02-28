@@ -1,13 +1,13 @@
-"""
+﻿"""
 v77.1: Cross-Repo Dependency Tracker - Gap #43
 ===============================================
 
 Tracks dependencies across repos to prevent breakage.
 
 Problem:
-    - JARVIS imports from jarvis-prime/core/models.py
+    - Ironcliw imports from jarvis-prime/core/models.py
     - Evolution moves models.py → models_v2.py
-    - Must update JARVIS imports atomically
+    - Must update Ironcliw imports atomically
 
 Solution:
     - Parse Python AST to find imports
@@ -22,7 +22,7 @@ Features:
     - Automatic import updates
     - Cycle detection
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations
@@ -667,8 +667,8 @@ def get_dependency_tracker(
     if _tracker is None:
         if repos is None:
             repos = {
-                "jarvis": Path(os.getenv("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent"))),
-                "jarvis_prime": Path(os.getenv("JARVIS_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
+                "jarvis": Path(os.getenv("Ironcliw_REPO", str(Path.home() / "Documents/repos/Ironcliw-AI-Agent"))),
+                "jarvis_prime": Path(os.getenv("Ironcliw_PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime"))),
                 "reactor_core": Path(os.getenv("REACTOR_CORE_REPO", str(Path.home() / "Documents/repos/reactor-core"))),
             }
         _tracker = CrossRepoDependencyTracker(repos=repos)

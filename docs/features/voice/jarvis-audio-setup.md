@@ -1,7 +1,7 @@
-# JARVIS Audio Setup & Troubleshooting Guide
+﻿# Ironcliw Audio Setup & Troubleshooting Guide
 
 ## Overview
-JARVIS uses Daniel's British voice (macOS) for all audio output. The backend generates audio using the macOS `say` command and serves it to the frontend via HTTP endpoints.
+Ironcliw uses Daniel's British voice (macOS) for all audio output. The backend generates audio using the macOS `say` command and serves it to the frontend via HTTP endpoints.
 
 ## Current Setup
 
@@ -39,7 +39,7 @@ Open http://localhost:3000/debug-audio.html to:
 - Test WebSocket audio responses
 
 ### 3. Check Browser Console
-Look for messages starting with `[JARVIS Audio]`:
+Look for messages starting with `[Ironcliw Audio]`:
 - Loading started
 - Can play through
 - Playback started/completed
@@ -74,7 +74,7 @@ Look for messages starting with `[JARVIS Audio]`:
 ### Quick Test
 ```bash
 # Test Daniel voice directly
-say -v Daniel "Hello Sir, this is JARVIS"
+say -v Daniel "Hello Sir, this is Ironcliw"
 
 # List available voices
 say -v ?
@@ -82,10 +82,10 @@ say -v ?
 
 ### Frontend Test
 1. Start the app: `npm start`
-2. Click "Activate JARVIS"
-3. Say "Hey JARVIS"
+2. Click "Activate Ironcliw"
+3. Say "Hey Ironcliw"
 4. Give a command like "Hello" or "What time is it?"
-5. Check browser console for `[JARVIS Audio]` messages
+5. Check browser console for `[Ironcliw Audio]` messages
 
 ## Audio Flow
 
@@ -111,18 +111,18 @@ say -v ?
 
 ### Backend
 ```
-[JARVIS API] Processing command: 'hello jarvis'
-[JARVIS API] Response: 'Good evening, Sir...'
+[Ironcliw API] Processing command: 'hello jarvis'
+[Ironcliw API] Response: 'Good evening, Sir...'
 ```
 
 ### Frontend
 ```
-[JARVIS Audio] Speaking response: Good evening, Sir...
-[JARVIS Audio] Using GET method: http://localhost:8000/audio/speak/...
-[JARVIS Audio] Loading started
-[JARVIS Audio] Can play through
-[JARVIS Audio] Playback started
-[JARVIS Audio] Playback completed
+[Ironcliw Audio] Speaking response: Good evening, Sir...
+[Ironcliw Audio] Using GET method: http://localhost:8000/audio/speak/...
+[Ironcliw Audio] Loading started
+[Ironcliw Audio] Can play through
+[Ironcliw Audio] Playback started
+[Ironcliw Audio] Playback completed
 ```
 
 ## Next Steps

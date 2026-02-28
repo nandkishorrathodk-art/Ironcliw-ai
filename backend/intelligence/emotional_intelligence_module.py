@@ -1,8 +1,8 @@
-"""
+﻿"""
 EmotionalIntelligenceModule v100.0 - Empathetic Response System
 ================================================================
 
-Advanced emotional intelligence system that enables JARVIS to:
+Advanced emotional intelligence system that enables Ironcliw to:
 1. Infer emotional state from voice, text, and behavioral patterns
 2. Adapt responses based on detected emotional context
 3. Maintain emotional memory for personalized interactions
@@ -46,7 +46,7 @@ Architecture:
     │  └────────────────────────────────────────────────────────────┘ │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations

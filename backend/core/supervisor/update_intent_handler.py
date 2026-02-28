@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Update Intent Handler v2.0
+Ironcliw Update Intent Handler v2.0
 ===================================
 
 Handles the "update system" voice command by speaking a confirmation
@@ -9,10 +9,10 @@ and triggering sys.exit(100) to signal the supervisor to update.
 v2.0 CHANGE: Now uses UnifiedVoiceOrchestrator for voice output instead
 of spawning direct `say` processes.
 
-This module integrates with the JARVIS event system to register handlers
+This module integrates with the Ironcliw event system to register handlers
 for update-related intents without modifying the main start_system.py.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -43,7 +43,7 @@ class UpdateIntentHandler:
     """
     Handler for update and rollback voice commands.
     
-    Integrates with JARVIS event system to handle:
+    Integrates with Ironcliw event system to handle:
     - "update yourself" / "check for updates"
     - "rollback" / "revert update"
     
@@ -222,10 +222,10 @@ class UpdateIntentHandler:
         coordinator: Any,
     ) -> None:
         """
-        Register handlers with the JARVIS event coordinator.
+        Register handlers with the Ironcliw event coordinator.
         
         Args:
-            coordinator: JARVISEventCoordinator instance
+            coordinator: IroncliwEventCoordinator instance
         """
         if self._registered:
             return
@@ -286,13 +286,13 @@ async def handle_rollback_command(speak_func: Optional[Callable] = None) -> None
 
 
 def is_supervised() -> bool:
-    """Check if JARVIS is running under the supervisor."""
-    return os.environ.get("JARVIS_SUPERVISED") == "1"
+    """Check if Ironcliw is running under the supervisor."""
+    return os.environ.get("Ironcliw_SUPERVISED") == "1"
 
 
 def get_supervisor_pid() -> Optional[int]:
     """Get the supervisor's PID if running supervised."""
-    pid_str = os.environ.get("JARVIS_SUPERVISOR_PID")
+    pid_str = os.environ.get("Ironcliw_SUPERVISOR_PID")
     if pid_str:
         try:
             return int(pid_str)

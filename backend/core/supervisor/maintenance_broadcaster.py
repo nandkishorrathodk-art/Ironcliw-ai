@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Maintenance Mode Broadcaster
 =============================
@@ -12,10 +12,10 @@ instead of a "Connection Error" banner.
 Usage:
     from core.supervisor.maintenance_broadcaster import broadcast_maintenance_mode
     
-    # Before shutting down JARVIS for update
+    # Before shutting down Ironcliw for update
     await broadcast_maintenance_mode('updating', 'Downloading updates...')
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -104,7 +104,7 @@ async def broadcast_maintenance_mode(
 
 
 async def broadcast_system_online(
-    message: str = "JARVIS is back online",
+    message: str = "Ironcliw is back online",
     backend_url: str = "http://localhost:8010",
 ) -> bool:
     """

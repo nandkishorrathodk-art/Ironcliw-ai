@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 v111.0: Integration Tests for Unified Monolith Architecture
 ============================================================
@@ -25,7 +25,7 @@ Test Categories:
 - TestGracefulShutdown: Test shutdown escalation
 - TestConfigurationOptions: Test environment-driven configuration
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 111.0.0 (January 2026)
 """
 
@@ -449,16 +449,16 @@ class TestInProcessBackend:
     """
     Test in-process backend functionality.
 
-    When JARVIS_IN_PROCESS_MODE=true, the backend runs in the
+    When Ironcliw_IN_PROCESS_MODE=true, the backend runs in the
     supervisor's event loop instead of being spawned as a subprocess.
     """
 
     def test_in_process_mode_default_true(self, run_supervisor_path):
-        """Verify JARVIS_IN_PROCESS_MODE defaults to true."""
+        """Verify Ironcliw_IN_PROCESS_MODE defaults to true."""
         content = run_supervisor_path.read_text()
 
         # Look for the default value
-        assert "JARVIS_IN_PROCESS_MODE" in content
+        assert "Ironcliw_IN_PROCESS_MODE" in content
         assert '"true"' in content  # Default should be "true"
 
     def test_backend_start_method_exists(self, run_supervisor_path):
@@ -568,7 +568,7 @@ class TestConfigurationOptions:
         """Verify in-process mode is configurable."""
         content = run_supervisor_path.read_text()
 
-        assert "JARVIS_IN_PROCESS_MODE" in content
+        assert "Ironcliw_IN_PROCESS_MODE" in content
 
     def test_system_manager_config_class(self):
         """Verify SystemManagerConfig has expected attributes."""
@@ -611,17 +611,17 @@ class TestConfigurationOptions:
     def test_config_uses_environment(self, monkeypatch):
         """Test that config values come from environment."""
         # Set custom environment values
-        monkeypatch.setenv("JARVIS_HOST", "127.0.0.1")
-        monkeypatch.setenv("JARVIS_PORT", "9999")
-        monkeypatch.setenv("JARVIS_LOG_LEVEL", "debug")
+        monkeypatch.setenv("Ironcliw_HOST", "127.0.0.1")
+        monkeypatch.setenv("Ironcliw_PORT", "9999")
+        monkeypatch.setenv("Ironcliw_LOG_LEVEL", "debug")
 
         # Need to reload to pick up new env values
         # Since SystemManagerConfig reads at import time, we test differently
         from backend.core.async_system_manager import _env_int, _env_bool
 
         # Test that helpers read from environment
-        assert _env_int("JARVIS_PORT", 8000) == 9999
-        assert os.getenv("JARVIS_LOG_LEVEL") == "debug"
+        assert _env_int("Ironcliw_PORT", 8000) == 9999
+        assert os.getenv("Ironcliw_LOG_LEVEL") == "debug"
 
 
 # =============================================================================
@@ -715,7 +715,7 @@ class TestCrossRepoIntegration:
     async def test_in_process_mode_environment_variable(self):
         """Test that in-process mode is enabled by default."""
         # Default should be true
-        mode = os.getenv("JARVIS_IN_PROCESS_MODE", "true").lower() == "true"
+        mode = os.getenv("Ironcliw_IN_PROCESS_MODE", "true").lower() == "true"
         # Note: In tests, we don't override this, so it should default to true
         assert mode is True, "In-process mode should be enabled by default"
 
@@ -747,18 +747,18 @@ class TestCrossRepoIntegration:
         """
         Test that jarvis-body verification fast-paths in in-process mode.
 
-        v111.1: When JARVIS_IN_PROCESS_MODE=true, verification should
+        v111.1: When Ironcliw_IN_PROCESS_MODE=true, verification should
         immediately return True without checking registry or endpoints.
         """
         # Verify environment variable is respected
-        in_process = os.getenv("JARVIS_IN_PROCESS_MODE", "true").lower() == "true"
+        in_process = os.getenv("Ironcliw_IN_PROCESS_MODE", "true").lower() == "true"
 
         if in_process:
             # In in-process mode, verification should be instant
             # We can't test the full orchestrator here, but we verify the logic
             assert in_process is True, "Fast-path should be available"
         else:
-            pytest.skip("Test only valid when JARVIS_IN_PROCESS_MODE=true")
+            pytest.skip("Test only valid when Ironcliw_IN_PROCESS_MODE=true")
 
     @pytest.mark.asyncio
     async def test_atomic_shared_registry_available(self):

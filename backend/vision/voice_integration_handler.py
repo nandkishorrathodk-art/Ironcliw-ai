@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Voice Integration Handler for JARVIS Proactive Monitoring
+Voice Integration Handler for Ironcliw Proactive Monitoring
 Handles FR-7: Voice announcements, sound cues, and audio feedback
 Fully dynamic with no hardcoding
 """
@@ -28,7 +28,7 @@ class VoiceIntegrationHandler:
         Initialize voice integration handler
         
         Args:
-            jarvis_api: JARVIS voice API instance for TTS
+            jarvis_api: Ironcliw voice API instance for TTS
         """
         self.jarvis_api = jarvis_api
         self.voice_queue = (
@@ -40,12 +40,12 @@ class VoiceIntegrationHandler:
         
         # Dynamic configuration
         self.config = {
-            'voice_enabled': os.getenv('JARVIS_VOICE_ENABLED', 'true').lower() == 'true',
-            'sound_cues_enabled': os.getenv('JARVIS_SOUND_CUES', 'true').lower() == 'true',
-            'voice_priority_threshold': os.getenv('JARVIS_VOICE_PRIORITY', 'normal'),
-            'max_voice_queue': int(os.getenv('JARVIS_MAX_VOICE_QUEUE', '5')),
-            'voice_speed': float(os.getenv('JARVIS_VOICE_SPEED', '1.1')),
-            'voice_volume': float(os.getenv('JARVIS_VOICE_VOLUME', '0.8'))
+            'voice_enabled': os.getenv('Ironcliw_VOICE_ENABLED', 'true').lower() == 'true',
+            'sound_cues_enabled': os.getenv('Ironcliw_SOUND_CUES', 'true').lower() == 'true',
+            'voice_priority_threshold': os.getenv('Ironcliw_VOICE_PRIORITY', 'normal'),
+            'max_voice_queue': int(os.getenv('Ironcliw_MAX_VOICE_QUEUE', '5')),
+            'voice_speed': float(os.getenv('Ironcliw_VOICE_SPEED', '1.1')),
+            'voice_volume': float(os.getenv('Ironcliw_VOICE_VOLUME', '0.8'))
         }
         
         # Sound cue mappings (can be customized via environment)
@@ -64,7 +64,7 @@ class VoiceIntegrationHandler:
         }
         
         # Allow environment override
-        cues_json = os.getenv('JARVIS_SOUND_CUES_MAP')
+        cues_json = os.getenv('Ironcliw_SOUND_CUES_MAP')
         if cues_json:
             try:
                 return json.loads(cues_json)
@@ -170,7 +170,7 @@ class VoiceIntegrationHandler:
             logger.error(f"Error playing sound cue: {e}")
             
     async def _speak_message(self, notification: Dict[str, Any]):
-        """Speak notification message using JARVIS voice"""
+        """Speak notification message using Ironcliw voice"""
         if not self.jarvis_api:
             return
             
@@ -194,7 +194,7 @@ class VoiceIntegrationHandler:
             elif 'suggestion' in message.lower():
                 voice_params['emotion'] = 'helpful'
                 
-            # Call JARVIS voice API
+            # Call Ironcliw voice API
             await self.jarvis_api.speak_async(voice_params)
             
         except Exception as e:

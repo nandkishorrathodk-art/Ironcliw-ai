@@ -1,4 +1,4 @@
-"""
+﻿"""
 Streaming Speech-to-Text Engine (Layer 2)
 ==========================================
 
@@ -30,11 +30,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-_MODEL_SIZE = os.getenv("JARVIS_STT_MODEL", "base")
-_PARTIAL_INTERVAL_MS = int(os.getenv("JARVIS_STT_PARTIAL_INTERVAL_MS", "500"))
-_MAX_BUFFER_SECONDS = float(os.getenv("JARVIS_STT_MAX_BUFFER_SECONDS", "30.0"))
-_VAD_SILENCE_THRESHOLD_MS = int(os.getenv("JARVIS_STT_SILENCE_MS", "600"))
-_LANGUAGE = os.getenv("JARVIS_STT_LANGUAGE", "en")
+_MODEL_SIZE = os.getenv("Ironcliw_STT_MODEL", "base")
+_PARTIAL_INTERVAL_MS = int(os.getenv("Ironcliw_STT_PARTIAL_INTERVAL_MS", "500"))
+_MAX_BUFFER_SECONDS = float(os.getenv("Ironcliw_STT_MAX_BUFFER_SECONDS", "30.0"))
+_VAD_SILENCE_THRESHOLD_MS = int(os.getenv("Ironcliw_STT_SILENCE_MS", "600"))
+_LANGUAGE = os.getenv("Ironcliw_STT_LANGUAGE", "en")
 
 
 @dataclass
@@ -98,8 +98,8 @@ class StreamingSTTEngine:
             from faster_whisper import WhisperModel
 
             def _load():
-                compute_type = os.getenv("JARVIS_STT_COMPUTE_TYPE", "int8")
-                device = os.getenv("JARVIS_STT_DEVICE", "cpu")
+                compute_type = os.getenv("Ironcliw_STT_COMPUTE_TYPE", "int8")
+                device = os.getenv("Ironcliw_STT_DEVICE", "cpu")
                 try:
                     return WhisperModel(
                         _MODEL_SIZE,
@@ -149,7 +149,7 @@ class StreamingSTTEngine:
         try:
             import webrtcvad
             self._vad = webrtcvad.Vad()
-            self._vad.set_mode(int(os.getenv("JARVIS_VAD_MODE", "3")))
+            self._vad.set_mode(int(os.getenv("Ironcliw_VAD_MODE", "3")))
             logger.info("[StreamingSTT] VAD initialized (mode 3)")
         except ImportError:
             logger.warning(
@@ -239,7 +239,7 @@ class StreamingSTTEngine:
 
         # Fallback: energy-based VAD
         energy = np.sqrt(np.mean(frame ** 2))
-        threshold = float(os.getenv("JARVIS_VAD_ENERGY_THRESHOLD", "0.01"))
+        threshold = float(os.getenv("Ironcliw_VAD_ENERGY_THRESHOLD", "0.01"))
         return energy > threshold
 
     def _schedule_transcription(self, is_partial: bool) -> None:

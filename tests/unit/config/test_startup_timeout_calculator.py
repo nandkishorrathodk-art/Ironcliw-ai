@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for StartupTimeoutCalculator and PhaseBudgets.
 
 These tests verify:
@@ -29,20 +29,20 @@ def clean_env():
     """
     Fixture to ensure clean environment for each test.
 
-    Removes all JARVIS_ phase budget env vars.
+    Removes all Ironcliw_ phase budget env vars.
     """
     # Store original values
     original_env = {}
     phase_vars = [
-        "JARVIS_PRE_TRINITY_BUDGET",
-        "JARVIS_TRINITY_PHASE_BUDGET",
-        "JARVIS_GCP_WAIT_BUFFER",
-        "JARVIS_POST_TRINITY_BUDGET",
-        "JARVIS_DISCOVERY_BUDGET",
-        "JARVIS_HEALTH_CHECK_BUDGET",
-        "JARVIS_CLEANUP_BUDGET",
-        "JARVIS_SAFETY_MARGIN",
-        "JARVIS_STARTUP_HARD_CAP",
+        "Ironcliw_PRE_TRINITY_BUDGET",
+        "Ironcliw_TRINITY_PHASE_BUDGET",
+        "Ironcliw_GCP_WAIT_BUFFER",
+        "Ironcliw_POST_TRINITY_BUDGET",
+        "Ironcliw_DISCOVERY_BUDGET",
+        "Ironcliw_HEALTH_CHECK_BUDGET",
+        "Ironcliw_CLEANUP_BUDGET",
+        "Ironcliw_SAFETY_MARGIN",
+        "Ironcliw_STARTUP_HARD_CAP",
     ]
     for key in phase_vars:
         if key in os.environ:
@@ -156,40 +156,40 @@ class TestPhaseBudgetsEnvOverrides:
     """Tests for PhaseBudgets environment variable overrides."""
 
     def test_phase_budgets_env_override(self, clean_env) -> None:
-        """Verify JARVIS_TRINITY_PHASE_BUDGET env var works."""
-        with patch.dict(os.environ, {"JARVIS_TRINITY_PHASE_BUDGET": "500.0"}):
+        """Verify Ironcliw_TRINITY_PHASE_BUDGET env var works."""
+        with patch.dict(os.environ, {"Ironcliw_TRINITY_PHASE_BUDGET": "500.0"}):
             from backend.config.startup_timeouts import PhaseBudgets
 
             budgets = PhaseBudgets()
             assert budgets.TRINITY_PHASE == 500.0
 
     def test_pre_trinity_env_override(self, clean_env) -> None:
-        """Test JARVIS_PRE_TRINITY_BUDGET env override."""
-        with patch.dict(os.environ, {"JARVIS_PRE_TRINITY_BUDGET": "45.0"}):
+        """Test Ironcliw_PRE_TRINITY_BUDGET env override."""
+        with patch.dict(os.environ, {"Ironcliw_PRE_TRINITY_BUDGET": "45.0"}):
             from backend.config.startup_timeouts import PhaseBudgets
 
             budgets = PhaseBudgets()
             assert budgets.PRE_TRINITY == 45.0
 
     def test_gcp_wait_buffer_env_override(self, clean_env) -> None:
-        """Test JARVIS_GCP_WAIT_BUFFER env override."""
-        with patch.dict(os.environ, {"JARVIS_GCP_WAIT_BUFFER": "180.0"}):
+        """Test Ironcliw_GCP_WAIT_BUFFER env override."""
+        with patch.dict(os.environ, {"Ironcliw_GCP_WAIT_BUFFER": "180.0"}):
             from backend.config.startup_timeouts import PhaseBudgets
 
             budgets = PhaseBudgets()
             assert budgets.GCP_WAIT_BUFFER == 180.0
 
     def test_safety_margin_env_override(self, clean_env) -> None:
-        """Test JARVIS_SAFETY_MARGIN env override."""
-        with patch.dict(os.environ, {"JARVIS_SAFETY_MARGIN": "60.0"}):
+        """Test Ironcliw_SAFETY_MARGIN env override."""
+        with patch.dict(os.environ, {"Ironcliw_SAFETY_MARGIN": "60.0"}):
             from backend.config.startup_timeouts import PhaseBudgets
 
             budgets = PhaseBudgets()
             assert budgets.SAFETY_MARGIN == 60.0
 
     def test_hard_cap_env_override(self, clean_env) -> None:
-        """Test JARVIS_STARTUP_HARD_CAP env override."""
-        with patch.dict(os.environ, {"JARVIS_STARTUP_HARD_CAP": "1200.0"}):
+        """Test Ironcliw_STARTUP_HARD_CAP env override."""
+        with patch.dict(os.environ, {"Ironcliw_STARTUP_HARD_CAP": "1200.0"}):
             from backend.config.startup_timeouts import PhaseBudgets
 
             budgets = PhaseBudgets()
@@ -441,8 +441,8 @@ class TestEdgeCases:
     def test_custom_env_values_in_calculator(self, clean_env) -> None:
         """Test calculator picks up custom env values for phase budgets."""
         with patch.dict(os.environ, {
-            "JARVIS_TRINITY_PHASE_BUDGET": "400.0",
-            "JARVIS_GCP_WAIT_BUFFER": "150.0",
+            "Ironcliw_TRINITY_PHASE_BUDGET": "400.0",
+            "Ironcliw_GCP_WAIT_BUFFER": "150.0",
         }):
             from backend.config.startup_timeouts import StartupTimeoutCalculator
 

@@ -1,9 +1,9 @@
-"""
+﻿"""
 Cross-Repo Symbol Resolution Test Suite
 ========================================
 
 Tests The Watcher's ability to resolve symbols across the Trinity repos:
-- JARVIS-AI-Agent (main)
+- Ironcliw-AI-Agent (main)
 - jarvis-prime (LLM inference)
 - reactor-core (training pipeline)
 
@@ -51,11 +51,11 @@ class CrossRepoTestSuite:
 
         # Trinity repo paths
         self.jarvis_path = Path(os.getenv(
-            "JARVIS_PATH",
-            Path.home() / "Documents/repos/JARVIS-AI-Agent"
+            "Ironcliw_PATH",
+            Path.home() / "Documents/repos/Ironcliw-AI-Agent"
         ))
         self.prime_path = Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             Path.home() / "Documents/repos/jarvis-prime"
         ))
         self.reactor_path = Path(os.getenv(
@@ -129,16 +129,16 @@ class CrossRepoTestSuite:
         workspaces = []
 
         if self.jarvis_path.exists():
-            workspaces.append(("JARVIS", self.jarvis_path))
-            self._record("JARVIS workspace exists", True)
+            workspaces.append(("Ironcliw", self.jarvis_path))
+            self._record("Ironcliw workspace exists", True)
         else:
-            self._record("JARVIS workspace exists", False, f"Not found: {self.jarvis_path}")
+            self._record("Ironcliw workspace exists", False, f"Not found: {self.jarvis_path}")
 
         if self.prime_path.exists():
             workspaces.append(("Prime", self.prime_path))
-            self._record("JARVIS Prime workspace exists", True)
+            self._record("Ironcliw Prime workspace exists", True)
         else:
-            self._record("JARVIS Prime workspace exists", True, "Optional - not found", skipped=True)
+            self._record("Ironcliw Prime workspace exists", True, "Optional - not found", skipped=True)
 
         if self.reactor_path.exists():
             workspaces.append(("Reactor", self.reactor_path))
@@ -202,10 +202,10 @@ class CrossRepoTestSuite:
             return None
 
     async def test_single_repo_resolution(self, watcher):
-        """Test symbol resolution within JARVIS repo."""
+        """Test symbol resolution within Ironcliw repo."""
         print("\n[3] Single-Repo Symbol Resolution")
 
-        # Find a Python file in JARVIS to test with
+        # Find a Python file in Ironcliw to test with
         test_files = list(self.jarvis_path.glob("backend/core/**/*.py"))[:5]
 
         if not test_files:
@@ -250,7 +250,7 @@ class CrossRepoTestSuite:
 
         # Check if we have multiple repos
         available_repos = [
-            ("JARVIS", self.jarvis_path),
+            ("Ironcliw", self.jarvis_path),
             ("Prime", self.prime_path),
             ("Reactor", self.reactor_path),
         ]
@@ -270,7 +270,7 @@ class CrossRepoTestSuite:
         # Test cross-repo import resolution
         # Look for imports between repos
 
-        # Example: If JARVIS imports from reactor-core
+        # Example: If Ironcliw imports from reactor-core
         jarvis_files = list(self.jarvis_path.rglob("*.py"))[:20]
 
         cross_repo_imports = []

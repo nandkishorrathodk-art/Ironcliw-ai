@@ -1,4 +1,4 @@
-# JARVIS Learning Database - Comprehensive Guide
+﻿# Ironcliw Learning Database - Comprehensive Guide
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -20,7 +20,7 @@
 
 ### What Is the Learning Database?
 
-The **JARVIS Learning Database** is a hybrid persistent memory system that enables JARVIS to:
+The **Ironcliw Learning Database** is a hybrid persistent memory system that enables Ironcliw to:
 - **Remember** user patterns across sessions
 - **Learn** from every interaction
 - **Predict** future actions based on history
@@ -52,7 +52,7 @@ Hybrid Architecture = SQLite (OLTP) + ChromaDB (Vector Store) + Async + ML
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    JARVIS Learning Database                          │
+│                    Ironcliw Learning Database                          │
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────────┐ │
 │  │                     Application Layer                           │ │
@@ -61,7 +61,7 @@ Hybrid Architecture = SQLite (OLTP) + ChromaDB (Vector Store) + Async + ML
 │                             │                                        │
 │                             ↓                                        │
 │  ┌────────────────────────────────────────────────────────────────┐ │
-│  │              JARVISLearningDatabase (API Layer)                │ │
+│  │              IroncliwLearningDatabase (API Layer)                │ │
 │  │                                                                │ │
 │  │  Public Methods:                                               │ │
 │  │  • store_pattern()      • get_pattern_by_type()               │ │
@@ -840,7 +840,7 @@ CREATE INDEX idx_embeddings_type ON context_embeddings(context_type);
 
 ```
 User: "Connect to Living Room TV"
-JARVIS:
+Ironcliw:
   ├─ Searches for Control Center (2s)
   ├─ OCR detection (1.5s)
   ├─ Clicks wrong button (retry)
@@ -856,14 +856,14 @@ Next day:
 ```
 Day 1:
 User: "Connect to Living Room TV"
-JARVIS:
+Ironcliw:
   ├─ Searches + detects (3s)
   ├─ Succeeds
   └─ ✅ STORES pattern to database
 
 Day 2:
 User: "Living Room TV"
-JARVIS:
+Ironcliw:
   ├─ Retrieves pattern from DB (0.1s)
   ├─ Knows exact position
   ├─ Instant click (1s total)
@@ -871,7 +871,7 @@ JARVIS:
 
 Day 30:
 Wednesday 7:55pm:
-JARVIS:
+Ironcliw:
   ├─ Predicts user will connect at 8pm
   ├─ Pre-validates position
   └─ Ready instantly when user asks (0.5s)
@@ -891,7 +891,7 @@ JARVIS:
 | **Temporal Awareness** | No time patterns | Learns time-based behavior |
 | **Cross-Session** | Starts from scratch | Continuous learning |
 
-### Key Roles in JARVIS
+### Key Roles in Ironcliw
 
 #### 1. **Memory Layer**
 - Remembers every interaction
@@ -1216,7 +1216,7 @@ User: "Connect to Living Room TV"
 
 ### 1. **Fresh Start (No Historical Data)**
 
-**Scenario:** First time JARVIS runs after database is created
+**Scenario:** First time Ironcliw runs after database is created
 
 **Expected Behavior:**
 ```python
@@ -1455,7 +1455,7 @@ async def test_pattern_merging():
 
 ### 7. **Data Persistence (Restart Test)**
 
-**Scenario:** Store pattern, restart JARVIS, verify pattern still exists
+**Scenario:** Store pattern, restart Ironcliw, verify pattern still exists
 
 **Expected Behavior:**
 ```python
@@ -1463,7 +1463,7 @@ async def test_pattern_merging():
 patterns_count = 10
 display_patterns = 5
 
-# Restart JARVIS
+# Restart Ironcliw
 # (Database files remain on disk)
 
 # After restart
@@ -1493,7 +1493,7 @@ sqlite3 ~/.jarvis/learning/jarvis_learning.db \
   "SELECT COUNT(*) FROM display_patterns WHERE display_name = 'Test Display';"
 # Should output: 1
 
-# Restart Python (simulates JARVIS restart)
+# Restart Python (simulates Ironcliw restart)
 python -c "
 import asyncio
 from backend.intelligence.learning_database import get_learning_database
@@ -1670,7 +1670,7 @@ sqlite3.DatabaseError: database disk image is malformed
 # Automatic recovery via WAL mode
 # WAL (Write-Ahead Logging) provides atomic commits
 
-# If corruption detected, JARVIS should:
+# If corruption detected, Ironcliw should:
 # 1. Backup corrupted DB
 cp ~/.jarvis/learning/jarvis_learning.db \
    ~/.jarvis/learning/jarvis_learning.db.corrupted_$(date +%Y%m%d)
@@ -1680,7 +1680,7 @@ sqlite3 ~/.jarvis/learning/jarvis_learning.db ".recover" | \
   sqlite3 ~/.jarvis/learning/jarvis_learning.db.recovered
 
 # 3. If recovery fails, create fresh DB
-# (Lose historical data but JARVIS continues working)
+# (Lose historical data but Ironcliw continues working)
 ```
 
 **Prevention:**
@@ -1792,7 +1792,7 @@ async def _find_similar_patterns(self, embedding, pattern_type):
 ```
 
 **Impact:**
-- ✅ JARVIS still works (SQLite functional)
+- ✅ Ironcliw still works (SQLite functional)
 - ❌ No semantic similarity search
 - ❌ No fuzzy matching
 - ℹ️ Only exact pattern matches
@@ -2092,7 +2092,7 @@ async def monitor_cache_health(self):
 
 ### 9. **Schema Evolution (Breaking Change)**
 
-**Scenario:** New JARVIS version needs to add/modify database columns
+**Scenario:** New Ironcliw version needs to add/modify database columns
 
 **Problem:**
 ```
@@ -2207,7 +2207,7 @@ def _preserve_emoji(self, text):
 | Limitation | Description | Impact | Workaround |
 |-----------|-------------|--------|------------|
 | **1. No Distributed Sync** | Database is local-only | Can't sync across devices | Manual export/import |
-| **2. Single-User** | No multi-user support | One user per JARVIS instance | User profiles (future) |
+| **2. Single-User** | No multi-user support | One user per Ironcliw instance | User profiles (future) |
 | **3. SQLite Concurrency** | Limited write concurrency | Bottleneck under heavy load | Connection pooling helps |
 | **4. No Real-Time Replication** | Changes not replicated live | No HA (High Availability) | Periodic backups |
 | **5. Embedding Generation Slow** | ChromaDB embedding takes 50-200ms | Slows pattern storage | Async + caching |
@@ -2248,7 +2248,7 @@ def _preserve_emoji(self, text):
    - Workaround: Export/import JSON
 
 2. **No Collaborative Learning**
-   - Can't share patterns with other JARVIS instances
+   - Can't share patterns with other Ironcliw instances
    - Workaround: Pattern export/import feature
 
 3. **No Rollback**
@@ -2635,7 +2635,7 @@ async def import_patterns(self, import_path, merge=True):
 **Features:**
 ```
 ┌────────────────────────────────────────┐
-│     JARVIS Learning Analytics          │
+│     Ironcliw Learning Analytics          │
 ├────────────────────────────────────────┤
 │                                        │
 │  📊 Patterns Over Time                 │
@@ -2939,7 +2939,7 @@ ValueError: Embedding dimension mismatch: expected 384, got 768
 ```python
 # Clear ChromaDB and regenerate embeddings
 rm -rf ~/.jarvis/learning/chroma_embeddings/
-# Restart JARVIS (will recreate ChromaDB with correct dimensions)
+# Restart Ironcliw (will recreate ChromaDB with correct dimensions)
 ```
 
 #### 4. **Database Lock Errors**
@@ -3063,7 +3063,7 @@ async def inspect_database():
     await db.initialize()
 
     print("=" * 60)
-    print("JARVIS Learning Database Inspector")
+    print("Ironcliw Learning Database Inspector")
     print("=" * 60)
 
     # Table sizes
@@ -3214,7 +3214,7 @@ patterns = await db.db.execute("""
 
 ## Summary
 
-The JARVIS Learning Database is a sophisticated hybrid storage system that enables true persistent intelligence. Key takeaways:
+The Ironcliw Learning Database is a sophisticated hybrid storage system that enables true persistent intelligence. Key takeaways:
 
 ### ✅ **What It Does**
 - Stores all learned patterns across sessions
@@ -3224,7 +3224,7 @@ The JARVIS Learning Database is a sophisticated hybrid storage system that enabl
 - Integrates seamlessly with UAE + SAI
 
 ### 🎯 **Why It Matters**
-- JARVIS gets smarter over time
+- Ironcliw gets smarter over time
 - Faster execution with usage
 - Proactive suggestions
 - Adapts to user behavior
@@ -3232,13 +3232,13 @@ The JARVIS Learning Database is a sophisticated hybrid storage system that enabl
 ### 🚀 **How to Use It**
 - Automatically initialized on startup
 - No manual intervention needed
-- Just use JARVIS normally
+- Just use Ironcliw normally
 - Data accumulates automatically
 
 ### 📊 **Monitoring**
 - Check database size: `du -h ~/.jarvis/learning/`
 - Query patterns: `sqlite3 ~/.jarvis/learning/jarvis_learning.db`
-- View metrics: Built into JARVIS startup logs
+- View metrics: Built into Ironcliw startup logs
 
 ### 🔧 **Maintenance**
 - Auto-optimizes every 7 days
@@ -3246,4 +3246,4 @@ The JARVIS Learning Database is a sophisticated hybrid storage system that enabl
 - Backups recommended weekly
 - Archive old data yearly
 
-**The Learning Database is the foundation of JARVIS's intelligence - it transforms JARVIS from a reactive assistant into a proactive, adaptive AI that learns and improves with every interaction.** 🧠✨
+**The Learning Database is the foundation of Ironcliw's intelligence - it transforms Ironcliw from a reactive assistant into a proactive, adaptive AI that learns and improves with every interaction.** 🧠✨

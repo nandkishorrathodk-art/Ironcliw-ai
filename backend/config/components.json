@@ -1,4 +1,4 @@
-{
+﻿{
   "chatbots": {
     "priority": "CORE",
     "estimated_memory_mb": 150,
@@ -68,7 +68,7 @@
     "estimated_load_time_ms": 150,
     "intent_keywords": ["hey jarvis", "wake word", "activation"],
     "dependencies": ["voice"],
-    "description": "Hands-free 'Hey JARVIS' activation",
+    "description": "Hands-free 'Hey Ironcliw' activation",
     "import_function": "import_wake_word"
   },
   "display_monitor": {

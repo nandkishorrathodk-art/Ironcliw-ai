@@ -1,5 +1,5 @@
-"""
-JARVIS Voice Authentication Layer v1.0
+﻿"""
+Ironcliw Voice Authentication Layer v1.0
 =======================================
 
 Bridges the Voice Biometric Intelligence Authentication (VBIA) system
@@ -27,7 +27,7 @@ Architecture:
     │                    └───────────────────┘                        │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -54,40 +54,40 @@ class VoiceAuthLayerConfig:
 
     # Thresholds (can be overridden by TieredVBIAAdapter)
     tier1_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TIER1_VBIA_THRESHOLD", "0.70"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TIER1_VBIA_THRESHOLD", "0.70"))
     )
     tier2_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TIER2_VBIA_THRESHOLD", "0.85"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TIER2_VBIA_THRESHOLD", "0.85"))
     )
 
     # Pre-execution verification
     pre_execution_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_AUTH_PRE_EXECUTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_AUTH_PRE_EXECUTION", "true").lower() == "true"
     )
 
     # Continuous re-verification for high-risk actions
     continuous_verification: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_CONTINUOUS_VERIFY", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_CONTINUOUS_VERIFY", "false").lower() == "true"
     )
 
     # Environmental adaptation
     environmental_adaptation: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_ENV_ADAPT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_ENV_ADAPT", "true").lower() == "true"
     )
 
     # Cache verification results
     cache_ttl_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_CACHE_TTL", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_CACHE_TTL", "30.0"))
     )
 
     # Anti-spoofing
     anti_spoofing_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_ANTI_SPOOFING_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_ANTI_SPOOFING_ENABLED", "true").lower() == "true"
     )
 
     # Watchdog integration
     watchdog_integration: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_WATCHDOG_INTEGRATION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_WATCHDOG_INTEGRATION", "true").lower() == "true"
     )
 
 
@@ -387,7 +387,7 @@ class VoiceAuthenticationLayer:
         """
         if not loading_server_url:
             loading_server_url = os.getenv(
-                "JARVIS_LOADING_SERVER_URL", "http://localhost:3001"
+                "Ironcliw_LOADING_SERVER_URL", "http://localhost:3001"
             )
 
         try:

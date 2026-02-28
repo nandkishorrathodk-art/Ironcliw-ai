@@ -1,5 +1,5 @@
-"""
-Robust Async Subprocess Manager for JARVIS Vision System
+﻿"""
+Robust Async Subprocess Manager for Ironcliw Vision System
 
 This module provides a production-ready async subprocess management system with:
 - Resource pooling and limits

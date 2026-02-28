@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Quick launcher for JARVIS
+Quick launcher for Ironcliw
 """
 
 import subprocess
@@ -8,7 +8,7 @@ import sys
 import os
 
 # Add note about using async version
-print("🚀 Launching JARVIS with async optimization...")
+print("🚀 Launching Ironcliw with async optimization...")
 print("   (3x faster startup with parallel initialization)\n")
 
 # Run the main startup script

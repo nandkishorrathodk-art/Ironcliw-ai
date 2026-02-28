@@ -1,19 +1,19 @@
-# Voice Unlock Alternative - The Apple Watch-Free Solution with 30% Memory Target
+﻿# Voice Unlock Alternative - The Apple Watch-Free Solution with 30% Memory Target
 
 ## 🎯 Overview
 
-**No Apple Watch? No Problem!** JARVIS Voice Unlock is the perfect alternative to Apple Watch Unlock. This system provides secure **Voice Authentication** for Mac unlocking without requiring any additional hardware, all while maintaining ultra-efficient **30% system memory** usage (4.8GB on 16GB MacBook).
+**No Apple Watch? No Problem!** Ironcliw Voice Unlock is the perfect alternative to Apple Watch Unlock. This system provides secure **Voice Authentication** for Mac unlocking without requiring any additional hardware, all while maintaining ultra-efficient **30% system memory** usage (4.8GB on 16GB MacBook).
 
 💡 **The Voice Unlock Alternative**:
 - **Have Apple Watch?** → You already have automatic Mac unlock built-in
-- **No Apple Watch?** → JARVIS Voice Unlock is your perfect alternative!
+- **No Apple Watch?** → Ironcliw Voice Unlock is your perfect alternative!
 - **Why Voice Unlock?** → Hands-free convenience without buying an Apple Watch
 
 ## 🔓 How It Works
 
 1. **Voice Activation** 🎤
-   - Say: "Hey JARVIS, unlock my Mac"
-   - Alternative: "JARVIS, this is [your name]"
+   - Say: "Hey Ironcliw, unlock my Mac"
+   - Alternative: "Ironcliw, this is [your name]"
    - Wake word detection always listening
 
 2. **Voice Authentication** 🔐
@@ -37,7 +37,7 @@
 | Component | Memory | Purpose |
 |-----------|--------|---------|
 | **Total Budget** | **4.8GB** | **30% of 16GB** |
-| JARVIS Core | 1.0GB | Reduced from 2GB |
+| Ironcliw Core | 1.0GB | Reduced from 2GB |
 | ML Models | 300MB | One at a time |
 | Voice Cache | 100MB | Reduced from 150MB |
 | Proximity | 100MB | Optional Watch detection |
@@ -122,7 +122,7 @@ background_change_tolerance = 0.2
 ```
 1. Mac is locked (screensaver/lock screen)
    ↓
-2. User says: "Hey JARVIS, unlock my Mac"
+2. User says: "Hey Ironcliw, unlock my Mac"
    ↓
 3. Resource manager allocates memory
    ↓
@@ -173,14 +173,14 @@ This simulates the complete flow and shows memory usage at each step.
 - ✅ **Speed**: Unlock in <1 second
 - ✅ **Security**: Voice biometric authentication
 - ✅ **Reliability**: Graceful degradation if resources unavailable
-- ✅ **JARVIS Integration**: "Welcome back, Sir" responses
+- ✅ **Ironcliw Integration**: "Welcome back, Sir" responses
 
 ## 🔧 Troubleshooting
 
 ### "Resource manager denied voice unlock"
 - Close other applications
 - Check memory usage: `ps aux | grep -E "MEM|jarvis"`
-- Restart JARVIS if needed
+- Restart Ironcliw if needed
 
 ### Voice Unlock not working
 - Ensure you've enrolled your voice first
@@ -194,4 +194,4 @@ This simulates the complete flow and shows memory usage at each step.
 
 ## 🎯 Result
 
-With these ultra-aggressive optimizations, JARVIS Voice Unlock provides a perfect Apple Watch alternative while maintaining **≤30% memory usage** on your 16GB MacBook Pro, leaving 70% (11.2GB) free for other applications!
+With these ultra-aggressive optimizations, Ironcliw Voice Unlock provides a perfect Apple Watch alternative while maintaining **≤30% memory usage** on your 16GB MacBook Pro, leaving 70% (11.2GB) free for other applications!

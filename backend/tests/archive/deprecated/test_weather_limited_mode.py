@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test weather functionality in limited mode"""
 
 import asyncio
@@ -65,21 +65,21 @@ async def test_weather_in_limited_mode():
         import traceback
         traceback.print_exc()
         
-    # Third test: Test JARVIS API handling of weather in limited mode
+    # Third test: Test Ironcliw API handling of weather in limited mode
     try:
-        print("\n🤖 Testing JARVIS API weather handling...")
+        print("\n🤖 Testing Ironcliw API weather handling...")
         
         # Clear API key to simulate limited mode
         old_key = os.environ.get('ANTHROPIC_API_KEY')
         os.environ.pop('ANTHROPIC_API_KEY', None)
         
-        from api.jarvis_voice_api import JARVISVoiceAPI
-        from api.jarvis_voice_api import JARVISCommand
+        from api.jarvis_voice_api import IroncliwVoiceAPI
+        from api.jarvis_voice_api import IroncliwCommand
         
-        api = JARVISVoiceAPI()
+        api = IroncliwVoiceAPI()
         
         # Test weather command
-        command = JARVISCommand(text="What's the weather today?")
+        command = IroncliwCommand(text="What's the weather today?")
         result = await api.process_command(command)
         
         print(f"✅ API Response: {result.get('response', 'No response')[:150]}...")
@@ -149,7 +149,7 @@ async def test_my_location_click():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("JARVIS Weather System Test - Limited Mode")
+    print("Ironcliw Weather System Test - Limited Mode")
     print("=" * 60)
     
     # Run tests

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Broadcast Router
+Ironcliw Broadcast Router
 ========================
 
 FastAPI router for supervisor → frontend communication.
@@ -17,7 +17,7 @@ Usage:
     from backend.api.broadcast_router import broadcast_router, manager
     app.include_router(broadcast_router)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -213,7 +213,7 @@ async def broadcast_event(event: BroadcastEvent) -> BroadcastResponse:
     Broadcast an event to all connected WebSocket clients.
     
     This endpoint is called by the supervisor to inject maintenance events
-    into the WebSocket stream before shutting down JARVIS.
+    into the WebSocket stream before shutting down Ironcliw.
     
     Example:
         POST /api/broadcast
@@ -253,9 +253,9 @@ async def get_broadcast_stats():
 @broadcast_router.get("/speech-state")
 async def get_speech_state():
     """
-    Get current JARVIS speech state for self-voice suppression.
+    Get current Ironcliw speech state for self-voice suppression.
     
-    v8.0: Returns whether JARVIS is speaking, in cooldown, and recent spoken text.
+    v8.0: Returns whether Ironcliw is speaking, in cooldown, and recent spoken text.
     This allows frontend to synchronize speech state without waiting for WebSocket.
     
     Returns:
@@ -335,7 +335,7 @@ async def broadcast_websocket(websocket: WebSocket):
     # Send welcome message
     await manager.send_personal(websocket, {
         "type": "connected",
-        "message": "Connected to JARVIS broadcast channel",
+        "message": "Connected to Ironcliw broadcast channel",
         "connection_id": conn_id,
     })
     

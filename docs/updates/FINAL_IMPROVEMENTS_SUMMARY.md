@@ -1,4 +1,4 @@
-# JARVIS AI-Powered Chatbot - Final Improvements Summary
+﻿# Ironcliw AI-Powered Chatbot - Final Improvements Summary
 
 ## 🚀 Major Achievements
 
@@ -60,7 +60,7 @@ python test_langchain_simple.py
 
 ## 🧠 LangChain Capabilities
 
-When memory usage is below 50%, JARVIS can:
+When memory usage is below 50%, Ironcliw can:
 - **Calculate math expressions**: "What is 15 * 23 + 47?"
 - **Search the web**: "Search for latest AI news"
 - **Query Wikipedia**: "Tell me about quantum computing"
@@ -94,7 +94,7 @@ When memory usage is below 50%, JARVIS can:
 
 ## 🎉 Result
 
-JARVIS is now a fully-featured AI assistant that:
+Ironcliw is now a fully-featured AI assistant that:
 - Never crashes on M1 Macs
 - Intelligently manages resources
 - Provides advanced capabilities through LangChain

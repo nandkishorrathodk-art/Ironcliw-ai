@@ -1,8 +1,8 @@
-# JARVIS Voice Unlock Integration Guide
+﻿# Ironcliw Voice Unlock Integration Guide
 
 ## ✅ Integration Complete!
 
-The Voice Unlock system is now fully integrated with JARVIS. Here's how to get started:
+The Voice Unlock system is now fully integrated with Ironcliw. Here's how to get started:
 
 ## 1. Install Dependencies
 
@@ -18,9 +18,9 @@ This will install:
 - Security libraries (cryptography, keyring)
 - macOS integration (PyObjC frameworks)
 
-## 2. Start JARVIS
+## 2. Start Ironcliw
 
-Start the JARVIS system normally:
+Start the Ironcliw system normally:
 
 ```bash
 cd backend
@@ -41,27 +41,27 @@ python test_voice_unlock_integration.py
 ```
 
 This will check:
-- JARVIS health status
+- Ironcliw health status
 - Voice Unlock API availability
 - Configuration loading
 - Audio system functionality
 
 ## 4. Available Commands
 
-You can now use these voice commands with JARVIS:
+You can now use these voice commands with Ironcliw:
 
 ### Setup Commands
-- **"Hey JARVIS, enroll my voice"** - Start voice enrollment process
-- **"Hey JARVIS, test audio"** - Test microphone and audio quality
+- **"Hey Ironcliw, enroll my voice"** - Start voice enrollment process
+- **"Hey Ironcliw, test audio"** - Test microphone and audio quality
 
 ### Control Commands
-- **"Hey JARVIS, enable voice unlock"** - Start monitoring for voice unlock
-- **"Hey JARVIS, disable voice unlock"** - Stop voice unlock monitoring
-- **"Hey JARVIS, voice unlock status"** - Check current status
+- **"Hey Ironcliw, enable voice unlock"** - Start monitoring for voice unlock
+- **"Hey Ironcliw, disable voice unlock"** - Stop voice unlock monitoring
+- **"Hey Ironcliw, voice unlock status"** - Check current status
 
 ### Security Commands
-- **"Hey JARVIS, delete my voiceprint"** - Remove your voice data
-- **"Hey JARVIS, test voice unlock"** - Test unlock without actually unlocking
+- **"Hey Ironcliw, delete my voiceprint"** - Remove your voice data
+- **"Hey Ironcliw, test voice unlock"** - Test unlock without actually unlocking
 
 ## 5. API Endpoints
 
@@ -109,22 +109,22 @@ export VOICE_UNLOCK_MAX_ATTEMPTS=3
 
 # System integration
 export VOICE_UNLOCK_MODE=screensaver
-export VOICE_UNLOCK_JARVIS_RESPONSES=true
+export VOICE_UNLOCK_Ironcliw_RESPONSES=true
 ```
 
 ## 7. Usage Workflow
 
 ### First Time Setup
-1. Say "Hey JARVIS, enroll my voice"
+1. Say "Hey Ironcliw, enroll my voice"
 2. Follow the prompts to record 3-5 voice samples
-3. JARVIS will confirm when enrollment is complete
+3. Ironcliw will confirm when enrollment is complete
 
 ### Daily Use
-1. Say "Hey JARVIS, enable voice unlock" to start monitoring
+1. Say "Hey Ironcliw, enable voice unlock" to start monitoring
 2. When your Mac locks/screensaver activates:
-   - JARVIS will listen for your unlock phrase
+   - Ironcliw will listen for your unlock phrase
    - Say your enrolled phrase to unlock
-3. JARVIS will unlock your Mac if authentication succeeds
+3. Ironcliw will unlock your Mac if authentication succeeds
 
 ### Security
 - All voice data is encrypted and stored locally in macOS Keychain
@@ -147,9 +147,9 @@ If voice unlock doesn't load:
 
 ### API Not Available
 If API endpoints return 404:
-1. Check JARVIS logs for "Voice Unlock API mounted"
+1. Check Ironcliw logs for "Voice Unlock API mounted"
 2. Verify `/health` endpoint shows voice_unlock as enabled
-3. Restart JARVIS if needed
+3. Restart Ironcliw if needed
 
 ## 9. Development
 
@@ -174,4 +174,4 @@ The modular architecture allows easy extension:
 
 ---
 
-Voice Unlock is now ready to use! Say "Hey JARVIS, enroll my voice" to get started.
+Voice Unlock is now ready to use! Say "Hey Ironcliw, enroll my voice" to get started.

@@ -1,8 +1,8 @@
-# JARVIS Autonomous System
+﻿# Ironcliw Autonomous System
 
 ## Overview
 
-The JARVIS Autonomous System transforms JARVIS from a reactive assistant into a proactive digital agent that can see, understand, decide, and act independently across your entire digital workspace. This achieves true Iron Man-level JARVIS capabilities.
+The Ironcliw Autonomous System transforms Ironcliw from a reactive assistant into a proactive digital agent that can see, understand, decide, and act independently across your entire digital workspace. This achieves true Iron Man-level Ironcliw capabilities.
 
 ## 🚀 Key Features
 
@@ -36,20 +36,20 @@ The JARVIS Autonomous System transforms JARVIS from a reactive assistant into a 
 
 Enable autonomous mode:
 ```
-"Hey JARVIS, enable autonomous mode"
-"Hey JARVIS, activate automatic mode"
+"Hey Ironcliw, enable autonomous mode"
+"Hey Ironcliw, activate automatic mode"
 ```
 
 Check status:
 ```
-"Hey JARVIS, what's your autonomous status?"
-"Hey JARVIS, show permission statistics"
+"Hey Ironcliw, what's your autonomous status?"
+"Hey Ironcliw, show permission statistics"
 ```
 
 Manage actions:
 ```
-"Hey JARVIS, rollback last action"
-"Hey JARVIS, disable autonomous mode"
+"Hey Ironcliw, rollback last action"
+"Hey Ironcliw, disable autonomous mode"
 ```
 
 ### Example Autonomous Actions
@@ -93,7 +93,7 @@ The system learns from:
 - Context-specific decisions
 - Success/failure of actions
 
-After ~5 decisions of the same type, JARVIS can start auto-approving or auto-denying similar actions.
+After ~5 decisions of the same type, Ironcliw can start auto-approving or auto-denying similar actions.
 
 ## 🔧 Architecture
 
@@ -169,17 +169,17 @@ The autonomous system integrates seamlessly with:
 
 1. **Enable Autonomous Mode**
    ```
-   "Hey JARVIS, enable autonomous mode"
+   "Hey Ironcliw, enable autonomous mode"
    ```
 
-2. **Let JARVIS Learn**
-   - Use JARVIS normally
+2. **Let Ironcliw Learn**
+   - Use Ironcliw normally
    - It will ask permission for new actions
    - Your decisions train the system
 
 3. **Monitor Progress**
    ```
-   "Hey JARVIS, what's your autonomous status?"
+   "Hey Ironcliw, what's your autonomous status?"
    ```
 
 4. **Adjust as Needed**
@@ -189,9 +189,9 @@ The autonomous system integrates seamlessly with:
 
 ## 🎯 Best Practices
 
-1. **Start Gradually** - Let JARVIS learn your preferences over time
+1. **Start Gradually** - Let Ironcliw learn your preferences over time
 2. **Review Permissions** - Check what's being auto-approved
-3. **Use Feedback** - Tell JARVIS when actions are wrong
+3. **Use Feedback** - Tell Ironcliw when actions are wrong
 4. **Monitor Activity** - Review execution statistics regularly
 5. **Customize Rules** - Adjust thresholds for your workflow
 
@@ -205,7 +205,7 @@ The autonomous system integrates seamlessly with:
 
 ## 🐛 Troubleshooting
 
-### JARVIS not taking actions
+### Ironcliw not taking actions
 - Check if autonomous mode is enabled
 - Verify monitoring is active
 - Review permission denials
@@ -224,7 +224,7 @@ The autonomous system integrates seamlessly with:
 
 ### Morning Routine
 ```
-6:00 AM - JARVIS detects you're starting work
+6:00 AM - Ironcliw detects you're starting work
 - Opens your usual morning apps
 - Checks for overnight messages
 - Prepares daily agenda
@@ -256,4 +256,4 @@ Meeting in 5 minutes detected
 
 ---
 
-**Remember**: JARVIS learns and improves over time. The more you use it, the better it understands your preferences and workflow!
+**Remember**: Ironcliw learns and improves over time. The more you use it, the better it understands your preferences and workflow!

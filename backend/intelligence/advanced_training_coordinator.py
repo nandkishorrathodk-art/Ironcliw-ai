@@ -1,4 +1,4 @@
-"""
+﻿"""
 Advanced Training Coordinator v3.0 - Enterprise-Grade Training Orchestration
 =============================================================================
 
@@ -79,7 +79,7 @@ Example Usage:
         rollout_percentage=10  # Start with 10% traffic
     )
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 3.0.0
 """
 

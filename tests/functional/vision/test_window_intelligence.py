@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Window Intelligence - Dynamic Window Understanding Through Pure Vision
-Tests JARVIS's ability to count, track, and understand windows using Claude's vision
+Tests Ironcliw's ability to count, track, and understand windows using Claude's vision
 """
 
 import asyncio
@@ -82,7 +82,7 @@ async def test_window_counting():
             
             try:
                 response = await chatbot.analyze_screen_with_vision(query)
-                print(f"\n🤖 JARVIS Response:")
+                print(f"\n🤖 Ironcliw Response:")
                 print(response)
                 
                 # Check for window counting intelligence
@@ -151,7 +151,7 @@ async def test_window_relationships():
         
         try:
             response = await chatbot.analyze_screen_with_vision(test['query'])
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -183,7 +183,7 @@ async def test_window_states():
         
         try:
             response = await chatbot.analyze_screen_with_vision(query)
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
             # Check for state awareness
             state_words = ['focus', 'active', 'minimized', 'hidden', 'fullscreen', 'background', 'foreground']
@@ -234,7 +234,7 @@ async def test_workflow_detection():
         
         try:
             response = await chatbot.analyze_screen_with_vision(scenario['query'])
-            print(f"\n🤖 JARVIS: {response}")
+            print(f"\n🤖 Ironcliw: {response}")
             
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -255,7 +255,7 @@ async def test_monitoring_window_changes():
     
     print("Starting window monitoring...")
     response = await chatbot.generate_response("Start monitoring my windows and desktop spaces")
-    print(f"JARVIS: {response}")
+    print(f"Ironcliw: {response}")
     
     await asyncio.sleep(3)
     
@@ -270,18 +270,18 @@ async def test_monitoring_window_changes():
     for query in monitoring_queries:
         print(f"\n📍 Monitoring Query: {query}")
         response = await chatbot.generate_response(query)
-        print(f"🤖 JARVIS: {response}")
+        print(f"🤖 Ironcliw: {response}")
         await asyncio.sleep(2)
     
     print("\nStopping monitoring...")
     response = await chatbot.generate_response("Stop monitoring")
-    print(f"JARVIS: {response}")
+    print(f"Ironcliw: {response}")
 
 
 async def main():
     """Run all window intelligence tests"""
     
-    print("🧪 JARVIS Window Intelligence Test Suite")
+    print("🧪 Ironcliw Window Intelligence Test Suite")
     print("Testing pure vision-based window understanding")
     print("=" * 70)
     
@@ -321,7 +321,7 @@ async def main():
     print("✅ Detects window states (active, minimized, hidden)")
     print("✅ Recognizes workflow patterns from arrangements")
     print("✅ Tracks window changes in real-time")
-    print("\nJARVIS can now provide insights like:")
+    print("\nIroncliw can now provide insights like:")
     print("- 'You have 15 windows across 4 desktop spaces'")
     print("- 'Chrome has 5 windows with ~20 tabs total'")
     print("- 'Your dev workflow has VS Code and Terminal arranged side-by-side'")

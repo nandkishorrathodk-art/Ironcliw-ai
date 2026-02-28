@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Coordinator Agent
+﻿"""
+Ironcliw Neural Mesh - Coordinator Agent
 
 The central coordinator agent that manages agent orchestration,
 task delegation, and cross-agent communication.

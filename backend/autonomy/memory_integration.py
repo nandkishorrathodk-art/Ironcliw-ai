@@ -1,5 +1,5 @@
-"""
-Memory Integration and Checkpointing for JARVIS LangGraph
+﻿"""
+Memory Integration and Checkpointing for Ironcliw LangGraph
 
 This module provides sophisticated memory and state management including:
 - Multi-tier memory (working, short-term, long-term, episodic)
@@ -796,23 +796,23 @@ class ConversationMemory:
 
         # Persistent conversation memory settings
         self._session_id = os.getenv(
-            "JARVIS_CONVERSATION_MEMORY_SESSION_ID",
+            "Ironcliw_CONVERSATION_MEMORY_SESSION_ID",
             f"conv_{uuid4().hex[:12]}",
         )
         self._persistence_enabled = os.getenv(
-            "JARVIS_CONVERSATION_MEMORY_ENABLED",
+            "Ironcliw_CONVERSATION_MEMORY_ENABLED",
             "true",
         ).lower() in ("1", "true", "yes")
         self._queue_maxsize = max(
             100,
-            int(os.getenv("JARVIS_CONVERSATION_MEMORY_QUEUE_SIZE", "1000")),
+            int(os.getenv("Ironcliw_CONVERSATION_MEMORY_QUEUE_SIZE", "1000")),
         )
         self._worker_count = max(
             1,
-            int(os.getenv("JARVIS_CONVERSATION_MEMORY_WORKERS", "1")),
+            int(os.getenv("Ironcliw_CONVERSATION_MEMORY_WORKERS", "1")),
         )
         self._drain_timeout = float(
-            os.getenv("JARVIS_CONVERSATION_MEMORY_DRAIN_TIMEOUT", "10.0")
+            os.getenv("Ironcliw_CONVERSATION_MEMORY_DRAIN_TIMEOUT", "10.0")
         )
 
         self._persist_queue: "asyncio.Queue[Dict[str, Any]]" = asyncio.Queue(
@@ -1373,9 +1373,9 @@ class EpisodicMemory:
 # LangGraph Checkpointer
 # ============================================================================
 
-class JARVISCheckpointer(BaseCheckpointSaver if LANGGRAPH_AVAILABLE else object):
+class IroncliwCheckpointer(BaseCheckpointSaver if LANGGRAPH_AVAILABLE else object):
     """
-    Custom checkpointer for LangGraph with JARVIS integration.
+    Custom checkpointer for LangGraph with Ironcliw integration.
 
     Supports multiple storage backends and integrates with
     the memory management system.
@@ -1674,7 +1674,7 @@ def create_memory_manager(
 def create_checkpointer(
     backend: StorageBackend = StorageBackend.SQLITE,
     storage_path: str = ".jarvis_cache/checkpoints"
-) -> JARVISCheckpointer:
+) -> IroncliwCheckpointer:
     """
     Create a configured checkpointer.
 
@@ -1683,9 +1683,9 @@ def create_checkpointer(
         storage_path: Path for storage
 
     Returns:
-        Configured JARVISCheckpointer
+        Configured IroncliwCheckpointer
     """
-    return JARVISCheckpointer(storage_path=storage_path, backend=backend)
+    return IroncliwCheckpointer(storage_path=storage_path, backend=backend)
 
 
 # ============================================================================

@@ -1,4 +1,4 @@
-# JARVIS Troubleshooting Guide
+﻿# Ironcliw Troubleshooting Guide
 
 ## Microphone Issues
 
@@ -98,7 +98,7 @@ This error typically occurs when:
 2. **Enable Web Speech API**
    - Chrome: chrome://flags/#enable-experimental-web-platform-features
 
-### JARVIS Not Responding
+### Ironcliw Not Responding
 
 1. **Check API key**
    ```bash
@@ -115,7 +115,7 @@ This error typically occurs when:
    ```bash
    curl -X POST http://localhost:8000/jarvis/command \
      -H "Content-Type: application/json" \
-     -d '{"text": "Hello JARVIS"}'
+     -d '{"text": "Hello Ironcliw"}'
    ```
 
 ## Debug Mode
@@ -124,7 +124,7 @@ Enable debug mode for detailed logging:
 
 ```javascript
 // In browser console
-localStorage.setItem('JARVIS_DEBUG', 'true');
+localStorage.setItem('Ironcliw_DEBUG', 'true');
 location.reload();
 ```
 

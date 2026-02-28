@@ -1,10 +1,10 @@
-"""
+﻿"""
 Trinity Event Bus v100.2 - Unified Cross-Repository Event Streaming
 ====================================================================
 
 Provides RabbitMQ/NATS-style event streaming across Trinity repositories:
-- JARVIS (Body) - Main AI agent
-- JARVIS Prime (Mind) - Local LLM inference
+- Ironcliw (Body) - Main AI agent
+- Ironcliw Prime (Mind) - Local LLM inference
 - Reactor Core (Nerves) - Training pipeline
 
 Features:
@@ -23,7 +23,7 @@ Architecture:
     ├──────────────────────────────────────────────────────────────────┤
     │                                                                  │
     │   ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐  │
-    │   │   JARVIS    │    │   Prime     │    │   Reactor Core      │  │
+    │   │   Ironcliw    │    │   Prime     │    │   Reactor Core      │  │
     │   │   (Body)    │◄──►│   (Mind)    │◄──►│   (Nerves)          │  │
     │   └──────┬──────┘    └──────┬──────┘    └──────────┬──────────┘  │
     │          │                  │                       │            │
@@ -62,7 +62,7 @@ Usage:
     # Publish events (cross-repo)
     await bus.publish(TrinityEvent(
         topic="training.started",
-        source=RepoType.JARVIS,
+        source=RepoType.Ironcliw,
         payload={"model": "voice_auth", "dataset_size": 1000}
     ))
 
@@ -160,12 +160,12 @@ class EventBusConfig:
     DEDUP_WINDOW_SECONDS = _env_int("TRINITY_DEDUP_WINDOW", 60)
 
     # Cross-repo paths
-    JARVIS_PATH = Path(_env_str(
-        "JARVIS_REPO",
-        str(Path.home() / "Documents/repos/JARVIS-AI-Agent")
+    Ironcliw_PATH = Path(_env_str(
+        "Ironcliw_REPO",
+        str(Path.home() / "Documents/repos/Ironcliw-AI-Agent")
     ))
     PRIME_PATH = Path(_env_str(
-        "JARVIS_PRIME_REPO",
+        "Ironcliw_PRIME_REPO",
         str(Path.home() / "Documents/repos/jarvis-prime")
     ))
     REACTOR_PATH = Path(_env_str(
@@ -180,7 +180,7 @@ class EventBusConfig:
 
 class RepoType(Enum):
     """Trinity repository types."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     PRIME = "prime"
     REACTOR = "reactor"
     BROADCAST = "broadcast"  # All repos
@@ -263,7 +263,7 @@ class TrinityEvent:
     """A cross-repository event."""
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     topic: str = ""
-    source: RepoType = RepoType.JARVIS
+    source: RepoType = RepoType.Ironcliw
     target: RepoType = RepoType.BROADCAST
     priority: EventPriority = EventPriority.NORMAL
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -818,7 +818,7 @@ class TrinityEventBus:
     - Distributed tracing
     """
 
-    def __init__(self, local_repo: RepoType = RepoType.JARVIS):
+    def __init__(self, local_repo: RepoType = RepoType.Ironcliw):
         self.local_repo = local_repo
         self._running = False
 
@@ -859,7 +859,7 @@ class TrinityEventBus:
     @classmethod
     async def create(
         cls,
-        local_repo: RepoType = RepoType.JARVIS,
+        local_repo: RepoType = RepoType.Ironcliw,
     ) -> "TrinityEventBus":
         """Create and start the event bus."""
         bus = cls(local_repo)
@@ -941,7 +941,7 @@ class TrinityEventBus:
             raise RuntimeError("Event bus not running")
 
         # Set source if not set
-        if event.source == RepoType.JARVIS:
+        if event.source == RepoType.Ironcliw:
             event.source = self.local_repo
 
         # Deduplication
@@ -1307,7 +1307,7 @@ _bus_lock = LazyAsyncLock()  # v100.1: Lazy initialization to avoid "no running 
 
 
 async def get_trinity_event_bus(
-    local_repo: RepoType = RepoType.JARVIS,
+    local_repo: RepoType = RepoType.Ironcliw,
 ) -> TrinityEventBus:
     """Get or create the global event bus."""
     global _bus

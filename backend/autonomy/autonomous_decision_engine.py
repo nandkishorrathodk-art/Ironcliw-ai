@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Autonomous Decision Engine for JARVIS
+Autonomous Decision Engine for Ironcliw
 
-This module provides intelligent autonomous decision-making capabilities for JARVIS,
+This module provides intelligent autonomous decision-making capabilities for Ironcliw,
 analyzing workspace state and making contextual decisions without hardcoded rules.
 The engine integrates with the Goal Inference System to provide predictive automation
 based on inferred user goals and learned patterns.
@@ -89,7 +89,7 @@ class ActionCategory(Enum):
 
 @dataclass
 class AutonomousAction:
-    """Represents an autonomous action JARVIS can take.
+    """Represents an autonomous action Ironcliw can take.
     
     Encapsulates all information needed to execute an autonomous action,
     including parameters, confidence levels, and permission requirements.

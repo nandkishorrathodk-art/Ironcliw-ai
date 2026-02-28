@@ -1,7 +1,7 @@
-# Coordinate Doubling Investigation
+﻿# Coordinate Doubling Investigation
 
 ## Problem Statement
-When you tell JARVIS "living room tv", the mouse moves to **(2475, 15)** instead of the correct Control Center position **(1236, 12)**. This is approximately double the intended coordinates.
+When you tell Ironcliw "living room tv", the mouse moves to **(2475, 15)** instead of the correct Control Center position **(1236, 12)**. This is approximately double the intended coordinates.
 
 ## What We've Done
 
@@ -34,25 +34,25 @@ When you tell JARVIS "living room tv", the mouse moves to **(2475, 15)** instead
 1. **The code is correct** - sends (1236, 12)
 2. **PyAutoGUI works correctly** - when tested directly
 3. **The debug log confirms** - (1236, 12) is being sent
-4. **BUT the mouse still goes to (2475, 15)** - only when JARVIS runs
+4. **BUT the mouse still goes to (2475, 15)** - only when Ironcliw runs
 
 ## The Mystery
 
 The doubling happens **AFTER** the correct coordinates are sent to PyAutoGUI, which means:
 - Not a code issue (we verified the values)
 - Not a PyAutoGUI issue (it works in tests)
-- Likely a **runtime/environment issue** specific to how JARVIS launches
+- Likely a **runtime/environment issue** specific to how Ironcliw launches
 
 ## Possible Causes
 
-1. **Something in JARVIS's startup sequence** modifies coordinate handling
+1. **Something in Ironcliw's startup sequence** modifies coordinate handling
 2. **An imported module** that we haven't identified yet
-3. **macOS accessibility permissions** applied differently when JARVIS runs
+3. **macOS accessibility permissions** applied differently when Ironcliw runs
 4. **Display configuration** that's different at runtime
 
 ## What To Do Next
 
-### When You Start JARVIS:
+### When You Start Ironcliw:
 
 1. **Check the startup output** for:
    ```
@@ -73,7 +73,7 @@ The doubling happens **AFTER** the correct coordinates are sent to PyAutoGUI, wh
    ```
    This shows system information at startup
 
-4. **Tell JARVIS "living room tv"** and watch:
+4. **Tell Ironcliw "living room tv"** and watch:
    - Where the mouse actually goes
    - What the debug log says
 
@@ -86,17 +86,17 @@ The doubling happens **AFTER** the correct coordinates are sent to PyAutoGUI, wh
 
 ```bash
 # Clear cache before starting
-find /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent -name "*.pyc" -delete
-find /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
+find /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent -name "*.pyc" -delete
+find /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
 
 # Clear old logs
 rm /tmp/jarvis_coordinate_debug.log
 rm /tmp/jarvis_coordinate_diagnostic.log
 
-# Start JARVIS
+# Start Ironcliw
 # (your normal start command)
 
-# After telling JARVIS "living room tv", check logs:
+# After telling Ironcliw "living room tv", check logs:
 cat /tmp/jarvis_coordinate_debug.log
 cat /tmp/jarvis_coordinate_diagnostic.log
 ```
@@ -120,10 +120,10 @@ cat /tmp/jarvis_coordinate_diagnostic.log
 
 ✅ Code is correct
 ✅ Tests pass
-❌ JARVIS still shows issue
-🔍 **Need logs from actual JARVIS run to diagnose further**
+❌ Ironcliw still shows issue
+🔍 **Need logs from actual Ironcliw run to diagnose further**
 
-The debugging infrastructure is now in place. When you run JARVIS and tell it "living room tv", we'll capture:
+The debugging infrastructure is now in place. When you run Ironcliw and tell it "living room tv", we'll capture:
 - Exact coordinates being sent
 - Call stack
 - System state

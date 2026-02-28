@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Direct test of video streaming initialization
 """
@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 # Add backend directory to path
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 async def test_video_streaming():
     """Test video streaming directly"""

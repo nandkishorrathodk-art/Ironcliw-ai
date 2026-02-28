@@ -1,4 +1,4 @@
-# Semantic Cache with LSH Documentation
+﻿# Semantic Cache with LSH Documentation
 
 ## Overview
 
@@ -167,25 +167,25 @@ result = await analyzer.analyze_screenshot(
 
 ```bash
 # Cache sizes (MB)
-JARVIS_L1_CACHE_SIZE=20
-JARVIS_L2_CACHE_SIZE=100
-JARVIS_L3_CACHE_SIZE=80
-JARVIS_L4_CACHE_SIZE=50
+Ironcliw_L1_CACHE_SIZE=20
+Ironcliw_L2_CACHE_SIZE=100
+Ironcliw_L3_CACHE_SIZE=80
+Ironcliw_L4_CACHE_SIZE=50
 
 # TTL settings (seconds)
-JARVIS_L1_TTL=30
-JARVIS_L2_TTL=300
-JARVIS_L3_TTL=1800
-JARVIS_L4_TTL_DYNAMIC=true
+Ironcliw_L1_TTL=30
+Ironcliw_L2_TTL=300
+Ironcliw_L3_TTL=1800
+Ironcliw_L4_TTL_DYNAMIC=true
 
 # LSH parameters
-JARVIS_LSH_NUM_TABLES=12
-JARVIS_LSH_HASH_SIZE=10
-JARVIS_SIMILARITY_THRESHOLD=0.85
+Ironcliw_LSH_NUM_TABLES=12
+Ironcliw_LSH_HASH_SIZE=10
+Ironcliw_SIMILARITY_THRESHOLD=0.85
 
 # Features
-JARVIS_ENABLE_SIMD=true
-JARVIS_ENABLE_PREDICTIVE_CACHE=true
+Ironcliw_ENABLE_SIMD=true
+Ironcliw_ENABLE_PREDICTIVE_CACHE=true
 ```
 
 ### Programmatic Configuration

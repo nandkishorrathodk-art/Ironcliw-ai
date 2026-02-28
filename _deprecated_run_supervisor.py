@@ -1,18 +1,18 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Supervisor Entry Point - Production Grade v131.0 (One Command Edition)
+Ironcliw Supervisor Entry Point - Production Grade v131.0 (One Command Edition)
 ==============================================================================
 
 Advanced, robust, async, parallel, intelligent, and dynamic supervisor entry point.
-This is the SINGLE COMMAND needed to run JARVIS - it handles everything.
+This is the SINGLE COMMAND needed to run Ironcliw - it handles everything.
 
 v131.0 ONE COMMAND = SHUTDOWN → START:
 - 🔄 Automatic restart: Running `python3 run_supervisor.py` always gives you a fresh supervisor
 - 🛡️ Graceful shutdown: Existing supervisor is shut down cleanly before starting new one
 - ✅ Lock verification: Ensures all locks are cleaned before restarting
 - ⚡ Force cleanup fallback: If graceful fails, force cleanup ensures success
-- 🔧 Cross-repo cleanup: Cleans up JARVIS, JARVIS-Prime, and Reactor-Core stale resources
-- 🎛️ Opt-out available: Set JARVIS_SUPERVISOR_SKIP_RESTART=1 to keep old "No action needed" behavior
+- 🔧 Cross-repo cleanup: Cleans up Ironcliw, Ironcliw-Prime, and Reactor-Core stale resources
+- 🎛️ Opt-out available: Set Ironcliw_SUPERVISOR_SKIP_RESTART=1 to keep old "No action needed" behavior
 
 v5.0 Living OS Features:
 - 🔥 DEV MODE: Hot reload / live reload - edit code and see changes instantly
@@ -22,7 +22,7 @@ v5.0 Living OS Features:
 - 📋 Prime Directives (immutable safety constraints)
 - 🧠 AGI OS integration for intelligent decision making
 
-v7.0 JARVIS-Prime Integration:
+v7.0 Ironcliw-Prime Integration:
 - 🧠 Tier-0 Local Brain: GGUF model inference via llama-cpp-python
 - 🐳 Docker/Cloud Run: Serverless deployment to Google Cloud Run
 - 🔬 Reactor-Core: Auto-deployment of trained models from reactor-core
@@ -30,9 +30,9 @@ v7.0 JARVIS-Prime Integration:
 
 Dev Mode (Hot Reload):
     When you run `python3 run_supervisor.py`, it:
-    1. Starts JARVIS normally
+    1. Starts Ironcliw normally
     2. Watches your code for changes (.py, .yaml files)
-    3. Automatically restarts JARVIS when you save changes
+    3. Automatically restarts Ironcliw when you save changes
     4. You never have to manually restart while developing!
     
     This is like "nodemon" for Python - write code, save, see changes.
@@ -61,7 +61,7 @@ Architecture:
                               │
                               ▼
     ┌─────────────────────────────────────────────────────────────┐
-    │  JARVISSupervisor (core/supervisor/jarvis_supervisor.py)    │
+    │  IroncliwSupervisor (core/supervisor/jarvis_supervisor.py)    │
     │  ├── ZeroTouchEngine (autonomous updates)                   │
     │  ├── DeadManSwitch (stability verification)                 │
     │  ├── UpdateEngine (staging, validation, classification)     │
@@ -71,15 +71,15 @@ Architecture:
     └─────────────────────────────────────────────────────────────┘
 
 Usage:
-    # Run supervisor (recommended way to start JARVIS)
+    # Run supervisor (recommended way to start Ironcliw)
     # This is ALL you need - it handles everything including hot reload!
     python run_supervisor.py
 
     # Disable dev mode / hot reload (production)
-    JARVIS_DEV_MODE=false python run_supervisor.py
+    Ironcliw_DEV_MODE=false python run_supervisor.py
 
     # With debug logging
-    JARVIS_SUPERVISOR_LOG_LEVEL=DEBUG python run_supervisor.py
+    Ironcliw_SUPERVISOR_LOG_LEVEL=DEBUG python run_supervisor.py
 
     # Disable voice narration
     STARTUP_NARRATOR_VOICE=false python run_supervisor.py
@@ -88,41 +88,41 @@ Usage:
     SKIP_RESOURCE_CHECK=true python run_supervisor.py
 
     # Enable Zero-Touch autonomous updates
-    JARVIS_ZERO_TOUCH_ENABLED=true python run_supervisor.py
+    Ironcliw_ZERO_TOUCH_ENABLED=true python run_supervisor.py
 
     # Configure Dead Man's Switch probation period
-    JARVIS_DMS_PROBATION_SECONDS=60 python run_supervisor.py
+    Ironcliw_DMS_PROBATION_SECONDS=60 python run_supervisor.py
 
     # Configure hot reload check interval (default: 10s)
-    JARVIS_RELOAD_CHECK_INTERVAL=5 python run_supervisor.py
+    Ironcliw_RELOAD_CHECK_INTERVAL=5 python run_supervisor.py
 
     # Configure startup grace period before hot reload activates (default: 120s)
-    JARVIS_RELOAD_GRACE_PERIOD=60 python run_supervisor.py
+    Ironcliw_RELOAD_GRACE_PERIOD=60 python run_supervisor.py
 
     # ═══════════════════════════════════════════════════════════════════
-    # JARVIS-Prime Configuration (v7.0)
+    # Ironcliw-Prime Configuration (v7.0)
     # ═══════════════════════════════════════════════════════════════════
 
-    # Disable JARVIS-Prime (use cloud APIs only)
-    JARVIS_PRIME_ENABLED=false python run_supervisor.py
+    # Disable Ironcliw-Prime (use cloud APIs only)
+    Ironcliw_PRIME_ENABLED=false python run_supervisor.py
 
-    # Use Docker container for JARVIS-Prime
-    JARVIS_PRIME_USE_DOCKER=true python run_supervisor.py
+    # Use Docker container for Ironcliw-Prime
+    Ironcliw_PRIME_USE_DOCKER=true python run_supervisor.py
 
-    # Use Cloud Run for JARVIS-Prime
-    JARVIS_PRIME_USE_CLOUD_RUN=true \
-    JARVIS_PRIME_CLOUD_RUN_URL=https://jarvis-prime-xxx.run.app \
+    # Use Cloud Run for Ironcliw-Prime
+    Ironcliw_PRIME_USE_CLOUD_RUN=true \
+    Ironcliw_PRIME_CLOUD_RUN_URL=https://jarvis-prime-xxx.run.app \
     python run_supervisor.py
 
     # Custom model path
-    JARVIS_PRIME_MODELS_DIR=/path/to/models python run_supervisor.py
+    Ironcliw_PRIME_MODELS_DIR=/path/to/models python run_supervisor.py
 
     # Enable Reactor-Core auto-deployment
     REACTOR_CORE_ENABLED=true \
     REACTOR_CORE_OUTPUT=/path/to/reactor-core/output \
     python run_supervisor.py
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 131.0.0
 """
 from __future__ import annotations
@@ -176,8 +176,8 @@ if _is_cli_mode:
     #
     # v116.2: Extended to --shutdown to prevent exit code 144 (signal 16) during venv switch
     _needs_detached = (
-        ('--restart' in _early_sys.argv and not _early_os.environ.get('_JARVIS_RESTART_REEXEC')) or
-        ('--shutdown' in _early_sys.argv and not _early_os.environ.get('_JARVIS_SHUTDOWN_REEXEC'))
+        ('--restart' in _early_sys.argv and not _early_os.environ.get('_Ironcliw_RESTART_REEXEC')) or
+        ('--shutdown' in _early_sys.argv and not _early_os.environ.get('_Ironcliw_SHUTDOWN_REEXEC'))
     )
     if _needs_detached:
         import subprocess as _sp
@@ -187,7 +187,7 @@ if _is_cli_mode:
         _is_shutdown = '--shutdown' in _early_sys.argv
         _is_restart = '--restart' in _early_sys.argv
         _cmd_name = 'shutdown' if _is_shutdown else 'restart'
-        _reexec_marker = '_JARVIS_SHUTDOWN_REEXEC' if _is_shutdown else '_JARVIS_RESTART_REEXEC'
+        _reexec_marker = '_Ironcliw_SHUTDOWN_REEXEC' if _is_shutdown else '_Ironcliw_RESTART_REEXEC'
 
         # Create result file path
         _result_path = f"/tmp/jarvis_{_cmd_name}_{_early_os.getpid()}.result"
@@ -240,7 +240,7 @@ with open({_result_path!r}, "w") as f:
         # Print message and exit IMMEDIATELY - don't wait for child
         _early_sys.stdout.write(f"\n")
         _early_sys.stdout.write(f"{'='*60}\n")
-        _early_sys.stdout.write(f"  JARVIS Supervisor {_cmd_name.title()} Initiated\n")
+        _early_sys.stdout.write(f"  Ironcliw Supervisor {_cmd_name.title()} Initiated\n")
         _early_sys.stdout.write(f"{'='*60}\n")
         _early_sys.stdout.write(f"  The {_cmd_name} is running in background.\n")
         _early_sys.stdout.write(f"  \n")
@@ -258,7 +258,7 @@ with open({_result_path!r}, "w") as f:
         pass  # May fail if already session leader
 
     # Debug marker for verification
-    _early_os.environ['_JARVIS_CLI_PROTECTED'] = '1'
+    _early_os.environ['_Ironcliw_CLI_PROTECTED'] = '1'
 
 # Clean up early imports (will be re-imported properly below)
 del _early_sys, _early_signal, _early_os, _cli_flags, _is_cli_mode
@@ -286,11 +286,11 @@ def _ensure_venv_python():
     executable paths (since venv Python often symlinks to system Python).
     """
     # Skip if explicitly disabled (for debugging)
-    if _os.environ.get('JARVIS_SKIP_VENV_CHECK') == '1':
+    if _os.environ.get('Ironcliw_SKIP_VENV_CHECK') == '1':
         return
 
     # Skip if already re-executed (prevent infinite loop)
-    if _os.environ.get('_JARVIS_VENV_REEXEC') == '1':
+    if _os.environ.get('_Ironcliw_VENV_REEXEC') == '1':
         return
 
     # Find project root and venv
@@ -320,12 +320,12 @@ def _ensure_venv_python():
         return
 
     # NOT running with venv - need to re-exec
-    print(f"[JARVIS] Detected system Python without venv packages")
-    print(f"[JARVIS] Current: {_sys.executable}")
-    print(f"[JARVIS] Switching to: {venv_python}")
+    print(f"[Ironcliw] Detected system Python without venv packages")
+    print(f"[Ironcliw] Current: {_sys.executable}")
+    print(f"[Ironcliw] Switching to: {venv_python}")
 
     # Set marker to prevent infinite re-exec
-    _os.environ['_JARVIS_VENV_REEXEC'] = '1'
+    _os.environ['_Ironcliw_VENV_REEXEC'] = '1'
 
     # Set PYTHONPATH to include project directories
     pythonpath = _os.pathsep.join([
@@ -443,22 +443,22 @@ def _fast_supervisor_check():
     # =================================================================
     # By default, we now restart even if supervisor is healthy.
     # This makes `python3 run_supervisor.py` idempotent.
-    # Set JARVIS_SUPERVISOR_SKIP_RESTART=1 to keep old behavior.
+    # Set Ironcliw_SUPERVISOR_SKIP_RESTART=1 to keep old behavior.
     # =================================================================
-    _skip_restart = _os.environ.get('JARVIS_SUPERVISOR_SKIP_RESTART', '').lower() in ('1', 'true', 'yes')
+    _skip_restart = _os.environ.get('Ironcliw_SUPERVISOR_SKIP_RESTART', '').lower() in ('1', 'true', 'yes')
 
     if not _skip_restart:
         # v131.0: Don't fast-exit - need full init for shutdown → start
         return False  # Let main() handle the shutdown → start sequence
 
-    # Legacy behavior (when JARVIS_SUPERVISOR_SKIP_RESTART=1):
+    # Legacy behavior (when Ironcliw_SUPERVISOR_SKIP_RESTART=1):
     # v119.2b: Show concise success message and exit
     pid = health_data.get('pid', 'unknown')
     uptime = health_data.get('uptime_seconds', 0)
     uptime_str = f"{int(uptime // 60)}m {int(uptime % 60)}s" if uptime > 60 else f"{int(uptime)}s"
 
     print(f"\n{'='*70}")
-    print(f"✅ JARVIS Supervisor (PID {pid}) is running and healthy")
+    print(f"✅ Ironcliw Supervisor (PID {pid}) is running and healthy")
     print(f"{'='*70}")
     print(f"   Health:  {health_level}")
     print(f"   Uptime:  {uptime_str}")
@@ -474,7 +474,7 @@ def _fast_supervisor_check():
 
     print(f"")
     print(f"   No action needed - supervisor is ready to use.")
-    print(f"   (v131.0: Set JARVIS_SUPERVISOR_SKIP_RESTART=0 to enable auto-restart)")
+    print(f"   (v131.0: Set Ironcliw_SUPERVISOR_SKIP_RESTART=0 to enable auto-restart)")
     print(f"")
     print(f"   Commands:  --restart | --shutdown | --status")
     print(f"{'='*70}\n")
@@ -588,7 +588,7 @@ def _apply_early_pytorch_compat():
                 raise
 
         _pytree.register_pytree_node = _compat_register_pytree_node
-        if _os.environ.get("JARVIS_DEBUG"):
+        if _os.environ.get("Ironcliw_DEBUG"):
             print("[v93.0] ✓ Applied pytree compatibility wrapper (filters unsupported kwargs)", file=_sys.stderr)
         return True
 
@@ -598,7 +598,7 @@ def _apply_early_pytorch_compat():
         pass  # Silently ignore - prevents import errors
 
     _pytree.register_pytree_node = _noop_register
-    if _os.environ.get("JARVIS_DEBUG"):
+    if _os.environ.get("Ironcliw_DEBUG"):
         print("[v93.0] ⚠ Applied no-op pytree shim (limited functionality)", file=_sys.stderr)
     return True
 
@@ -629,7 +629,7 @@ def _apply_transformers_security_bypass():
     import sys as _sys
 
     # Check if bypass is explicitly disabled
-    if _os.environ.get("JARVIS_STRICT_TORCH_SECURITY") == "1":
+    if _os.environ.get("Ironcliw_STRICT_TORCH_SECURITY") == "1":
         return False
 
     try:
@@ -683,7 +683,7 @@ def _apply_transformers_security_bypass():
         except ImportError:
             pass
 
-        if _os.environ.get("JARVIS_DEBUG"):
+        if _os.environ.get("Ironcliw_DEBUG"):
             print(f"[v93.1] ⚠ Bypassed transformers CVE-2025-32434 check (PyTorch {torch.__version__} < 2.6)", file=_sys.stderr)
             print(f"[v93.1]   Recommendation: pip install torch>=2.6 for full security", file=_sys.stderr)
 
@@ -692,7 +692,7 @@ def _apply_transformers_security_bypass():
     except ImportError:
         return False
     except Exception as e:
-        if _os.environ.get("JARVIS_DEBUG"):
+        if _os.environ.get("Ironcliw_DEBUG"):
             print(f"[v93.1] Failed to apply transformers security bypass: {e}", file=_sys.stderr)
         return False
 
@@ -761,7 +761,7 @@ def _load_environment_files():
     Load environment variables from .env files in priority order.
 
     v111.4: Added .env.gcp loading for hybrid cloud architecture.
-    This enables JARVIS_PREFER_CLOUD_RUN, JARVIS_SPOT_VM_ENABLED, etc.
+    This enables Ironcliw_PREFER_CLOUD_RUN, Ironcliw_SPOT_VM_ENABLED, etc.
     which are critical for offloading ML workloads to GCP.
     """
     try:
@@ -793,10 +793,10 @@ def _load_environment_files():
     if ".env.gcp" in loaded_files:
         print(f"[v111.4] ✅ Loaded GCP hybrid cloud config - cloud offloading enabled")
         # Verify key settings
-        if os.environ.get("JARVIS_PREFER_CLOUD_RUN", "").lower() == "true":
-            print(f"[v111.4]    → JARVIS_PREFER_CLOUD_RUN=true (ML inference → GCP Cloud Run)")
-        if os.environ.get("JARVIS_SPOT_VM_ENABLED", "").lower() == "true":
-            print(f"[v111.4]    → JARVIS_SPOT_VM_ENABLED=true (heavy workloads → Spot VMs)")
+        if os.environ.get("Ironcliw_PREFER_CLOUD_RUN", "").lower() == "true":
+            print(f"[v111.4]    → Ironcliw_PREFER_CLOUD_RUN=true (ML inference → GCP Cloud Run)")
+        if os.environ.get("Ironcliw_SPOT_VM_ENABLED", "").lower() == "true":
+            print(f"[v111.4]    → Ironcliw_SPOT_VM_ENABLED=true (heavy workloads → Spot VMs)")
 
 # Execute environment loading immediately
 _load_environment_files()
@@ -825,7 +825,7 @@ except ImportError:
 # v151.0: SHUTDOWN DIAGNOSTICS - Deep Forensic Logging for Shutdown Analysis
 # =============================================================================
 # This module provides enterprise-grade diagnostic logging to trace exactly
-# what triggers shutdown events in the JARVIS system. If the system shuts down
+# what triggers shutdown events in the Ironcliw system. If the system shuts down
 # unexpectedly, check ~/.jarvis/trinity/shutdown_forensics.json for full trace.
 # =============================================================================
 try:
@@ -1447,7 +1447,7 @@ def get_unified_signal_handler() -> UnifiedSignalHandler:
 # EARLY SHUTDOWN HOOK REGISTRATION
 # =============================================================================
 # Register shutdown hook as early as possible to ensure GCP VMs are cleaned up
-# even if JARVIS crashes during startup. The hook handles its own idempotency.
+# even if Ironcliw crashes during startup. The hook handles its own idempotency.
 # =============================================================================
 try:
     from backend.scripts.shutdown_hook import register_handlers as _register_shutdown_handlers
@@ -1464,7 +1464,7 @@ class SupervisorManagedProcess:
     """
     Metadata for a supervisor-managed cross-repo process.
 
-    These are processes like JARVIS-Prime and Reactor-Core that run
+    These are processes like Ironcliw-Prime and Reactor-Core that run
     in sibling repositories and need cross-repo restart management.
     """
     name: str
@@ -1483,7 +1483,7 @@ class SupervisorRestartManager:
     Cross-repo process restart manager for supervisor-level services.
 
     Manages automatic restart of:
-    - JARVIS-Prime (local inference server)
+    - Ironcliw-Prime (local inference server)
     - Reactor-Core (training/ML services)
 
     Features:
@@ -1495,9 +1495,9 @@ class SupervisorRestartManager:
     - Environment variable configuration
 
     Environment Variables:
-        JARVIS_SUPERVISOR_MAX_RESTARTS: Maximum restart attempts (default: 3)
-        JARVIS_SUPERVISOR_MAX_BACKOFF: Maximum backoff delay in seconds (default: 60.0)
-        JARVIS_SUPERVISOR_RESTART_COOLDOWN: Stability period before count reset (default: 600.0)
+        Ironcliw_SUPERVISOR_MAX_RESTARTS: Maximum restart attempts (default: 3)
+        Ironcliw_SUPERVISOR_MAX_BACKOFF: Maximum backoff delay in seconds (default: 60.0)
+        Ironcliw_SUPERVISOR_RESTART_COOLDOWN: Stability period before count reset (default: 600.0)
     """
 
     def __init__(self, logger: Optional[logging.Logger] = None):
@@ -1508,10 +1508,10 @@ class SupervisorRestartManager:
         self._logger = logger or logging.getLogger("SupervisorRestartManager")
 
         # Environment-driven configuration
-        self.max_restarts = int(os.getenv("JARVIS_SUPERVISOR_MAX_RESTARTS", "3"))
-        self.max_backoff = float(os.getenv("JARVIS_SUPERVISOR_MAX_BACKOFF", "60.0"))
-        self.restart_cooldown = float(os.getenv("JARVIS_SUPERVISOR_RESTART_COOLDOWN", "600.0"))
-        self.base_backoff = float(os.getenv("JARVIS_SUPERVISOR_BASE_BACKOFF", "2.0"))
+        self.max_restarts = int(os.getenv("Ironcliw_SUPERVISOR_MAX_RESTARTS", "3"))
+        self.max_backoff = float(os.getenv("Ironcliw_SUPERVISOR_MAX_BACKOFF", "60.0"))
+        self.restart_cooldown = float(os.getenv("Ironcliw_SUPERVISOR_RESTART_COOLDOWN", "600.0"))
+        self.base_backoff = float(os.getenv("Ironcliw_SUPERVISOR_BASE_BACKOFF", "2.0"))
 
     def register(
         self,
@@ -1701,7 +1701,7 @@ class BootstrapConfig:
     """Dynamic configuration for supervisor bootstrap."""
     
     # Logging
-    log_level: str = field(default_factory=lambda: os.getenv("JARVIS_SUPERVISOR_LOG_LEVEL", "INFO"))
+    log_level: str = field(default_factory=lambda: os.getenv("Ironcliw_SUPERVISOR_LOG_LEVEL", "INFO"))
     log_format: str = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     
     # Voice narration
@@ -1727,7 +1727,7 @@ class BootstrapConfig:
         int(os.getenv("LOADING_SERVER_PORT", "3001")),
     ])
     
-    # Patterns to identify JARVIS processes
+    # Patterns to identify Ironcliw processes
     # v97.0: Added run_supervisor.py to detect and kill existing supervisor processes
     # that may be holding fcntl locks. This prevents 30-second ownership timeouts.
     jarvis_patterns: List[str] = field(default_factory=lambda: [
@@ -1747,20 +1747,20 @@ class BootstrapConfig:
     # =========================================================================
     # v3.0: Zero-Touch Autonomous Update Settings
     # =========================================================================
-    # Default: ENABLED - JARVIS should be a living, self-updating system
-    # Disable with: JARVIS_ZERO_TOUCH_ENABLED=false
-    zero_touch_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_ENABLED", "true").lower() == "true")
-    zero_touch_require_idle: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_REQUIRE_IDLE", "true").lower() == "true")
-    zero_touch_check_busy: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_CHECK_BUSY", "true").lower() == "true")
-    zero_touch_auto_security: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_SECURITY", "true").lower() == "true")
-    zero_touch_auto_critical: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_CRITICAL", "true").lower() == "true")
-    zero_touch_auto_minor: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_MINOR", "true").lower() == "true")
-    zero_touch_auto_major: bool = field(default_factory=lambda: os.getenv("JARVIS_ZERO_TOUCH_AUTO_MAJOR", "false").lower() == "true")
+    # Default: ENABLED - Ironcliw should be a living, self-updating system
+    # Disable with: Ironcliw_ZERO_TOUCH_ENABLED=false
+    zero_touch_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_ENABLED", "true").lower() == "true")
+    zero_touch_require_idle: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_REQUIRE_IDLE", "true").lower() == "true")
+    zero_touch_check_busy: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_CHECK_BUSY", "true").lower() == "true")
+    zero_touch_auto_security: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_AUTO_SECURITY", "true").lower() == "true")
+    zero_touch_auto_critical: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_AUTO_CRITICAL", "true").lower() == "true")
+    zero_touch_auto_minor: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_AUTO_MINOR", "true").lower() == "true")
+    zero_touch_auto_major: bool = field(default_factory=lambda: os.getenv("Ironcliw_ZERO_TOUCH_AUTO_MAJOR", "false").lower() == "true")
     
     # Dead Man's Switch settings
-    dms_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_DMS_ENABLED", "true").lower() == "true")
-    dms_probation_seconds: int = field(default_factory=lambda: int(os.getenv("JARVIS_DMS_PROBATION_SECONDS", "30")))
-    dms_max_failures: int = field(default_factory=lambda: int(os.getenv("JARVIS_DMS_MAX_FAILURES", "3")))
+    dms_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_DMS_ENABLED", "true").lower() == "true")
+    dms_probation_seconds: int = field(default_factory=lambda: int(os.getenv("Ironcliw_DMS_PROBATION_SECONDS", "30")))
+    dms_max_failures: int = field(default_factory=lambda: int(os.getenv("Ironcliw_DMS_MAX_FAILURES", "3")))
 
     # =========================================================================
     # v80.0: Global Startup Timeout and Deep Health Verification
@@ -1784,31 +1784,31 @@ class BootstrapConfig:
     advanced_primitives_enabled: bool = field(default_factory=lambda: os.getenv("ADVANCED_PRIMITIVES_ENABLED", "true").lower() == "true")
 
     # v152.0: Progressive Readiness Configuration
-    progressive_readiness_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_PROGRESSIVE_READINESS", "true").lower() == "true")
-    interactive_tier_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_INTERACTIVE_TIMEOUT", "30.0")))
-    warmup_tier_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_WARMUP_TIMEOUT", "120.0")))
-    full_tier_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_FULL_TIMEOUT", "900.0")))  # 15 min for 70B models
-    jarvis_prime_async_load: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_ASYNC_LOAD", "true").lower() == "true")
+    progressive_readiness_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_PROGRESSIVE_READINESS", "true").lower() == "true")
+    interactive_tier_timeout: float = field(default_factory=lambda: float(os.getenv("Ironcliw_INTERACTIVE_TIMEOUT", "30.0")))
+    warmup_tier_timeout: float = field(default_factory=lambda: float(os.getenv("Ironcliw_WARMUP_TIMEOUT", "120.0")))
+    full_tier_timeout: float = field(default_factory=lambda: float(os.getenv("Ironcliw_FULL_TIMEOUT", "900.0")))  # 15 min for 70B models
+    jarvis_prime_async_load: bool = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_ASYNC_LOAD", "true").lower() == "true")
     
     # AGI OS integration
-    agi_os_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_ENABLED", "true").lower() == "true")
-    agi_os_approval_for_updates: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_APPROVAL_UPDATES", "false").lower() == "true")
+    agi_os_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_AGI_OS_ENABLED", "true").lower() == "true")
+    agi_os_approval_for_updates: bool = field(default_factory=lambda: os.getenv("Ironcliw_AGI_OS_APPROVAL_UPDATES", "false").lower() == "true")
 
     # =========================================================================
-    # JARVIS-Prime Tier-0 Brain Integration
+    # Ironcliw-Prime Tier-0 Brain Integration
     # =========================================================================
     # Local brain for fast, cost-effective inference without cloud API calls.
     # Can run locally (subprocess) or in Docker/Cloud Run.
     # =========================================================================
-    jarvis_prime_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true")
-    jarvis_prime_auto_start: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_AUTO_START", "true").lower() == "true")
-    jarvis_prime_host: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "127.0.0.1"))
-    jarvis_prime_port: int = field(default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000")))  # v93.15: Standardized to 8000
+    jarvis_prime_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true")
+    jarvis_prime_auto_start: bool = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_AUTO_START", "true").lower() == "true")
+    jarvis_prime_host: str = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_HOST", "127.0.0.1"))
+    jarvis_prime_port: int = field(default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8000")))  # v93.15: Standardized to 8000
     jarvis_prime_repo_path: Path = field(default_factory=lambda: Path(os.getenv(
-        "JARVIS_PRIME_PATH",
+        "Ironcliw_PRIME_PATH",
         str(Path.home() / "Documents" / "repos" / "jarvis-prime")
     )))
-    jarvis_prime_models_dir: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_MODELS_DIR", "models"))
+    jarvis_prime_models_dir: str = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_MODELS_DIR", "models"))
     # v150.0: UNIFIED TIMEOUT - Must match cross_repo_startup_orchestrator.py (600s)
     # Previous: 60s - caused premature timeouts during model loading
     # The 600s (10 minutes) allows for:
@@ -1816,18 +1816,18 @@ class BootstrapConfig:
     #   - Model loading (70B+ models can take 3-5 minutes)
     #   - GPU/MPS initialization
     #   - Health endpoint warmup
-    jarvis_prime_startup_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0")))
+    jarvis_prime_startup_timeout: float = field(default_factory=lambda: float(os.getenv("Ironcliw_PRIME_STARTUP_TIMEOUT", "600.0")))
 
     # Docker/Cloud Run mode
-    jarvis_prime_use_docker: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_USE_DOCKER", "false").lower() == "true")
-    jarvis_prime_docker_image: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_DOCKER_IMAGE", "jarvis-prime:latest"))
-    jarvis_prime_use_cloud_run: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "false").lower() == "true")
-    jarvis_prime_cloud_run_url: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", ""))
+    jarvis_prime_use_docker: bool = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_USE_DOCKER", "false").lower() == "true")
+    jarvis_prime_docker_image: str = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_DOCKER_IMAGE", "jarvis-prime:latest"))
+    jarvis_prime_use_cloud_run: bool = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_USE_CLOUD_RUN", "false").lower() == "true")
+    jarvis_prime_cloud_run_url: str = field(default_factory=lambda: os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL", ""))
 
     # =========================================================================
     # v9.4: Intelligent Model Manager (Auto-download & reactor-core deployment)
     # =========================================================================
-    # Ensures JARVIS-Prime always has a model to load:
+    # Ensures Ironcliw-Prime always has a model to load:
     # - Auto-downloads base models if missing (TinyLlama for testing, Mistral for prod)
     # - Integrates with reactor-core for trained model auto-deployment
     # - Hot-swap models without restart via versioned registry
@@ -1847,7 +1847,7 @@ class BootstrapConfig:
     # =========================================================================
     # Activates the full Neural Mesh system with 60+ agents:
     # - Production agents: Memory, Coordinator, HealthMonitor, etc.
-    # - JARVIS Bridge for auto-discovery of all JARVIS systems
+    # - Ironcliw Bridge for auto-discovery of all Ironcliw systems
     # - Crew multi-agent collaboration system
     # - Shared knowledge graph with ChromaDB + NetworkX
     # =========================================================================
@@ -1855,7 +1855,7 @@ class BootstrapConfig:
     neural_mesh_agents_enabled: bool = field(default_factory=lambda: os.getenv("NEURAL_MESH_AGENTS", "true").lower() == "true")
     neural_mesh_knowledge_graph: bool = field(default_factory=lambda: os.getenv("NEURAL_MESH_KNOWLEDGE", "true").lower() == "true")
     neural_mesh_crew_enabled: bool = field(default_factory=lambda: os.getenv("NEURAL_MESH_CREW", "true").lower() == "true")
-    neural_mesh_jarvis_bridge: bool = field(default_factory=lambda: os.getenv("NEURAL_MESH_JARVIS_BRIDGE", "true").lower() == "true")
+    neural_mesh_jarvis_bridge: bool = field(default_factory=lambda: os.getenv("NEURAL_MESH_Ironcliw_BRIDGE", "true").lower() == "true")
     neural_mesh_health_interval: float = field(default_factory=lambda: float(os.getenv("NEURAL_MESH_HEALTH_INTERVAL", "30.0")))
 
     # =========================================================================
@@ -1879,9 +1879,9 @@ class BootstrapConfig:
     # =========================================================================
     # v9.3: Intelligent Learning Goals (Auto-discovery from interactions)
     # =========================================================================
-    # Automatic discovery of learning topics from JARVIS interactions:
-    # - Failed responses (JARVIS couldn't help)
-    # - User corrections (JARVIS was wrong)
+    # Automatic discovery of learning topics from Ironcliw interactions:
+    # - Failed responses (Ironcliw couldn't help)
+    # - User corrections (Ironcliw was wrong)
     # - Unknown technical terms
     # - Frequently asked topics
     # - Trending technologies mentioned
@@ -1989,14 +1989,14 @@ class BootstrapConfig:
     # =========================================================================
     # v9.5: Infrastructure Orchestrator (On-Demand GCP Resources)
     # =========================================================================
-    # Fixes the root issue: GCP resources staying deployed when JARVIS is off.
+    # Fixes the root issue: GCP resources staying deployed when Ironcliw is off.
     # When enabled, infrastructure is provisioned on startup and destroyed on shutdown.
     # =========================================================================
-    infra_on_demand_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_INFRA_ON_DEMAND", "true").lower() == "true")
-    infra_auto_destroy_on_shutdown: bool = field(default_factory=lambda: os.getenv("JARVIS_INFRA_AUTO_DESTROY", "true").lower() == "true")
-    infra_terraform_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("JARVIS_TERRAFORM_TIMEOUT", "300")))
-    infra_memory_threshold_gb: float = field(default_factory=lambda: float(os.getenv("JARVIS_INFRA_MEMORY_THRESHOLD_GB", "4.0")))
-    infra_daily_cost_limit_usd: float = field(default_factory=lambda: float(os.getenv("JARVIS_DAILY_COST_LIMIT", "1.0")))
+    infra_on_demand_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_INFRA_ON_DEMAND", "true").lower() == "true")
+    infra_auto_destroy_on_shutdown: bool = field(default_factory=lambda: os.getenv("Ironcliw_INFRA_AUTO_DESTROY", "true").lower() == "true")
+    infra_terraform_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("Ironcliw_TERRAFORM_TIMEOUT", "300")))
+    infra_memory_threshold_gb: float = field(default_factory=lambda: float(os.getenv("Ironcliw_INFRA_MEMORY_THRESHOLD_GB", "4.0")))
+    infra_daily_cost_limit_usd: float = field(default_factory=lambda: float(os.getenv("Ironcliw_DAILY_COST_LIMIT", "1.0")))
 
 
 # =============================================================================
@@ -2037,9 +2037,9 @@ class TrinityLaunchConfig:
     # =========================================================================
     # Primary paths (check first)
     jprime_repo_path: Optional[Path] = field(default_factory=lambda: Path(os.getenv(
-        "JARVIS_PRIME_PATH",
+        "Ironcliw_PRIME_PATH",
         str(Path.home() / "Documents" / "repos" / "jarvis-prime")
-    )) if os.getenv("JARVIS_PRIME_PATH") or (Path.home() / "Documents" / "repos" / "jarvis-prime").exists() else None)
+    )) if os.getenv("Ironcliw_PRIME_PATH") or (Path.home() / "Documents" / "repos" / "jarvis-prime").exists() else None)
 
     reactor_core_repo_path: Optional[Path] = field(default_factory=lambda: Path(os.getenv(
         "REACTOR_CORE_PATH",
@@ -2275,7 +2275,7 @@ class TrinityLaunchConfig:
     # v100.0: API Ports
     # =========================================================================
     jarvis_api_port: int = field(default_factory=lambda:
-        int(os.getenv("JARVIS_API_PORT", "8080"))
+        int(os.getenv("Ironcliw_API_PORT", "8080"))
     )
 
     # =========================================================================
@@ -2317,7 +2317,7 @@ class DynamicRepoDiscovery:
     Intelligent repo discovery system that finds Trinity repos dynamically.
 
     Discovery strategies (in order):
-    1. Environment variables (JARVIS_PRIME_PATH, REACTOR_CORE_PATH)
+    1. Environment variables (Ironcliw_PRIME_PATH, REACTOR_CORE_PATH)
     2. User config file (~/.jarvis/repos.json)
     3. Common repo locations (~/Documents/repos, ~/repos, ~/code, etc.)
     4. Git remote scanning (looks for known repo URLs)
@@ -2999,7 +2999,7 @@ class StartupPhase(Enum):
     CLEANUP = "cleanup"
     VALIDATION = "validation"
     SUPERVISOR_INIT = "supervisor_init"
-    JARVIS_START = "jarvis_start"
+    Ironcliw_START = "jarvis_start"
     COMPLETE = "complete"
     FAILED = "failed"
 
@@ -3149,7 +3149,7 @@ class AsyncVoiceNarrator:
 
     v2.0 CHANGE: Instead of spawning direct `say` processes, this now
     delegates to the unified orchestrator to ensure only ONE voice
-    speaks at a time across the entire JARVIS system.
+    speaks at a time across the entire Ironcliw system.
 
     Features:
     - Non-blocking voice output
@@ -3264,7 +3264,7 @@ class ParallelProcessCleaner:
     
     async def discover_and_cleanup(self) -> Tuple[int, List[ProcessInfo]]:
         """
-        Discover and cleanup existing JARVIS instances.
+        Discover and cleanup existing Ironcliw instances.
 
         v97.0: Now includes lock holder cleanup as Phase 0 to prevent
         30-second ownership acquisition timeouts.
@@ -3473,7 +3473,7 @@ class ParallelProcessCleaner:
     
     def _discover_from_process_list(self) -> Dict[int, ProcessInfo]:
         """
-        Scan process list for JARVIS processes (runs in thread).
+        Scan process list for Ironcliw processes (runs in thread).
 
         v132.4: Added SystemExit protection for thread pool workers.
         """
@@ -3932,7 +3932,7 @@ class ParallelProcessCleaner:
 # v109.7: COMPREHENSIVE ZOMBIE CLEANUP SYSTEM
 # =============================================================================
 # Ultra-robust, async, parallel cleanup that integrates:
-# - Cross-repo coordination (JARVIS, J-Prime, Reactor-Core)
+# - Cross-repo coordination (Ironcliw, J-Prime, Reactor-Core)
 # - Zombie detection (orphaned, stuck, unresponsive processes)
 # - Memory-aware cleanup (IntelligentMemoryController integration)
 # - Port-based Trinity service cleanup
@@ -3957,11 +3957,11 @@ class ZombieProcessInfo:
 
 class ComprehensiveZombieCleanup:
     """
-    v109.7: Comprehensive Zombie Cleanup System for JARVIS Ecosystem.
+    v109.7: Comprehensive Zombie Cleanup System for Ironcliw Ecosystem.
 
     This system provides ultra-robust cleanup across all three repos:
-    - JARVIS (main AI agent) - port 8010
-    - JARVIS-Prime (J-Prime Mind) - port 8000
+    - Ironcliw (main AI agent) - port 8010
+    - Ironcliw-Prime (J-Prime Mind) - port 8000
     - Reactor-Core (Nerves) - port 8090
 
     Features:
@@ -3979,7 +3979,7 @@ class ComprehensiveZombieCleanup:
 
     # Trinity ports by service
     TRINITY_PORTS = {
-        "jarvis-body": [8010],  # Main JARVIS backend
+        "jarvis-body": [8010],  # Main Ironcliw backend
         "jarvis-prime": [8000],  # J-Prime orchestrator
         "reactor-core": [8090],  # Reactor-Core API
     }
@@ -4361,7 +4361,7 @@ class ComprehensiveZombieCleanup:
                     cmdline = " ".join(proc.info.get('cmdline') or [])
                     cmdline_lower = cmdline.lower()
 
-                    # Only check JARVIS-related processes
+                    # Only check Ironcliw-related processes
                     is_jarvis_related = any(
                         pattern in cmdline_lower
                         for patterns in self.REPO_PATTERNS.values()
@@ -4648,7 +4648,7 @@ class ResourceStatus:
 
 class IntelligentResourceOrchestrator:
     """
-    Intelligent Resource Orchestrator for JARVIS Startup.
+    Intelligent Resource Orchestrator for Ironcliw Startup.
 
     This is a comprehensive, async, parallel, intelligent, and dynamic resource
     management system that integrates:
@@ -4682,9 +4682,9 @@ class IntelligentResourceOrchestrator:
     """
 
     # Thresholds (configurable via environment)
-    CLOUD_THRESHOLD_GB = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
-    CRITICAL_THRESHOLD_GB = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
-    OPTIMIZE_THRESHOLD_GB = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+    CLOUD_THRESHOLD_GB = float(os.getenv("Ironcliw_CLOUD_THRESHOLD_GB", "6.0"))
+    CRITICAL_THRESHOLD_GB = float(os.getenv("Ironcliw_CRITICAL_THRESHOLD_GB", "2.0"))
+    OPTIMIZE_THRESHOLD_GB = float(os.getenv("Ironcliw_OPTIMIZE_THRESHOLD_GB", "4.0"))
 
     def __init__(self, config: BootstrapConfig, logger: logging.Logger):
         self.config = config
@@ -4835,7 +4835,7 @@ class IntelligentResourceOrchestrator:
         if port_actions:
             actions_taken.extend(port_actions)
         if ports_in_use:
-            warnings.append(f"Ports in use: {ports_in_use} (JARVIS processes found - will be recycled)")
+            warnings.append(f"Ports in use: {ports_in_use} (Ironcliw processes found - will be recycled)")
 
         # === DISK VALIDATION ===
         if disk_result < self.config.min_disk_gb:
@@ -4905,7 +4905,7 @@ class IntelligentResourceOrchestrator:
         """
         Intelligently check and handle port conflicts.
 
-        If a port is in use by a JARVIS process, it will be marked for recycling.
+        If a port is in use by a Ironcliw process, it will be marked for recycling.
         """
         import socket
 
@@ -4922,10 +4922,10 @@ class IntelligentResourceOrchestrator:
 
                 if result == 0:
                     in_use.append(port)
-                    # Check if it's a JARVIS process (will be recycled by cleanup)
+                    # Check if it's a Ironcliw process (will be recycled by cleanup)
                     is_jarvis = await self._is_jarvis_port(port)
                     if is_jarvis:
-                        actions.append(f"Port {port}: JARVIS process detected (will recycle)")
+                        actions.append(f"Port {port}: Ironcliw process detected (will recycle)")
                 else:
                     available.append(port)
             except Exception:
@@ -4934,7 +4934,7 @@ class IntelligentResourceOrchestrator:
         return available, in_use, actions
 
     async def _is_jarvis_port(self, port: int) -> bool:
-        """Check if a port is being used by a JARVIS process."""
+        """Check if a port is being used by a Ironcliw process."""
         try:
             import psutil
             for conn in psutil.net_connections(kind='inet'):
@@ -5009,14 +5009,14 @@ class TerminalUI:
         """Print an engaging startup banner."""
         print()
         print(f"{cls.CYAN}{'=' * 65}{cls.RESET}")
-        print(f"{cls.CYAN}{' ' * 10}⚡ JARVIS LIFECYCLE SUPERVISOR v3.0 ⚡{' ' * 10}{cls.RESET}")
+        print(f"{cls.CYAN}{' ' * 10}⚡ Ironcliw LIFECYCLE SUPERVISOR v3.0 ⚡{' ' * 10}{cls.RESET}")
         print(f"{cls.CYAN}{' ' * 18}Zero-Touch Edition{' ' * 18}{cls.RESET}")
         print(f"{cls.CYAN}{'=' * 65}{cls.RESET}")
         print()
         print(f"  {cls.YELLOW}🤖 Self-Updating • Self-Healing • Autonomous • AGI-Powered{cls.RESET}")
         print()
         print(f"  {cls.GRAY}The Living OS - Manages updates, restarts, and rollbacks")
-        print(f"  while keeping JARVIS online and responsive.{cls.RESET}")
+        print(f"  while keeping Ironcliw online and responsive.{cls.RESET}")
         print()
         print(f"  {cls.GRAY}Zero-Touch: Autonomous updates with Dead Man's Switch{cls.RESET}")
         print()
@@ -5309,15 +5309,15 @@ class HotReloadWatcher:
         self.backend_dir = self.repo_root / "backend"
         
         # Configuration from environment
-        self.enabled = os.getenv("JARVIS_DEV_MODE", "true").lower() == "true"
-        self.grace_period = int(os.getenv("JARVIS_RELOAD_GRACE_PERIOD", "120"))
-        self.check_interval = int(os.getenv("JARVIS_RELOAD_CHECK_INTERVAL", "10"))
-        self.cooldown_seconds = int(os.getenv("JARVIS_RELOAD_COOLDOWN", "10"))
-        self.verbose = os.getenv("JARVIS_RELOAD_VERBOSE", "false").lower() == "true"
+        self.enabled = os.getenv("Ironcliw_DEV_MODE", "true").lower() == "true"
+        self.grace_period = int(os.getenv("Ironcliw_RELOAD_GRACE_PERIOD", "120"))
+        self.check_interval = int(os.getenv("Ironcliw_RELOAD_CHECK_INTERVAL", "10"))
+        self.cooldown_seconds = int(os.getenv("Ironcliw_RELOAD_COOLDOWN", "10"))
+        self.verbose = os.getenv("Ironcliw_RELOAD_VERBOSE", "false").lower() == "true"
         
         # Frontend-specific config
-        self.frontend_auto_rebuild = os.getenv("JARVIS_FRONTEND_AUTO_REBUILD", "true").lower() == "true"
-        self.frontend_dev_server_port = int(os.getenv("JARVIS_FRONTEND_DEV_PORT", "3000"))
+        self.frontend_auto_rebuild = os.getenv("Ironcliw_FRONTEND_AUTO_REBUILD", "true").lower() == "true"
+        self.frontend_dev_server_port = int(os.getenv("Ironcliw_FRONTEND_DEV_PORT", "3000"))
         
         # Intelligent file type registry
         self._type_registry = IntelligentFileTypeRegistry(self.repo_root, logger)
@@ -5395,7 +5395,7 @@ class HotReloadWatcher:
             return True
         
         if not self.frontend_auto_rebuild:
-            self.logger.info("   ⚠️ Frontend auto-rebuild disabled (JARVIS_FRONTEND_AUTO_REBUILD=false)")
+            self.logger.info("   ⚠️ Frontend auto-rebuild disabled (Ironcliw_FRONTEND_AUTO_REBUILD=false)")
             return False
         
         self.logger.info("   🔨 Triggering frontend rebuild...")
@@ -5536,7 +5536,7 @@ class HotReloadWatcher:
     async def start(self) -> None:
         """Start the hot reload watcher."""
         if not self.enabled:
-            self.logger.info("🔥 Hot reload disabled (JARVIS_DEV_MODE=false)")
+            self.logger.info("🔥 Hot reload disabled (Ironcliw_DEV_MODE=false)")
             return
         
         # Discover and log file types
@@ -5808,8 +5808,8 @@ class ProgressiveReadinessManager:
 
         self.state.tier = ReadinessTier.INTERACTIVE
         self.state.interactive_at = time.time()
-        os.environ["JARVIS_READINESS_TIER"] = "INTERACTIVE"
-        os.environ["JARVIS_READINESS_INTERACTIVE"] = "true"
+        os.environ["Ironcliw_READINESS_TIER"] = "INTERACTIVE"
+        os.environ["Ironcliw_READINESS_INTERACTIVE"] = "true"
 
         self._write_state()
         self.logger.info(
@@ -5823,8 +5823,8 @@ class ProgressiveReadinessManager:
 
         self.state.tier = ReadinessTier.WARMUP
         self.state.warmup_at = time.time()
-        os.environ["JARVIS_READINESS_TIER"] = "WARMUP"
-        os.environ["JARVIS_READINESS_WARMUP"] = "true"
+        os.environ["Ironcliw_READINESS_TIER"] = "WARMUP"
+        os.environ["Ironcliw_READINESS_WARMUP"] = "true"
 
         self._write_state()
         self.logger.info(
@@ -5836,8 +5836,8 @@ class ProgressiveReadinessManager:
         self.state.tier = ReadinessTier.FULL
         self.state.full_at = time.time()
         self.state.prime_ready = True
-        os.environ["JARVIS_READINESS_TIER"] = "FULL"
-        os.environ["JARVIS_READINESS_FULL"] = "true"
+        os.environ["Ironcliw_READINESS_TIER"] = "FULL"
+        os.environ["Ironcliw_READINESS_FULL"] = "true"
 
         self._write_state()
 
@@ -5977,11 +5977,11 @@ class SupervisorBootstrapper:
         self._tiered_router = None
         self._agentic_runner = None  # v6.0: Unified Agentic Task Runner
         self._vbia_adapter = None    # v6.0: Tiered VBIA Adapter
-        self._watchdog_enabled = os.getenv("JARVIS_WATCHDOG_ENABLED", "true").lower() == "true"
-        self._tiered_routing_enabled = os.getenv("JARVIS_TIERED_ROUTING", "true").lower() == "true"
-        self._agentic_runner_enabled = os.getenv("JARVIS_AGENTIC_RUNNER", "true").lower() == "true"
+        self._watchdog_enabled = os.getenv("Ironcliw_WATCHDOG_ENABLED", "true").lower() == "true"
+        self._tiered_routing_enabled = os.getenv("Ironcliw_TIERED_ROUTING", "true").lower() == "true"
+        self._agentic_runner_enabled = os.getenv("Ironcliw_AGENTIC_RUNNER", "true").lower() == "true"
 
-        # v7.0: JARVIS-Prime Tier-0 Brain Integration
+        # v7.0: Ironcliw-Prime Tier-0 Brain Integration
         self._jarvis_prime_orchestrator = None
         self._jarvis_prime_client = None
         self._jarvis_prime_process: Optional[asyncio.subprocess.Process] = None
@@ -6075,23 +6075,23 @@ class SupervisorBootstrapper:
 
                 # Process health predictor (ML-based failure prediction)
                 self._health_predictor = ProcessHealthPredictor(
-                    window_size=int(os.getenv("JARVIS_HEALTH_WINDOW_SIZE", "100")),
-                    ewma_alpha=float(os.getenv("JARVIS_HEALTH_EWMA_ALPHA", "0.3")),
-                    anomaly_threshold=float(os.getenv("JARVIS_HEALTH_ANOMALY_THRESHOLD", "2.5")),
+                    window_size=int(os.getenv("Ironcliw_HEALTH_WINDOW_SIZE", "100")),
+                    ewma_alpha=float(os.getenv("Ironcliw_HEALTH_EWMA_ALPHA", "0.3")),
+                    anomaly_threshold=float(os.getenv("Ironcliw_HEALTH_ANOMALY_THRESHOLD", "2.5")),
                 )
 
                 # Self-healing orchestrator (automatic remediation)
                 self._self_healing_orchestrator = SelfHealingOrchestrator(
                     health_predictor=self._health_predictor,
-                    max_remediation_attempts=int(os.getenv("JARVIS_MAX_HEAL_ATTEMPTS", "3")),
-                    cooldown_seconds=float(os.getenv("JARVIS_HEAL_COOLDOWN", "60.0")),
+                    max_remediation_attempts=int(os.getenv("Ironcliw_MAX_HEAL_ATTEMPTS", "3")),
+                    cooldown_seconds=float(os.getenv("Ironcliw_HEAL_COOLDOWN", "60.0")),
                 )
 
                 # Distributed state coordinator (cross-repo sync)
                 self._distributed_state_coordinator = DistributedStateCoordinator(
-                    component_name="JARVIS-Supervisor",
+                    component_name="Ironcliw-Supervisor",
                     state_dir=Path(os.getenv(
-                        "JARVIS_STATE_DIR",
+                        "Ironcliw_STATE_DIR",
                         str(Path.home() / ".jarvis" / "state")
                     )),
                 )
@@ -6167,7 +6167,7 @@ class SupervisorBootstrapper:
         # v101.0: UnifiedTrinityConnector (Claude Code-like behaviors)
         self._unified_trinity_connector = None
         # v148.0: Reactor Core disabled by default (optional training component)
-        self._reactor_core_enabled = os.getenv("JARVIS_REACTOR_CORE_ENABLED", "false").lower() == "true"
+        self._reactor_core_enabled = os.getenv("Ironcliw_REACTOR_CORE_ENABLED", "false").lower() == "true"
         self._reactor_core_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
         # v72.0: Trinity Component Auto-Launch (One-Command Startup)
@@ -6187,7 +6187,7 @@ class SupervisorBootstrapper:
         # v75.0: Trinity Health Monitor for crash detection & auto-recovery
         self._trinity_health_monitor = None
         self._jprime_repo_path = Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             str(Path.home() / "Documents" / "repos" / "jarvis-prime")
         ))
         self._reactor_core_repo_path = Path(os.getenv(
@@ -6202,7 +6202,7 @@ class SupervisorBootstrapper:
         self._log_monitor = None
         self._log_monitor_enabled = (
             STRUCTURED_LOGGING_AVAILABLE and
-            os.getenv("JARVIS_LOG_MONITOR_ENABLED", "true").lower() == "true"
+            os.getenv("Ironcliw_LOG_MONITOR_ENABLED", "true").lower() == "true"
         )
 
         # v79.1: Trinity Voice Coordination (Cross-repo voice announcements)
@@ -6220,7 +6220,7 @@ class SupervisorBootstrapper:
         self._cross_repo_health_monitor = None
         self._trinity_startup_coordinator = None
         self._cross_repo_health_task = None
-        self._v80_enabled = os.getenv("JARVIS_V80_CROSS_REPO", "true").lower() == "true"
+        self._v80_enabled = os.getenv("Ironcliw_V80_CROSS_REPO", "true").lower() == "true"
 
         # v81.0: TrinityIntegrator - Unified Cross-Repo Integration
         # - Orphan process detection and cleanup
@@ -6233,7 +6233,7 @@ class SupervisorBootstrapper:
         # v100.0: Trinity Core Systems (Advanced Cross-Repo Infrastructure)
         # - TrinityEventBus: Unified pub/sub with priority queues, persistence, replay
         # - TrinityKnowledgeGraph: Shared knowledge storage with semantic search
-        # - TrinityTrainingPipeline: End-to-end training (JARVIS → Reactor → Prime)
+        # - TrinityTrainingPipeline: End-to-end training (Ironcliw → Reactor → Prime)
         # - TrinityMonitoring: Unified observability with distributed tracing, alerting
         self._trinity_event_bus = None
         self._trinity_knowledge_graph = None
@@ -6248,8 +6248,8 @@ class SupervisorBootstrapper:
         # - Adaptive intervals based on system load
         # - Cross-repo heartbeat synchronization
         self._trinity_heartbeat_task: Optional[asyncio.Task] = None
-        self._trinity_heartbeat_interval = float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "15.0"))
-        self._heartbeat_adaptive_enabled = os.getenv("JARVIS_HEARTBEAT_ADAPTIVE", "true").lower() == "true"
+        self._trinity_heartbeat_interval = float(os.getenv("Ironcliw_HEARTBEAT_INTERVAL", "15.0"))
+        self._heartbeat_adaptive_enabled = os.getenv("Ironcliw_HEARTBEAT_ADAPTIVE", "true").lower() == "true"
         self._last_heartbeat_metrics: Dict[str, Any] = {}
 
         # v111.0: In-Process Backend Management (Unified Monolith Mode)
@@ -6259,7 +6259,7 @@ class SupervisorBootstrapper:
         self._backend_server: Optional[Any] = None  # uvicorn.Server instance
         self._backend_task: Optional[asyncio.Task] = None  # Background task running serve()
         self._inprocess_heartbeat_task: Optional[asyncio.Task] = None  # v111.2: Heartbeat writer
-        self._in_process_mode: bool = os.getenv("JARVIS_IN_PROCESS_MODE", "true").lower() == "true"
+        self._in_process_mode: bool = os.getenv("Ironcliw_IN_PROCESS_MODE", "true").lower() == "true"
         self._backend_port: int = int(os.getenv("BACKEND_PORT", "8010"))
 
         # ═══════════════════════════════════════════════════════════════════════
@@ -6271,11 +6271,11 @@ class SupervisorBootstrapper:
         # ═══════════════════════════════════════════════════════════════════════
         self._loading_server_process: Optional[asyncio.subprocess.Process] = None
         self._frontend_process: Optional[asyncio.subprocess.Process] = None
-        self._loading_server_port: int = int(os.getenv("JARVIS_LOADING_PORT", "3001"))
-        self._frontend_port: int = int(os.getenv("JARVIS_FRONTEND_PORT", "3000"))
+        self._loading_server_port: int = int(os.getenv("Ironcliw_LOADING_PORT", "3001"))
+        self._frontend_port: int = int(os.getenv("Ironcliw_FRONTEND_PORT", "3000"))
         self._jarvis_repo: Path = Path(os.getenv(
-            "JARVIS_REPO",
-            str(Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent")
+            "Ironcliw_REPO",
+            str(Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent")
         ))
         self._frontend_startup_task: Optional[asyncio.Task] = None
 
@@ -6323,7 +6323,7 @@ class SupervisorBootstrapper:
         self._state_manager_enabled = os.getenv("DISTRIBUTED_STATE_MANAGER_ENABLED", "true").lower() == "true"
 
         # v100.0: Continuous Learning Orchestrator (Unified Learning Pipeline)
-        # - Experience aggregation from all JARVIS components
+        # - Experience aggregation from all Ironcliw components
         # - Intelligent training job scheduling
         # - A/B testing with automatic promotion/rollback
         # - Model performance tracking and validation
@@ -6347,7 +6347,7 @@ class SupervisorBootstrapper:
         self._learning_state_connector = None
         self._learning_state_connector_enabled = os.getenv("LEARNING_STATE_CONNECTOR_ENABLED", "true").lower() == "true"
 
-        # v100.0: Cross-Repo Experience Forwarder (JARVIS ↔ Reactor Core)
+        # v100.0: Cross-Repo Experience Forwarder (Ironcliw ↔ Reactor Core)
         # - Forwards learning experiences to Reactor Core
         # - Batch forwarding with retry and backoff
         # - File-based fallback when event bus unavailable
@@ -6365,7 +6365,7 @@ class SupervisorBootstrapper:
         self._trinity_bridge_adapter_enabled = os.getenv("TRINITY_BRIDGE_ADAPTER_ENABLED", "true").lower() == "true"
 
         # v101.0: Cross-Repo Neural Mesh Bridge (External Agent Integration)
-        # - Registers JARVIS Prime and Reactor Core as Neural Mesh agents
+        # - Registers Ironcliw Prime and Reactor Core as Neural Mesh agents
         # - Health monitoring via heartbeat files
         # - Task routing with capability matching
         # - Circuit breaker protection for external operations
@@ -6459,7 +6459,7 @@ class SupervisorBootstrapper:
         self._orchestration_status_task: Optional[asyncio.Task] = None
 
         # v104.0: Ouroboros Self-Improvement Engine
-        # - Autonomous code evolution using local LLM (JARVIS Prime)
+        # - Autonomous code evolution using local LLM (Ironcliw Prime)
         # - Genetic algorithm for multi-path improvement
         # - AST-based code analysis and semantic diff
         # - Test-driven validation with mutation testing
@@ -6569,7 +6569,7 @@ class SupervisorBootstrapper:
 
     async def _run_fast_startup(self) -> int:
         """
-        Fast startup mode - minimal overhead, instant JARVIS boot.
+        Fast startup mode - minimal overhead, instant Ironcliw boot.
 
         Skips:
         - Resource validation and optimization
@@ -6590,7 +6590,7 @@ class SupervisorBootstrapper:
         from pathlib import Path
 
         print(f"\n{TerminalUI.CYAN}{'═' * 60}{TerminalUI.RESET}")
-        print(f"{TerminalUI.CYAN}⚡ JARVIS FAST STARTUP MODE{TerminalUI.RESET}")
+        print(f"{TerminalUI.CYAN}⚡ Ironcliw FAST STARTUP MODE{TerminalUI.RESET}")
         print(f"{TerminalUI.CYAN}{'═' * 60}{TerminalUI.RESET}\n")
 
         self.logger.info("⚡ Fast startup mode - minimal initialization")
@@ -6638,9 +6638,9 @@ class SupervisorBootstrapper:
         os.environ["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
 
         # Signal fast mode to supervisor
-        os.environ["JARVIS_FAST_STARTUP"] = "true"
-        os.environ["JARVIS_CLEANUP_DONE"] = "1"
-        os.environ["JARVIS_CLEANUP_TIMESTAMP"] = str(time.time())
+        os.environ["Ironcliw_FAST_STARTUP"] = "true"
+        os.environ["Ironcliw_CLEANUP_DONE"] = "1"
+        os.environ["Ironcliw_CLEANUP_TIMESTAMP"] = str(time.time())
 
         self.logger.info(f"📁 PYTHONPATH: {os.environ['PYTHONPATH']}")
         print(f"  {TerminalUI.GREEN}✓ Environment configured{TerminalUI.RESET}")
@@ -6649,11 +6649,11 @@ class SupervisorBootstrapper:
         self.perf.start("fast_supervisor")
         try:
             # Dynamic import to avoid circular dependencies
-            from backend.core.supervisor.jarvis_supervisor import JARVISSupervisor
+            from backend.core.supervisor.jarvis_supervisor import IroncliwSupervisor
 
-            print(f"\n{TerminalUI.YELLOW}⚡ Starting JARVIS Core...{TerminalUI.RESET}")
+            print(f"\n{TerminalUI.YELLOW}⚡ Starting Ironcliw Core...{TerminalUI.RESET}")
 
-            supervisor = JARVISSupervisor()
+            supervisor = IroncliwSupervisor()
 
             # ═══════════════════════════════════════════════════════════════════
             # v111.2: Start backend in-process (Unified Monolith Mode) - FAST PATH
@@ -6669,7 +6669,7 @@ class SupervisorBootstrapper:
                     return 1
 
             print(f"\n{TerminalUI.GREEN}{'═' * 60}{TerminalUI.RESET}")
-            print(f"{TerminalUI.GREEN}⚡ JARVIS FAST MODE STARTING{TerminalUI.RESET}")
+            print(f"{TerminalUI.GREEN}⚡ Ironcliw FAST MODE STARTING{TerminalUI.RESET}")
             print(f"{TerminalUI.GREEN}   Backend: http://localhost:{self._backend_port}{TerminalUI.RESET}")
             print(f"{TerminalUI.GREEN}   Mode: {'In-Process' if self._in_process_mode else 'Subprocess'}{TerminalUI.RESET}")
             print(f"{TerminalUI.GREEN}{'═' * 60}{TerminalUI.RESET}\n")
@@ -6708,7 +6708,7 @@ class SupervisorBootstrapper:
                     bufsize=1
                 )
 
-                print(f"\n{TerminalUI.GREEN}⚡ JARVIS started (PID: {process.pid}){TerminalUI.RESET}")
+                print(f"\n{TerminalUI.GREEN}⚡ Ironcliw started (PID: {process.pid}){TerminalUI.RESET}")
                 print(f"{TerminalUI.GREEN}   Backend: http://localhost:8010{TerminalUI.RESET}\n")
 
                 # Stream output
@@ -6743,9 +6743,9 @@ class SupervisorBootstrapper:
         """
         Run the complete bootstrap sequence.
 
-        Supports fast startup mode (JARVIS_FAST_STARTUP=true) which skips
+        Supports fast startup mode (Ironcliw_FAST_STARTUP=true) which skips
         resource validation, loading page, and other non-essential initialization
-        for instant JARVIS startup.
+        for instant Ironcliw startup.
 
         v80.0: Wrapped with global timeout to prevent infinite hangs.
         v151.0: Added diagnostic checkpoints for shutdown forensics.
@@ -6758,7 +6758,7 @@ class SupervisorBootstrapper:
         log_state_change("SupervisorBootstrapper", "init", "running", "Starting bootstrap sequence")
 
         # Check for fast startup mode
-        fast_startup = os.environ.get("JARVIS_FAST_STARTUP", "").lower() in ("1", "true", "yes")
+        fast_startup = os.environ.get("Ironcliw_FAST_STARTUP", "").lower() in ("1", "true", "yes")
         log_startup_checkpoint("fast_startup_check", f"Fast startup mode: {fast_startup}")
 
         if fast_startup:
@@ -6825,18 +6825,18 @@ class SupervisorBootstrapper:
             True if all checks pass, False if critical checks fail
         """
         enable_preflight = os.environ.get(
-            "JARVIS_V87_PREFLIGHT", "true"
+            "Ironcliw_V87_PREFLIGHT", "true"
         ).lower() in ("1", "true", "yes")
 
         if not enable_preflight:
-            self.logger.info("[v87.0] Pre-flight checks disabled via JARVIS_V87_PREFLIGHT=false")
+            self.logger.info("[v87.0] Pre-flight checks disabled via Ironcliw_V87_PREFLIGHT=false")
             return True
 
         self.logger.info("[v87.0] Running pre-flight resource checks...")
         TerminalUI.print_step("[v87.0] Pre-flight checks")
 
         # v88.2: Overall sequence timeout protection
-        overall_timeout = float(os.environ.get("JARVIS_V87_PREFLIGHT_TIMEOUT", "30.0"))
+        overall_timeout = float(os.environ.get("Ironcliw_V87_PREFLIGHT_TIMEOUT", "30.0"))
         try:
             return await asyncio.wait_for(
                 self._execute_preflight_checks_internal(),
@@ -6961,7 +6961,7 @@ class SupervisorBootstrapper:
                 self.logger.warning(f"[v100.1] Validation error (non-blocking): {e}")
 
         # v88.2: Get adaptive base timeout
-        base_check_timeout = float(os.environ.get("JARVIS_V87_CHECK_TIMEOUT", "5.0"))
+        base_check_timeout = float(os.environ.get("Ironcliw_V87_CHECK_TIMEOUT", "5.0"))
         check_timeout = await self._get_adaptive_check_timeout(base_check_timeout)
 
         try:
@@ -6979,7 +6979,7 @@ class SupervisorBootstrapper:
             # v88.1: Create coordinator with timeout protection
             try:
                 coord = TrinityAdvancedCoordinator()
-                init_timeout = float(os.environ.get("JARVIS_V87_INIT_TIMEOUT", "10.0"))
+                init_timeout = float(os.environ.get("Ironcliw_V87_INIT_TIMEOUT", "10.0"))
                 await asyncio.wait_for(coord.initialize(), timeout=init_timeout)
             except asyncio.TimeoutError:
                 warnings.append(f"Coordinator initialization timed out after {init_timeout}s")
@@ -7509,9 +7509,9 @@ class SupervisorBootstrapper:
                 # PHASE 3: Signal fresh start to other components
                 # ═══════════════════════════════════════════════════════════════════
                 # Set environment variables to signal crash recovery mode
-                os.environ["JARVIS_CRASH_RECOVERY_MODE"] = "1"
-                os.environ["JARVIS_RECOVERY_TIMESTAMP"] = str(time.time())
-                os.environ["JARVIS_RECOVERY_REASON"] = result["crash_reason"]
+                os.environ["Ironcliw_CRASH_RECOVERY_MODE"] = "1"
+                os.environ["Ironcliw_RECOVERY_TIMESTAMP"] = str(time.time())
+                os.environ["Ironcliw_RECOVERY_REASON"] = result["crash_reason"]
                 result["actions_taken"].append("set_recovery_environment")
                 
             else:
@@ -7700,7 +7700,7 @@ class SupervisorBootstrapper:
 
     async def _start_backend_in_process(self) -> bool:
         """
-        v111.0: Start the JARVIS backend in-process using Uvicorn.
+        v111.0: Start the Ironcliw backend in-process using Uvicorn.
 
         This replaces subprocess spawning with direct in-process execution,
         enabling shared memory and coordinated shutdown.
@@ -8001,7 +8001,7 @@ class SupervisorBootstrapper:
         cross_repo_dir.mkdir(parents=True, exist_ok=True)
 
         component_id = f"jarvis_body_{os.getpid()}"
-        heartbeat_interval = float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "10.0"))
+        heartbeat_interval = float(os.getenv("Ironcliw_HEARTBEAT_INTERVAL", "10.0"))
         hostname = socket.gethostname()
         start_time = time.time()
 
@@ -8132,7 +8132,7 @@ class SupervisorBootstrapper:
         v113.0: Start the React frontend on port 3000.
 
         This should be called AFTER the backend is verified healthy.
-        The frontend serves the main JARVIS UI.
+        The frontend serves the main Ironcliw UI.
 
         Returns:
             True if frontend started successfully
@@ -8324,7 +8324,7 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             # CRITICAL: Clean up stale/dead service entries BEFORE starting
             # any services. This prevents "dead PID" warnings and ensures
-            # reliable service discovery across JARVIS, J-Prime, and Reactor-Core.
+            # reliable service discovery across Ironcliw, J-Prime, and Reactor-Core.
             #
             # This cleanup:
             # 1. Removes services with dead PIDs (process no longer running)
@@ -8386,7 +8386,7 @@ class SupervisorBootstrapper:
             # backpressure handling, and distributed tracing.
             # ═══════════════════════════════════════════════════════════════════
             self._ultra_coordinator: Optional[Any] = None
-            enable_ultra = os.environ.get("JARVIS_ENABLE_ULTRA_COORD", "true").lower() in ("1", "true", "yes")
+            enable_ultra = os.environ.get("Ironcliw_ENABLE_ULTRA_COORD", "true").lower() in ("1", "true", "yes")
 
             if enable_ultra:
                 try:
@@ -8407,7 +8407,7 @@ class SupervisorBootstrapper:
                     self.logger.warning(f"[v88.0] Ultra coordinator init failed (continuing): {e}")
                     self._ultra_coordinator = None
             else:
-                self.logger.info("[v88.0] Ultra coordinator disabled via JARVIS_ENABLE_ULTRA_COORD=false")
+                self.logger.info("[v88.0] Ultra coordinator disabled via Ironcliw_ENABLE_ULTRA_COORD=false")
 
             # ═══════════════════════════════════════════════════════════════════
             # v85.0: Unified State Coordination - Acquire Exclusive Ownership
@@ -8535,9 +8535,9 @@ class SupervisorBootstrapper:
             # CRITICAL: Signal to start_system.py that cleanup was already done
             # This prevents the duplicate "already running on port 8010" warning
             # ═══════════════════════════════════════════════════════════════════
-            os.environ["JARVIS_CLEANUP_DONE"] = "1"
-            os.environ["JARVIS_CLEANUP_TIMESTAMP"] = str(time.time())
-            self.logger.info("Set JARVIS_CLEANUP_DONE=1 - start_system.py will skip redundant cleanup")
+            os.environ["Ironcliw_CLEANUP_DONE"] = "1"
+            os.environ["Ironcliw_CLEANUP_TIMESTAMP"] = str(time.time())
+            self.logger.info("Set Ironcliw_CLEANUP_DONE=1 - start_system.py will skip redundant cleanup")
 
             # ═══════════════════════════════════════════════════════════════════
             # v1.0 ProcessCoordinationHub: Enhanced cross-script coordination
@@ -8612,7 +8612,7 @@ class SupervisorBootstrapper:
             # v111.3: Start backend in-process BEFORE cross-repo orchestration
             # ═══════════════════════════════════════════════════════════════════
             # CRITICAL FIX: The cross-repo orchestrator checks for jarvis-body health
-            # and assumes the backend is already running if JARVIS_IN_PROCESS_MODE=true.
+            # and assumes the backend is already running if Ironcliw_IN_PROCESS_MODE=true.
             # We MUST start the in-process backend HERE so it's actually running when
             # the orchestrator verifies it.
             #
@@ -8650,8 +8650,8 @@ class SupervisorBootstrapper:
                         if frontend_started:
                             # Frontend is ready - stop loading server
                             await self._stop_loading_server_v113()
-                            self.logger.info(f"🚀 [v113.0] JARVIS is online at http://localhost:{self._frontend_port}")
-                            TerminalUI.print_success(f"🚀 JARVIS ready: http://localhost:{self._frontend_port}")
+                            self.logger.info(f"🚀 [v113.0] Ironcliw is online at http://localhost:{self._frontend_port}")
+                            TerminalUI.print_success(f"🚀 Ironcliw ready: http://localhost:{self._frontend_port}")
 
                             # v152.0: Reach WARMUP tier - Frontend is now ready
                             if self._readiness_manager:
@@ -8684,7 +8684,7 @@ class SupervisorBootstrapper:
 
                 self.logger.info("🚀 [v10.1] Pre-launching external services...")
                 self.logger.info("📋 [v108.1] Non-blocking model loading enabled - services will be 'started' once responding")
-                self.logger.info("    (Model loading will continue in background while main JARVIS backend starts)")
+                self.logger.info("    (Model loading will continue in background while main Ironcliw backend starts)")
                 await initialize_cross_repo_orchestration()
                 self.logger.info("✅ [v10.1] External services launched (servers responding)")
 
@@ -8711,7 +8711,7 @@ class SupervisorBootstrapper:
                         self.logger.info(f"[v152.0] Using extended timeout for async prime load: {effective_timeout}s")
 
                     # Create integrator with environment-aware configuration
-                    # Environment variables JARVIS_PRIME_ENABLED and REACTOR_CORE_ENABLED
+                    # Environment variables Ironcliw_PRIME_ENABLED and REACTOR_CORE_ENABLED
                     # will override the defaults passed here
                     self._trinity_integrator = TrinityIntegrator(
                         enable_jprime=self.config.jarvis_prime_enabled,
@@ -8868,40 +8868,40 @@ class SupervisorBootstrapper:
             # CRITICAL: Propagate Intelligent Decisions to Child Processes
             # ═══════════════════════════════════════════════════════════════════
             # These environment variables are inherited by start_system.py and
-            # all JARVIS processes, ensuring the orchestrator's decisions are
+            # all Ironcliw processes, ensuring the orchestrator's decisions are
             # respected throughout the system.
             # ═══════════════════════════════════════════════════════════════════
             if resources.startup_mode:
-                os.environ["JARVIS_STARTUP_MODE"] = resources.startup_mode
-                self.logger.info(f"🔄 Propagating JARVIS_STARTUP_MODE={resources.startup_mode}")
+                os.environ["Ironcliw_STARTUP_MODE"] = resources.startup_mode
+                self.logger.info(f"🔄 Propagating Ironcliw_STARTUP_MODE={resources.startup_mode}")
 
             if resources.cloud_activated:
-                os.environ["JARVIS_CLOUD_ACTIVATED"] = "true"
-                os.environ["JARVIS_PREFER_CLOUD_RUN"] = "true"
-                self.logger.info("🔄 Propagating JARVIS_CLOUD_ACTIVATED=true")
+                os.environ["Ironcliw_CLOUD_ACTIVATED"] = "true"
+                os.environ["Ironcliw_PREFER_CLOUD_RUN"] = "true"
+                self.logger.info("🔄 Propagating Ironcliw_CLOUD_ACTIVATED=true")
 
             if resources.arm64_simd_available:
-                os.environ["JARVIS_ARM64_SIMD"] = "true"
-                self.logger.info("🔄 Propagating JARVIS_ARM64_SIMD=true")
+                os.environ["Ironcliw_ARM64_SIMD"] = "true"
+                self.logger.info("🔄 Propagating Ironcliw_ARM64_SIMD=true")
 
             # Propagate memory constraints for adaptive loading
-            os.environ["JARVIS_AVAILABLE_RAM_GB"] = str(round(resources.memory_available_gb, 1))
-            os.environ["JARVIS_TOTAL_RAM_GB"] = str(round(resources.memory_total_gb, 1))
+            os.environ["Ironcliw_AVAILABLE_RAM_GB"] = str(round(resources.memory_available_gb, 1))
+            os.environ["Ironcliw_TOTAL_RAM_GB"] = str(round(resources.memory_total_gb, 1))
 
             # CRITICAL: Optimize Frontend Memory & Timeout based on resources
             # Reduce Node memory to 2GB (from default 4GB) to prevent relief pressure
-            os.environ["JARVIS_FRONTEND_MEMORY_MB"] = "2048"
+            os.environ["Ironcliw_FRONTEND_MEMORY_MB"] = "2048"
             # v5.2: Reduced frontend timeout to 60s (was 600s which blocked startup)
             # Frontend is optional - backend can complete startup without it
             # The loading page now has graceful fallback when frontend isn't available
-            os.environ["JARVIS_FRONTEND_TIMEOUT"] = "60"
+            os.environ["Ironcliw_FRONTEND_TIMEOUT"] = "60"
             # Signal that frontend is optional (loading page will show fallback options)
             os.environ["FRONTEND_OPTIONAL"] = "true"
             self.logger.info("🔄 Configured Frontend: 2GB RAM limit, 60s timeout, optional mode")
 
             # Propagate warnings for downstream handling
             if resources.warnings:
-                os.environ["JARVIS_STARTUP_WARNINGS"] = "|".join(resources.warnings[:5])
+                os.environ["Ironcliw_STARTUP_WARNINGS"] = "|".join(resources.warnings[:5])
 
             # ═══════════════════════════════════════════════════════════════════
             # v3.0: Propagate Zero-Touch & AGI OS Settings to Child Processes
@@ -8942,8 +8942,8 @@ class SupervisorBootstrapper:
 
                         # Update paths from discovered config
                         from core.advanced_startup_orchestrator import TrinityRepo
-                        if TrinityRepo.JARVIS_PRIME in config.repo_paths:
-                            self._jprime_repo_path = config.repo_paths[TrinityRepo.JARVIS_PRIME]
+                        if TrinityRepo.Ironcliw_PRIME in config.repo_paths:
+                            self._jprime_repo_path = config.repo_paths[TrinityRepo.Ironcliw_PRIME]
                         if TrinityRepo.REACTOR_CORE in config.repo_paths:
                             self._reactor_core_repo_path = config.repo_paths[TrinityRepo.REACTOR_CORE]
 
@@ -8968,7 +8968,7 @@ class SupervisorBootstrapper:
             # - Unified Process Tree: Track entire process hierarchy
             # - Command Buffer: Handle early commands before system ready
             # - Atomic Command Queue: Race-condition-free Trinity transport
-            # - Cross-Repo Coordinator: Atomic commits across JARVIS/J-Prime/Reactor
+            # - Cross-Repo Coordinator: Atomic commits across Ironcliw/J-Prime/Reactor
             # - Adaptive Timeout: Dynamic timeouts based on history
             # - Intelligent Retry: Context-aware retry with circuit breakers
             # ═══════════════════════════════════════════════════════════════════
@@ -8981,7 +8981,7 @@ class SupervisorBootstrapper:
                     get_timeout_manager,
                     get_retry_manager,
                     ProcessRole,
-                    JARVIS_TO_JPRIME,
+                    Ironcliw_TO_JPRIME,
                 )
                 # NOTE: os is imported at module level (line 236), do not reimport here
                 # Reimporting inside the function causes UnboundLocalError at line 2453
@@ -9004,7 +9004,7 @@ class SupervisorBootstrapper:
 
                 # Initialize Trinity Queues (atomic, race-condition-free)
                 self._trinity_queues = {
-                    "jarvis_to_jprime": await get_atomic_queue(JARVIS_TO_JPRIME),
+                    "jarvis_to_jprime": await get_atomic_queue(Ironcliw_TO_JPRIME),
                 }
 
                 # Initialize Cross-Repo Transaction Coordinator
@@ -9063,17 +9063,17 @@ class SupervisorBootstrapper:
             # v6.0: Initialize Two-Tier Agentic Security System
             # ═══════════════════════════════════════════════════════════════════
             # This enables the Two-Tier security model:
-            # - Tier 1 (JARVIS): Safe APIs, read-only, Gemini Flash
-            # - Tier 2 (JARVIS ACCESS): Full Computer Use, strict VBIA, Claude
+            # - Tier 1 (Ironcliw): Safe APIs, read-only, Gemini Flash
+            # - Tier 2 (Ironcliw ACCESS): Full Computer Use, strict VBIA, Claude
             # - Watchdog monitors heartbeats and can trigger kill switch
             # ═══════════════════════════════════════════════════════════════════
             await self._initialize_agentic_security()
 
             # ═══════════════════════════════════════════════════════════════════
-            # v7.0: Initialize JARVIS-Prime Tier-0 Local Brain
+            # v7.0: Initialize Ironcliw-Prime Tier-0 Local Brain
             # ═══════════════════════════════════════════════════════════════════
             # This starts the local inference server for cost-effective AI:
-            # - Tier 0 (JARVIS-Prime): Local GGUF model, fast, free
+            # - Tier 0 (Ironcliw-Prime): Local GGUF model, fast, free
             # - Supports local subprocess, Docker, or Cloud Run deployment
             # - Auto-integrates with Reactor-Core for model hot-swapping
             # ═══════════════════════════════════════════════════════════════════
@@ -9084,9 +9084,9 @@ class SupervisorBootstrapper:
             # Each initialization is wrapped with _safe_phase_init() to prevent
             # any single component from blocking the entire startup indefinitely.
             # ═══════════════════════════════════════════════════════════════════
-            major_init_timeout = float(os.getenv("JARVIS_INIT_TIMEOUT", "60.0"))
+            major_init_timeout = float(os.getenv("Ironcliw_INIT_TIMEOUT", "60.0"))
 
-            # v9.4: Initialize Model Manager BEFORE JARVIS-Prime
+            # v9.4: Initialize Model Manager BEFORE Ironcliw-Prime
             if self.config.model_manager_enabled:
                 await self._safe_phase_init(
                     "Model Manager",
@@ -9094,9 +9094,9 @@ class SupervisorBootstrapper:
                     timeout_seconds=major_init_timeout,
                 )
 
-            # v7.0: Initialize JARVIS-Prime (Local Brain)
+            # v7.0: Initialize Ironcliw-Prime (Local Brain)
             await self._safe_phase_init(
-                "JARVIS-Prime (Local Brain)",
+                "Ironcliw-Prime (Local Brain)",
                 self._initialize_jarvis_prime(),
                 timeout_seconds=major_init_timeout,
             )
@@ -9140,7 +9140,7 @@ class SupervisorBootstrapper:
                 )
 
             # v11.0: PROJECT TRINITY - Unified Cognitive Architecture
-            # This initializes the Trinity network (JARVIS Body ↔ J-Prime ↔ Reactor Core)
+            # This initializes the Trinity network (Ironcliw Body ↔ J-Prime ↔ Reactor Core)
             if self._trinity_enabled:
                 await self._safe_phase_init(
                     "PROJECT TRINITY",
@@ -9231,7 +9231,7 @@ class SupervisorBootstrapper:
                     print(f"  {TerminalUI.YELLOW}⚠️ Coding Council: Not available{TerminalUI.RESET}")
 
             # v13.0: Initialize Collaboration & IDE Integration System
-            if os.getenv("JARVIS_COLLABORATION_ENABLED", "true").lower() == "true":
+            if os.getenv("Ironcliw_COLLABORATION_ENABLED", "true").lower() == "true":
                 await self._safe_phase_init(
                     "Collaboration & IDE Integration",
                     self._initialize_collaboration_and_ide_systems(),
@@ -9321,10 +9321,10 @@ class SupervisorBootstrapper:
             TerminalUI.print_phase(3, 4, "Initializing supervisor")
             print()
             
-            from core.supervisor import JARVISSupervisor
+            from core.supervisor import IroncliwSupervisor
             # v3.1: Pass skip_browser_open=True to prevent duplicate browser windows
             # run_supervisor.py handles browser opening in _start_loading_page_ecosystem()
-            supervisor = JARVISSupervisor(skip_browser_open=True)
+            supervisor = IroncliwSupervisor(skip_browser_open=True)
             self._supervisor = supervisor  # Store reference for hot reload
             
             self._print_config_summary(supervisor)
@@ -9335,11 +9335,11 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             # Initialize the enterprise-grade resilience and data management systems
             # that provide fault tolerance, data lifecycle management, and cross-repo
-            # synchronization across the JARVIS Trinity ecosystem.
+            # synchronization across the Ironcliw Trinity ecosystem.
             # ═══════════════════════════════════════════════════════════════════
             await self._initialize_enterprise_systems()
 
-            # Phase 3.5: Start Loading Page (BEFORE JARVIS spawns)
+            # Phase 3.5: Start Loading Page (BEFORE Ironcliw spawns)
             TerminalUI.print_divider()
             print(f"  {TerminalUI.CYAN}🌐 Starting Loading Page Server...{TerminalUI.RESET}")
 
@@ -9355,9 +9355,9 @@ class SupervisorBootstrapper:
             if self._loading_server_process:
                 await self._rebroadcast_two_tier_state()
 
-            # Phase 4: Start JARVIS
+            # Phase 4: Start Ironcliw
             TerminalUI.print_divider()
-            TerminalUI.print_phase(4, 4, "Launching JARVIS Core")
+            TerminalUI.print_phase(4, 4, "Launching Ironcliw Core")
             print()
             
             print(f"  {TerminalUI.YELLOW}📡 Watch real-time progress in the loading page!{TerminalUI.RESET}")
@@ -9526,7 +9526,7 @@ class SupervisorBootstrapper:
         1. Unified Resilience Engine - Circuit breakers, bulkheads, rate limiting, chaos engineering
         2. Neural Mesh Resilience - Cross-repo fault tolerance
         3. Unified Data Management - Training data, versioning, validation, privacy, lineage
-        4. Cross-Repo Data Bridge - Data synchronization across JARVIS Trinity
+        4. Cross-Repo Data Bridge - Data synchronization across Ironcliw Trinity
 
         All systems are optional and gracefully degrade if initialization fails.
         """
@@ -9534,11 +9534,11 @@ class SupervisorBootstrapper:
         self.perf.start("enterprise_systems")
 
         enterprise_enabled = os.environ.get(
-            "JARVIS_ENTERPRISE_SYSTEMS", "true"
+            "Ironcliw_ENTERPRISE_SYSTEMS", "true"
         ).lower() in ("1", "true", "yes")
 
         if not enterprise_enabled:
-            self.logger.info("[Phase 3.1] Enterprise systems disabled via JARVIS_ENTERPRISE_SYSTEMS=false")
+            self.logger.info("[Phase 3.1] Enterprise systems disabled via Ironcliw_ENTERPRISE_SYSTEMS=false")
             print(f"  {TerminalUI.YELLOW}⚠️ Enterprise Systems: Disabled{TerminalUI.RESET}")
             return
 
@@ -9548,7 +9548,7 @@ class SupervisorBootstrapper:
         # 1. Initialize Resilience System
         # ═══════════════════════════════════════════════════════════════════
         resilience_enabled = os.environ.get(
-            "JARVIS_RESILIENCE_ENABLED", "true"
+            "Ironcliw_RESILIENCE_ENABLED", "true"
         ).lower() in ("1", "true", "yes")
 
         if resilience_enabled:
@@ -9594,7 +9594,7 @@ class SupervisorBootstrapper:
         # 2. Initialize Data Management System
         # ═══════════════════════════════════════════════════════════════════
         data_mgmt_enabled = os.environ.get(
-            "JARVIS_DATA_MANAGEMENT_ENABLED", "true"
+            "Ironcliw_DATA_MANAGEMENT_ENABLED", "true"
         ).lower() in ("1", "true", "yes")
 
         if data_mgmt_enabled:
@@ -9635,7 +9635,7 @@ class SupervisorBootstrapper:
         # 3. Initialize Model Management System
         # ═══════════════════════════════════════════════════════════════════
         model_mgmt_enabled = os.environ.get(
-            "JARVIS_MODEL_MANAGEMENT_ENABLED", "true"
+            "Ironcliw_MODEL_MANAGEMENT_ENABLED", "true"
         ).lower() in ("1", "true", "yes")
 
         if model_mgmt_enabled:
@@ -9676,7 +9676,7 @@ class SupervisorBootstrapper:
         # 4. Initialize Resource Management System
         # ═══════════════════════════════════════════════════════════════════
         resource_mgmt_enabled = os.environ.get(
-            "JARVIS_RESOURCE_MANAGEMENT_ENABLED", "true"
+            "Ironcliw_RESOURCE_MANAGEMENT_ENABLED", "true"
         ).lower() in ("1", "true", "yes")
 
         if resource_mgmt_enabled:
@@ -9718,7 +9718,7 @@ class SupervisorBootstrapper:
         # 5. Initialize Security System
         # ═══════════════════════════════════════════════════════════════════
         security_enabled = os.environ.get(
-            "JARVIS_SECURITY_ENABLED", "true"
+            "Ironcliw_SECURITY_ENABLED", "true"
         ).lower() in ("1", "true", "yes")
 
         if security_enabled:
@@ -9760,7 +9760,7 @@ class SupervisorBootstrapper:
         # 6. Initialize Configuration Management System
         # ═══════════════════════════════════════════════════════════════════
         config_mgmt_enabled = os.environ.get(
-            "JARVIS_CONFIG_MANAGEMENT_ENABLED", "true"
+            "Ironcliw_CONFIG_MANAGEMENT_ENABLED", "true"
         ).lower() in ("1", "true", "yes")
 
         if config_mgmt_enabled:
@@ -9883,13 +9883,13 @@ class SupervisorBootstrapper:
 
     async def _start_loading_page_ecosystem(self) -> None:
         """
-        Start the loading page ecosystem BEFORE JARVIS spawns.
+        Start the loading page ecosystem BEFORE Ironcliw spawns.
         
         This method:
         1. Starts the loading_server.py subprocess
         2. Waits for server to be ready (with retries)
         3. Opens Chrome Incognito to the loading page
-        4. Sets JARVIS_SUPERVISOR_LOADING=1 so start_system.py knows to skip browser ops
+        4. Sets Ironcliw_SUPERVISOR_LOADING=1 so start_system.py knows to skip browser ops
         
         This ensures the user sees the loading page immediately when running
         under supervisor, just like when running start_system.py directly.
@@ -10047,7 +10047,7 @@ class SupervisorBootstrapper:
                 print(f"  {TerminalUI.GREEN}✓ Loading server ready at {loading_url}{TerminalUI.RESET}")
             
             # Step 3: Intelligent Chrome window management (v4.0 - Clean Slate)
-            # - Close ALL existing JARVIS windows (localhost:3000, :3001, :8010)
+            # - Close ALL existing Ironcliw windows (localhost:3000, :3001, :8010)
             # - Open ONE fresh incognito window
             # - This ensures a clean, predictable single-window experience
             # v5.2: Add frontend_optional parameter to loading URL
@@ -10057,7 +10057,7 @@ class SupervisorBootstrapper:
                 try:
                     opened = await self._ensure_single_jarvis_window(loading_url_with_params)
                     if opened:
-                        print(f"  {TerminalUI.GREEN}✓ Single JARVIS window ready{TerminalUI.RESET}")
+                        print(f"  {TerminalUI.GREEN}✓ Single Ironcliw window ready{TerminalUI.RESET}")
                     else:
                         print(f"  {TerminalUI.YELLOW}⚠️  Could not open Chrome automatically{TerminalUI.RESET}")
                         print(f"  {TerminalUI.CYAN}💡 Open manually: {loading_url_with_params}{TerminalUI.RESET}")
@@ -10067,11 +10067,11 @@ class SupervisorBootstrapper:
                     print(f"  {TerminalUI.CYAN}💡 Open manually: {loading_url_with_params}{TerminalUI.RESET}")
             
             # Step 4: Set environment variable to signal start_system.py
-            os.environ["JARVIS_SUPERVISOR_LOADING"] = "1"
-            self.logger.info("Set JARVIS_SUPERVISOR_LOADING=1")
+            os.environ["Ironcliw_SUPERVISOR_LOADING"] = "1"
+            self.logger.info("Set Ironcliw_SUPERVISOR_LOADING=1")
             
             # Voice narration
-            await self.narrator.speak("Loading page ready. Starting JARVIS core.", wait=False)
+            await self.narrator.speak("Loading page ready. Starting Ironcliw core.", wait=False)
             
             print()  # Blank line for readability
             
@@ -10083,7 +10083,7 @@ class SupervisorBootstrapper:
             except Exception:
                 self.logger.error(error_msg, exc_info=True)
             print(f"  {TerminalUI.YELLOW}⚠️  Loading page failed: {e}{TerminalUI.RESET}")
-            print(f"  {TerminalUI.CYAN}💡 JARVIS will start without loading page{TerminalUI.RESET}")
+            print(f"  {TerminalUI.CYAN}💡 Ironcliw will start without loading page{TerminalUI.RESET}")
 
     async def _graceful_shutdown_loading_server(self) -> None:
         """
@@ -10209,7 +10209,7 @@ class SupervisorBootstrapper:
             return
 
         try:
-            startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE") == "true"
+            startup_complete = os.environ.get("Ironcliw_STARTUP_COMPLETE") == "true"
 
             if startup_complete:
                 # Give Chrome time to redirect (legacy workaround)
@@ -10320,10 +10320,10 @@ class SupervisorBootstrapper:
 
     async def _close_all_jarvis_windows(self) -> int:
         """
-        AGGRESSIVELY close ALL Chrome incognito windows + JARVIS-related regular windows.
+        AGGRESSIVELY close ALL Chrome incognito windows + Ironcliw-related regular windows.
         
         v5.0: Multi-phase approach with verification
-        1. First pass: Close all incognito + JARVIS windows
+        1. First pass: Close all incognito + Ironcliw windows
         2. Verify: Check if any remain
         3. Force: Repeatedly close until none remain
         4. Nuclear: Quit Chrome entirely if still stuck
@@ -10354,7 +10354,7 @@ class SupervisorBootstrapper:
         except Exception:
             pass
         
-        # Phase 2: First pass - close all incognito and JARVIS windows
+        # Phase 2: First pass - close all incognito and Ironcliw windows
         try:
             applescript = '''
             tell application "Google Chrome"
@@ -10449,7 +10449,7 @@ class SupervisorBootstrapper:
                 break
         
         if total_closed > 0:
-            self.logger.info(f"🧹 Total: Closed {total_closed} JARVIS window(s)")
+            self.logger.info(f"🧹 Total: Closed {total_closed} Ironcliw window(s)")
             await asyncio.sleep(1.0)  # Let Chrome fully process
         
         return total_closed
@@ -10549,7 +10549,7 @@ class SupervisorBootstrapper:
                         for _ in range(final_count - 1):
                             await self._close_one_incognito_window()
                     
-                    self.logger.info(f"🌐 Single JARVIS incognito window opened: {url}")
+                    self.logger.info(f"🌐 Single Ironcliw incognito window opened: {url}")
                 except Exception:
                     pass
                 
@@ -10598,11 +10598,11 @@ class SupervisorBootstrapper:
 
     async def _ensure_single_jarvis_window(self, url: str) -> bool:
         """
-        Intelligent window manager: ensures exactly ONE Chrome window for JARVIS.
+        Intelligent window manager: ensures exactly ONE Chrome window for Ironcliw.
         
         Strategy (v5.0 - Lock-Based Clean Slate):
         1. Acquire exclusive browser lock (prevents race conditions)
-        2. Close ALL existing JARVIS-related windows
+        2. Close ALL existing Ironcliw-related windows
         3. Open ONE fresh incognito window
         4. Release lock
         
@@ -10623,18 +10623,18 @@ class SupervisorBootstrapper:
                 return True  # Assume the other process handled it
             
             try:
-                # Step 1: Close all existing JARVIS windows
+                # Step 1: Close all existing Ironcliw windows
                 closed_count = await self._close_all_jarvis_windows()
                 
                 if closed_count > 0:
-                    self.logger.info(f"🧹 Cleaned up {closed_count} existing JARVIS window(s)")
+                    self.logger.info(f"🧹 Cleaned up {closed_count} existing Ironcliw window(s)")
                     await asyncio.sleep(1.0)  # Let Chrome fully process closures
                 
                 # Step 2: Open fresh incognito window
                 success = await self._open_fresh_incognito_window(url)
                 
                 if success:
-                    self.logger.info(f"✅ Single JARVIS window ready at {url}")
+                    self.logger.info(f"✅ Single Ironcliw window ready at {url}")
                 else:
                     self.logger.warning(f"⚠️ Failed to open browser - please open {url} manually")
                 
@@ -10665,7 +10665,7 @@ class SupervisorBootstrapper:
         Broadcast progress update to the loading page.
         
         v4.0: Supervisor takes responsibility for completion broadcasting
-        when JARVIS_SUPERVISOR_LOADING=1 is set.
+        when Ironcliw_SUPERVISOR_LOADING=1 is set.
         
         Args:
             stage: Current stage name
@@ -10811,7 +10811,7 @@ class SupervisorBootstrapper:
         health: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
-        Broadcast JARVIS-Prime status to loading server.
+        Broadcast Ironcliw-Prime status to loading server.
 
         Args:
             tier: Current tier (local, cloud_run, gemini_api)
@@ -10837,12 +10837,12 @@ class SupervisorBootstrapper:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
                 async with session.post(url, json=data) as resp:
                     if resp.status == 200:
-                        self.logger.debug(f"📡 JARVIS-Prime: {tier} ({status})")
+                        self.logger.debug(f"📡 Ironcliw-Prime: {tier} ({status})")
                         return True
                     return False
 
         except Exception as e:
-            self.logger.debug(f"JARVIS-Prime broadcast failed: {e}")
+            self.logger.debug(f"Ironcliw-Prime broadcast failed: {e}")
             return False
 
     async def _broadcast_flywheel_status(
@@ -11015,7 +11015,7 @@ class SupervisorBootstrapper:
 
     async def _monitor_jarvis_startup(self, max_wait: float = 120.0) -> bool:
         """
-        Monitor JARVIS startup and broadcast progress to loading page.
+        Monitor Ironcliw startup and broadcast progress to loading page.
         
         v4.0: This is the CRITICAL missing piece that was causing the 97% hang.
         v4.1: Now checks /health/ready for OPERATIONAL readiness, not just HTTP response.
@@ -11025,10 +11025,10 @@ class SupervisorBootstrapper:
               (Docker startup, Cloud Run initialization, ML model loading, etc.)
         
         Args:
-            max_wait: Maximum time to wait for JARVIS to be ready
+            max_wait: Maximum time to wait for Ironcliw to be ready
             
         Returns:
-            True if JARVIS is ready, False if timeout
+            True if Ironcliw is ready, False if timeout
         """
         import aiohttp
         
@@ -11059,7 +11059,7 @@ class SupervisorBootstrapper:
             extension_reasons.append("Docker startup (+15s)")
 
         # Cold start extension reduced
-        if os.getenv("JARVIS_COLD_START") == "1":
+        if os.getenv("Ironcliw_COLD_START") == "1":
             adaptive_max_wait += 15  # Reduced from 30s to 15s
             extension_reasons.append("Cold start (+15s)")
         
@@ -11067,7 +11067,7 @@ class SupervisorBootstrapper:
             self.logger.info(f"⏱️  Adaptive timeout: {adaptive_max_wait:.0f}s (base: {max_wait}s)")
             self.logger.info(f"   Extensions: {', '.join(extension_reasons)}")
         
-        self.logger.info("🔍 Monitoring JARVIS startup (v9.0 - adaptive timeout)...")
+        self.logger.info("🔍 Monitoring Ironcliw startup (v9.0 - adaptive timeout)...")
 
         while (time.time() - start_time) < adaptive_max_wait:
             elapsed = time.time() - start_time
@@ -11204,12 +11204,12 @@ class SupervisorBootstrapper:
             
             # Phase 3: Both OPERATIONALLY ready = complete!
             if backend_operational and frontend_ready:
-                self.logger.info("🎉 JARVIS startup complete (all systems operational)!")
+                self.logger.info("🎉 Ironcliw startup complete (all systems operational)!")
                 
                 # Broadcast 100% completion
                 await self._broadcast_to_loading_page(
                     "complete",
-                    "JARVIS is online!",
+                    "Ironcliw is online!",
                     100,
                     {
                         "icon": "✅",
@@ -11252,7 +11252,7 @@ class SupervisorBootstrapper:
             await asyncio.sleep(1.5)  # Slightly slower polling
         
         # Timeout - Only broadcast if we have SOME progress
-        self.logger.warning(f"⚠️ JARVIS startup monitoring timeout after {adaptive_max_wait}s")
+        self.logger.warning(f"⚠️ Ironcliw startup monitoring timeout after {adaptive_max_wait}s")
         self.logger.warning(f"   Status: http={backend_http_ready}, operational={backend_operational}, frontend={frontend_ready}")
         if extension_reasons:
             self.logger.warning(f"   Timeout was extended for: {', '.join(extension_reasons)}")
@@ -11261,7 +11261,7 @@ class SupervisorBootstrapper:
         if backend_operational and frontend_ready:
             await self._broadcast_to_loading_page(
                 "complete",
-                "JARVIS is online!",
+                "Ironcliw is online!",
                 100,
                 {
                     "icon": "✅",
@@ -11279,7 +11279,7 @@ class SupervisorBootstrapper:
         if backend_http_ready:
             await self._broadcast_to_loading_page(
                 "startup_slow",
-                "JARVIS is starting slowly...",
+                "Ironcliw is starting slowly...",
                 90,
                 {
                     "icon": "⚠️",
@@ -11513,7 +11513,7 @@ class SupervisorBootstrapper:
 
         Records metrics from running processes and predicts failures.
         """
-        interval = float(os.getenv("JARVIS_HEALTH_CHECK_INTERVAL", "10.0"))
+        interval = float(os.getenv("Ironcliw_HEALTH_CHECK_INTERVAL", "10.0"))
 
         while not self._shutdown_event.is_set():
             try:
@@ -11575,7 +11575,7 @@ class SupervisorBootstrapper:
                 except Exception:
                     pass
 
-            # Record metrics for main JARVIS process
+            # Record metrics for main Ironcliw process
             try:
                 main_proc = psutil.Process()
                 self._health_predictor.record_metric("jarvis_main", "cpu", main_proc.cpu_percent())
@@ -11593,7 +11593,7 @@ class SupervisorBootstrapper:
 
         Monitors predicted failures and applies remediation.
         """
-        interval = float(os.getenv("JARVIS_SELF_HEAL_INTERVAL", "30.0"))
+        interval = float(os.getenv("Ironcliw_SELF_HEAL_INTERVAL", "30.0"))
 
         while not self._shutdown_event.is_set():
             try:
@@ -12059,7 +12059,7 @@ class SupervisorBootstrapper:
 
         Tracks ulimits, file descriptors, memory usage.
         """
-        interval = float(os.getenv("JARVIS_RESOURCE_CHECK_INTERVAL", "15.0"))
+        interval = float(os.getenv("Ironcliw_RESOURCE_CHECK_INTERVAL", "15.0"))
 
         while not self._shutdown_event.is_set():
             try:
@@ -12096,7 +12096,7 @@ class SupervisorBootstrapper:
 
         Adjusts feature levels based on system load.
         """
-        interval = float(os.getenv("JARVIS_DEGRADATION_CHECK_INTERVAL", "20.0"))
+        interval = float(os.getenv("Ironcliw_DEGRADATION_CHECK_INTERVAL", "20.0"))
 
         while not self._shutdown_event.is_set():
             try:
@@ -12290,7 +12290,7 @@ class SupervisorBootstrapper:
         - Idempotent execution (safe to call multiple times)
 
         v9.5: Also destroys infrastructure that WE provisioned via InfrastructureOrchestrator.
-        This ensures GCP resources don't stay deployed when JARVIS shuts down.
+        This ensures GCP resources don't stay deployed when Ironcliw shuts down.
         """
         # v9.5: Cleanup Infrastructure Orchestrator (destroys Cloud Run we created)
         # This MUST run first to ensure resources are destroyed before VM cleanup
@@ -12326,7 +12326,7 @@ class SupervisorBootstrapper:
                 try:
                     from backend.core.trinity_voice_coordinator import announce, VoiceContext, VoicePriority
                     success, reason = await announce(
-                        message="JARVIS systems shutting down gracefully. Goodbye.",
+                        message="Ironcliw systems shutting down gracefully. Goodbye.",
                         context=VoiceContext.RUNTIME,
                         priority=VoicePriority.CRITICAL,
                         source="supervisor",
@@ -12528,12 +12528,12 @@ class SupervisorBootstrapper:
         except Exception as e:
             self.logger.warning(f"⚠️ Experience Forwarder cleanup error: {e}")
 
-        # Cleanup JARVIS-Prime
+        # Cleanup Ironcliw-Prime
         try:
             await self._stop_jarvis_prime()
-            self.logger.info("✅ JARVIS-Prime stopped")
+            self.logger.info("✅ Ironcliw-Prime stopped")
         except Exception as e:
-            self.logger.warning(f"⚠️ JARVIS-Prime cleanup error: {e}")
+            self.logger.warning(f"⚠️ Ironcliw-Prime cleanup error: {e}")
 
         # v10.0: Cleanup Reactor-Core API Server
         try:
@@ -12781,26 +12781,26 @@ class SupervisorBootstrapper:
         """
         Propagate Zero-Touch settings to child processes via environment variables.
         
-        These are read by JARVISSupervisor to configure autonomous update behavior.
+        These are read by IroncliwSupervisor to configure autonomous update behavior.
         """
         # Zero-Touch master switch
         if self.config.zero_touch_enabled:
-            os.environ["JARVIS_ZERO_TOUCH_ENABLED"] = "true"
+            os.environ["Ironcliw_ZERO_TOUCH_ENABLED"] = "true"
             self.logger.info("🤖 Zero-Touch autonomous updates ENABLED")
             
             # Propagate individual settings
-            os.environ["JARVIS_ZERO_TOUCH_REQUIRE_IDLE"] = str(self.config.zero_touch_require_idle).lower()
-            os.environ["JARVIS_ZERO_TOUCH_CHECK_BUSY"] = str(self.config.zero_touch_check_busy).lower()
-            os.environ["JARVIS_ZERO_TOUCH_AUTO_SECURITY"] = str(self.config.zero_touch_auto_security).lower()
-            os.environ["JARVIS_ZERO_TOUCH_AUTO_CRITICAL"] = str(self.config.zero_touch_auto_critical).lower()
-            os.environ["JARVIS_ZERO_TOUCH_AUTO_MINOR"] = str(self.config.zero_touch_auto_minor).lower()
-            os.environ["JARVIS_ZERO_TOUCH_AUTO_MAJOR"] = str(self.config.zero_touch_auto_major).lower()
+            os.environ["Ironcliw_ZERO_TOUCH_REQUIRE_IDLE"] = str(self.config.zero_touch_require_idle).lower()
+            os.environ["Ironcliw_ZERO_TOUCH_CHECK_BUSY"] = str(self.config.zero_touch_check_busy).lower()
+            os.environ["Ironcliw_ZERO_TOUCH_AUTO_SECURITY"] = str(self.config.zero_touch_auto_security).lower()
+            os.environ["Ironcliw_ZERO_TOUCH_AUTO_CRITICAL"] = str(self.config.zero_touch_auto_critical).lower()
+            os.environ["Ironcliw_ZERO_TOUCH_AUTO_MINOR"] = str(self.config.zero_touch_auto_minor).lower()
+            os.environ["Ironcliw_ZERO_TOUCH_AUTO_MAJOR"] = str(self.config.zero_touch_auto_major).lower()
         
         # Dead Man's Switch settings
         if self.config.dms_enabled:
-            os.environ["JARVIS_DMS_ENABLED"] = "true"
-            os.environ["JARVIS_DMS_PROBATION_SECONDS"] = str(self.config.dms_probation_seconds)
-            os.environ["JARVIS_DMS_MAX_FAILURES"] = str(self.config.dms_max_failures)
+            os.environ["Ironcliw_DMS_ENABLED"] = "true"
+            os.environ["Ironcliw_DMS_PROBATION_SECONDS"] = str(self.config.dms_probation_seconds)
+            os.environ["Ironcliw_DMS_MAX_FAILURES"] = str(self.config.dms_max_failures)
             self.logger.info(f"🎯 Dead Man's Switch: {self.config.dms_probation_seconds}s probation")
     
     async def _propagate_agi_os_settings(self) -> None:
@@ -12813,10 +12813,10 @@ class SupervisorBootstrapper:
         - Leverage IntelligentActionOrchestrator for optimal timing
         """
         if self.config.agi_os_enabled:
-            os.environ["JARVIS_AGI_OS_ENABLED"] = "true"
+            os.environ["Ironcliw_AGI_OS_ENABLED"] = "true"
             
             if self.config.agi_os_approval_for_updates:
-                os.environ["JARVIS_AGI_OS_APPROVAL_UPDATES"] = "true"
+                os.environ["Ironcliw_AGI_OS_APPROVAL_UPDATES"] = "true"
                 self.logger.info("🧠 AGI OS: Voice approval for updates ENABLED")
             
             # Check if AGI OS is available
@@ -12838,7 +12838,7 @@ class SupervisorBootstrapper:
         2. launchd persistence (survives reboots and auto-restarts on crash)
         3. Multi-stage verification pipeline (TCP → TLS → Auth → Query → Latency)
         4. Intelligent health monitoring with anomaly detection
-        5. Trinity coordination (JARVIS, Prime, Reactor unified management)
+        5. Trinity coordination (Ironcliw, Prime, Reactor unified management)
         6. Automatic fallback to legacy system if needed
 
         Environment Variables (no hardcoding):
@@ -13137,8 +13137,8 @@ class SupervisorBootstrapper:
             self.logger.info(f"   • Background Tasks: Adjustment loop, Forecast loop")
             
             # Propagate rate orchestrator availability to child processes
-            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "true"
-            os.environ["JARVIS_ML_RATE_FORECASTING"] = "true"
+            os.environ["Ironcliw_RATE_ORCHESTRATOR_ENABLED"] = "true"
+            os.environ["Ironcliw_ML_RATE_FORECASTING"] = "true"
             
             # Print status
             print(f"  {TerminalUI.GREEN}✓ Rate Limiting: ML Forecasting + Adaptive Throttling{TerminalUI.RESET}")
@@ -13146,12 +13146,12 @@ class SupervisorBootstrapper:
         except ImportError as e:
             self.logger.warning(f"⚠️ Intelligent Rate Orchestrator not available: {e}")
             self.logger.warning("   Rate limiting will use basic fallback mode")
-            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+            os.environ["Ironcliw_RATE_ORCHESTRATOR_ENABLED"] = "false"
             print(f"  {TerminalUI.YELLOW}⚠️ Rate Limiting: Basic mode (ML forecasting unavailable){TerminalUI.RESET}")
             
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize Rate Orchestrator: {e}")
-            os.environ["JARVIS_RATE_ORCHESTRATOR_ENABLED"] = "false"
+            os.environ["Ironcliw_RATE_ORCHESTRATOR_ENABLED"] = "false"
 
     async def _initialize_agentic_security(self) -> None:
         """
@@ -13163,8 +13163,8 @@ class SupervisorBootstrapper:
         - VBIA Integration: Strict voice authentication for Tier 2 commands
 
         Two-Tier Security Model:
-        - Tier 1 "JARVIS": Safe APIs, read-only, optional auth, Gemini Flash
-        - Tier 2 "JARVIS ACCESS": Full Computer Use, strict VBIA, Claude Sonnet
+        - Tier 1 "Ironcliw": Safe APIs, read-only, optional auth, Gemini Flash
+        - Tier 2 "Ironcliw ACCESS": Full Computer Use, strict VBIA, Claude Sonnet
 
         Safety Features:
         - Heartbeat monitoring with configurable timeout
@@ -13212,7 +13212,7 @@ class SupervisorBootstrapper:
                     self.logger.info("   • Kill Switch: Armed (heartbeat timeout, activity spike)")
                     self.logger.info("   • Safety Mode: Active monitoring")
 
-                    os.environ["JARVIS_WATCHDOG_ENABLED"] = "true"
+                    os.environ["Ironcliw_WATCHDOG_ENABLED"] = "true"
                     print(f"  {TerminalUI.GREEN}✓ Watchdog: Active safety monitoring{TerminalUI.RESET}")
 
                     # v6.2: Announce watchdog ready
@@ -13236,7 +13236,7 @@ class SupervisorBootstrapper:
 
                 except ImportError as e:
                     self.logger.warning(f"⚠️ Agentic Watchdog not available: {e}")
-                    os.environ["JARVIS_WATCHDOG_ENABLED"] = "false"
+                    os.environ["Ironcliw_WATCHDOG_ENABLED"] = "false"
                     print(f"  {TerminalUI.YELLOW}⚠️ Watchdog: Not available{TerminalUI.RESET}")
 
             # Initialize Tiered VBIA Adapter
@@ -13256,7 +13256,7 @@ class SupervisorBootstrapper:
                     # v6.2: Announce VBIA ready with visual security
                     if self.config.voice_enabled:
                         # Check if visual security is enabled
-                        visual_enabled = os.getenv("JARVIS_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
+                        visual_enabled = os.getenv("Ironcliw_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
                         if visual_enabled:
                             await self.narrator.speak("Voice biometric authentication ready. Visual threat detection enabled.", wait=False)
                         else:
@@ -13294,7 +13294,7 @@ class SupervisorBootstrapper:
 
                 if cross_repo_success:
                     self.logger.info("🌐 Cross-Repo State System initialized")
-                    self.logger.info("   • JARVIS ↔ JARVIS Prime ↔ Reactor Core connected")
+                    self.logger.info("   • Ironcliw ↔ Ironcliw Prime ↔ Reactor Core connected")
                     self.logger.info("   • VBIA events: Real-time sharing enabled")
                     self.logger.info("   • Visual security: Event emission ready")
                     print(f"  {TerminalUI.GREEN}✓ Cross-Repo: VBIA v6.2 event sharing active{TerminalUI.RESET}")
@@ -13363,8 +13363,8 @@ class SupervisorBootstrapper:
                     self.logger.info(f"   • VBIA Thresholds: T1={config.tier1_vbia_threshold:.0%}, T2={config.tier2_vbia_threshold:.0%}")
                     self.logger.info(f"   • VBIA Adapter: {'Connected' if vbia_adapter else 'Fallback mode'}")
 
-                    os.environ["JARVIS_TIERED_ROUTING"] = "true"
-                    os.environ["JARVIS_TIER2_BACKEND"] = config.tier2_backend
+                    os.environ["Ironcliw_TIERED_ROUTING"] = "true"
+                    os.environ["Ironcliw_TIER2_BACKEND"] = config.tier2_backend
                     print(f"  {TerminalUI.GREEN}✓ Two-Tier Security: T1=Gemini, T2=Claude+VBIA{TerminalUI.RESET}")
 
                     # Store VBIA adapter for later use
@@ -13407,7 +13407,7 @@ class SupervisorBootstrapper:
 
                     # v6.2: Announce complete two-tier security with visual protection
                     if self.config.voice_enabled:
-                        visual_enabled = os.getenv("JARVIS_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
+                        visual_enabled = os.getenv("Ironcliw_VISUAL_SECURITY_ENABLED", "true").lower() == "true"
                         if visual_enabled:
                             await self.narrator.speak("Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection.", wait=False)
                         else:
@@ -13415,7 +13415,7 @@ class SupervisorBootstrapper:
 
                 except ImportError as e:
                     self.logger.warning(f"⚠️ Tiered Router not available: {e}")
-                    os.environ["JARVIS_TIERED_ROUTING"] = "false"
+                    os.environ["Ironcliw_TIERED_ROUTING"] = "false"
                     print(f"  {TerminalUI.YELLOW}⚠️ Tiered Routing: Not available{TerminalUI.RESET}")
 
             # Initialize Agentic Task Runner (unified execution engine)
@@ -13452,7 +13452,7 @@ class SupervisorBootstrapper:
                     self.logger.info("🤖 Agentic Task Runner initialized")
                     self.logger.info(f"   • Watchdog: {'Attached' if self._watchdog else 'Independent'}")
                     self.logger.info(f"   • Ready: {self._agentic_runner.is_ready}")
-                    os.environ["JARVIS_AGENTIC_RUNNER"] = "true"
+                    os.environ["Ironcliw_AGENTIC_RUNNER"] = "true"
                     print(f"  {TerminalUI.GREEN}✓ Agentic Runner: Computer Use ready{TerminalUI.RESET}")
 
                     # v10.0: Connect Training Status Hub for Feedback Loop
@@ -13461,24 +13461,24 @@ class SupervisorBootstrapper:
 
                 except ImportError as e:
                     self.logger.warning(f"⚠️ Agentic Runner not available: {e}")
-                    os.environ["JARVIS_AGENTIC_RUNNER"] = "false"
+                    os.environ["Ironcliw_AGENTIC_RUNNER"] = "false"
                     print(f"  {TerminalUI.YELLOW}⚠️ Agentic Runner: Not available{TerminalUI.RESET}")
 
             # Log overall status
             if self._watchdog_enabled or self._tiered_routing_enabled or self._agentic_runner_enabled:
                 self.logger.info("✅ Two-Tier Agentic Security System ready")
             else:
-                self.logger.info("ℹ️ Agentic security disabled (use JARVIS_WATCHDOG_ENABLED=true to enable)")
+                self.logger.info("ℹ️ Agentic security disabled (use Ironcliw_WATCHDOG_ENABLED=true to enable)")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize Agentic Security: {e}")
-            os.environ["JARVIS_WATCHDOG_ENABLED"] = "false"
-            os.environ["JARVIS_TIERED_ROUTING"] = "false"
-            os.environ["JARVIS_AGENTIC_RUNNER"] = "false"
+            os.environ["Ironcliw_WATCHDOG_ENABLED"] = "false"
+            os.environ["Ironcliw_TIERED_ROUTING"] = "false"
+            os.environ["Ironcliw_AGENTIC_RUNNER"] = "false"
 
     async def _initialize_jarvis_prime(self) -> None:
         """
-        v8.0: Initialize JARVIS-Prime Tier-0 Brain with Memory-Aware Hybrid Routing.
+        v8.0: Initialize Ironcliw-Prime Tier-0 Brain with Memory-Aware Hybrid Routing.
 
         This dynamically decides the optimal mode based on available system memory:
         - RAM ≥ 8GB → Local subprocess mode (FREE, fastest)
@@ -13495,7 +13495,7 @@ class SupervisorBootstrapper:
 
         Architecture:
         ┌─────────────────────────────────────────────────────────────────┐
-        │  JARVIS-Prime Memory-Aware Hybrid Router (v8.0)                 │
+        │  Ironcliw-Prime Memory-Aware Hybrid Router (v8.0)                 │
         │  ┌───────────────────────────────────────────────────────────┐  │
         │  │              Memory Pressure Monitor                       │  │
         │  │  RAM ≥ 8GB → LOCAL    RAM 4-8GB → CLOUD    < 4GB → API   │  │
@@ -13512,8 +13512,8 @@ class SupervisorBootstrapper:
         └─────────────────────────────────────────────────────────────────┘
         """
         if not self.config.jarvis_prime_enabled:
-            self.logger.info("ℹ️ JARVIS-Prime disabled via configuration")
-            os.environ["JARVIS_PRIME_ENABLED"] = "false"
+            self.logger.info("ℹ️ Ironcliw-Prime disabled via configuration")
+            os.environ["Ironcliw_PRIME_ENABLED"] = "false"
             return
 
         try:
@@ -13536,10 +13536,10 @@ class SupervisorBootstrapper:
                 f"recommended mode: {recommended_mode}"
             )
 
-            # Broadcast JARVIS-Prime initialization start
+            # Broadcast Ironcliw-Prime initialization start
             await self._broadcast_startup_progress(
                 stage="jarvis_prime_init",
-                message=f"Initializing JARVIS-Prime (Mode: {recommended_mode}, RAM: {available_gb:.1f}GB)...",
+                message=f"Initializing Ironcliw-Prime (Mode: {recommended_mode}, RAM: {available_gb:.1f}GB)...",
                 progress=75,
                 metadata={
                     "jarvis_prime": {
@@ -13558,7 +13558,7 @@ class SupervisorBootstrapper:
                 local_port=self.config.jarvis_prime_port,
                 # Cloud Run settings
                 cloud_run_url=self.config.jarvis_prime_cloud_run_url or os.getenv(
-                    "JARVIS_PRIME_CLOUD_RUN_URL",
+                    "Ironcliw_PRIME_CLOUD_RUN_URL",
                     "https://jarvis-prime-dev-888774109345.us-central1.run.app"
                 ),
                 use_cloud_run=self.config.jarvis_prime_use_cloud_run or bool(
@@ -13571,7 +13571,7 @@ class SupervisorBootstrapper:
 
             # Log the decision
             mode, reason = self._jarvis_prime_client.decide_mode()
-            self.logger.info(f"🎯 JARVIS-Prime routing decision: {mode.value} ({reason})")
+            self.logger.info(f"🎯 Ironcliw-Prime routing decision: {mode.value} ({reason})")
 
             # Initialize based on recommended mode
             if mode == RoutingMode.LOCAL:
@@ -13583,7 +13583,7 @@ class SupervisorBootstrapper:
             elif mode == RoutingMode.GEMINI_API:
                 self.logger.info("📡 Using Gemini API fallback due to low memory")
             else:
-                self.logger.warning("⚠️ No JARVIS-Prime backends available")
+                self.logger.warning("⚠️ No Ironcliw-Prime backends available")
 
             # Run health check on the selected mode
             if mode != RoutingMode.DISABLED:
@@ -13611,14 +13611,14 @@ class SupervisorBootstrapper:
             # Register mode change callback
             async def on_mode_change(old_mode, new_mode, reason):
                 self.logger.info(
-                    f"🔄 JARVIS-Prime mode changed: {old_mode.value} → {new_mode.value} ({reason})"
+                    f"🔄 Ironcliw-Prime mode changed: {old_mode.value} → {new_mode.value} ({reason})"
                 )
-                os.environ["JARVIS_PRIME_ROUTING_MODE"] = new_mode.value
+                os.environ["Ironcliw_PRIME_ROUTING_MODE"] = new_mode.value
 
                 # Broadcast the change
                 await self._broadcast_startup_progress(
                     stage="jarvis_prime_mode_change",
-                    message=f"JARVIS-Prime switched to {new_mode.value}",
+                    message=f"Ironcliw-Prime switched to {new_mode.value}",
                     progress=100,
                     metadata={
                         "jarvis_prime": {
@@ -13647,7 +13647,7 @@ class SupervisorBootstrapper:
                     v134.0: Auto-recovery callback to restart J-Prime.
                     v136.0: Enhanced with global spawn coordinator check.
 
-                    This callback is invoked by JARVISPrimeClient's service discovery
+                    This callback is invoked by IroncliwPrimeClient's service discovery
                     when it detects J-Prime is offline. We MUST check the global
                     spawn coordinator to prevent racing with the orchestrator.
                     """
@@ -13698,16 +13698,16 @@ class SupervisorBootstrapper:
                 self.logger.debug(f"[v134.0] Auto-recovery callback registration failed: {cb_err}")
 
             # Propagate settings to environment
-            os.environ["JARVIS_PRIME_ENABLED"] = "true"
-            os.environ["JARVIS_PRIME_HOST"] = self.config.jarvis_prime_host
-            os.environ["JARVIS_PRIME_PORT"] = str(self.config.jarvis_prime_port)
-            os.environ["JARVIS_PRIME_ROUTING_MODE"] = mode.value
+            os.environ["Ironcliw_PRIME_ENABLED"] = "true"
+            os.environ["Ironcliw_PRIME_HOST"] = self.config.jarvis_prime_host
+            os.environ["Ironcliw_PRIME_PORT"] = str(self.config.jarvis_prime_port)
+            os.environ["Ironcliw_PRIME_ROUTING_MODE"] = mode.value
 
             # Broadcast completion
             client_stats = self._jarvis_prime_client.get_stats()
             await self._broadcast_startup_progress(
                 stage="jarvis_prime_ready",
-                message=f"JARVIS-Prime Tier-0 Brain online ({mode.value})",
+                message=f"Ironcliw-Prime Tier-0 Brain online ({mode.value})",
                 progress=78,
                 metadata={
                     "jarvis_prime": {
@@ -13723,23 +13723,23 @@ class SupervisorBootstrapper:
                 }
             )
 
-            self.logger.info(f"✅ JARVIS-Prime Tier-0 Brain ready (mode: {mode.value})")
+            self.logger.info(f"✅ Ironcliw-Prime Tier-0 Brain ready (mode: {mode.value})")
             self.logger.info(f"🔄 Dynamic memory monitoring active (interval: 30s)")
-            print(f"  {TerminalUI.GREEN}✓ JARVIS-Prime: {mode.value} mode ({available_gb:.1f}GB RAM){TerminalUI.RESET}")
+            print(f"  {TerminalUI.GREEN}✓ Ironcliw-Prime: {mode.value} mode ({available_gb:.1f}GB RAM){TerminalUI.RESET}")
 
         except ImportError as e:
-            self.logger.warning(f"⚠️ JARVIS-Prime client not available: {e}")
-            os.environ["JARVIS_PRIME_ENABLED"] = "false"
-            print(f"  {TerminalUI.YELLOW}⚠️ JARVIS-Prime: Client not available{TerminalUI.RESET}")
+            self.logger.warning(f"⚠️ Ironcliw-Prime client not available: {e}")
+            os.environ["Ironcliw_PRIME_ENABLED"] = "false"
+            print(f"  {TerminalUI.YELLOW}⚠️ Ironcliw-Prime: Client not available{TerminalUI.RESET}")
 
         except Exception as e:
-            log_component_failure("jarvis-prime", "Failed to initialize JARVIS-Prime", error=e)
-            os.environ["JARVIS_PRIME_ENABLED"] = "false"
-            print(f"  {TerminalUI.YELLOW}⚠️ JARVIS-Prime: Not available ({e}){TerminalUI.RESET}")
+            log_component_failure("jarvis-prime", "Failed to initialize Ironcliw-Prime", error=e)
+            os.environ["Ironcliw_PRIME_ENABLED"] = "false"
+            print(f"  {TerminalUI.YELLOW}⚠️ Ironcliw-Prime: Not available ({e}){TerminalUI.RESET}")
 
     async def _init_jarvis_prime_local_if_needed(self) -> None:
         """
-        Start JARVIS-Prime local subprocess if not already running.
+        Start Ironcliw-Prime local subprocess if not already running.
 
         v117.0: CRITICAL FIX - Prevent duplicate spawning race condition.
         v136.0: Enhanced with GlobalSpawnCoordinator for cross-component sync.
@@ -13825,12 +13825,12 @@ class SupervisorBootstrapper:
             # Check if jarvis-prime is in the orchestrator's ready or starting set
             if hasattr(orchestrator, '_services_ready') and "jarvis-prime" in orchestrator._services_ready:
                 self.logger.info(
-                    "[v117.0] ✅ JARVIS-Prime already started by cross_repo_orchestrator (ready)"
+                    "[v117.0] ✅ Ironcliw-Prime already started by cross_repo_orchestrator (ready)"
                 )
                 orchestrator_started = True
             elif hasattr(orchestrator, '_services_starting') and "jarvis-prime" in orchestrator._services_starting:
                 self.logger.info(
-                    "[v117.0] ⏳ JARVIS-Prime being started by cross_repo_orchestrator (starting)"
+                    "[v117.0] ⏳ Ironcliw-Prime being started by cross_repo_orchestrator (starting)"
                 )
                 orchestrator_started = True
 
@@ -13844,7 +13844,7 @@ class SupervisorBootstrapper:
                 start_time = time.time()
                 while time.time() - start_time < wait_timeout:
                     if "jarvis-prime" in orchestrator._services_ready:
-                        self.logger.info("[v117.0] ✅ JARVIS-Prime now ready via orchestrator")
+                        self.logger.info("[v117.0] ✅ Ironcliw-Prime now ready via orchestrator")
                         break
                     await asyncio.sleep(2.0)
                 else:
@@ -13885,7 +13885,7 @@ class SupervisorBootstrapper:
                         resp = await client.get(f"http://{host}:{port}/health")
                         if resp.status_code == 200:
                             self.logger.info(
-                                f"[v117.0] ✅ JARVIS-Prime already running and healthy on port {port}"
+                                f"[v117.0] ✅ Ironcliw-Prime already running and healthy on port {port}"
                             )
                             return  # Success - no need to spawn
                 except Exception as health_err:
@@ -13995,17 +13995,17 @@ class SupervisorBootstrapper:
         return False
 
     async def _init_jarvis_prime_local(self) -> None:
-        """Start JARVIS-Prime as a local subprocess."""
+        """Start Ironcliw-Prime as a local subprocess."""
         repo_path = self.config.jarvis_prime_repo_path
 
         if not repo_path.exists():
-            self.logger.warning(f"⚠️ JARVIS-Prime repo not found: {repo_path}")
+            self.logger.warning(f"⚠️ Ironcliw-Prime repo not found: {repo_path}")
             return
 
         # Check if model exists
         model_path = repo_path / self.config.jarvis_prime_models_dir / "current.gguf"
         if not model_path.exists():
-            self.logger.warning(f"⚠️ JARVIS-Prime model not found: {model_path}")
+            self.logger.warning(f"⚠️ Ironcliw-Prime model not found: {model_path}")
             self.logger.info("   Download with: cd jarvis-prime && python -m jarvis_prime.docker.model_downloader tinyllama-chat")
             return
 
@@ -14022,7 +14022,7 @@ class SupervisorBootstrapper:
             "--model", str(model_path),
         ]
 
-        self.logger.info(f"🚀 Starting JARVIS-Prime local: {' '.join(cmd)}")
+        self.logger.info(f"🚀 Starting Ironcliw-Prime local: {' '.join(cmd)}")
 
         # Start subprocess
         # v95.20: CRITICAL - start_new_session=True isolates from parent signal propagation
@@ -14050,7 +14050,7 @@ class SupervisorBootstrapper:
         asyncio.create_task(self._read_jarvis_prime_logs())
 
     async def _init_jarvis_prime_docker(self) -> None:
-        """Start JARVIS-Prime as a Docker container."""
+        """Start Ironcliw-Prime as a Docker container."""
         container_name = "jarvis-prime"
 
         # Stop existing container if any
@@ -14083,7 +14083,7 @@ class SupervisorBootstrapper:
             self.config.jarvis_prime_docker_image,
         ]
 
-        self.logger.info(f"🐳 Starting JARVIS-Prime Docker: {' '.join(cmd)}")
+        self.logger.info(f"🐳 Starting Ironcliw-Prime Docker: {' '.join(cmd)}")
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -14103,10 +14103,10 @@ class SupervisorBootstrapper:
         await self._wait_for_jarvis_prime_health()
 
     async def _init_jarvis_prime_cloud_run(self) -> None:
-        """Connect to JARVIS-Prime on Cloud Run."""
+        """Connect to Ironcliw-Prime on Cloud Run."""
         url = self.config.jarvis_prime_cloud_run_url
 
-        self.logger.info(f"☁️ Connecting to JARVIS-Prime Cloud Run: {url}")
+        self.logger.info(f"☁️ Connecting to Ironcliw-Prime Cloud Run: {url}")
 
         # Just verify connectivity - no process to start
         import aiohttp
@@ -14114,7 +14114,7 @@ class SupervisorBootstrapper:
             try:
                 async with session.get(f"{url}/health", timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status == 200:
-                        self.logger.info("✅ Cloud Run JARVIS-Prime is healthy")
+                        self.logger.info("✅ Cloud Run Ironcliw-Prime is healthy")
                     else:
                         self.logger.warning(f"⚠️ Cloud Run returned status {resp.status}")
             except Exception as e:
@@ -14124,7 +14124,7 @@ class SupervisorBootstrapper:
 
     async def _wait_for_jarvis_prime_health(self) -> bool:
         """
-        Wait for JARVIS-Prime to become healthy.
+        Wait for Ironcliw-Prime to become healthy.
 
         v108.0: Enhanced with early process death detection - if J-Prime crashes
         during startup, we detect it immediately instead of waiting for timeout.
@@ -14135,7 +14135,7 @@ class SupervisorBootstrapper:
         start_time = time.perf_counter()
         timeout = self.config.jarvis_prime_startup_timeout
 
-        self.logger.info(f"⏳ Waiting for JARVIS-Prime at {url}...")
+        self.logger.info(f"⏳ Waiting for Ironcliw-Prime at {url}...")
 
         async with aiohttp.ClientSession() as session:
             while (time.perf_counter() - start_time) < timeout:
@@ -14144,7 +14144,7 @@ class SupervisorBootstrapper:
                     elapsed = time.perf_counter() - start_time
                     exit_code = self._jarvis_prime_process.returncode
                     self.logger.error(
-                        f"❌ JARVIS-Prime process died during startup (exit code: {exit_code}, "
+                        f"❌ Ironcliw-Prime process died during startup (exit code: {exit_code}, "
                         f"after {elapsed:.1f}s)"
                     )
                     # Try to capture stderr for diagnostics
@@ -14165,7 +14165,7 @@ class SupervisorBootstrapper:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            self.logger.info(f"✅ JARVIS-Prime healthy: {data.get('status', 'ok')}")
+                            self.logger.info(f"✅ Ironcliw-Prime healthy: {data.get('status', 'ok')}")
                             return True
                 except Exception:
                     pass
@@ -14176,20 +14176,20 @@ class SupervisorBootstrapper:
         if self._jarvis_prime_process:
             if self._jarvis_prime_process.returncode is not None:
                 self.logger.error(
-                    f"⚠️ JARVIS-Prime died with exit code {self._jarvis_prime_process.returncode} "
+                    f"⚠️ Ironcliw-Prime died with exit code {self._jarvis_prime_process.returncode} "
                     f"during {timeout}s startup timeout"
                 )
             else:
                 self.logger.warning(
-                    f"⚠️ JARVIS-Prime health check timed out after {timeout}s "
+                    f"⚠️ Ironcliw-Prime health check timed out after {timeout}s "
                     f"(process still running, PID: {self._jarvis_prime_process.pid})"
                 )
         else:
-            self.logger.warning(f"⚠️ JARVIS-Prime health check timed out after {timeout}s")
+            self.logger.warning(f"⚠️ Ironcliw-Prime health check timed out after {timeout}s")
         return False
 
     async def _read_jarvis_prime_logs(self) -> None:
-        """Read and log JARVIS-Prime subprocess output."""
+        """Read and log Ironcliw-Prime subprocess output."""
         if not self._jarvis_prime_process:
             return
 
@@ -14199,7 +14199,7 @@ class SupervisorBootstrapper:
                 if text:
                     self.logger.debug(f"[JarvisPrime] {text}")
         except Exception as e:
-            self.logger.debug(f"JARVIS-Prime log reader ended: {e}")
+            self.logger.debug(f"Ironcliw-Prime log reader ended: {e}")
 
     async def _init_reactor_core_watcher(self) -> None:
         """Initialize Reactor-Core watcher for auto-deployment of trained models."""
@@ -14291,12 +14291,12 @@ class SupervisorBootstrapper:
         v8.0: Initialize the Unified Data Flywheel for self-improving learning.
 
         The Data Flywheel connects:
-        - JARVIS-AI-Agent (experience recording, observability)
+        - Ironcliw-AI-Agent (experience recording, observability)
         - reactor-core (Scout web scraping, training, GGUF export)
-        - JARVIS-Prime (model deployment, inference)
+        - Ironcliw-Prime (model deployment, inference)
 
         Features:
-        - Automatic experience collection from JARVIS interactions
+        - Automatic experience collection from Ironcliw interactions
         - Intelligent learning goals auto-discovery
         - Scheduled training runs (default: 3 AM daily)
         - Auto-deployment via Reactor-Core Watcher
@@ -14401,14 +14401,14 @@ class SupervisorBootstrapper:
         """
         v9.3: Initialize the Intelligent Learning Goals Discovery System.
 
-        This comprehensive system automatically discovers topics JARVIS should learn
+        This comprehensive system automatically discovers topics Ironcliw should learn
         about by analyzing multiple sources and triggering Safe Scout for scraping.
 
         Discovery Sources:
-        - FAILED_INTERACTION: Commands JARVIS couldn't handle (highest priority)
-        - CORRECTION: When user corrects JARVIS's response (high priority)
+        - FAILED_INTERACTION: Commands Ironcliw couldn't handle (highest priority)
+        - CORRECTION: When user corrects Ironcliw's response (high priority)
         - USER_QUESTION: Questions about technologies/concepts
-        - UNKNOWN_TERM: Technical terms JARVIS didn't recognize
+        - UNKNOWN_TERM: Technical terms Ironcliw didn't recognize
         - TRENDING: Topics appearing frequently in interactions
         - MANUAL: User-requested learning goals
 
@@ -14443,7 +14443,7 @@ class SupervisorBootstrapper:
 
             @dataclass
             class DiscoveredTopic:
-                """A topic discovered for JARVIS to learn."""
+                """A topic discovered for Ironcliw to learn."""
                 topic: str
                 priority: float  # 0.0-10.0 calculated score
                 source: DiscoverySource
@@ -14913,7 +14913,7 @@ class SupervisorBootstrapper:
                         return topic
 
                 async def discover_from_logs(self, log_dir: Path) -> List[DiscoveredTopic]:
-                    """Discover topics from JARVIS log files."""
+                    """Discover topics from Ironcliw log files."""
                     discovered = []
 
                     if not log_dir.exists():
@@ -15165,7 +15165,7 @@ class SupervisorBootstrapper:
         """
         v9.0: Initialize Full Agentic OS Intelligence Stack.
 
-        This method initializes all advanced intelligence systems that make JARVIS
+        This method initializes all advanced intelligence systems that make Ironcliw
         a truly autonomous, self-improving AI agent:
 
         1. UAE (Unified Awareness Engine) - Screen awareness and computer vision
@@ -15458,7 +15458,7 @@ class SupervisorBootstrapper:
                 if self.config.voice_enabled:
                     await self.narrator.speak("Initializing Neural Mesh multi-agent system.", wait=False)
                 self.logger.info("   • Knowledge graph: " + str(self.config.neural_mesh_knowledge_graph))
-                self.logger.info("   • JARVIS bridge: " + str(self.config.neural_mesh_jarvis_bridge))
+                self.logger.info("   • Ironcliw bridge: " + str(self.config.neural_mesh_jarvis_bridge))
                 self.logger.info("   • Health interval: " + str(self.config.neural_mesh_health_interval) + "s")
 
                 # v9.4: Import production Neural Mesh components
@@ -15471,7 +15471,7 @@ class SupervisorBootstrapper:
                         stop_neural_mesh,
                     )
                     from backend.neural_mesh.jarvis_bridge import (
-                        JARVISNeuralMeshBridge,
+                        IroncliwNeuralMeshBridge,
                         get_jarvis_bridge,
                         start_jarvis_neural_mesh,
                         stop_jarvis_neural_mesh,
@@ -15553,9 +15553,9 @@ class SupervisorBootstrapper:
                                     wait=False
                                 )
 
-                    # Initialize JARVIS Bridge if enabled (connects all JARVIS systems)
+                    # Initialize Ironcliw Bridge if enabled (connects all Ironcliw systems)
                     if self.config.neural_mesh_jarvis_bridge:
-                        self.logger.info("   → Initializing JARVIS Neural Mesh Bridge...")
+                        self.logger.info("   → Initializing Ironcliw Neural Mesh Bridge...")
 
                         # Configure agent discovery
                         discovery_config = AgentDiscoveryConfig(
@@ -15572,7 +15572,7 @@ class SupervisorBootstrapper:
                         )
 
                         # Create and start bridge
-                        self._neural_mesh_bridge = JARVISNeuralMeshBridge(
+                        self._neural_mesh_bridge = IroncliwNeuralMeshBridge(
                             config=discovery_config,
                             coordinator=self._neural_mesh_coordinator,
                         )
@@ -15580,7 +15580,7 @@ class SupervisorBootstrapper:
                         await self._neural_mesh_bridge.start()
 
                         bridge_agents = len(self._neural_mesh_bridge.registered_agents)
-                        self.logger.info(f"   ✓ JARVIS Bridge started with {bridge_agents} system adapters")
+                        self.logger.info(f"   ✓ Ironcliw Bridge started with {bridge_agents} system adapters")
 
                         # Register bridge event callbacks
                         def on_bridge_event(data):
@@ -16342,7 +16342,7 @@ class SupervisorBootstrapper:
                                 self._prime_neural_mesh_bridge.register_callback(on_prime_mesh_event)
                                 self.logger.info("✅ Prime Neural Mesh connected to CAI")
 
-                            print(f"  {TerminalUI.GREEN}✓ Prime Neural Mesh: JARVIS-Prime bridge active{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.GREEN}✓ Prime Neural Mesh: Ironcliw-Prime bridge active{TerminalUI.RESET}")
                         else:
                             self.logger.warning("⚠️ Prime Neural Mesh bridge initialization incomplete")
                     except Exception as prime_mesh_error:
@@ -16384,7 +16384,7 @@ class SupervisorBootstrapper:
         # ═══════════════════════════════════════════════════════════════════
         # Step 8: Initialize Trinity Knowledge Indexer (Brain Bridge)
         # ═══════════════════════════════════════════════════════════════════
-        # This connects JARVIS's scraped web memory to his conversational abilities
+        # This connects Ironcliw's scraped web memory to his conversational abilities
         trinity_indexer_enabled = os.getenv("TRINITY_INDEXER_ENABLED", "true").lower() == "true"
         if trinity_indexer_enabled:
             try:
@@ -16501,7 +16501,7 @@ class SupervisorBootstrapper:
         │           └───────────────────────┼───────────────────────┘         │
         │                                   ▼                                 │
         │  ┌──────────────────────────────────────────────────────────────┐   │
-        │  │                     LSP Server (JARVIS)                      │   │
+        │  │                     LSP Server (Ironcliw)                      │   │
         │  │  Completions | Diagnostics | Hover | CodeActions | Definition│   │
         │  └──────────────────────────────────────────────────────────────┘   │
         │                                   ▼                                 │
@@ -16585,7 +16585,7 @@ class SupervisorBootstrapper:
                 initialized_systems["code_ownership"] = True
             if init_status.get("ReviewWorkflowEngine") == "initialized":
                 initialized_systems["review_workflow"] = True
-            if init_status.get("JARVISLSPServer") == "initialized":
+            if init_status.get("IroncliwLSPServer") == "initialized":
                 initialized_systems["lsp_server"] = True
             if init_status.get("IDEIntegrationEngine") == "initialized":
                 initialized_systems["ide_integration"] = True
@@ -16617,8 +16617,8 @@ class SupervisorBootstrapper:
         self.logger.info("═" * 60)
 
         # Set environment variables for other systems
-        os.environ["JARVIS_COLLAB_ACTIVE"] = str(len(active_systems) > 0).lower()
-        os.environ["JARVIS_COLLAB_SYSTEMS"] = ",".join(active_systems)
+        os.environ["Ironcliw_COLLAB_ACTIVE"] = str(len(active_systems) > 0).lower()
+        os.environ["Ironcliw_COLLAB_SYSTEMS"] = ",".join(active_systems)
 
     async def _resolve_intelligence_services_from_container(self) -> None:
         """
@@ -16679,9 +16679,9 @@ class SupervisorBootstrapper:
 
             # LSP Server
             try:
-                from backend.intelligence.lsp_server import JARVISLSPServer
-                self._lsp_server = await self._di_container.resolve(JARVISLSPServer)
-                self.logger.debug("Resolved: JARVISLSPServer")
+                from backend.intelligence.lsp_server import IroncliwLSPServer
+                self._lsp_server = await self._di_container.resolve(IroncliwLSPServer)
+                self.logger.debug("Resolved: IroncliwLSPServer")
             except (ImportError, Exception) as e:
                 self.logger.debug(f"Could not resolve LSP server: {e}")
 
@@ -16772,7 +16772,7 @@ class SupervisorBootstrapper:
 
             # Store for cross-repo coordination
             self._docker_manager_initialized = True
-            os.environ["JARVIS_DOCKER_MANAGER_ENABLED"] = "true"
+            os.environ["Ironcliw_DOCKER_MANAGER_ENABLED"] = "true"
             self.logger.info("✅ Docker Manager v12.0 initialized with intelligent self-healing")
 
         except Exception as e:
@@ -16785,26 +16785,26 @@ class SupervisorBootstrapper:
         """
         v10.0: Initialize the Infrastructure Orchestrator with Startup Cost Optimization.
 
-        This fixes the root issue of GCP resources staying deployed when JARVIS is off:
+        This fixes the root issue of GCP resources staying deployed when Ironcliw is off:
         - Provisions Cloud Run/Redis only when needed (memory pressure, explicit config)
         - Tracks what WE created vs pre-existing resources
         - Automatically destroys OUR resources on shutdown
         - Leaves pre-existing infrastructure alone
-        - Supports multi-repo integration (JARVIS, Prime, Reactor Core)
+        - Supports multi-repo integration (Ironcliw, Prime, Reactor Core)
 
         v10.0 Enhancements:
         - Startup cost check: Detects orphaned resources from crashed sessions
         - Artifact cleanup: Cleans old Docker images to reduce storage costs
         - Cloud SQL management: Can stop/start Cloud SQL for cost savings
         - OrphanDetectionLoop: Background monitoring for cost optimization
-        - Cross-repo bridge: Unified cost tracking across JARVIS/Prime/Reactor
+        - Cross-repo bridge: Unified cost tracking across Ironcliw/Prime/Reactor
 
         Architecture:
         ┌─────────────────────────────────────────────────────────────────────┐
         │              Infrastructure Orchestrator (v10.0)                     │
         ├─────────────────────────────────────────────────────────────────────┤
         │  ┌──────────────────┐    ┌──────────────────┐    ┌───────────────┐ │
-        │  │  JARVIS Backend  │    │   JARVIS-Prime   │    │  Reactor-Core │ │
+        │  │  Ironcliw Backend  │    │   Ironcliw-Prime   │    │  Reactor-Core │ │
         │  │   (Cloud Run)    │    │   (Cloud Run)    │    │  (Training)   │ │
         │  └────────┬─────────┘    └────────┬─────────┘    └───────┬───────┘ │
         │           │                       │                       │         │
@@ -16859,10 +16859,10 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             # v10.0: STARTUP COST OPTIMIZATION
             # ═══════════════════════════════════════════════════════════════════
-            # This runs BEFORE JARVIS fully starts to clean up any resources
+            # This runs BEFORE Ironcliw fully starts to clean up any resources
             # left over from crashed sessions or previous runs.
             # ═══════════════════════════════════════════════════════════════════
-            startup_cost_enabled = os.getenv("JARVIS_STARTUP_COST_CHECK", "true").lower() == "true"
+            startup_cost_enabled = os.getenv("Ironcliw_STARTUP_COST_CHECK", "true").lower() == "true"
 
             if startup_cost_enabled:
                 self.logger.info("💰 Running startup cost optimization check...")
@@ -16876,7 +16876,7 @@ class SupervisorBootstrapper:
             # - Clean up old Docker images (every 6 hours)
             # - Report cost savings
             # ═══════════════════════════════════════════════════════════════════
-            artifact_cleanup_enabled = os.getenv("JARVIS_ARTIFACT_CLEANUP", "true").lower() == "true"
+            artifact_cleanup_enabled = os.getenv("Ironcliw_ARTIFACT_CLEANUP", "true").lower() == "true"
 
             self._orphan_loop = await start_orphan_detection(
                 auto_cleanup=True,
@@ -16886,8 +16886,8 @@ class SupervisorBootstrapper:
 
             # Check if we need to provision infrastructure now
             should_provision = (
-                os.getenv("JARVIS_PROVISION_CLOUD_RUN", "false").lower() == "true" or
-                os.getenv("JARVIS_PROVISION_REDIS", "false").lower() == "true"
+                os.getenv("Ironcliw_PROVISION_CLOUD_RUN", "false").lower() == "true" or
+                os.getenv("Ironcliw_PROVISION_REDIS", "false").lower() == "true"
             )
 
             if should_provision:
@@ -16907,13 +16907,13 @@ class SupervisorBootstrapper:
             # ═══════════════════════════════════════════════════════════════════
             # v10.0: CROSS-REPO BRIDGE INITIALIZATION
             # ═══════════════════════════════════════════════════════════════════
-            # Share cost tracking state with JARVIS-Prime and Reactor-Core
+            # Share cost tracking state with Ironcliw-Prime and Reactor-Core
             # ═══════════════════════════════════════════════════════════════════
             await self._initialize_cross_repo_bridge()
 
             # Propagate orchestrator availability to child processes
-            os.environ["JARVIS_INFRA_ORCHESTRATOR_ENABLED"] = "true"
-            os.environ["JARVIS_COST_OPTIMIZATION_ENABLED"] = "true"
+            os.environ["Ironcliw_INFRA_ORCHESTRATOR_ENABLED"] = "true"
+            os.environ["Ironcliw_COST_OPTIMIZATION_ENABLED"] = "true"
 
             print(f"  {TerminalUI.GREEN}✓ Infrastructure Orchestrator: Ready (on-demand GCP + cost optimization){TerminalUI.RESET}")
             self.logger.info("✅ Infrastructure Orchestrator v10.0 initialized with cost optimization")
@@ -16921,21 +16921,21 @@ class SupervisorBootstrapper:
         except ImportError as e:
             self.logger.warning(f"⚠️ Infrastructure Orchestrator not available: {e}")
             self.logger.info("   → Will use existing infrastructure (no on-demand provisioning)")
-            os.environ["JARVIS_INFRA_ORCHESTRATOR_ENABLED"] = "false"
+            os.environ["Ironcliw_INFRA_ORCHESTRATOR_ENABLED"] = "false"
             print(f"  {TerminalUI.YELLOW}⚠️ Infrastructure: Using existing resources{TerminalUI.RESET}")
 
         except Exception as e:
             self.logger.error(f"❌ Infrastructure Orchestrator init failed: {e}")
             import traceback
             self.logger.debug(traceback.format_exc())
-            os.environ["JARVIS_INFRA_ORCHESTRATOR_ENABLED"] = "false"
+            os.environ["Ironcliw_INFRA_ORCHESTRATOR_ENABLED"] = "false"
             print(f"  {TerminalUI.RED}✗ Infrastructure: Failed ({e}){TerminalUI.RESET}")
 
     async def _run_startup_cost_check(self) -> None:
         """
-        v10.0: Run cost optimization checks at JARVIS startup.
+        v10.0: Run cost optimization checks at Ironcliw startup.
 
-        This runs BEFORE JARVIS fully starts to:
+        This runs BEFORE Ironcliw fully starts to:
         1. Detect and cleanup orphaned resources from crashed sessions
         2. Check for excessive storage costs (Artifact Registry)
         3. Optionally stop Cloud SQL if configured
@@ -16981,8 +16981,8 @@ class SupervisorBootstrapper:
                     self.logger.info("   ✅ No orphaned resources found")
 
             # Step 2: Check Cloud SQL status (optional stop for cost savings)
-            stop_sql_on_startup = os.getenv("JARVIS_STOP_SQL_ON_STARTUP", "false").lower() == "true"
-            start_sql_on_startup = os.getenv("JARVIS_START_SQL_ON_STARTUP", "true").lower() == "true"
+            stop_sql_on_startup = os.getenv("Ironcliw_STOP_SQL_ON_STARTUP", "false").lower() == "true"
+            start_sql_on_startup = os.getenv("Ironcliw_START_SQL_ON_STARTUP", "true").lower() == "true"
 
             if start_sql_on_startup:
                 self.logger.info("   🗄️ Ensuring Cloud SQL is running...")
@@ -17010,8 +17010,8 @@ class SupervisorBootstrapper:
         v10.0: Initialize cross-repo infrastructure bridge.
 
         This creates a shared state mechanism for cost tracking across:
-        - JARVIS-AI-Agent (main backend)
-        - JARVIS-Prime (local inference)
+        - Ironcliw-AI-Agent (main backend)
+        - Ironcliw-Prime (local inference)
         - Reactor-Core (training)
 
         Uses a file-based state for simplicity (no extra dependencies).
@@ -17021,7 +17021,7 @@ class SupervisorBootstrapper:
             bridge_state_dir.mkdir(parents=True, exist_ok=True)
 
             bridge_state = {
-                "session_id": os.getenv("JARVIS_SESSION_ID", str(int(time.time()))),
+                "session_id": os.getenv("Ironcliw_SESSION_ID", str(int(time.time()))),
                 "started_at": time.time(),
                 "repos": {
                     "jarvis": {
@@ -17037,9 +17037,9 @@ class SupervisorBootstrapper:
                 },
             }
 
-            # Check for JARVIS-Prime
+            # Check for Ironcliw-Prime
             jarvis_prime_path = Path(os.getenv(
-                "JARVIS_PRIME_PATH",
+                "Ironcliw_PRIME_PATH",
                 str(Path.home() / "Documents/repos/jarvis-prime")
             ))
             if jarvis_prime_path.exists():
@@ -17047,7 +17047,7 @@ class SupervisorBootstrapper:
                     "path": str(jarvis_prime_path),
                     "status": "available",
                 }
-                self.logger.info("   🔗 JARVIS-Prime: Connected")
+                self.logger.info("   🔗 Ironcliw-Prime: Connected")
 
             # Check for Reactor-Core
             reactor_core_path = Path(os.getenv(
@@ -17068,7 +17068,7 @@ class SupervisorBootstrapper:
                 json.dump(bridge_state, f, indent=2)
 
             # Set environment variable for child processes
-            os.environ["JARVIS_CROSS_REPO_BRIDGE"] = str(bridge_file)
+            os.environ["Ironcliw_CROSS_REPO_BRIDGE"] = str(bridge_file)
 
             self.logger.info("   ✅ Cross-repo bridge initialized")
 
@@ -17080,12 +17080,12 @@ class SupervisorBootstrapper:
         v10.0: Initialize Reactor-Core API Server.
 
         This starts the training pipeline API server that enables:
-        - Programmatic training triggers from JARVIS
+        - Programmatic training triggers from Ironcliw
         - Experience log streaming
         - Pipeline status monitoring
         - Scout topic management
 
-        The server is started as a subprocess and managed alongside JARVIS.
+        The server is started as a subprocess and managed alongside Ironcliw.
         """
         import subprocess
 
@@ -17293,8 +17293,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             },
             "jarvis_prime": {
                 "files": ["jarvis_prime.json", "j_prime.json"],
-                "health_url": f"http://localhost:{os.getenv('JARVIS_PRIME_PORT', '8000')}/health",
-                "required": os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true",
+                "health_url": f"http://localhost:{os.getenv('Ironcliw_PRIME_PORT', '8000')}/health",
+                "required": os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true",
             },
             "reactor_core": {
                 "files": ["reactor_core.json"],
@@ -17431,14 +17431,14 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         Now independent operations run in parallel for faster startup and
         better fault tolerance.
 
-        This connects JARVIS Body to the Trinity network, enabling:
-        - Cross-repo communication (JARVIS ↔ J-Prime ↔ Reactor Core)
+        This connects Ironcliw Body to the Trinity network, enabling:
+        - Cross-repo communication (Ironcliw ↔ J-Prime ↔ Reactor Core)
         - Distributed AI reasoning and plan execution
         - Heartbeat monitoring for component liveness
         - File-based message passing for reliability
 
         The Trinity architecture models:
-        - JARVIS Body = Execution layer (Computer Use, Vision, Actions)
+        - Ironcliw Body = Execution layer (Computer Use, Vision, Actions)
         - J-Prime = Cognitive layer (Reasoning, Planning, Decisions)
         - Reactor Core = Neural layer (Training, Learning, Optimization)
 
@@ -17456,7 +17456,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
         try:
             self.logger.info("=" * 60)
-            self.logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection (v132.0 Parallel)")
+            self.logger.info("PROJECT TRINITY: Initializing Ironcliw Body Connection (v132.0 Parallel)")
             self.logger.info("=" * 60)
 
             print(f"  {TerminalUI.CYAN}🔗 PROJECT TRINITY: Connecting distributed architecture...{TerminalUI.RESET}")
@@ -17540,7 +17540,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             except Exception as e:
                 self.logger.warning(f"[v132.0] Heartbeat check error: {e}")
 
-            # Write JARVIS Body component state (fast operation, no timeout needed)
+            # Write Ironcliw Body component state (fast operation, no timeout needed)
             jarvis_state = {
                 "component_type": "jarvis_body",
                 "instance_id": self._trinity_instance_id,
@@ -17703,8 +17703,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v87.0 ULTRA: Initialize Trinity Voice Coordinator for cross-repo voice announcements.
 
         This is the CENTRAL voice system that coordinates ALL voice announcements across:
-        - JARVIS Body (main system)
-        - JARVIS-Prime (brain/inference)
+        - Ironcliw Body (main system)
+        - Ironcliw-Prime (brain/inference)
         - Reactor-Core (self-improvement/training)
 
         Features:
@@ -17714,7 +17714,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         - Deduplication, rate limiting, coalescing
         - Health monitoring and engine selection
         - Zero hardcoding (environment-driven)
-        - UK Daniel voice as JARVIS signature ⭐
+        - UK Daniel voice as Ironcliw signature ⭐
         """
         if not self._trinity_voice_enabled:
             self.logger.debug("[v87.0] Trinity Voice Coordinator disabled via config")
@@ -17749,7 +17749,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
                 # Test voice system is working (now returns tuple)
                 test_success, test_reason = await announce(
-                    message="Trinity Voice Coordinator v100.0 initialized. JARVIS systems online.",
+                    message="Trinity Voice Coordinator v100.0 initialized. Ironcliw systems online.",
                     context=VoiceContext.STARTUP,
                     priority=VoicePriority.CRITICAL,
                     source="supervisor",
@@ -18207,7 +18207,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         2. TrinityKnowledgeGraph: Shared knowledge storage across repos with
            semantic search, versioning, and cross-repo synchronization
         3. TrinityTrainingPipeline: End-to-end training integration from
-           JARVIS experience capture → Reactor Core training → Prime deployment
+           Ironcliw experience capture → Reactor Core training → Prime deployment
         4. TrinityMonitoring: Unified observability with distributed tracing,
            metrics collection, health monitoring, and intelligent alerting
 
@@ -18651,7 +18651,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         2. Parsing event files and forwarding to TrinityEventBus
         3. Triggering model hot-swap in UnifiedModelServing
 
-        Without this, trained models from Reactor Core never reach JARVIS Prime!
+        Without this, trained models from Reactor Core never reach Ironcliw Prime!
 
         Architecture:
             Reactor Core [Training] → MODEL_READY event file
@@ -18666,7 +18666,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         self.logger.info("[v101.0] Initializing Trinity Bridge Adapter - MODEL_READY Forwarding")
         self.logger.info("=" * 60)
 
-        print(f"  {TerminalUI.CYAN}🌉 Trinity Bridge: Connecting Reactor Core → JARVIS model hot-swap...{TerminalUI.RESET}")
+        print(f"  {TerminalUI.CYAN}🌉 Trinity Bridge: Connecting Reactor Core → Ironcliw model hot-swap...{TerminalUI.RESET}")
 
         try:
             from backend.system.trinity_bridge_adapter import get_trinity_bridge
@@ -18747,7 +18747,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v104.0: Initialize Trinity IPC Hub - Enterprise-Grade Communication Layer.
 
         CRITICAL: This component enables ALL 10 communication channels between
-        JARVIS Body, J-Prime, and Reactor Core:
+        Ironcliw Body, J-Prime, and Reactor Core:
 
         1. Direct Body → Reactor Command Channel
         2. Reactor → Body Status Push Channel
@@ -19078,7 +19078,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         """
         v101.0: Initialize Cross-Repo Neural Mesh Bridge.
 
-        Registers JARVIS Prime and Reactor Core as Neural Mesh agents for:
+        Registers Ironcliw Prime and Reactor Core as Neural Mesh agents for:
         1. Unified capability discovery across all repos
         2. Task routing with capability matching
         3. Health monitoring via heartbeat files
@@ -19087,7 +19087,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         Architecture:
             ┌─────────────────────────────────────────────────────────────┐
             │              CrossRepoNeuralMeshBridge                       │
-            │  ├── JARVIS Prime Agent (local inference, GPU compute)       │
+            │  ├── Ironcliw Prime Agent (local inference, GPU compute)       │
             │  └── Reactor Core Agent (training, fine-tuning)             │
             └─────────────────────────────────────────────────────────────┘
         """
@@ -19150,13 +19150,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v101.0: Initialize Cross-Repo Cost Sync.
 
         Unified budget tracking across all repos via Redis for:
-        1. Real-time cost synchronization between JARVIS, Prime, and Reactor
+        1. Real-time cost synchronization between Ironcliw, Prime, and Reactor
         2. Atomic budget checks to prevent concurrent overruns
         3. Auto-reconnecting Redis client with file fallback
         4. Budget alerts and enforcement across repos
 
         Architecture:
-            JARVIS ─┬─► Redis (real-time sync) ◄─┬─ JARVIS Prime
+            Ironcliw ─┬─► Redis (real-time sync) ◄─┬─ Ironcliw Prime
                     │                            │
                     └──► File fallback ◄─────────┘
         """
@@ -19345,7 +19345,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         """
         v104.0: Initialize Ouroboros Self-Improvement Engine.
 
-        The autonomous code evolution system that uses JARVIS Prime (local LLM)
+        The autonomous code evolution system that uses Ironcliw Prime (local LLM)
         to improve its own codebase. Named after the ancient symbol of a serpent
         eating its own tail - representing eternal cyclic renewal.
 
@@ -19426,7 +19426,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # Log configuration
             config = status.get("config", {})
             self.logger.info(f"[v104.0] Configuration:")
-            self.logger.info(f"  - JARVIS Prime API: {config.get('prime_api_base', 'N/A')}")
+            self.logger.info(f"  - Ironcliw Prime API: {config.get('prime_api_base', 'N/A')}")
             self.logger.info(f"  - Model: {config.get('prime_model', 'N/A')}")
             self.logger.info(f"  - Max Retries: {config.get('max_retries', 10)}")
             self.logger.info(f"  - Population Size: {config.get('population_size', 3)}")
@@ -19545,7 +19545,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 self._neural_mesh = get_neural_mesh()
                 mesh_connected = await initialize_neural_mesh()
                 if mesh_connected:
-                    print(f"  {TerminalUI.GREEN}    ├─ Neural Mesh: Connected (JARVIS ↔ Prime ↔ Reactor){TerminalUI.RESET}")
+                    print(f"  {TerminalUI.GREEN}    ├─ Neural Mesh: Connected (Ironcliw ↔ Prime ↔ Reactor){TerminalUI.RESET}")
                     self.logger.info("[v107.0] ✅ Neural Mesh connected")
                 else:
                     print(f"  {TerminalUI.YELLOW}    ├─ Neural Mesh: Standalone mode{TerminalUI.RESET}")
@@ -19690,7 +19690,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             ("dependency_installer", "Auto-install missing packages"),
                             ("file_lock_manager", "User edit conflict detection"),
                             ("reactor_feedback_receiver", "Bidirectional Reactor Core sync"),
-                            ("prime_training_integration", "JARVIS Prime training feedback"),
+                            ("prime_training_integration", "Ironcliw Prime training feedback"),
                             ("model_update_notifier", "Model update notifications"),
                             ("autonomous_loop_controller", "Unified loop management"),
                             ("cross_repo_sync_manager", "Cross-repo state synchronization"),
@@ -19758,7 +19758,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             print(f"  {TerminalUI.MAGENTA}        ├─ AutonomousImprovementEngine: Self-improvement{TerminalUI.RESET}")
                             print(f"  {TerminalUI.MAGENTA}        └─ VoiceCommandHandler: Voice-activated improvement{TerminalUI.RESET}")
                             self.logger.info(f"[v8.0] ✅ 'Improve Yourself' System: {v8_active}/3 components active")
-                            print(f"  {TerminalUI.CYAN}        📢 Say 'JARVIS, improve yourself' to trigger{TerminalUI.RESET}")
+                            print(f"  {TerminalUI.CYAN}        📢 Say 'Ironcliw, improve yourself' to trigger{TerminalUI.RESET}")
 
                         # v9.0: Multi-Language Support System
                         v9_components = ["language_registry", "ast_parser", "symbol_tracker",
@@ -19969,7 +19969,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             self._trinity_orchestration_engine = get_orchestration_engine()
 
             # Note: We don't call engine.start() here because this supervisor IS the body
-            # The engine.start() would try to spawn a new JARVIS process
+            # The engine.start() would try to spawn a new Ironcliw process
             # Instead, we just use the engine for its coordination features
 
             # Get status
@@ -19981,7 +19981,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
             # Log component configuration
             self.logger.info(f"[v103.0] Configuration:")
-            self.logger.info(f"  - JARVIS Path: {TrinityConfig.JARVIS_PATH}")
+            self.logger.info(f"  - Ironcliw Path: {TrinityConfig.Ironcliw_PATH}")
             self.logger.info(f"  - Prime Path: {TrinityConfig.PRIME_PATH}")
             self.logger.info(f"  - Reactor Path: {TrinityConfig.REACTOR_PATH}")
             self.logger.info(f"  - Heartbeat Interval: {TrinityConfig.HEARTBEAT_INTERVAL}s")
@@ -20058,10 +20058,10 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v102.0: Initialize Trinity Directory Lifecycle - MUST BE FIRST.
 
         Creates all required directories for cross-repo IPC:
-        - ~/.jarvis/trinity/events/ (JARVIS → Reactor Core events)
+        - ~/.jarvis/trinity/events/ (Ironcliw → Reactor Core events)
         - ~/.jarvis/trinity/state/ (Shared state)
         - ~/.jarvis/trinity/models/ (Model artifacts)
-        - ~/.jarvis/reactor/events/ (Reactor Core → JARVIS events)
+        - ~/.jarvis/reactor/events/ (Reactor Core → Ironcliw events)
         - ~/.jarvis/cross_repo/ (Cross-repo coordination)
 
         This MUST run before any other component tries to use these directories.
@@ -20110,7 +20110,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         5. Event sequencing with gap detection
 
         Architecture:
-            JARVIS ←──────────────────────────────────────────────→ Reactor Core
+            Ironcliw ←──────────────────────────────────────────────→ Reactor Core
                     │   TrinityIntegrationCoordinator           │
                     │   ├── EventSequencer (sequence + gaps)    │
                     │   ├── CausalDelivery (ordering)           │
@@ -20185,7 +20185,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
         Provides integration with Reactor Core for:
         1. Publishing MODEL_READY events when training completes
-        2. Receiving experience batches from JARVIS
+        2. Receiving experience batches from Ironcliw
         3. Training pipeline lifecycle coordination
         4. Model artifact management
 
@@ -20205,7 +20205,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             ~/.jarvis/reactor/events/MODEL_READY_*.json
                     │
                     ▼
-            TrinityBridgeAdapter (JARVIS)
+            TrinityBridgeAdapter (Ironcliw)
                     │
                     ▼
             UnifiedModelServing.hot_swap_model()
@@ -20280,7 +20280,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             /training/health/deep
                     │
                     ▼
-            JARVIS Health Aggregation
+            Ironcliw Health Aggregation
                     │
                     ▼
             Voice Alerts / Dashboard / Auto-Recovery
@@ -20547,7 +20547,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v100.0: Initialize Continuous Learning Orchestrator - Unified Learning Pipeline.
 
         This initializes the continuous learning system that provides:
-        1. Experience aggregation from all JARVIS components
+        1. Experience aggregation from all Ironcliw components
         2. Intelligent training job scheduling with priority queues
         3. A/B testing with statistical significance analysis
         4. Model performance tracking with trend detection
@@ -20834,7 +20834,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         - Real-time communication (voice + websocket + menu bar)
         - Session memory and atomic multi-file editing
 
-        The connector bridges JARVIS Body, JARVIS Prime, and Reactor Core
+        The connector bridges Ironcliw Body, Ironcliw Prime, and Reactor Core
         into a unified self-improving system with real-time user feedback.
         """
         enable_unified_connector = os.environ.get(
@@ -20901,7 +20901,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
                 self.logger.info("[v101.0] ✅ UnifiedTrinityConnector initialized successfully")
                 self.logger.info(f"[v101.0]    Session: {status.get('session_id', 'unknown')}")
-                self.logger.info(f"[v101.0]    Repositories: JARVIS={status['repositories'].get('jarvis', False)}, "
+                self.logger.info(f"[v101.0]    Repositories: Ironcliw={status['repositories'].get('jarvis', False)}, "
                                f"Prime={status['repositories'].get('prime', False)}, "
                                f"Reactor={status['repositories'].get('reactor', False)}")
 
@@ -20955,7 +20955,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             │  │   └── Trend analysis: 5-sample window, slope detection       │
             │  └── TrinityStartupCoordinator (parallel startup)               │
             │       ├── Phase 1: Infrastructure (dirs, Cloud SQL)             │
-            │       ├── Phase 2: JARVIS Body (must complete first)            │
+            │       ├── Phase 2: Ironcliw Body (must complete first)            │
             │       ├── Phase 3: J-Prime + Reactor-Core (parallel)            │
             │       ├── Phase 4: Trinity Sync (after all online)              │
             │       └── Phase 5: Finalization                                 │
@@ -21202,7 +21202,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
     # =========================================================================
     # These methods enable "one-command" startup of all three Trinity repos.
     # Running `python3 run_supervisor.py` automatically launches:
-    #   - JARVIS Body (this process)
+    #   - Ironcliw Body (this process)
     #   - J-Prime Mind (subprocess)
     #   - Reactor-Core Nerves (subprocess)
     # =========================================================================
@@ -21215,7 +21215,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         python3 run_supervisor.py → Launches all 3 repos automatically
 
         Architecture:
-        - JARVIS Body: Already running (this process)
+        - Ironcliw Body: Already running (this process)
         - J-Prime Mind: Launched as subprocess (trinity_bridge.py or server.py)
         - Reactor-Core Nerves: Launched as subprocess (trinity_orchestrator.py)
 
@@ -21375,7 +21375,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # v16.0: Wait for J-Prime to be ready using ServiceReadinessChecker
             # This replaces the static sleep with a dynamic readiness check
             if self._jprime_orchestrator_process is not None:
-                jprime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")
+                jprime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8000")
                 self.logger.info(f"   ⏳ Waiting for J-Prime to be ready at {jprime_url}...")
                 print(f"  {TerminalUI.CYAN}⏳ Waiting for J-Prime to be ready...{TerminalUI.RESET}")
 
@@ -21506,13 +21506,13 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v73.0: Pre-flight zombie reaper - kill orphaned processes holding Trinity ports.
 
         The Problem:
-            If you hard-crash or force-kill JARVIS, the cleanup script won't run.
+            If you hard-crash or force-kill Ironcliw, the cleanup script won't run.
             J-Prime or Reactor-Core processes may stay alive as "zombies" holding ports.
             When you restart, Trinity launch fails because "Port 8000 already in use".
 
         The Solution:
             Before launching, scan for any process holding Trinity ports and terminate it
-            if it belongs to a previous JARVIS session (not the current one).
+            if it belongs to a previous Ironcliw session (not the current one).
 
         Protected Ports:
             - 8000: J-Prime default server port
@@ -21604,7 +21604,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         The launched process will:
         - Initialize Trinity connection
         - Start heartbeat broadcasting to ~/.jarvis/trinity/
-        - Enable cognitive commands to JARVIS Body
+        - Enable cognitive commands to Ironcliw Body
 
         Features:
         - Skips launch if heartbeat detected (already running)
@@ -22157,7 +22157,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         command = ["python3", str(script_path)]
                         if "run_server.py" in str(script_path):
                             # run_server.py accepts --port and --host CLI args
-                            jprime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+                            jprime_port = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
                             command.extend(["--port", str(jprime_port), "--host", "0.0.0.0"])
 
                         config = ServiceLaunchConfig(
@@ -22167,7 +22167,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             env_vars={
                                 "TRINITY_ENABLED": "true",
                                 "PYTHONPATH": str(self._jprime_repo_path),
-                                "JARVIS_PRIME_PORT": os.getenv("JARVIS_PRIME_PORT", "8000"),
+                                "Ironcliw_PRIME_PORT": os.getenv("Ironcliw_PRIME_PORT", "8000"),
                             },
                             python_venv=venv_python,
                             restart_policy="always",
@@ -23223,7 +23223,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         The AGI Orchestrator provides:
         - Unified event bus for cross-repo communication
         - Persistent state management (survives restarts)
-        - Learning pipeline (JARVIS -> Reactor -> Prime)
+        - Learning pipeline (Ironcliw -> Reactor -> Prime)
         - Agent registry and activation
         - Cross-repo health aggregation
         """
@@ -23252,7 +23252,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 # Publish Trinity startup event
                 await orchestrator.publish_event(AGIEvent(
                     event_type="trinity.startup.complete",
-                    source=AGIComponent.JARVIS,
+                    source=AGIComponent.Ironcliw,
                     priority=EventPriority.HIGH,
                     payload={
                         "jarvis_running": True,
@@ -23563,7 +23563,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         Uses IntelligentContinuousScraper for:
         - Adaptive scheduling based on system load and time of day
         - Topic priority queue with automatic discovery
-        - Integration with JARVIS learning goals
+        - Integration with Ironcliw learning goals
         - Rate limiting and quality filtering
         - Safe Scout integration from reactor-core
         """
@@ -23725,7 +23725,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 pass
             self._neural_mesh_health_task = None
 
-        # 2. Stop JARVIS Neural Mesh Bridge
+        # 2. Stop Ironcliw Neural Mesh Bridge
         if hasattr(self, '_neural_mesh_bridge') and self._neural_mesh_bridge:
             try:
                 await self._neural_mesh_bridge.stop()
@@ -23790,20 +23790,20 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
     # =========================================================================
     # Multi-trigger training system that uses reactor-core's full 8-stage pipeline:
     # 1. SCOUTING - Safe Scout web documentation ingestion
-    # 2. INGESTING - Parse JARVIS logs and experience events
+    # 2. INGESTING - Parse Ironcliw logs and experience events
     # 3. FORMATTING - Convert to training format
     # 4. DISTILLING - Improve examples with teacher models
     # 5. TRAINING - Fine-tune model with LoRA
     # 6. EVALUATING - Benchmark and gatekeeper approval
     # 7. QUANTIZING - Convert to GGUF format
-    # 8. DEPLOYING - Update model registry and deploy to JARVIS-Prime
+    # 8. DEPLOYING - Update model registry and deploy to Ironcliw-Prime
     # =========================================================================
 
     async def _init_training_orchestrator(self) -> None:
         """
         v9.2: Initialize the Intelligent Training Orchestrator.
 
-        This system coordinates training across JARVIS-AI-Agent, reactor-core, and JARVIS-Prime
+        This system coordinates training across Ironcliw-AI-Agent, reactor-core, and Ironcliw-Prime
         using multiple intelligent triggers:
         - Time-based: Cron schedule (default: 3 AM daily)
         - Data-threshold: When enough new experiences accumulate (default: 100+)
@@ -23936,7 +23936,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         This is the core training function that:
         1. Broadcasts progress to loading server
         2. Runs the full Night Shift pipeline
-        3. Handles deployment to JARVIS-Prime
+        3. Handles deployment to Ironcliw-Prime
         4. Updates training history
         """
         run_id = f"train-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -24003,7 +24003,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                         wait=False
                     )
 
-                # Auto-deploy to JARVIS-Prime if enabled
+                # Auto-deploy to Ironcliw-Prime if enabled
                 if self.config.training_auto_deploy_to_prime:
                     await self._deploy_model_to_prime(result.artifacts)
 
@@ -24084,7 +24084,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         """
         Monitor experience accumulation and trigger training when threshold is reached.
 
-        This provides adaptive training - when JARVIS learns a lot quickly,
+        This provides adaptive training - when Ironcliw learns a lot quickly,
         it trains more frequently. During slow periods, it waits for scheduled runs.
         """
         check_interval = self.config.training_data_check_interval_hours * 3600
@@ -24127,7 +24127,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         """
         Monitor model quality and trigger training when performance degrades.
 
-        Uses JARVIS-Prime's evaluation endpoint to check response quality.
+        Uses Ironcliw-Prime's evaluation endpoint to check response quality.
         If quality drops below threshold, triggers retraining.
         """
         check_interval = self.config.training_quality_check_interval_hours * 3600
@@ -24141,7 +24141,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                 if not self._check_training_cooldown():
                     continue
 
-                # Get current quality score from JARVIS-Prime
+                # Get current quality score from Ironcliw-Prime
                 quality_score = await self._get_model_quality_score()
 
                 if quality_score is not None:
@@ -24278,7 +24278,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         return 0
 
     async def _get_model_quality_score(self) -> Optional[float]:
-        """Get the current model quality score from JARVIS-Prime."""
+        """Get the current model quality score from Ironcliw-Prime."""
         try:
             import aiohttp
             prime_url = f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}"
@@ -24295,16 +24295,16 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         return None
 
     async def _deploy_model_to_prime(self, artifacts: Dict[str, Any]) -> bool:
-        """Deploy trained model to JARVIS-Prime."""
+        """Deploy trained model to Ironcliw-Prime."""
         try:
             model_path = artifacts.get("quantized_path") or artifacts.get("model_path")
             if not model_path:
                 self.logger.warning("No model path in artifacts for deployment")
                 return False
 
-            self.logger.info(f"🚀 Deploying model to JARVIS-Prime: {model_path}")
+            self.logger.info(f"🚀 Deploying model to Ironcliw-Prime: {model_path}")
 
-            # Use JARVIS-Prime API to swap model
+            # Use Ironcliw-Prime API to swap model
             import aiohttp
             prime_url = f"http://{self.config.jarvis_prime_host}:{self.config.jarvis_prime_port}"
 
@@ -24315,7 +24315,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     timeout=60
                 ) as resp:
                     if resp.status == 200:
-                        self.logger.info("✅ Model deployed to JARVIS-Prime")
+                        self.logger.info("✅ Model deployed to Ironcliw-Prime")
                         return True
                     else:
                         error = await resp.text()
@@ -24520,7 +24520,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         - Leverage reactor-core's TopicDiscovery when available
         - Queue new topics for Safe Scout scraping
 
-        This loop ensures JARVIS continuously discovers what it needs to learn.
+        This loop ensures Ironcliw continuously discovers what it needs to learn.
         """
         interval_hours = self.config.learning_goals_discovery_interval_hours
         interval_seconds = int(interval_hours * 3600)
@@ -24786,7 +24786,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                             async with session.get(
                                 url,
                                 timeout=aiohttp.ClientTimeout(total=30),
-                                headers={"User-Agent": "JARVIS-Scout/1.0"},
+                                headers={"User-Agent": "Ironcliw-Scout/1.0"},
                             ) as response:
                                 if response.status == 200:
                                     content = await response.text()
@@ -25019,8 +25019,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         """
         v9.4: Initialize the Intelligent Model Manager.
 
-        This ensures JARVIS-Prime always has a model to load by:
-        - Checking if models exist in JARVIS-Prime models directory
+        This ensures Ironcliw-Prime always has a model to load by:
+        - Checking if models exist in Ironcliw-Prime models directory
         - Auto-downloading base models if missing (memory-aware selection)
         - Watching for reactor-core trained model deployments
         - Supporting hot-swap without restart
@@ -25031,8 +25031,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         - RAM < 4GB: Minimal models or cloud fallback
 
         Integration Points:
-        - JARVIS-Prime model_downloader.py for download
-        - JARVIS-Prime model_registry.py for versioning
+        - Ironcliw-Prime model_downloader.py for download
+        - Ironcliw-Prime model_registry.py for versioning
         - Reactor-core output dir for trained models
         - Loading server for status broadcasts
         """
@@ -25213,7 +25213,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
                 async def ensure_model_available(self) -> Dict[str, Any]:
                     """
-                    Ensure a model is available for JARVIS-Prime.
+                    Ensure a model is available for Ironcliw-Prime.
 
                     Returns status dict with:
                     - available: bool
@@ -25450,7 +25450,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     if self.config and self.config.model_manager_hot_swap_enabled:
                         if self.logger:
                             self.logger.info("🔄 Triggering hot-swap for new model...")
-                        # Hot-swap would be handled by JARVIS-Prime's HotSwapManager
+                        # Hot-swap would be handled by Ironcliw-Prime's HotSwapManager
 
                 def get_status(self) -> Dict[str, Any]:
                     """Get current model manager status."""
@@ -25593,8 +25593,8 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         v9.1: Background task for continuous experience collection.
 
         This loop:
-        - Periodically collects experiences from JARVIS interactions
-        - Syncs with reactor-core JARVISConnector
+        - Periodically collects experiences from Ironcliw interactions
+        - Syncs with reactor-core IroncliwConnector
         - Monitors experience quality and quantity
         - Triggers learning goal discovery when patterns emerge
 
@@ -25690,7 +25690,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         self._learning_goals_manager = None
 
     async def _stop_jarvis_prime(self) -> None:
-        """Stop JARVIS-Prime subprocess or container."""
+        """Stop Ironcliw-Prime subprocess or container."""
         # Stop subprocess
         if self._jarvis_prime_process:
             try:
@@ -25769,7 +25769,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
     async def _on_hot_reload_triggered(self, changed_files: List[str]) -> None:
         """
-        v5.0: Handle hot reload trigger - restart JARVIS with new code.
+        v5.0: Handle hot reload trigger - restart Ironcliw with new code.
         
         This is called by the HotReloadWatcher when file changes are detected.
         """
@@ -25822,7 +25822,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # Clear Python cache for changed modules
             self._clear_python_cache(changed_files)
             
-            # Request supervisor restart (this gracefully stops and restarts JARVIS)
+            # Request supervisor restart (this gracefully stops and restarts Ironcliw)
             # The supervisor has built-in restart capability
             from core.supervisor import request_restart, RestartSource, RestartUrgency
             
@@ -25858,7 +25858,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             except Exception:
                 pass
         
-        # Clear sys.modules for JARVIS modules
+        # Clear sys.modules for Ironcliw modules
         modules_to_clear = []
         for module_name in list(sys.modules.keys()):
             if 'jarvis' in module_name.lower() or 'backend' in module_name.lower():
@@ -25905,7 +25905,7 @@ def parse_args():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="JARVIS Supervisor - Unified System Orchestrator (v116.0)",
+        description="Ironcliw Supervisor - Unified System Orchestrator (v116.0)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -26115,7 +26115,7 @@ async def run_single_task(
 # =============================================================================
 # UNIFIED TRINITY CONNECTOR v1.0
 # =============================================================================
-# Single command integration for JARVIS + JARVIS Prime + Reactor Core
+# Single command integration for Ironcliw + Ironcliw Prime + Reactor Core
 #
 # This is the MASTER ORCHESTRATOR that:
 # 1. Initializes enhanced self-improvement with Claude Code-like behaviors
@@ -26127,7 +26127,7 @@ async def run_single_task(
 
 class UnifiedTrinityConnector:
     """
-    Master orchestrator that connects JARVIS, JARVIS Prime, and Reactor Core.
+    Master orchestrator that connects Ironcliw, Ironcliw Prime, and Reactor Core.
 
     This is the single point of coordination for the entire Trinity system,
     providing:
@@ -26150,12 +26150,12 @@ class UnifiedTrinityConnector:
 
         # Repository paths (from environment or defaults)
         self._jarvis_path = Path(os.environ.get(
-            "JARVIS_PATH",
+            "Ironcliw_PATH",
             Path(__file__).parent
         ))
         self._prime_path = Path(os.environ.get(
-            "JARVIS_PRIME_PATH",
-            self._jarvis_path.parent / "JARVIS-Prime"
+            "Ironcliw_PRIME_PATH",
+            self._jarvis_path.parent / "Ironcliw-Prime"
         ))
         self._reactor_path = Path(os.environ.get(
             "REACTOR_CORE_PATH",
@@ -26183,7 +26183,7 @@ class UnifiedTrinityConnector:
         Initialize the Trinity connector.
 
         This sets up all enhanced components and establishes
-        connections to JARVIS Prime and Reactor Core.
+        connections to Ironcliw Prime and Reactor Core.
 
         Args:
             websocket_manager: WebSocket manager for real-time UI updates
@@ -26198,7 +26198,7 @@ class UnifiedTrinityConnector:
         self.logger.info("  UNIFIED TRINITY CONNECTOR v1.0")
         self.logger.info("=" * 60)
         self.logger.info(f"  Session: {self._session_id}")
-        self.logger.info(f"  JARVIS: {self._jarvis_path}")
+        self.logger.info(f"  Ironcliw: {self._jarvis_path}")
         self.logger.info(f"  Prime: {self._prime_path}")
         self.logger.info(f"  Reactor: {self._reactor_path}")
         self.logger.info("=" * 60)
@@ -26278,20 +26278,20 @@ class UnifiedTrinityConnector:
 
     async def _validate_repositories(self) -> None:
         """Validate all repository connections."""
-        # JARVIS (always available - we're in it)
+        # Ironcliw (always available - we're in it)
         self._health["jarvis"] = True
-        self.logger.info(f"  - JARVIS: ✓ (local)")
+        self.logger.info(f"  - Ironcliw: ✓ (local)")
 
-        # JARVIS Prime
+        # Ironcliw Prime
         if self._prime_path.exists():
             prime_git = self._prime_path / ".git"
             if prime_git.exists():
                 self._health["prime"] = True
-                self.logger.info(f"  - JARVIS Prime: ✓ ({self._prime_path})")
+                self.logger.info(f"  - Ironcliw Prime: ✓ ({self._prime_path})")
             else:
-                self.logger.warning(f"  - JARVIS Prime: ⚠ not a git repo")
+                self.logger.warning(f"  - Ironcliw Prime: ⚠ not a git repo")
         else:
-            self.logger.warning(f"  - JARVIS Prime: ⚠ not found ({self._prime_path})")
+            self.logger.warning(f"  - Ironcliw Prime: ⚠ not found ({self._prime_path})")
 
         # Reactor Core
         if self._reactor_path.exists():
@@ -26542,7 +26542,7 @@ async def main() -> int:
         if args.status:
             if is_running and existing_state:
                 print(f"\n{'='*70}")
-                print(f"✅ JARVIS SUPERVISOR STATUS")
+                print(f"✅ Ironcliw SUPERVISOR STATUS")
                 print(f"{'='*70}")
                 print(f"   Status:      RUNNING")
                 print(f"   Entry Point: {existing_state.get('entry_point', 'unknown')}")
@@ -26570,7 +26570,7 @@ async def main() -> int:
                 return 0
             else:
                 print(f"\n{'='*70}")
-                print(f"⚪ JARVIS SUPERVISOR STATUS")
+                print(f"⚪ Ironcliw SUPERVISOR STATUS")
                 print(f"{'='*70}")
                 print(f"   Status: NOT RUNNING")
                 print(f"{'='*70}\n")
@@ -26581,11 +26581,11 @@ async def main() -> int:
         # =====================================================================
         if args.cleanup:
             print(f"\n{'='*70}")
-            print(f"🧹 JARVIS COMPREHENSIVE ZOMBIE CLEANUP v109.7")
+            print(f"🧹 Ironcliw COMPREHENSIVE ZOMBIE CLEANUP v109.7")
             print(f"{'='*70}")
-            print(f"   Cleaning up zombie processes across JARVIS ecosystem...")
-            print(f"   Repos: JARVIS, J-Prime, Reactor-Core")
-            print(f"   Ports: 8000 (J-Prime), 8010 (JARVIS), 8090 (Reactor-Core)")
+            print(f"   Cleaning up zombie processes across Ironcliw ecosystem...")
+            print(f"   Repos: Ironcliw, J-Prime, Reactor-Core")
+            print(f"   Ports: 8000 (J-Prime), 8010 (Ironcliw), 8090 (Reactor-Core)")
             print(f"{'='*70}\n")
 
             try:
@@ -26640,7 +26640,7 @@ async def main() -> int:
             )
 
             print(f"\n{'='*70}")
-            print(f"🔨 JARVIS FORCE CLEANUP v130.0")
+            print(f"🔨 Ironcliw FORCE CLEANUP v130.0")
             print(f"{'='*70}")
             print(f"   This will forcibly clean all lock files and kill hung processes.")
             print(f"{'='*70}\n")
@@ -26957,7 +26957,7 @@ async def main() -> int:
             # --auto (default): Intelligent decision
             else:
                 print(f"\n{'='*70}")
-                print(f"🤖 JARVIS SUPERVISOR - INTELLIGENT STARTUP")
+                print(f"🤖 Ironcliw SUPERVISOR - INTELLIGENT STARTUP")
                 print(f"{'='*70}")
                 print(f"   Detected: Supervisor already running (PID {existing_pid})")
                 print(f"   Entry Point: {existing_state.get('entry_point', 'unknown')}")
@@ -26984,17 +26984,17 @@ async def main() -> int:
                         #   - No need for separate --shutdown then start
                         #   - Atomic operation with cleanup verification
                         #
-                        # Opt-out: Set JARVIS_SUPERVISOR_SKIP_RESTART=1 to keep old behavior
+                        # Opt-out: Set Ironcliw_SUPERVISOR_SKIP_RESTART=1 to keep old behavior
                         # =================================================================
 
-                        _skip_restart = os.environ.get('JARVIS_SUPERVISOR_SKIP_RESTART', '').lower() in ('1', 'true', 'yes')
+                        _skip_restart = os.environ.get('Ironcliw_SUPERVISOR_SKIP_RESTART', '').lower() in ('1', 'true', 'yes')
 
                         if _skip_restart:
                             # Legacy behavior: just show status and exit
                             components = health_data.get('components', {})
                             repos_status = health_data.get('cross_repo_health', {})
 
-                            print(f"\n   ✅ JARVIS Supervisor is already running and healthy!")
+                            print(f"\n   ✅ Ironcliw Supervisor is already running and healthy!")
                             print(f"   ")
 
                             if components:
@@ -27009,7 +27009,7 @@ async def main() -> int:
 
                             print(f"   ")
                             print(f"   No action needed - your supervisor is ready to use.")
-                            print(f"   (Set JARVIS_SUPERVISOR_SKIP_RESTART=0 to enable auto-restart)")
+                            print(f"   (Set Ironcliw_SUPERVISOR_SKIP_RESTART=0 to enable auto-restart)")
                             print(f"   ")
                             print(f"   Quick commands:")
                             print(f"   • --restart   Restart the supervisor")
@@ -27047,8 +27047,8 @@ async def main() -> int:
                         # Step 1: Send graceful shutdown (same as --shutdown)
                         # v131.1: Configurable timeouts via environment variables
                         _shutdown_success = False
-                        _shutdown_timeout = float(os.environ.get('JARVIS_SHUTDOWN_CMD_TIMEOUT', '20.0'))
-                        _max_wait = float(os.environ.get('JARVIS_SHUTDOWN_WAIT_TIMEOUT', '30.0'))
+                        _shutdown_timeout = float(os.environ.get('Ironcliw_SHUTDOWN_CMD_TIMEOUT', '20.0'))
+                        _max_wait = float(os.environ.get('Ironcliw_SHUTDOWN_WAIT_TIMEOUT', '30.0'))
                         _shutdown_start = time.time()
 
                         try:
@@ -27286,7 +27286,7 @@ async def main() -> int:
 
     # Apply command-line settings to environment
     if args.no_voice:
-        os.environ["JARVIS_VOICE_ENABLED"] = "false"
+        os.environ["Ironcliw_VOICE_ENABLED"] = "false"
 
     # =========================================================================
     # v151.0: DIAGNOSTIC CHECKPOINT - Pre-bootstrapper creation

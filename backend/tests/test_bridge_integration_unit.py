@@ -1,10 +1,10 @@
-"""
+﻿"""
 Computer Use Bridge Integration Unit Tests
 ==========================================
 
 Tests the cross-repo bridge infrastructure without requiring full Computer Use stack.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.1.0
 """
 
@@ -217,7 +217,7 @@ async def test_batch_event_emission():
 
 
 async def test_reactor_core_connector():
-    """Test: Reactor Core connector can read JARVIS events"""
+    """Test: Reactor Core connector can read Ironcliw events"""
     print("\n" + "="*70)
     print("TEST: Reactor Core Connector Integration")
     print("="*70)
@@ -243,17 +243,17 @@ async def test_reactor_core_connector():
 
         print(f"✅ Connector initialized")
 
-        # Try to read JARVIS state
+        # Try to read Ironcliw state
         jarvis_state = await connector.get_jarvis_state()
 
         if jarvis_state:
-            print(f"\n✅ JARVIS state found:")
+            print(f"\n✅ Ironcliw state found:")
             print(f"   Session ID: {jarvis_state.get('session_id', 'N/A')}")
             print(f"   Total Actions: {jarvis_state.get('total_actions', 0)}")
             print(f"   Total Batches: {jarvis_state.get('total_batches', 0)}")
             print(f"   Action Chaining: {jarvis_state.get('action_chaining_enabled', False)}")
         else:
-            print(f"\n⚠️  No JARVIS state found (expected if first run)")
+            print(f"\n⚠️  No Ironcliw state found (expected if first run)")
 
         # Try to read events
         events = await connector.get_events(
@@ -297,15 +297,15 @@ async def test_reactor_core_connector():
 
 
 async def test_jarvis_prime_delegate():
-    """Test: JARVIS Prime delegate structure"""
+    """Test: Ironcliw Prime delegate structure"""
     print("\n" + "="*70)
-    print("TEST: JARVIS Prime Delegate Structure")
+    print("TEST: Ironcliw Prime Delegate Structure")
     print("="*70)
 
     try:
         prime_path = Path.home() / "Documents" / "repos" / "jarvis-prime"
         if not prime_path.exists():
-            print(f"\n⚠️  JARVIS Prime not found, skipping test")
+            print(f"\n⚠️  Ironcliw Prime not found, skipping test")
             return True
 
         sys.path.insert(0, str(prime_path))
@@ -315,7 +315,7 @@ async def test_jarvis_prime_delegate():
             DelegationMode,
         )
 
-        print(f"\n✅ JARVIS Prime Computer Use Delegate imported")
+        print(f"\n✅ Ironcliw Prime Computer Use Delegate imported")
 
         # Initialize delegate
         delegate = get_computer_use_delegate(
@@ -329,13 +329,13 @@ async def test_jarvis_prime_delegate():
         print(f"   Action Chaining: {delegate.enable_action_chaining}")
         print(f"   OmniParser: {delegate.enable_omniparser}")
 
-        # Check JARVIS availability
+        # Check Ironcliw availability
         available = await delegate.check_jarvis_availability()
-        print(f"\n📡 JARVIS Availability: {available}")
+        print(f"\n📡 Ironcliw Availability: {available}")
 
         if available:
             capabilities = await delegate.get_jarvis_capabilities()
-            print(f"\n✅ JARVIS Capabilities:")
+            print(f"\n✅ Ironcliw Capabilities:")
             print(f"   Available: {capabilities['available']}")
             print(f"   Action Chaining: {capabilities['action_chaining_enabled']}")
             print(f"   OmniParser: {capabilities['omniparser_enabled']}")
@@ -347,11 +347,11 @@ async def test_jarvis_prime_delegate():
         print(f"   Total Results: {stats['total_results']}")
         print(f"   Success Rate: {stats['success_rate']:.1f}%")
 
-        print(f"\n✅ TEST PASSED: JARVIS Prime delegate structure working!")
+        print(f"\n✅ TEST PASSED: Ironcliw Prime delegate structure working!")
         return True
 
     except ImportError as e:
-        print(f"\n⚠️  JARVIS Prime dependencies missing: {e}")
+        print(f"\n⚠️  Ironcliw Prime dependencies missing: {e}")
         print(f"   Skipping test (not a failure)")
         return True
     except Exception as e:
@@ -383,7 +383,7 @@ async def main():
     results['reactor_core'] = await test_reactor_core_connector()
     await asyncio.sleep(1)
 
-    # Test 4: JARVIS Prime delegate
+    # Test 4: Ironcliw Prime delegate
     results['jarvis_prime'] = await test_jarvis_prime_delegate()
 
     # Summary

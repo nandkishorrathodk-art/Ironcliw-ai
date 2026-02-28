@@ -1,4 +1,4 @@
-# Voice Orchestrator & VBIA Lock Fix - Implementation Plan
+﻿# Voice Orchestrator & VBIA Lock Fix - Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -43,7 +43,7 @@ def temp_lock_dir():
 @pytest.mark.asyncio
 async def test_acquire_and_release(temp_lock_dir, monkeypatch):
     """Test basic lock acquire and release."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("test_lock", source="test")
 
@@ -61,7 +61,7 @@ async def test_acquire_and_release(temp_lock_dir, monkeypatch):
 @pytest.mark.asyncio
 async def test_lock_is_exclusive(temp_lock_dir, monkeypatch):
     """Test that lock is exclusive - second acquire fails with short timeout."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock1 = RobustFileLock("exclusive_test", source="test1")
     lock2 = RobustFileLock("exclusive_test", source="test2")
@@ -81,7 +81,7 @@ async def test_lock_is_exclusive(temp_lock_dir, monkeypatch):
 @pytest.mark.asyncio
 async def test_reentrancy_raises_error(temp_lock_dir, monkeypatch):
     """Test that re-acquiring same lock raises RuntimeError."""
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("reentrant_test", source="test")
 
@@ -97,7 +97,7 @@ async def test_reentrancy_raises_error(temp_lock_dir, monkeypatch):
 async def test_lock_creates_directory(temp_lock_dir, monkeypatch):
     """Test that lock creates directory if missing."""
     nested_dir = temp_lock_dir / "nested" / "locks"
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(nested_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(nested_dir))
 
     lock = RobustFileLock("nested_test", source="test")
 
@@ -113,7 +113,7 @@ async def test_metadata_written(temp_lock_dir, monkeypatch):
     """Test that lock metadata is written for debugging."""
     import json
 
-    monkeypatch.setenv("JARVIS_LOCK_DIR", str(temp_lock_dir))
+    monkeypatch.setenv("Ironcliw_LOCK_DIR", str(temp_lock_dir))
 
     lock = RobustFileLock("metadata_test", source="jarvis")
 
@@ -131,7 +131,7 @@ async def test_metadata_written(temp_lock_dir, monkeypatch):
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_robust_file_lock.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_robust_file_lock.py -v`
 Expected: FAIL with "ModuleNotFoundError: No module named 'backend.core.robust_file_lock'"
 
 **Step 3: Write minimal implementation**
@@ -183,7 +183,7 @@ if sys.platform == "win32":
 # Configuration (expansion deferred to runtime)
 # =============================================================================
 
-LOCK_DIR_RAW = os.environ.get("JARVIS_LOCK_DIR", "~/.jarvis/cross_repo/locks")
+LOCK_DIR_RAW = os.environ.get("Ironcliw_LOCK_DIR", "~/.jarvis/cross_repo/locks")
 LOCK_ACQUIRE_TIMEOUT_S = float(os.environ.get("LOCK_ACQUIRE_TIMEOUT_S", "5.0"))
 LOCK_POLL_INTERVAL_S = float(os.environ.get("LOCK_POLL_INTERVAL_S", "0.05"))
 LOCK_STALE_WARNING_S = float(os.environ.get("LOCK_STALE_WARNING_S", "30.0"))
@@ -222,7 +222,7 @@ class RobustFileLock:
         self._source = source
 
         # Expand path at runtime (handles both ~ and $VAR)
-        lock_dir_raw = os.environ.get("JARVIS_LOCK_DIR", "~/.jarvis/cross_repo/locks")
+        lock_dir_raw = os.environ.get("Ironcliw_LOCK_DIR", "~/.jarvis/cross_repo/locks")
         self._lock_dir = Path(os.path.expanduser(os.path.expandvars(lock_dir_raw)))
         self._lock_file = self._lock_dir / f"{lock_name}.lock"
 
@@ -437,7 +437,7 @@ class RobustFileLock:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_robust_file_lock.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_robust_file_lock.py -v`
 Expected: All 5 tests PASS
 
 **Step 5: Commit**
@@ -548,7 +548,7 @@ async def test_message_format():
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_client.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_client.py -v`
 Expected: FAIL with "ModuleNotFoundError"
 
 **Step 3: Write minimal implementation**
@@ -794,7 +794,7 @@ async def announce(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_client.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_client.py -v`
 Expected: All 3 tests PASS
 
 **Step 5: Commit**
@@ -961,7 +961,7 @@ async def test_connection_limit(temp_socket_dir, monkeypatch):
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_orchestrator.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_orchestrator.py -v`
 Expected: FAIL with "ModuleNotFoundError"
 
 **Step 3: Write minimal implementation**
@@ -969,7 +969,7 @@ Expected: FAIL with "ModuleNotFoundError"
 ```python
 # backend/core/voice_orchestrator.py
 """
-VoiceOrchestrator - Unified voice coordination for JARVIS ecosystem.
+VoiceOrchestrator - Unified voice coordination for Ironcliw ecosystem.
 
 Single playback authority that:
 - Receives announcements via Unix domain socket (IPC)
@@ -1297,7 +1297,7 @@ class VoiceOrchestrator:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_orchestrator.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_orchestrator.py -v`
 Expected: All 4 tests PASS
 
 **Step 5: Commit**
@@ -1413,7 +1413,7 @@ async def test_supersession_drops_lower_priority():
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_coalescer.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_coalescer.py -v`
 Expected: FAIL with "ImportError: cannot import name 'VoiceCoalescer'"
 
 **Step 3: Add coalescer to voice_orchestrator.py**
@@ -1604,7 +1604,7 @@ class VoiceCoalescer:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_coalescer.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_coalescer.py -v`
 Expected: All 3 tests PASS
 
 **Step 5: Commit**
@@ -1705,7 +1705,7 @@ async def test_speaker_metrics():
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_speaker.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_speaker.py -v`
 Expected: FAIL with "ImportError: cannot import name 'SerializedSpeaker'"
 
 **Step 3: Add SerializedSpeaker to voice_orchestrator.py**
@@ -1841,7 +1841,7 @@ class SerializedSpeaker:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_speaker.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_voice_speaker.py -v`
 Expected: All 3 tests PASS
 
 **Step 5: Commit**
@@ -1870,7 +1870,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 
 **Step 1: Find current lock usages**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && grep -n "acquire.*vbia" backend/core/cross_repo_state_initializer.py`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && grep -n "acquire.*vbia" backend/core/cross_repo_state_initializer.py`
 
 **Step 2: Update imports and replace lock usage**
 
@@ -2050,7 +2050,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 
 **Step 1: Run all new tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_robust_file_lock.py tests/unit/backend/core/test_voice_client.py tests/unit/backend/core/test_voice_orchestrator.py tests/unit/backend/core/test_voice_coalescer.py tests/unit/backend/core/test_voice_speaker.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_robust_file_lock.py tests/unit/backend/core/test_voice_client.py tests/unit/backend/core/test_voice_orchestrator.py tests/unit/backend/core/test_voice_coalescer.py tests/unit/backend/core/test_voice_speaker.py -v`
 
 Expected: All tests PASS
 

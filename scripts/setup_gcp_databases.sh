@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 ################################################################################
-# JARVIS GCP Centralized Database Setup
+# Ironcliw GCP Centralized Database Setup
 # Creates Cloud SQL (PostgreSQL) and Cloud Storage for shared databases
 ################################################################################
 
@@ -22,7 +22,7 @@ BUCKET_NAME="${PROJECT_ID}-jarvis-chromadb"
 BACKUP_BUCKET_NAME="${PROJECT_ID}-jarvis-backups"
 
 echo "================================================================================"
-echo "🚀 JARVIS GCP Centralized Database Setup"
+echo "🚀 Ironcliw GCP Centralized Database Setup"
 echo "================================================================================"
 echo "Project: $PROJECT_ID"
 echo "Region: $REGION"
@@ -211,21 +211,21 @@ echo ""
 echo "📝 Creating .env file for local development..."
 
 cat > .env.gcp << EOF
-# JARVIS GCP Database Configuration
+# Ironcliw GCP Database Configuration
 # Generated: $(date)
 
 # Cloud SQL
-JARVIS_DB_TYPE=cloudsql
-JARVIS_DB_CONNECTION_NAME=$CONNECTION_NAME
-JARVIS_DB_HOST=$PRIVATE_IP
-JARVIS_DB_PORT=5432
-JARVIS_DB_NAME=$SQL_DATABASE_NAME
-JARVIS_DB_USER=$SQL_USER
-JARVIS_DB_PASSWORD=$SQL_PASSWORD
+Ironcliw_DB_TYPE=cloudsql
+Ironcliw_DB_CONNECTION_NAME=$CONNECTION_NAME
+Ironcliw_DB_HOST=$PRIVATE_IP
+Ironcliw_DB_PORT=5432
+Ironcliw_DB_NAME=$SQL_DATABASE_NAME
+Ironcliw_DB_USER=$SQL_USER
+Ironcliw_DB_PASSWORD=$SQL_PASSWORD
 
 # Cloud Storage
-JARVIS_CHROMADB_BUCKET=$BUCKET_NAME
-JARVIS_BACKUP_BUCKET=$BACKUP_BUCKET_NAME
+Ironcliw_CHROMADB_BUCKET=$BUCKET_NAME
+Ironcliw_BACKUP_BUCKET=$BACKUP_BUCKET_NAME
 
 # GCP Project
 GCP_PROJECT_ID=$PROJECT_ID
@@ -308,7 +308,7 @@ echo ""
 echo "3. Run migration script to move local data to cloud:"
 echo "   python scripts/migrate_to_cloud.py"
 echo ""
-echo "4. Update JARVIS to use cloud databases:"
+echo "4. Update Ironcliw to use cloud databases:"
 echo "   export USE_CLOUD_DB=true"
 echo ""
 echo "================================================================================"

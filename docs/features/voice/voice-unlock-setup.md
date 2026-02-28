@@ -1,4 +1,4 @@
-# JARVIS Voice Unlock - Apple Watch Alternative Setup Guide
+﻿# Ironcliw Voice Unlock - Apple Watch Alternative Setup Guide
 
 ## 🚀 Quick Start (5 minutes)
 
@@ -49,8 +49,8 @@ jarvis-voice-unlock enroll john
 jarvis-voice-unlock test
 
 # Test voice commands
-Say: "Hey JARVIS, unlock my Mac"
-Say: "JARVIS, this is John"
+Say: "Hey Ironcliw, unlock my Mac"
+Say: "Ironcliw, this is John"
 ```
 
 ## 🔧 Troubleshooting
@@ -104,14 +104,14 @@ With the optimizations applied:
 | Audio Buffer | 50MB | Real-time processing |
 | **Total** | **800MB** | Complete system |
 
-## 🎯 Integration with JARVIS
+## 🎯 Integration with Ironcliw
 
 The voice unlock system is the perfect Apple Watch alternative:
 
-1. **Automatic Start**: Voice unlock starts with JARVIS
+1. **Automatic Start**: Voice unlock starts with Ironcliw
 2. **Background Operation**: Runs without blocking
 3. **Voice Authentication**: No Apple Watch required
-4. **Commands**: "Hey JARVIS, unlock my Mac" - no typing needed!
+4. **Commands**: "Hey Ironcliw, unlock my Mac" - no typing needed!
 
 ## ✅ What's Working Now
 
@@ -119,15 +119,15 @@ The voice unlock system is the perfect Apple Watch alternative:
 2. **Dependencies** - Install script created ✓
 3. **Memory Optimization** - 16GB config applied ✓
 4. **Voice Authentication** - Apple Watch alternative ready ✓
-5. **JARVIS Integration** - Startup hooks added ✓
+5. **Ironcliw Integration** - Startup hooks added ✓
 
 ## 🚦 Next Steps
 
 1. Run `./install_voice_unlock_deps.sh`
-2. Restart JARVIS
+2. Restart Ironcliw
 3. Enroll your voice
 4. Enjoy Apple Watch-free voice unlocking!
 
 ---
 
-**Note**: The system is optimized for your 16GB RAM MacBook Pro and will automatically manage memory to stay within the 4GB JARVIS budget.
+**Note**: The system is optimized for your 16GB RAM MacBook Pro and will automatically manage memory to stay within the 4GB Ironcliw budget.

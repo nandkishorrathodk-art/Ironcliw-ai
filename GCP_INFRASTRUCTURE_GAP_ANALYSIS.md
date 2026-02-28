@@ -1,9 +1,9 @@
-# JARVIS Multi-Agent System - GCP Infrastructure Gap Analysis
+﻿# Ironcliw Multi-Agent System - GCP Infrastructure Gap Analysis
 ## Solo Developer Edition with Spot VM Optimization
 
 **Author:** Derek Russell + Claude Code Analysis
 **Date:** October 26, 2025
-**Project:** JARVIS-AI-Agent
+**Project:** Ironcliw-AI-Agent
 **GCP Project:** jarvis-473803
 **Development Context:** Solo developer, active development, budget-conscious
 **Current Monthly Cost:** $11-15 (Spot VMs + Cloud SQL)
@@ -13,7 +13,7 @@
 
 ## Executive Summary
 
-This analysis compares JARVIS's **current Spot VM-based GCP infrastructure** against the requirements for a full **Multi-Agent System (MAS) with Neural Mesh architecture**. The focus is on **solo developer optimization** using **Spot VMs aggressively** to minimize costs while enabling advanced AI capabilities.
+This analysis compares Ironcliw's **current Spot VM-based GCP infrastructure** against the requirements for a full **Multi-Agent System (MAS) with Neural Mesh architecture**. The focus is on **solo developer optimization** using **Spot VMs aggressively** to minimize costs while enabling advanced AI capabilities.
 
 ### Key Findings
 
@@ -28,9 +28,9 @@ This analysis compares JARVIS's **current Spot VM-based GCP infrastructure** aga
 
 ## Table of Contents
 
-1. [Understanding JARVIS Hybrid Architecture](#1-understanding-jarvis-hybrid-architecture)
+1. [Understanding Ironcliw Hybrid Architecture](#1-understanding-jarvis-hybrid-architecture)
 2. [The Problem We're Solving](#2-the-problem-were-solving)
-3. [GCP's Role in JARVIS](#3-gcps-role-in-jarvis)
+3. [GCP's Role in Ironcliw](#3-gcps-role-in-jarvis)
 4. [Current Infrastructure (What You Have)](#4-current-infrastructure-what-you-have)
 5. [Required MAS Infrastructure (What You Need)](#5-required-mas-infrastructure-what-you-need)
 6. [Gap Analysis: Spot VM Strategy](#6-gap-analysis-spot-vm-strategy)
@@ -43,11 +43,11 @@ This analysis compares JARVIS's **current Spot VM-based GCP infrastructure** aga
 
 ---
 
-## 1. Understanding JARVIS Hybrid Architecture
+## 1. Understanding Ironcliw Hybrid Architecture
 
-### 1.1 What Is JARVIS?
+### 1.1 What Is Ironcliw?
 
-JARVIS is a **multi-agent AI system** that combines:
+Ironcliw is a **multi-agent AI system** that combines:
 
 - **Phase 1: Environmental Awareness** - Sees your entire workspace (SAI monitoring, Yabai integration, multi-monitor detection)
 - **Phase 2: Decision Intelligence** - Makes smart decisions (Fusion Engine, cross-session memory, intent resolution)
@@ -194,7 +194,7 @@ The MAS architecture requires **60+ agents across 3 tiers**:
 
 ---
 
-## 3. GCP's Role in JARVIS
+## 3. GCP's Role in Ironcliw
 
 ### 3.1 What GCP Does (Current + Future)
 
@@ -848,7 +848,7 @@ gsutil cp ~/.jarvis/chromadb-backup-*.tar.gz gs://jarvis-473803-jarvis-backups/
 ```bash
 gcloud billing budgets create \
   --billing-account=YOUR_BILLING_ACCOUNT \
-  --display-name="JARVIS Monthly Budget" \
+  --display-name="Ironcliw Monthly Budget" \
   --budget-amount=150 \
   --threshold-rule=percent=50 \
   --threshold-rule=percent=90 \
@@ -1514,7 +1514,7 @@ Month 6+: $138/month (steady state)
 **Prerequisites:**
 - GCP account with billing enabled
 - `gcloud` CLI installed and authenticated
-- Current JARVIS system operational
+- Current Ironcliw system operational
 
 **Step-by-Step (8 hours):**
 
@@ -1527,7 +1527,7 @@ gcloud redis instances create jarvis-redis \
   --region=us-central1 \
   --tier=basic \
   --redis-version=redis_7_0 \
-  --display-name="JARVIS Agent Communication Cache"
+  --display-name="Ironcliw Agent Communication Cache"
 
 # 2. Get Redis connection info
 REDIS_HOST=$(gcloud redis instances describe jarvis-redis \
@@ -1623,7 +1623,7 @@ psql -h <CLOUD_SQL_IP> -U jarvis_user -d jarvis_learning -c "
 # 2. Create custom dashboard via gcloud
 cat > dashboard.json <<'EOF'
 {
-  "displayName": "JARVIS Infrastructure",
+  "displayName": "Ironcliw Infrastructure",
   "mosaicLayout": {
     "columns": 12,
     "tiles": [
@@ -1678,7 +1678,7 @@ EOF
 # 3. Create alerting policy for high costs
 gcloud alpha monitoring policies create \
   --notification-channels=YOUR_CHANNEL_ID \
-  --display-name="JARVIS Daily Cost Alert" \
+  --display-name="Ironcliw Daily Cost Alert" \
   --condition-threshold-value=5 \
   --condition-threshold-duration=3600s
 ```
@@ -1788,7 +1788,7 @@ cd terraform/
 **terraform/main.tf:**
 
 ```hcl
-# JARVIS Phase 1 Infrastructure
+# Ironcliw Phase 1 Infrastructure
 
 terraform {
   required_version = ">= 1.0"
@@ -1828,7 +1828,7 @@ resource "google_redis_instance" "jarvis_redis" {
   region         = var.region
   redis_version  = "REDIS_7_0"
 
-  display_name = "JARVIS Agent Communication Cache"
+  display_name = "Ironcliw Agent Communication Cache"
 
   labels = {
     environment = "production"
@@ -1887,7 +1887,7 @@ resource "google_secret_manager_secret_version" "anthropic_api_key_v1" {
 # Monitoring dashboard
 resource "google_monitoring_dashboard" "jarvis_infrastructure" {
   dashboard_json = jsonencode({
-    displayName = "JARVIS Infrastructure"
+    displayName = "Ironcliw Infrastructure"
     mosaicLayout = {
       columns = 12
       tiles = [
@@ -2017,7 +2017,7 @@ gsutil cp ~/.jarvis/chromadb-backup-*.tar.gz gs://jarvis-473803-jarvis-backups/
 ```bash
 gcloud billing budgets create \
   --billing-account=YOUR_BILLING_ACCOUNT \
-  --display-name="JARVIS Monthly Budget" \
+  --display-name="Ironcliw Monthly Budget" \
   --budget-amount=150 \
   --threshold-rule=percent=50,basis=CURRENT_SPEND \
   --threshold-rule=percent=90,basis=CURRENT_SPEND \
@@ -2040,7 +2040,7 @@ gcloud sql instances list >> ~/.jarvis/infrastructure-snapshot-$(date +%Y%m%d).t
 
 Answer these questions:
 
-1. **Usage:** Do you use JARVIS actively (>10 hours/week)?
+1. **Usage:** Do you use Ironcliw actively (>10 hours/week)?
    - ✅ Yes → Proceed to Phase 1
    - ❌ No → Stay on current infrastructure
 
@@ -2216,7 +2216,7 @@ You're considering adding AI/ML-powered GCP bill forecasting with a hybrid appro
 1. **Gemini API (Vertex AI)** - For qualitative insights, explanations, cost optimization suggestions
 2. **Custom Time-Series Model (Vertex AI)** - For precise numerical forecasting, used sparingly under guardrails
 
-**Should you build this for JARVIS?**
+**Should you build this for Ironcliw?**
 
 ---
 
@@ -2358,7 +2358,7 @@ Simple Rules (Cost: $0/month):
 
 ### A.4 You're Already Doing ML Where It Matters Most!
 
-**JARVIS already has sophisticated ML/AI:**
+**Ironcliw already has sophisticated ML/AI:**
 
 1. **SAI (Self-Aware Intelligence)**
    - Learns your RAM usage patterns
@@ -2393,7 +2393,7 @@ AI/ML cost forecasting makes sense when:
 #### Scenario 1: Multi-Project/Multi-Team (Not You)
 ```yaml
 Context:
-  - 10+ developers using JARVIS
+  - 10+ developers using Ironcliw
   - 20+ GCP projects
   - Shared infrastructure
   - Complex, unpredictable workloads
@@ -2406,10 +2406,10 @@ Value:
 ROI: Positive (managing $5,000+/month across teams)
 ```
 
-#### Scenario 2: Commercial JARVIS (Future)
+#### Scenario 2: Commercial Ironcliw (Future)
 ```yaml
 Context:
-  - JARVIS sold as SaaS product
+  - Ironcliw sold as SaaS product
   - 100+ customers
   - Dynamic scaling based on customer usage
   - Compliance requirements for budget accuracy
@@ -2445,7 +2445,7 @@ ROI: Positive (avoiding overages worth 10-20% of budget)
 
 ### A.6 Phased Approach: Add AI Forecasting Later (If Needed)
 
-Here's when and how to add AI forecasting as JARVIS evolves:
+Here's when and how to add AI forecasting as Ironcliw evolves:
 
 ```yaml
 Phase 0-3 (Now - 6 months): NO AI Forecasting
@@ -2611,7 +2611,7 @@ Hybrid AI Cost Forecasting Architecture:
         1. Switch to Spot VMs (save $165/week)
         2. Scale down ChromaDB VM at night (save $25/week)
         3. Review orphaned persistent disks (save $15/week)"
-    4. JARVIS automatically:
+    4. Ironcliw automatically:
        - Tags persistent VMs for review
        - Sends alert with Gemini's recommendations
        - Optionally auto-applies approved optimizations
@@ -2631,7 +2631,7 @@ Hybrid AI Cost Forecasting Architecture:
 
 ### A.9 Final Recommendation
 
-**For Your Current JARVIS Project (Solo Dev):**
+**For Your Current Ironcliw Project (Solo Dev):**
 
 ✅ **DO THIS NOW:**
 1. Keep using simple rule-based monitoring
@@ -2651,7 +2651,7 @@ Hybrid AI Cost Forecasting Architecture:
 3. ROI becomes positive at this scale
 
 ✅ **DEFINITELY ADD (Phase 5, 12+ months):**
-1. If running commercial JARVIS ($1,000+/month budget)
+1. If running commercial Ironcliw ($1,000+/month budget)
 2. Add hybrid forecasting (Gemini + custom model)
 3. ROI strongly positive ($50-150/month savings after costs)
 
@@ -2665,7 +2665,7 @@ Hybrid AI Cost Forecasting Architecture:
 - ✅ Deploy Phase 1 infrastructure (Redis, Cloud SQL, secrets)
 - ✅ Build 5-10 new Neural Mesh agents
 - ✅ Improve SAI to predict RAM spikes 120 seconds ahead (2x better)
-- ✅ Add voice-activated cost alerts to JARVIS
+- ✅ Add voice-activated cost alerts to Ironcliw
 - ✅ Implement auto-cleanup for orphaned resources (saves $10-20/month with $0 ongoing cost)
 
 **For solo dev, the last option (auto-cleanup) saves MORE money than AI forecasting, with:**

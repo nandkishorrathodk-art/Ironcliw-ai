@@ -1,8 +1,8 @@
-"""
+﻿"""
 Barge-In Controller (Layer 4)
 ==============================
 
-When the user speaks over JARVIS, cancel TTS and switch to listening.
+When the user speaks over Ironcliw, cancel TTS and switch to listening.
 No cooldown needed in conversation mode — AEC handles echo suppression.
 
 Architecture:
@@ -12,7 +12,7 @@ Architecture:
                                               SpeechState.stop_speaking()
 
 The controller monitors the AEC-cleaned VAD output. If speech is detected
-while JARVIS is playing TTS, it triggers a barge-in:
+while Ironcliw is playing TTS, it triggers a barge-in:
     1. Sets the cancel event (stops TTS streaming)
     2. Flushes the playback buffer (silence within one frame)
     3. Notifies the speech state manager
@@ -28,10 +28,10 @@ logger = logging.getLogger(__name__)
 
 # Minimum consecutive speech frames before triggering barge-in
 # Prevents single-frame noise from interrupting
-_MIN_SPEECH_FRAMES = int(os.getenv("JARVIS_BARGEIN_MIN_FRAMES", "3"))
+_MIN_SPEECH_FRAMES = int(os.getenv("Ironcliw_BARGEIN_MIN_FRAMES", "3"))
 
 # Cooldown after barge-in before allowing another (ms)
-_BARGEIN_COOLDOWN_MS = int(os.getenv("JARVIS_BARGEIN_COOLDOWN_MS", "500"))
+_BARGEIN_COOLDOWN_MS = int(os.getenv("Ironcliw_BARGEIN_COOLDOWN_MS", "500"))
 
 
 class BargeInController:
@@ -82,7 +82,7 @@ class BargeInController:
         """
         Called from the audio thread with VAD results on AEC-cleaned signal.
 
-        If speech is detected while JARVIS is speaking, trigger barge-in.
+        If speech is detected while Ironcliw is speaking, trigger barge-in.
         """
         if not self._enabled:
             return
@@ -91,14 +91,14 @@ class BargeInController:
             self._speech_frame_count += 1
 
             if self._speech_frame_count >= _MIN_SPEECH_FRAMES:
-                # Check if JARVIS is currently speaking
+                # Check if Ironcliw is currently speaking
                 if self._is_jarvis_speaking():
                     self._trigger_barge_in()
         else:
             self._speech_frame_count = 0
 
     def _is_jarvis_speaking(self) -> bool:
-        """Check if JARVIS is currently outputting audio."""
+        """Check if Ironcliw is currently outputting audio."""
         # Check AudioBus playback buffer
         if self._audio_bus is not None:
             try:
@@ -131,7 +131,7 @@ class BargeInController:
         self._speech_frame_count = 0
 
         logger.info(
-            f"[BargeIn] User interrupted JARVIS "
+            f"[BargeIn] User interrupted Ironcliw "
             f"(total: {self._total_barge_ins})"
         )
 

@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Context Tracker Agent
+﻿"""
+Ironcliw Neural Mesh - Context Tracker Agent
 
 Tracks and manages contextual information across the system.
 Maintains awareness of current state, active tasks, and environment.

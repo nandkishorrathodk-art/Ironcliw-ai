@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Demo: JARVIS Unified AI Agent
+Demo: Ironcliw Unified AI Agent
 Shows how Swift, Vision, and Control work together
 """
 
@@ -9,11 +9,11 @@ from datetime import datetime
 
 async def demo_unified_jarvis():
     """
-    Demonstrates the complete JARVIS AI Agent flow
+    Demonstrates the complete Ironcliw AI Agent flow
     with Swift intelligence, Vision detection, and Voice interaction
     """
     
-    print("🤖 JARVIS Unified AI Agent Demo")
+    print("🤖 Ironcliw Unified AI Agent Demo")
     print("=" * 60)
     print("\n🎯 Goal: Create a TRUE AI Agent that:")
     print("• Uses Swift for intelligent command understanding")
@@ -35,7 +35,7 @@ async def demo_unified_jarvis():
     await asyncio.sleep(2)
     
     print("\n🔔 EVENT: WhatsApp receives a message")
-    print("\n⚡ JARVIS RESPONDS:")
+    print("\n⚡ Ironcliw RESPONDS:")
     
     # Step 1: Vision detects notification
     print("\n1️⃣ VISION SYSTEM (C++/Python) detects:")
@@ -93,7 +93,7 @@ async def demo_unified_jarvis():
     await asyncio.sleep(1)
     
     # Step 9: Context-aware suggestions
-    print("\n9️⃣ JARVIS OFFERS CONTEXTUAL REPLIES:")
+    print("\n9️⃣ Ironcliw OFFERS CONTEXTUAL REPLIES:")
     print("   Based on:")
     print("   • Current activity: Coding (from Swift)")
     print("   • Time: Working hours")
@@ -113,7 +113,7 @@ async def demo_unified_jarvis():
     
     await asyncio.sleep(1)
     
-    print("\n✅ JARVIS EXECUTES:")
+    print("\n✅ Ironcliw EXECUTES:")
     print("   • Swift focuses WhatsApp")
     print("   • Types: 'Give me 15 minutes to wrap this up'")
     print("   • Sends message")

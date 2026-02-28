@@ -1,4 +1,4 @@
-# AdaptiveControlCenterClicker Implementation Summary
+﻿# AdaptiveControlCenterClicker Implementation Summary
 
 **Date:** October 20, 2025
 **Author:** Derek J. Russell
@@ -411,8 +411,8 @@ result = await clicker.open_control_center()
 # Unit tests
 pytest tests/unit/display/test_adaptive_control_center_clicker.py -v
 
-# Integration tests (requires JARVIS_INTEGRATION_TESTS=1)
-export JARVIS_INTEGRATION_TESTS=1
+# Integration tests (requires Ironcliw_INTEGRATION_TESTS=1)
+export Ironcliw_INTEGRATION_TESTS=1
 pytest tests/integration/test_adaptive_clicker_integration.py -v
 
 # Verification script

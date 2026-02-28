@@ -1,4 +1,4 @@
-# Enterprise Capability Activation — Design Document
+﻿# Enterprise Capability Activation — Design Document
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -13,8 +13,8 @@
 ## Context
 
 ### The Problem
-Across the three JARVIS repos:
-- **JARVIS-AI-Agent**: 7 enterprise modules completely disconnected from unified_supervisor.py
+Across the three Ironcliw repos:
+- **Ironcliw-AI-Agent**: 7 enterprise modules completely disconnected from unified_supervisor.py
 - **jarvis-prime**: 56 of 69 core modules sleeping (reasoning engine, AGI models, continuous learning, etc.)
 - **reactor-core**: 70% of capabilities not wired (curriculum learning, active learning, deployment gate, etc.)
 
@@ -86,7 +86,7 @@ After Trinity health checks pass, HTTP call to Prime to activate additional capa
 In `run_server.py`'s `_background_init()`, initialize `jarvis_prime_bridge` so unified inference routing works when started by unified supervisor.
 
 ### Fix 2: Orchestration Guard (~10 lines each repo)
-In jarvis-prime's `run_server.py` and reactor-core's `run_supervisor.py`, check `JARVIS_ORCHESTRATED_BY` env var. If set, skip repo-level supervisor features that conflict with unified_supervisor.py.
+In jarvis-prime's `run_server.py` and reactor-core's `run_supervisor.py`, check `Ironcliw_ORCHESTRATED_BY` env var. If set, skip repo-level supervisor features that conflict with unified_supervisor.py.
 
 ### Fix 3: Deprecation Warnings (~5 lines each)
 When repo-level supervisors detect they're being orchestrated, log a deprecation notice.
@@ -104,7 +104,7 @@ With enterprise framework in place, register sleeping capabilities:
 | Curriculum learning | reactor-core | MEDIUM | 1 day |
 | Continuous learning | jarvis-prime | MEDIUM | 1 day |
 | Active learning | reactor-core | MEDIUM | 1 day |
-| Cross-repo health contracts | JARVIS | LOW | Already done in Phase 2 |
+| Cross-repo health contracts | Ironcliw | LOW | Already done in Phase 2 |
 
 ---
 

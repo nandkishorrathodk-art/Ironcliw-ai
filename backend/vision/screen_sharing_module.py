@@ -1,5 +1,5 @@
-"""
-Screen Sharing Module for JARVIS Vision System
+﻿"""
+Screen Sharing Module for Ironcliw Vision System
 Memory-safe, configurable screen sharing with WebRTC support
 Designed for 16GB macOS systems with aggressive memory management
 """

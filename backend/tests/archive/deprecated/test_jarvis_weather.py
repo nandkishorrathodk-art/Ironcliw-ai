@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS weather functionality end-to-end"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw weather functionality end-to-end"""
 
 import asyncio
 import logging
@@ -8,14 +8,14 @@ import logging
 logging.basicConfig(level=logging.WARNING)
 
 async def test_jarvis_weather():
-    """Test JARVIS weather responses"""
-    print("=== Testing JARVIS Weather Response ===\n")
+    """Test Ironcliw weather responses"""
+    print("=== Testing Ironcliw Weather Response ===\n")
     
-    # Import JARVIS voice system
-    from voice.jarvis_agent_voice import JARVISAgentVoice
+    # Import Ironcliw voice system
+    from voice.jarvis_agent_voice import IroncliwAgentVoice
     
-    # Create JARVIS instance
-    jarvis = JARVISAgentVoice()
+    # Create Ironcliw instance
+    jarvis = IroncliwAgentVoice()
     
     # Test weather queries
     test_queries = [
@@ -26,7 +26,7 @@ async def test_jarvis_weather():
         "how's the weather"
     ]
     
-    print("Testing JARVIS weather responses:")
+    print("Testing Ironcliw weather responses:")
     for i, query in enumerate(test_queries, 1):
         print(f"\n{i}. Query: '{query}'")
         

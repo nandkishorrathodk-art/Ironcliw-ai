@@ -1,8 +1,8 @@
-"""
-JARVIS Agentic Task Runner - Core Module v2.0
+﻿"""
+Ironcliw Agentic Task Runner - Core Module v2.0
 ==============================================
 
-The unified agentic execution engine for JARVIS. This module provides:
+The unified agentic execution engine for Ironcliw. This module provides:
 
 - AgenticTaskRunner: Main orchestrator for Computer Use execution
 - RunnerMode: Execution modes (direct, autonomous, supervised)
@@ -10,12 +10,12 @@ The unified agentic execution engine for JARVIS. This module provides:
 
 Integration:
     This module is designed to be instantiated and managed by the
-    JARVISSupervisor (run_supervisor.py). The TieredCommandRouter
+    IroncliwSupervisor (run_supervisor.py). The TieredCommandRouter
     routes Tier 2 commands to this runner for agentic execution.
 
 Architecture:
     ┌────────────────────────────────────────────────────────────────┐
-    │                     JARVISSupervisor                           │
+    │                     IroncliwSupervisor                           │
     │  ┌──────────────┐   ┌──────────────────┐   ┌───────────────┐  │
     │  │   Tiered     │ → │  Agentic         │ → │   Computer    │  │
     │  │   Router     │   │  TaskRunner      │   │   Use Tool    │  │
@@ -28,7 +28,7 @@ Architecture:
     │                    └───────────────────┘                       │
     └────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0 (Unified)
 """
 
@@ -82,118 +82,118 @@ class AgenticRunnerConfig:
 
     # Execution settings
     default_mode: str = field(
-        default_factory=lambda: os.getenv("JARVIS_AGENTIC_DEFAULT_MODE", "supervised")
+        default_factory=lambda: os.getenv("Ironcliw_AGENTIC_DEFAULT_MODE", "supervised")
     )
     max_actions_per_task: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MAX_ACTIONS", "50"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MAX_ACTIONS", "50"))
     )
     task_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_TASK_TIMEOUT", "300"))
+        default_factory=lambda: float(os.getenv("Ironcliw_TASK_TIMEOUT", "300"))
     )
 
     # Component toggles
     uae_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_ENABLED", "true").lower() == "true"
     )
     neural_mesh_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NEURAL_MESH_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NEURAL_MESH_ENABLED", "true").lower() == "true"
     )
     learning_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_LEARNING_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_LEARNING_ENABLED", "true").lower() == "true"
     )
 
     # Narration
     narrate_by_default: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NARRATE_TASKS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NARRATE_TASKS", "true").lower() == "true"
     )
 
     # Watchdog integration
     watchdog_integration: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_WATCHDOG_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_WATCHDOG_ENABLED", "true").lower() == "true"
     )
     heartbeat_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_HEARTBEAT_INTERVAL", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_HEARTBEAT_INTERVAL", "2.0"))
     )
 
     # Voice Authentication Layer (v5.0)
     voice_auth_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_AUTH_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_AUTH_ENABLED", "true").lower() == "true"
     )
     voice_auth_pre_execution: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_AUTH_PRE_EXECUTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_AUTH_PRE_EXECUTION", "true").lower() == "true"
     )
 
     # Neural Mesh Deep Integration (v5.0)
     neural_mesh_deep_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NEURAL_MESH_DEEP", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NEURAL_MESH_DEEP", "true").lower() == "true"
     )
     neural_mesh_task_events: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_TASK_EVENTS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_TASK_EVENTS", "true").lower() == "true"
     )
     neural_mesh_context_query: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_CONTEXT_QUERY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_CONTEXT_QUERY", "true").lower() == "true"
     )
     neural_mesh_pattern_subscribe: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_PATTERN_SUBSCRIBE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_PATTERN_SUBSCRIBE", "true").lower() == "true"
     )
     neural_mesh_agi_events: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_AGI_EVENTS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_AGI_EVENTS", "true").lower() == "true"
     )
 
     # v9.4: Neural Mesh Production Integration
     neural_mesh_production: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_PRODUCTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_PRODUCTION", "true").lower() == "true"
     )
     neural_mesh_workflow_execution: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_WORKFLOW_EXECUTION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_WORKFLOW_EXECUTION", "true").lower() == "true"
     )
     neural_mesh_knowledge_contribute: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_KNOWLEDGE_CONTRIBUTE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_KNOWLEDGE_CONTRIBUTE", "true").lower() == "true"
     )
     neural_mesh_agent_delegation: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_AGENT_DELEGATION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_AGENT_DELEGATION", "true").lower() == "true"
     )
     neural_mesh_use_bridge: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_NM_USE_BRIDGE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_NM_USE_BRIDGE", "true").lower() == "true"
     )
 
     # Autonomy Components Integration (v6.0)
     phase_manager_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PHASE_MANAGER_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PHASE_MANAGER_ENABLED", "true").lower() == "true"
     )
     tool_registry_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TOOL_REGISTRY_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TOOL_REGISTRY_ENABLED", "true").lower() == "true"
     )
     memory_manager_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_MANAGER_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_MANAGER_ENABLED", "true").lower() == "true"
     )
     error_recovery_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_ERROR_RECOVERY_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_ERROR_RECOVERY_ENABLED", "true").lower() == "true"
     )
     uae_context_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_CONTEXT_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_CONTEXT_ENABLED", "true").lower() == "true"
     )
     intervention_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_INTERVENTION_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_INTERVENTION_ENABLED", "true").lower() == "true"
     )
 
-    # JARVIS Prime Integration (Tier-0 Brain)
+    # Ironcliw Prime Integration (Tier-0 Brain)
     jarvis_prime_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
     )
     jarvis_prime_url: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
     )
     jarvis_prime_use_cloud_run: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_USE_CLOUD_RUN", "false").lower() == "true"
     )
     jarvis_prime_cloud_run_url: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", "")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL", "")
     )
 
     # Reactor-Core Integration (v10.0 - "Ignition Key")
     reactor_core_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_REACTOR_CORE_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_REACTOR_CORE_ENABLED", "true").lower() == "true"
     )
     reactor_core_url: str = field(
         default_factory=lambda: os.getenv("REACTOR_CORE_API_URL", "http://localhost:8090")
@@ -204,53 +204,53 @@ class AgenticRunnerConfig:
 
     # SOP Enforcer Integration (v11.0 - "Clinical-Grade Discipline")
     sop_enforcer_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_SOP_ENFORCER_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_SOP_ENFORCER_ENABLED", "true").lower() == "true"
     )
     sop_strict_mode: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_SOP_STRICT_MODE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_SOP_STRICT_MODE", "true").lower() == "true"
     )
     sop_complexity_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_SOP_COMPLEXITY_THRESHOLD", "0.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_SOP_COMPLEXITY_THRESHOLD", "0.5"))
     )
 
-    # Vision Cognitive Loop Integration (v10.2 - "Eyes of JARVIS")
+    # Vision Cognitive Loop Integration (v10.2 - "Eyes of Ironcliw")
     vision_cognitive_loop_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VISION_LOOP_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VISION_LOOP_ENABLED", "true").lower() == "true"
     )
     vision_pre_analysis: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VISION_PRE_ANALYSIS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VISION_PRE_ANALYSIS", "true").lower() == "true"
     )
     vision_act_verify: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VISION_ACT_VERIFY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VISION_ACT_VERIFY", "true").lower() == "true"
     )
     vision_learning: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VISION_LEARNING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VISION_LEARNING", "true").lower() == "true"
     )
     vision_verification_timeout_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VISION_VERIFY_TIMEOUT", "5000"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VISION_VERIFY_TIMEOUT", "5000"))
     )
     vision_max_retries: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_VISION_MAX_RETRIES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_VISION_MAX_RETRIES", "3"))
     )
 
     # Vision-Safety Integration (v10.3 - "Safety Certificate")
     safety_integration_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_SAFETY_INTEGRATION", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_SAFETY_INTEGRATION", "true").lower() == "true"
     )
     safety_audit_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_SAFETY_AUDIT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_SAFETY_AUDIT", "true").lower() == "true"
     )
     dead_man_switch_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_DEAD_MAN_SWITCH", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_DEAD_MAN_SWITCH", "true").lower() == "true"
     )
     visual_click_overlay_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VISUAL_OVERLAY", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VISUAL_OVERLAY", "true").lower() == "true"
     )
     auto_confirm_safe_actions: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_AUTO_CONFIRM_GREEN", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_AUTO_CONFIRM_GREEN", "true").lower() == "true"
     )
     confirmation_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_CONFIRM_TIMEOUT", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_CONFIRM_TIMEOUT", "30.0"))
     )
 
     reactor_core_experience_threshold: int = field(
@@ -262,70 +262,70 @@ class AgenticRunnerConfig:
 
     # Repository Intelligence (v11.0 - "Codebase Brain")
     repo_intelligence_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_REPO_INTEL_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_REPO_INTEL_ENABLED", "true").lower() == "true"
     )
     repo_intelligence_auto_context: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_REPO_INTEL_AUTO_CONTEXT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_REPO_INTEL_AUTO_CONTEXT", "true").lower() == "true"
     )
     repo_intelligence_max_tokens: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_REPO_INTEL_MAX_TOKENS", "2048"))
+        default_factory=lambda: int(os.getenv("Ironcliw_REPO_INTEL_MAX_TOKENS", "2048"))
     )
     repo_intelligence_cross_repo: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_REPO_INTEL_CROSS_REPO", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_REPO_INTEL_CROSS_REPO", "true").lower() == "true"
     )
 
     # Memory System (v6.0 - "MemGPT-Inspired Archival Memory")
     memory_system_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_SYSTEM_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_SYSTEM_ENABLED", "true").lower() == "true"
     )
     memory_auto_retrieve: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_AUTO_RETRIEVE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_AUTO_RETRIEVE", "true").lower() == "true"
     )
     memory_max_results: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MEMORY_MAX_RESULTS", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MEMORY_MAX_RESULTS", "5"))
     )
     memory_store_outcomes: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_MEMORY_STORE_OUTCOMES", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_MEMORY_STORE_OUTCOMES", "true").lower() == "true"
     )
 
     # Safe Code Execution (v6.0 - "Open Interpreter-Inspired Sandbox")
     safe_code_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_SAFE_CODE_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_SAFE_CODE_ENABLED", "true").lower() == "true"
     )
     safe_code_timeout_sec: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_SAFE_CODE_TIMEOUT_SEC", "30"))
+        default_factory=lambda: int(os.getenv("Ironcliw_SAFE_CODE_TIMEOUT_SEC", "30"))
     )
     safe_code_max_memory_mb: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_SAFE_CODE_MAX_MEMORY_MB", "512"))
+        default_factory=lambda: int(os.getenv("Ironcliw_SAFE_CODE_MAX_MEMORY_MB", "512"))
     )
 
     # Cognitive Architecture (v12.0 - "AGI Reasoning Core")
     cognitive_architecture_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_ENABLED", "true").lower() == "true"
     )
     cognitive_causal_reasoning: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_CAUSAL", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_CAUSAL", "true").lower() == "true"
     )
     cognitive_world_model: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_WORLD_MODEL", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_WORLD_MODEL", "true").lower() == "true"
     )
     cognitive_theory_of_mind: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_TOM", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_TOM", "true").lower() == "true"
     )
     cognitive_abstract_reasoning: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_ABSTRACT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_ABSTRACT", "true").lower() == "true"
     )
     cognitive_planning: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_PLANNING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_PLANNING", "true").lower() == "true"
     )
     cognitive_ethics: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_ETHICS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_ETHICS", "true").lower() == "true"
     )
     cognitive_pre_task_analysis: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_PRE_ANALYSIS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_PRE_ANALYSIS", "true").lower() == "true"
     )
     cognitive_post_task_learning: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COGNITIVE_POST_LEARNING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COGNITIVE_POST_LEARNING", "true").lower() == "true"
     )
 
 
@@ -558,7 +558,7 @@ class AgenticTaskRunner:
     - Neural Mesh for multi-agent coordination (optional)
     - Watchdog for safety monitoring
 
-    Designed to be instantiated by JARVISSupervisor and used by TieredCommandRouter.
+    Designed to be instantiated by IroncliwSupervisor and used by TieredCommandRouter.
     """
 
     def __init__(
@@ -605,7 +605,7 @@ class AgenticTaskRunner:
         self._reactor_core_client = None
         self._experience_count = 0  # Track experiences for auto-trigger
 
-        # Vision Cognitive Loop (v10.2 - "Eyes of JARVIS")
+        # Vision Cognitive Loop (v10.2 - "Eyes of Ironcliw")
         self._vision_cognitive_loop = None
         self._vision_loop_initialized = False
         self._last_visual_state = None
@@ -640,7 +640,7 @@ class AgenticTaskRunner:
 
         # v9.4: Neural Mesh Production Integration state
         self._neural_mesh_coordinator = None  # Production coordinator
-        self._neural_mesh_bridge = None  # JARVIS bridge for cross-system tasks
+        self._neural_mesh_bridge = None  # Ironcliw bridge for cross-system tasks
         self._nm_production_active: bool = False
         self._nm_workflows_executed: int = 0
         self._nm_agents_delegated: int = 0
@@ -868,7 +868,7 @@ class AgenticTaskRunner:
                             from neural_mesh.jarvis_bridge import (
                                 get_jarvis_bridge,
                                 start_jarvis_neural_mesh,
-                                JARVISNeuralMeshBridge,
+                                IroncliwNeuralMeshBridge,
                             )
 
                             # v2.0.0: Timeout-protected coordinator init
@@ -892,24 +892,24 @@ class AgenticTaskRunner:
                             if self._neural_mesh_coordinator:
                                 self.logger.info("[AgenticRunner] ✓ Neural Mesh Coordinator (production)")
 
-                            # Initialize JARVIS Bridge for cross-system tasks
+                            # Initialize Ironcliw Bridge for cross-system tasks
                             if self.config.neural_mesh_use_bridge:
                                 try:
                                     self._neural_mesh_bridge = await self._init_component_with_timeout(
-                                        "JARVIS Bridge get",
+                                        "Ironcliw Bridge get",
                                         get_jarvis_bridge(),
                                         timeout=COMPONENT_TIMEOUT,
                                         critical=False,
                                     )
                                     if self._neural_mesh_bridge and not self._neural_mesh_bridge.is_running:
                                         await self._init_component_with_timeout(
-                                            "JARVIS Bridge init",
+                                            "Ironcliw Bridge init",
                                             self._neural_mesh_bridge.initialize(),
                                             timeout=COMPONENT_TIMEOUT,
                                             critical=False,
                                         )
                                         await self._init_component_with_timeout(
-                                            "JARVIS Bridge start",
+                                            "Ironcliw Bridge start",
                                             self._neural_mesh_bridge.start(),
                                             timeout=COMPONENT_TIMEOUT,
                                             critical=False,
@@ -918,7 +918,7 @@ class AgenticTaskRunner:
                                     if self._neural_mesh_bridge:
                                         self._nm_production_active = True
                                         bridge_agents = len(self._neural_mesh_bridge.registered_agents)
-                                        self.logger.info(f"[AgenticRunner] ✓ JARVIS Neural Mesh Bridge ({bridge_agents} agents)")
+                                        self.logger.info(f"[AgenticRunner] ✓ Ironcliw Neural Mesh Bridge ({bridge_agents} agents)")
                                 except Exception as bridge_error:
                                     self.logger.debug(f"[AgenticRunner] Bridge init skipped: {bridge_error}")
 
@@ -1122,20 +1122,20 @@ class AgenticTaskRunner:
                 except Exception as e:
                     self.logger.debug(f"[AgenticRunner] ✗ Intervention Orchestrator: {e}")
 
-            # Initialize JARVIS Prime Client (Tier-0 Brain)
+            # Initialize Ironcliw Prime Client (Tier-0 Brain)
             # v2.0.0: Critical component with longer timeout for network operations
             if self.config.jarvis_prime_enabled:
                 try:
                     await self._init_component_with_timeout(
-                        "JARVIS Prime Client",
+                        "Ironcliw Prime Client",
                         self._initialize_jarvis_prime_client(),
                         timeout=COMPONENT_TIMEOUT * 2,  # Double timeout for network-heavy init
                         critical=True,  # Log as warning if fails
                     )
                     if hasattr(self, '_jarvis_prime_client') and self._jarvis_prime_client:
-                        self.logger.info("[AgenticRunner] ✓ JARVIS Prime Client")
+                        self.logger.info("[AgenticRunner] ✓ Ironcliw Prime Client")
                 except Exception as e:
-                    self.logger.debug(f"[AgenticRunner] ✗ JARVIS Prime Client: {e}")
+                    self.logger.debug(f"[AgenticRunner] ✗ Ironcliw Prime Client: {e}")
 
             # =================================================================
             # Initialize Reactor-Core Client (v10.0 - "Ignition Key")
@@ -1179,7 +1179,7 @@ class AgenticTaskRunner:
                     self._reactor_core_client = None
 
             # =================================================================
-            # Initialize Vision Cognitive Loop (v10.2 - "Eyes of JARVIS")
+            # Initialize Vision Cognitive Loop (v10.2 - "Eyes of Ironcliw")
             # v2.0.0: Added timeout protection
             # =================================================================
             if self._availability.get("vision_cognitive_loop") and self.config.vision_cognitive_loop_enabled:
@@ -1449,7 +1449,7 @@ class AgenticTaskRunner:
             self.logger.debug(f"[AgenticRunner] Error recovery handler registration failed: {e}")
 
     async def _initialize_jarvis_prime_client(self):
-        """Initialize the JARVIS Prime Tier-0 Brain client."""
+        """Initialize the Ironcliw Prime Tier-0 Brain client."""
         try:
             import aiohttp
 
@@ -1459,14 +1459,14 @@ class AgenticTaskRunner:
             else:
                 prime_url = self.config.jarvis_prime_url
 
-            # Create an aiohttp session for JARVIS Prime communication
+            # Create an aiohttp session for Ironcliw Prime communication
             self._jarvis_prime_client = {
                 "url": prime_url,
                 "session": aiohttp.ClientSession(
                     timeout=aiohttp.ClientTimeout(total=30),
                     headers={
                         "Content-Type": "application/json",
-                        "User-Agent": "JARVIS-AgenticRunner/6.0",
+                        "User-Agent": "Ironcliw-AgenticRunner/6.0",
                     }
                 ),
                 "connected": False,
@@ -1482,17 +1482,17 @@ class AgenticTaskRunner:
                     if response.status == 200:
                         self._jarvis_prime_client["connected"] = True
                         self._jarvis_prime_client["last_health_check"] = time.time()
-                        self.logger.info(f"[AgenticRunner] JARVIS Prime connected at {prime_url}")
+                        self.logger.info(f"[AgenticRunner] Ironcliw Prime connected at {prime_url}")
                     else:
-                        self.logger.debug(f"[AgenticRunner] JARVIS Prime health check returned {response.status}")
+                        self.logger.debug(f"[AgenticRunner] Ironcliw Prime health check returned {response.status}")
             except Exception as health_error:
-                self.logger.debug(f"[AgenticRunner] JARVIS Prime not available: {health_error}")
+                self.logger.debug(f"[AgenticRunner] Ironcliw Prime not available: {health_error}")
                 # Keep client for lazy connection attempts
 
         except ImportError:
-            self.logger.debug("[AgenticRunner] aiohttp not available for JARVIS Prime client")
+            self.logger.debug("[AgenticRunner] aiohttp not available for Ironcliw Prime client")
         except Exception as e:
-            self.logger.debug(f"[AgenticRunner] JARVIS Prime client init failed: {e}")
+            self.logger.debug(f"[AgenticRunner] Ironcliw Prime client init failed: {e}")
 
     # =========================================================================
     # Reactor-Core Integration (v10.0 - "Ignition Key")
@@ -1506,7 +1506,7 @@ class AgenticTaskRunner:
         """
         Record task experience and check if training should be triggered.
 
-        This is the "Ignition Key" - the critical connection between JARVIS
+        This is the "Ignition Key" - the critical connection between Ironcliw
         task execution and the Reactor-Core training pipeline.
 
         Args:
@@ -1542,7 +1542,7 @@ class AgenticTaskRunner:
             await self._check_and_trigger_training()
 
         except Exception as e:
-            # Never crash JARVIS for training issues
+            # Never crash Ironcliw for training issues
             self.logger.debug(f"[ReactorCore] Experience record error: {e}")
 
     async def _check_and_trigger_training(self) -> None:
@@ -1604,7 +1604,7 @@ class AgenticTaskRunner:
         """
         Callback when training completes in Reactor-Core.
 
-        Phase 2: Automatically hot-swap JARVIS Prime to the new model.
+        Phase 2: Automatically hot-swap Ironcliw Prime to the new model.
         """
         if not data:
             return
@@ -1640,11 +1640,11 @@ class AgenticTaskRunner:
 
     async def _auto_swap_jarvis_prime_model(self, training_data: Dict[str, Any]) -> None:
         """
-        Phase 2: Automatically hot-swap JARVIS Prime to the newly trained model.
+        Phase 2: Automatically hot-swap Ironcliw Prime to the newly trained model.
 
         This method:
         1. Extracts the output model path from training results
-        2. Checks if JARVIS Prime is healthy
+        2. Checks if Ironcliw Prime is healthy
         3. Triggers the hot-swap via /model/swap endpoint
         4. Logs the result and announces via TTS
 
@@ -1655,9 +1655,9 @@ class AgenticTaskRunner:
         from pathlib import Path
 
         # Check if auto-swap is enabled
-        auto_swap_enabled = os.getenv("JARVIS_PRIME_AUTO_SWAP", "true").lower() == "true"
+        auto_swap_enabled = os.getenv("Ironcliw_PRIME_AUTO_SWAP", "true").lower() == "true"
         if not auto_swap_enabled:
-            self.logger.info("[HotSwap] Auto-swap disabled via JARVIS_PRIME_AUTO_SWAP=false")
+            self.logger.info("[HotSwap] Auto-swap disabled via Ironcliw_PRIME_AUTO_SWAP=false")
             return
 
         # Check if Reactor-Core client is available
@@ -1665,11 +1665,11 @@ class AgenticTaskRunner:
             self.logger.warning("[HotSwap] Reactor-Core client not initialized")
             return
 
-        # Check if JARVIS Prime is healthy before attempting swap
+        # Check if Ironcliw Prime is healthy before attempting swap
         prime_healthy = await self._reactor_core_client.check_jarvis_prime_health()
         if not prime_healthy:
             self.logger.warning(
-                "[HotSwap] JARVIS Prime is not healthy - skipping auto-swap. "
+                "[HotSwap] Ironcliw Prime is not healthy - skipping auto-swap. "
                 "Model can be swapped manually when Prime is back online."
             )
             return
@@ -1850,7 +1850,7 @@ class AgenticTaskRunner:
         """
         Extract learning topics from failed task and submit to Safe Scout.
 
-        This enables JARVIS to proactively learn from failures by:
+        This enables Ironcliw to proactively learn from failures by:
         1. Analyzing the failed goal and error message
         2. Extracting relevant learning topics
         3. Submitting them to the learning goals manager
@@ -1863,7 +1863,7 @@ class AgenticTaskRunner:
         import os
 
         # Check if learning goal auto-discovery is enabled
-        if not os.getenv("JARVIS_AUTO_LEARN_FROM_FAILURES", "true").lower() == "true":
+        if not os.getenv("Ironcliw_AUTO_LEARN_FROM_FAILURES", "true").lower() == "true":
             return
 
         try:
@@ -2158,7 +2158,7 @@ class AgenticTaskRunner:
         """
         Store task outcome in the Unified Memory System for future reference.
 
-        This enables JARVIS to:
+        This enables Ironcliw to:
         1. Remember past successful approaches for similar tasks
         2. Recall failed attempts to avoid repeating mistakes
         3. Build up expertise over time through experience accumulation
@@ -2236,7 +2236,7 @@ class AgenticTaskRunner:
         except ImportError:
             self.logger.debug("[Memory] Unified Memory System not available")
         except Exception as e:
-            # Never crash JARVIS for memory storage issues
+            # Never crash Ironcliw for memory storage issues
             self.logger.debug(f"[Memory] Failed to store task outcome: {e}")
 
     # =========================================================================
@@ -2253,7 +2253,7 @@ class AgenticTaskRunner:
         Execute Python code safely using the SafeCodeExecutor.
 
         This is the Open Interpreter "Safe Execute" pattern that prevents
-        JARVIS from accidentally running `rm -rf /` or other dangerous operations.
+        Ironcliw from accidentally running `rm -rf /` or other dangerous operations.
 
         The code is:
         1. Validated via AST analysis to block dangerous imports/calls
@@ -2276,7 +2276,7 @@ class AgenticTaskRunner:
 
         Example:
             result = await runner.execute_code_safely(
-                code="print('Hello, JARVIS!')",
+                code="print('Hello, Ironcliw!')",
                 context={"name": "Derek"},
             )
         """
@@ -2284,7 +2284,7 @@ class AgenticTaskRunner:
             return {
                 "success": False,
                 "error": "Safe code execution is disabled",
-                "blocked_reason": "Feature disabled via JARVIS_SAFE_CODE_ENABLED=false",
+                "blocked_reason": "Feature disabled via Ironcliw_SAFE_CODE_ENABLED=false",
             }
 
         if not self._safe_code_executor:
@@ -2458,7 +2458,7 @@ class AgenticTaskRunner:
 
         # Integrations
         if self._jarvis_prime_client and self._jarvis_prime_client.get("connected"):
-            integrations.append("JARVIS-Prime")
+            integrations.append("Ironcliw-Prime")
         if self._reactor_core_client:
             status = "online" if self._reactor_core_client.is_online else "offline"
             integrations.append(f"Reactor-Core({status})")
@@ -2636,7 +2636,7 @@ class AgenticTaskRunner:
                     except Exception:
                         pass
 
-                # Get LLM for plan generation (use JARVIS Prime if available)
+                # Get LLM for plan generation (use Ironcliw Prime if available)
                 llm = None
                 if self._jarvis_prime_client:
                     # Create a simple adapter for the thinking protocol
@@ -2958,14 +2958,14 @@ class AgenticTaskRunner:
 
         Each phase can:
         - Checkpoint state to memory
-        - Query JARVIS Prime for muscle-memory patterns
+        - Query Ironcliw Prime for muscle-memory patterns
         - Report progress to intervention orchestrator
         - Be recovered by error recovery orchestrator
 
         Vision Cognitive Loop (v10.2):
         - VISION phase captures OS state before planning
         - VERIFYING phase validates actions through visual comparison
-        - Visual context enriches JARVIS Prime reasoning
+        - Visual context enriches Ironcliw Prime reasoning
         """
         self.logger.debug("[AgenticRunner] AUTONOMOUS mode (Phase-Managed, Vision-First)")
 
@@ -2987,11 +2987,11 @@ class AgenticTaskRunner:
             self._current_phase = "CONTEXT_ENRICHMENT"
             context = await self._enrich_context(goal, context)
 
-            # Query JARVIS Prime for muscle-memory patterns
+            # Query Ironcliw Prime for muscle-memory patterns
             prime_patterns = await self._query_jarvis_prime(goal)
             if prime_patterns:
                 context["jarvis_prime_patterns"] = prime_patterns
-                self.logger.debug(f"[Phase-0] JARVIS Prime patterns: {len(prime_patterns)}")
+                self.logger.debug(f"[Phase-0] Ironcliw Prime patterns: {len(prime_patterns)}")
 
             # =================================================================
             # Phase 0.5: VISION (See Before You Think) - v10.2
@@ -3994,7 +3994,7 @@ class AgenticTaskRunner:
                         focus_area=goal[:100] if len(goal) > 100 else goal,
                     )
                 else:
-                    # Get single repo context (JARVIS)
+                    # Get single repo context (Ironcliw)
                     repo_map = await get_repo_map(
                         repository="jarvis",
                         max_tokens=self.config.repo_intelligence_max_tokens,
@@ -4043,7 +4043,7 @@ class AgenticTaskRunner:
         return enriched
 
     async def _query_jarvis_prime(self, goal: str) -> Optional[List[Dict[str, Any]]]:
-        """Query JARVIS Prime for muscle-memory patterns."""
+        """Query Ironcliw Prime for muscle-memory patterns."""
         if not self._jarvis_prime_client or not self._jarvis_prime_client.get("session"):
             return None
 
@@ -4057,7 +4057,7 @@ class AgenticTaskRunner:
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are JARVIS Prime, providing muscle-memory patterns for efficient task execution.",
+                            "content": "You are Ironcliw Prime, providing muscle-memory patterns for efficient task execution.",
                         },
                         {
                             "role": "user",
@@ -4075,7 +4075,7 @@ class AgenticTaskRunner:
                     if content:
                         return [{"pattern": content, "source": "jarvis_prime"}]
         except Exception as e:
-            self.logger.debug(f"[JARVIS-Prime] Query failed: {e}")
+            self.logger.debug(f"[Ironcliw-Prime] Query failed: {e}")
 
         return None
 
@@ -4839,7 +4839,7 @@ class AgenticTaskRunner:
         systems: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
-        v9.4: Execute a task across multiple JARVIS systems via Neural Mesh Bridge.
+        v9.4: Execute a task across multiple Ironcliw systems via Neural Mesh Bridge.
 
         This enables collaboration between intelligence, autonomy, and voice systems.
 
@@ -5360,7 +5360,7 @@ class AgenticTaskRunner:
         # Stop Autonomy Components (v6.0)
         await self._shutdown_autonomy_components()
 
-        # Close JARVIS Prime client session
+        # Close Ironcliw Prime client session
         if self._jarvis_prime_client and self._jarvis_prime_client.get("session"):
             try:
                 await self._jarvis_prime_client["session"].close()
@@ -5522,7 +5522,7 @@ class AgenticTaskRunner:
             except Exception:
                 intervention_stats = {"enabled": True, "status": "available"}
 
-        # JARVIS Prime stats
+        # Ironcliw Prime stats
         jarvis_prime_stats = None
         if self._jarvis_prime_client:
             jarvis_prime_stats = {

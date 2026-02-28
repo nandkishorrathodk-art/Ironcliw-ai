@@ -1,12 +1,12 @@
-"""
-JARVIS Kernel Circuit Breaker v1.0.0
+﻿"""
+Ironcliw Kernel Circuit Breaker v1.0.0
 =====================================
 
-Enterprise-grade circuit breaker implementation for the JARVIS kernel.
+Enterprise-grade circuit breaker implementation for the Ironcliw kernel.
 Prevents cascade failures by detecting unhealthy dependencies and failing fast.
 
 This module provides circuit breakers that can be used for:
-1. External service calls (JARVIS Prime, Reactor Core, GCP)
+1. External service calls (Ironcliw Prime, Reactor Core, GCP)
 2. Internal component health (ML models, Docker, databases)
 3. Browser operations (Chrome GPU crashes)
 
@@ -40,7 +40,7 @@ Usage:
         # Use fallback
         result = fallback_response()
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

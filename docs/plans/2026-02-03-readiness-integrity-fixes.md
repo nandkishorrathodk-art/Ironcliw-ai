@@ -1,4 +1,4 @@
-# Readiness Integrity Fixes Implementation Plan
+﻿# Readiness Integrity Fixes Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -73,7 +73,7 @@ class TestReadinessConfig:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_config.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_config.py -v`
 Expected: ModuleNotFoundError
 
 **Step 3: Write the implementation**
@@ -195,18 +195,18 @@ class ReadinessConfig:
 
     # Verification timeout (seconds)
     verification_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VERIFICATION_TIMEOUT", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VERIFICATION_TIMEOUT", "30.0"))
     )
 
     # Revocation settings
     unhealthy_threshold_failures: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_UNHEALTHY_THRESHOLD", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_UNHEALTHY_THRESHOLD", "3"))
     )
     unhealthy_threshold_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_UNHEALTHY_SECONDS", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_UNHEALTHY_SECONDS", "30.0"))
     )
     revocation_cooldown_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_REVOCATION_COOLDOWN", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_REVOCATION_COOLDOWN", "60.0"))
     )
 
     def get_criticality(self, component: str) -> ComponentCriticality:
@@ -250,7 +250,7 @@ def get_readiness_config() -> ReadinessConfig:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_config.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_config.py -v`
 Expected: All tests pass
 
 **Step 5: Commit**
@@ -389,7 +389,7 @@ class TestReadinessPredicate:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_predicate.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_predicate.py -v`
 Expected: ModuleNotFoundError
 
 **Step 3: Write the implementation**
@@ -538,7 +538,7 @@ class ReadinessPredicate:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_predicate.py -v`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/unit/backend/core/test_readiness_predicate.py -v`
 Expected: All tests pass
 
 **Step 5: Commit**
@@ -606,7 +606,7 @@ comp_parts.append(f"{short_name}:{color}{display_code}{self.RESET}")
 
 **Step 4: Run existing tests**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -m pytest tests/ -k "supervisor" --ignore=tests/integration -v --tb=short 2>/dev/null | head -50`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -m pytest tests/ -k "supervisor" --ignore=tests/integration -v --tb=short 2>/dev/null | head -50`
 
 **Step 5: Commit**
 
@@ -701,7 +701,7 @@ Add method around line 60000:
 
 **Step 4: Test manually**
 
-Run: `cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent && python -c "from unified_supervisor import JarvisSystemKernel; print('Import OK')"`
+Run: `cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent && python -c "from unified_supervisor import JarvisSystemKernel; print('Import OK')"`
 
 **Step 5: Commit**
 
@@ -726,25 +726,25 @@ EOF
 
 **Files:**
 - Modify: `backend/core/trinity_startup_orchestrator.py:193-226`
-- Modify: `backend/core/trinity_integrator.py:325-336` (add JARVIS_PRIME_PATH support)
+- Modify: `backend/core/trinity_integrator.py:325-336` (add Ironcliw_PRIME_PATH support)
 
 **Step 1: Update IntelligentRepoDiscovery ENV_VARS**
 
-The current ENV_VARS uses `JARVIS_PRIME_REPO_PATH` but the codebase uses `JARVIS_PRIME_PATH`. Fix this:
+The current ENV_VARS uses `Ironcliw_PRIME_REPO_PATH` but the codebase uses `Ironcliw_PRIME_PATH`. Fix this:
 
 ```python
 # backend/core/trinity_integrator.py line ~325
 # Change FROM:
     ENV_VARS: Final[Dict[str, str]] = {
-        "jarvis": "JARVIS_REPO_PATH",
-        "jarvis_prime": "JARVIS_PRIME_REPO_PATH",
+        "jarvis": "Ironcliw_REPO_PATH",
+        "jarvis_prime": "Ironcliw_PRIME_REPO_PATH",
         "reactor_core": "REACTOR_CORE_REPO_PATH",
     }
 
 # TO:
     ENV_VARS: Final[Dict[str, str]] = {
-        "jarvis": "JARVIS_REPO_PATH",
-        "jarvis_prime": "JARVIS_PRIME_PATH",      # Match existing env var
+        "jarvis": "Ironcliw_REPO_PATH",
+        "jarvis_prime": "Ironcliw_PRIME_PATH",      # Match existing env var
         "reactor_core": "REACTOR_CORE_PATH",       # Match existing env var
     }
 ```
@@ -778,7 +778,7 @@ The current ENV_VARS uses `JARVIS_PRIME_REPO_PATH` but the codebase uses `JARVIS
         if prime_result.path:
             logger.info(f"[Trinity] J-Prime discovered: {prime_result.path} (via {prime_result.strategy_used.name})")
         else:
-            logger.warning(f"[Trinity] J-Prime not found. Set JARVIS_PRIME_PATH or clone to sibling directory.")
+            logger.warning(f"[Trinity] J-Prime not found. Set Ironcliw_PRIME_PATH or clone to sibling directory.")
 
         if reactor_result.path:
             logger.info(f"[Trinity] Reactor-Core discovered: {reactor_result.path} (via {reactor_result.strategy_used.name})")
@@ -786,13 +786,13 @@ The current ENV_VARS uses `JARVIS_PRIME_REPO_PATH` but the codebase uses `JARVIS
             logger.warning(f"[Trinity] Reactor-Core not found. Set REACTOR_CORE_PATH or clone to sibling directory.")
 
         # Get ports from config or defaults
-        prime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+        prime_port = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
         reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
         self.state.components = {
-            ComponentType.JARVIS_PRIME: ComponentInfo(
-                component_type=ComponentType.JARVIS_PRIME,
-                name="JARVIS-Prime (Mind)",
+            ComponentType.Ironcliw_PRIME: ComponentInfo(
+                component_type=ComponentType.Ironcliw_PRIME,
+                name="Ironcliw-Prime (Mind)",
                 repo_path=prime_path,
                 startup_script="run_server.py",
                 port=prime_port,
@@ -820,7 +820,7 @@ git add backend/core/trinity_integrator.py backend/core/trinity_startup_orchestr
 git commit -m "$(cat <<'EOF'
 fix(discovery): Consolidate path discovery to IntelligentRepoDiscovery
 
-- Use JARVIS_PRIME_PATH and REACTOR_CORE_PATH (match existing env vars)
+- Use Ironcliw_PRIME_PATH and REACTOR_CORE_PATH (match existing env vars)
 - trinity_startup_orchestrator now uses unified discovery
 - Log discovery method used (env, sibling, standard locations)
 
@@ -902,7 +902,7 @@ EOF
                 const reactorReady = reactorStatus === 'complete' || reactorStatus === 'ready';
                 const reactorSkipped = reactorStatus === 'skipped' || reactorStatus === 'unavailable';
 
-                // JARVIS Body (backend) is REQUIRED
+                // Ironcliw Body (backend) is REQUIRED
                 // Prime and Reactor can be ready OR skipped/unavailable
                 const primeAcceptable = primeReady || primeSkipped;
                 const reactorAcceptable = reactorReady || reactorSkipped;
@@ -916,7 +916,7 @@ EOF
 
                     if (notConfigured.length > 0) {
                         message += `; ${notConfigured.join(' and ')} not configured`;
-                        console.log(message + ' (set JARVIS_PRIME_PATH/REACTOR_CORE_PATH if needed)');
+                        console.log(message + ' (set Ironcliw_PRIME_PATH/REACTOR_CORE_PATH if needed)');
                     } else {
                         console.log('[Trinity Wait] All Trinity components ready');
                     }
@@ -952,7 +952,7 @@ fix(frontend): Accurate Trinity status messages
 
 - Don't say "All Trinity components ready" when components skipped
 - Show "Backend ready; Prime and Reactor not configured" when skipped
-- Suggest env vars: JARVIS_PRIME_PATH/REACTOR_CORE_PATH
+- Suggest env vars: Ironcliw_PRIME_PATH/REACTOR_CORE_PATH
 - Distinct labels: "Not Configured" vs "Stopped"
 
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
@@ -1085,7 +1085,7 @@ EOF
 ```markdown
 # Cross-Repository Contract
 
-This document defines the contract between JARVIS, JARVIS-Prime, and Reactor-Core.
+This document defines the contract between Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
 ## Environment Variables
 
@@ -1093,16 +1093,16 @@ All three repositories MUST respect these environment variables:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `JARVIS_PRIME_PATH` | Path to JARVIS-Prime repository | Auto-discovered |
+| `Ironcliw_PRIME_PATH` | Path to Ironcliw-Prime repository | Auto-discovered |
 | `REACTOR_CORE_PATH` | Path to Reactor-Core repository | Auto-discovered |
-| `JARVIS_PRIME_PORT` | Port for JARVIS-Prime | 8000 |
+| `Ironcliw_PRIME_PORT` | Port for Ironcliw-Prime | 8000 |
 | `REACTOR_CORE_PORT` | Port for Reactor-Core | 8090 |
 
 ## Path Discovery
 
-JARVIS uses `IntelligentRepoDiscovery` to find repositories:
+Ironcliw uses `IntelligentRepoDiscovery` to find repositories:
 
-1. **Environment variable** (highest priority): `JARVIS_PRIME_PATH`, `REACTOR_CORE_PATH`
+1. **Environment variable** (highest priority): `Ironcliw_PRIME_PATH`, `REACTOR_CORE_PATH`
 2. **Sibling directory**: `../jarvis-prime`, `../reactor-core`
 3. **Standard locations**: `~/Documents/repos/`, `~/repos/`
 4. **Git-based search**: Find by .git presence

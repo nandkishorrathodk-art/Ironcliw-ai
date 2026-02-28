@@ -1,4 +1,4 @@
-//! JARVIS Rust Core - High-performance vision and ML operations
+﻿//! Ironcliw Rust Core - High-performance vision and ML operations
 //!
 //! This crate provides optimized implementations of:
 //! - Quantized ML inference (INT4/INT8/FP16)
@@ -38,7 +38,7 @@ pub mod runtime;
 use runtime::{RuntimeConfig, initialize_runtime};
 use memory::advanced_pool::AdvancedBufferPool;
 
-/// Main error type for JARVIS operations
+/// Main error type for Ironcliw operations
 #[derive(thiserror::Error, Debug)]
 pub enum JarvisError {
     #[error("Memory allocation failed: {0}")]
@@ -77,7 +77,7 @@ pub type Result<T> = std::result::Result<T, JarvisError>;
 // Global initialization
 static INIT: Once = Once::new();
 
-/// Initialize the JARVIS Rust core with advanced features
+/// Initialize the Ironcliw Rust core with advanced features
 pub fn initialize() {
     INIT.call_once(|| {
         // Initialize tracing/logging
@@ -118,7 +118,7 @@ pub fn initialize() {
         // Initialize global memory pool
         let _ = AdvancedBufferPool::new();
         
-        tracing::info!("JARVIS Rust Core initialized");
+        tracing::info!("Ironcliw Rust Core initialized");
         tracing::info!("CPU cores: {} (physical: {})", 
             num_cpus::get(), 
             num_cpus::get_physical()

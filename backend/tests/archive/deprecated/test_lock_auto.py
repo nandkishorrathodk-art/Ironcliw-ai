@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Lock Command - Automated
 ==============================
@@ -12,7 +12,7 @@ import json
 
 async def test_lock():
     """Test lock command"""
-    print("🔐 Testing Lock Command Through JARVIS")
+    print("🔐 Testing Lock Command Through Ironcliw")
     print("=" * 50)
     
     url = "http://localhost:8000/api/command"
@@ -55,8 +55,8 @@ async def test_lock():
                     print("Could not parse response as JSON")
                     
     except aiohttp.ClientConnectorError:
-        print("\n❌ Could not connect to JARVIS")
-        print("Make sure JARVIS is running on port 8000")
+        print("\n❌ Could not connect to Ironcliw")
+        print("Make sure Ironcliw is running on port 8000")
     except Exception as e:
         print(f"\n❌ Error: {type(e).__name__}: {e}")
 

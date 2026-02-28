@@ -1,8 +1,8 @@
-# JARVIS Multi-Window Intelligence Testing Documentation
+﻿# Ironcliw Multi-Window Intelligence Testing Documentation
 
 ## Overview
 
-This comprehensive testing suite validates all aspects of the JARVIS Multi-Window Intelligence system according to the PRD requirements. The suite includes functional, performance, and integration testing with automated reporting and success criteria evaluation.
+This comprehensive testing suite validates all aspects of the Ironcliw Multi-Window Intelligence system according to the PRD requirements. The suite includes functional, performance, and integration testing with automated reporting and success criteria evaluation.
 
 ## Test Structure
 
@@ -232,7 +232,7 @@ async def test_new_feature(self):
 Tests are compatible with:
 - Python 3.8+
 - macOS 10.15+
-- JARVIS v3.7.0+
+- Ironcliw v3.7.0+
 
 ## Troubleshooting
 

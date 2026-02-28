@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Secure Password Typer for macOS - Advanced Edition
 ==================================================
@@ -907,12 +907,12 @@ class SecurePasswordTyper:
             # Type password using AppleScript with environment variable for security
             type_script = """
             tell application "System Events"
-                keystroke (system attribute "JARVIS_UNLOCK_PASS")
+                keystroke (system attribute "Ironcliw_UNLOCK_PASS")
             end tell
             """
             
             env = os.environ.copy()
-            env["JARVIS_UNLOCK_PASS"] = password
+            env["Ironcliw_UNLOCK_PASS"] = password
             
             proc = await asyncio.create_subprocess_exec(
                 "osascript", "-e", type_script,
@@ -923,8 +923,8 @@ class SecurePasswordTyper:
             await proc.communicate()
             
             # Clear from environment
-            if "JARVIS_UNLOCK_PASS" in env:
-                del env["JARVIS_UNLOCK_PASS"]
+            if "Ironcliw_UNLOCK_PASS" in env:
+                del env["Ironcliw_UNLOCK_PASS"]
             
             # Submit if requested
             if submit:
@@ -1571,12 +1571,12 @@ async def _type_password_applescript_sai(
         # Using keystroke with character-level control
         type_script = """
         tell application "System Events"
-            keystroke (system attribute "JARVIS_UNLOCK_PASS")
+            keystroke (system attribute "Ironcliw_UNLOCK_PASS")
         end tell
         """
 
         env = os.environ.copy()
-        env["JARVIS_UNLOCK_PASS"] = password
+        env["Ironcliw_UNLOCK_PASS"] = password
 
         typing_start = time.time()
 
@@ -1591,8 +1591,8 @@ async def _type_password_applescript_sai(
         metrics.typing_time_ms = (time.time() - typing_start) * 1000
 
         # Clear from environment
-        if "JARVIS_UNLOCK_PASS" in env:
-            del env["JARVIS_UNLOCK_PASS"]
+        if "Ironcliw_UNLOCK_PASS" in env:
+            del env["Ironcliw_UNLOCK_PASS"]
 
         if proc.returncode != 0:
             logger.error(f"❌ [APPLESCRIPT-SAI] AppleScript failed: {stderr.decode()}")

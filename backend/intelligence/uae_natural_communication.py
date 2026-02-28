@@ -1,20 +1,20 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 UAE Natural Communication Layer
 ================================
 
 Provides natural language communication during UAE intelligence fusion process.
 
-JARVIS speaks to you naturally about what it's thinking, learning, and doing
+Ironcliw speaks to you naturally about what it's thinking, learning, and doing
 as it combines Context Intelligence and Situational Awareness.
 
 Example Flow:
     User: "Living Room TV"
 
-    JARVIS: "Looking for Control Center... I remember it's usually in the top-right."
-    JARVIS: "Found it! Position has shifted slightly from last time - updating my memory."
-    JARVIS: "Connecting to Living Room TV..."
-    JARVIS: "Connected! I'll remember this works better now."
+    Ironcliw: "Looking for Control Center... I remember it's usually in the top-right."
+    Ironcliw: "Found it! Position has shifted slightly from last time - updating my memory."
+    Ironcliw: "Connecting to Living Room TV..."
+    Ironcliw: "Connected! I'll remember this works better now."
 
 Author: Derek J. Russell
 Date: October 2025
@@ -431,7 +431,7 @@ async def main():
 
     # Voice callback
     async def speak(text):
-        print(f"\n🗣️  JARVIS: \"{text}\"")
+        print(f"\n🗣️  Ironcliw: \"{text}\"")
 
     # Text callback
     async def send_text(text, priority="normal"):

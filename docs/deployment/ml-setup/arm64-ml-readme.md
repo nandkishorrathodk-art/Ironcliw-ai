@@ -1,8 +1,8 @@
-# 🚀 ARM64 Assembly + ML Intent Prediction System
+﻿# 🚀 ARM64 Assembly + ML Intent Prediction System
 
 ## **NEW in Latest Version: Maximum M1 Performance!**
 
-JARVIS now features **hand-crafted ARM64 assembly language** with NEON SIMD instructions and advanced ML-based intent prediction, delivering **40-50x faster** performance on Apple Silicon.
+Ironcliw now features **hand-crafted ARM64 assembly language** with NEON SIMD instructions and advanced ML-based intent prediction, delivering **40-50x faster** performance on Apple Silicon.
 
 ---
 
@@ -136,7 +136,7 @@ Memory Pool Allocation:
 ## 🏗️ **Integration Architecture**
 
 ```
-JARVIS ML Pipeline
+Ironcliw ML Pipeline
        ↓
 dynamic_component_manager.py
   ├─ IntentAnalyzer
@@ -230,18 +230,18 @@ backend/core/
 
 ---
 
-## 🎯 **Usage in JARVIS**
+## 🎯 **Usage in Ironcliw**
 
 ### **Automatic Integration**
 
 The ARM64 assembly is **automatically used** when you:
 
 ```bash
-# Start JARVIS normally
+# Start Ironcliw normally
 python start_system.py
 ```
 
-JARVIS will:
+Ironcliw will:
 1. Load dynamic component manager
 2. Initialize ARM64 vectorizer (if assembly available)
 3. Use ML intent prediction for all commands
@@ -365,7 +365,7 @@ CPU: 1-2% per prediction    (90% reduction! ⚡)
 
 ## 🏆 **Summary**
 
-JARVIS now features the **fastest possible ML intent prediction system on M1 hardware**:
+Ironcliw now features the **fastest possible ML intent prediction system on M1 hardware**:
 
 ✅ **Pure ARM64 Assembly** - 609 lines of hand-optimized NEON SIMD code
 ✅ **40-50x Speedup** - Measured performance improvement

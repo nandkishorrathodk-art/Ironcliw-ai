@@ -1,8 +1,8 @@
-# JARVIS Real-Time Vision Integration
+﻿# Ironcliw Real-Time Vision Integration
 
 ## Overview
 
-The Claude Vision Analyzer has been enhanced with real-time monitoring capabilities and autonomous behaviors, allowing JARVIS to continuously see and understand what's happening on your screen.
+The Claude Vision Analyzer has been enhanced with real-time monitoring capabilities and autonomous behaviors, allowing Ironcliw to continuously see and understand what's happening on your screen.
 
 ## What's New
 
@@ -19,8 +19,8 @@ The Claude Vision Analyzer has been enhanced with real-time monitoring capabilit
 
 ### 3. **Enhanced Integration**
 - `claude_vision_analyzer_main.py` - Now includes all real-time features
-- `claude_vision_analyzer.py` - Clean wrapper with JARVIS-specific methods
-- Works seamlessly with existing JARVIS components
+- `claude_vision_analyzer.py` - Clean wrapper with Ironcliw-specific methods
+- Works seamlessly with existing Ironcliw components
 
 ## How to Use
 
@@ -35,16 +35,16 @@ jarvis_vision = ClaudeVisionAnalyzer(api_key, enable_realtime=True)
 # Start real-time vision
 await jarvis_vision.start_jarvis_vision()
 
-# JARVIS can now see everything happening on your screen!
+# Ironcliw can now see everything happening on your screen!
 ```
 
 ### Key Methods
 
 #### 1. See and Respond to Commands
 ```python
-# JARVIS sees the screen and responds based on visual context
+# Ironcliw sees the screen and responds based on visual context
 response = await jarvis_vision.see_and_respond("What's in that window?")
-print(f"JARVIS: {response['response']}")
+print(f"Ironcliw: {response['response']}")
 ```
 
 #### 2. Get Real-Time Context
@@ -73,17 +73,17 @@ for change in changes:
     print(f"Change detected: {change['description']}")
 ```
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
 ### Update Your Command Handler
 
 ```python
-class JARVISAssistant:
+class IroncliwAssistant:
     def __init__(self):
         self.vision = ClaudeVisionAnalyzer(api_key)
         
     async def handle_command(self, command: str):
-        # JARVIS sees the screen before responding
+        # Ironcliw sees the screen before responding
         visual_response = await self.vision.see_and_respond(command)
         
         if visual_response['success']:
@@ -105,9 +105,9 @@ class JARVISAssistant:
 ### Enable Continuous Monitoring
 
 ```python
-# Start JARVIS with eyes always open
+# Start Ironcliw with eyes always open
 async def start_jarvis_with_vision():
-    jarvis = JARVISAssistant()
+    jarvis = IroncliwAssistant()
     
     # Callback for vision events
     async def on_screen_event(event):
@@ -118,7 +118,7 @@ async def start_jarvis_with_vision():
     # Start real-time vision
     await jarvis.vision.start_jarvis_vision(on_screen_event)
     
-    # JARVIS is now continuously aware of the screen
+    # Ironcliw is now continuously aware of the screen
 ```
 
 ## Configuration
@@ -204,19 +204,19 @@ python jarvis_vision_example.py
 import asyncio
 from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 
-class VisualJARVIS:
+class VisualIroncliw:
     def __init__(self, api_key):
         self.vision = ClaudeVisionAnalyzer(api_key)
         self.is_watching = False
         
     async def start(self):
-        """Start JARVIS with visual awareness"""
+        """Start Ironcliw with visual awareness"""
         # Start real-time monitoring
         result = await self.vision.start_jarvis_vision(self.on_screen_change)
         
         if result['success']:
             self.is_watching = True
-            print("👁️ JARVIS vision activated!")
+            print("👁️ Ironcliw vision activated!")
             
     async def on_screen_change(self, event):
         """React to screen changes"""
@@ -242,12 +242,12 @@ class VisualJARVIS:
 
 # Usage
 async def main():
-    jarvis = VisualJARVIS(os.getenv('ANTHROPIC_API_KEY'))
+    jarvis = VisualIroncliw(os.getenv('ANTHROPIC_API_KEY'))
     await jarvis.start()
     
-    # JARVIS can now see!
+    # Ironcliw can now see!
     response = await jarvis.process_command("What do you see on my screen?")
-    print(f"JARVIS: {response}")
+    print(f"Ironcliw: {response}")
     
     await jarvis.stop()
 
@@ -256,11 +256,11 @@ asyncio.run(main())
 
 ## Summary
 
-With these enhancements, JARVIS now has:
+With these enhancements, Ironcliw now has:
 - ✅ Real-time vision capabilities
 - ✅ Autonomous behavior detection
 - ✅ Memory-safe operation
 - ✅ Seamless integration with existing code
 - ✅ Visual context for all commands
 
-Your JARVIS can now truly see and understand what's happening on your screen in real-time!
+Your Ironcliw can now truly see and understand what's happening on your screen in real-time!

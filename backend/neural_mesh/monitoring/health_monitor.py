@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Advanced Health Monitor
+﻿"""
+Ironcliw Neural Mesh - Advanced Health Monitor
 
 Comprehensive health monitoring system for the Neural Mesh infrastructure.
 

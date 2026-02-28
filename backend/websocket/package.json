@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "jarvis-websocket-router",
   "version": "1.0.0",
-  "description": "Unified WebSocket Router for JARVIS AI Agent",
+  "description": "Unified WebSocket Router for Ironcliw AI Agent",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",

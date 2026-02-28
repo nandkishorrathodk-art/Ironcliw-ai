@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Authentication Intelligence API
 =====================================
 
@@ -13,7 +13,7 @@ Features exposed:
 - Multi-factor authentication fusion
 - Progressive voice feedback
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0
 """
 

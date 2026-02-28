@@ -1,5 +1,5 @@
-"""
-Swift Weather Provider for JARVIS
+﻿"""
+Swift Weather Provider for Ironcliw
 Uses native macOS WeatherKit via Swift CLI tool
 """
 
@@ -225,7 +225,7 @@ class SwiftWeatherProvider:
         return None
     
     def _enhance_weather_data(self, data: Dict) -> Dict:
-        """Enhance weather data for compatibility with existing JARVIS code"""
+        """Enhance weather data for compatibility with existing Ironcliw code"""
         if not data:
             return data
         

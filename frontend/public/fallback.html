@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS - Connecting...</title>
+    <title>Ironcliw - Connecting...</title>
     <style>
         * {
             margin: 0;
@@ -65,9 +65,9 @@
 </head>
 <body>
     <div class="container">
-        <h1>JARVIS</h1>
+        <h1>Ironcliw</h1>
         <div class="spinner"></div>
-        <div class="status" id="status">Connecting to JARVIS...</div>
+        <div class="status" id="status">Connecting to Ironcliw...</div>
         <div class="message">
             <p>Loading server is temporarily unavailable.</p>
             <p>Attempting to reconnect...</p>
@@ -112,7 +112,7 @@
                 });
 
                 if (response.ok) {
-                    updateStatus('✅ JARVIS is online! Redirecting...');
+                    updateStatus('✅ Ironcliw is online! Redirecting...');
                     setTimeout(() => {
                         window.location.href = `http://localhost:${BACKEND_PORT}/`;
                     }, 500);

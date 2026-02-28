@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Multi-Agent Orchestrator
+﻿"""
+Ironcliw Neural Mesh - Multi-Agent Orchestrator
 
 Workflow coordination for complex multi-agent tasks with:
 - Task decomposition (break complex into simple)

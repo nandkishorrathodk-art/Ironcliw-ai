@@ -1,4 +1,4 @@
-# Backend Startup Issue Summary
+﻿# Backend Startup Issue Summary
 
 ## The Problem
 The backend is failing to start because:
@@ -36,7 +36,7 @@ Fix the import errors in main.py:
 - Event loop initialization problems
 
 ## Quick Fix for start_system.py
-To make JARVIS start successfully, you can:
+To make Ironcliw start successfully, you can:
 
 1. Replace the robust starter with the quick starter in start_system.py
 2. Or manually run: `cd backend && python main_minimal.py --port 8010`

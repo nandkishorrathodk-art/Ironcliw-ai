@@ -1,8 +1,8 @@
-# 🧠 Situational Awareness Intelligence (SAI) for JARVIS
+﻿# 🧠 Situational Awareness Intelligence (SAI) for Ironcliw
 
 ## Executive Summary
 
-**SAI** transforms JARVIS from a reactive automation system into a **perceptually aware AI** that continuously monitors, understands, and adapts to environmental changes in real-time.
+**SAI** transforms Ironcliw from a reactive automation system into a **perceptually aware AI** that continuously monitors, understands, and adapts to environmental changes in real-time.
 
 ### The Problem
 
@@ -665,7 +665,7 @@ class CustomMonitor(UIElementMonitor):
 
 ### Multi-Space Integration
 
-Integrate with JARVIS multi-space system:
+Integrate with Ironcliw multi-space system:
 
 ```python
 from backend.vision.multi_space_intelligence import get_multi_space_manager
@@ -728,10 +728,10 @@ Copyright © 2025 Derek J. Russell. All rights reserved.
 ## Support
 
 For issues, questions, or feature requests:
-- GitHub Issues: [jarvis-ai-agent/issues](https://github.com/derekjrussell/JARVIS-AI-Agent/issues)
+- GitHub Issues: [jarvis-ai-agent/issues](https://github.com/derekjrussell/Ironcliw-AI-Agent/issues)
 - Documentation: [docs/sai/](../../../docs/sai/)
 - Email: derek@jarvis.ai
 
 ---
 
-**Built with ❤️ for JARVIS** — Making AI assistants perceptually aware, one pixel at a time.
+**Built with ❤️ for Ironcliw** — Making AI assistants perceptually aware, one pixel at a time.

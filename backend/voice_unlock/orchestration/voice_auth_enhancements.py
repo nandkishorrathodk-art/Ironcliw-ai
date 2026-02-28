@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Authentication Enhancements v2.0
 ======================================
@@ -13,7 +13,7 @@ Comprehensive enhancements to the existing voice authentication system with:
 This module integrates seamlessly with voice_auth_orchestrator.py and voice_auth_graph.py
 without duplicating functionality.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 2.0.0
 """
 

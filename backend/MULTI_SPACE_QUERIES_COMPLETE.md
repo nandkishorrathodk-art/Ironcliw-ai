@@ -1,4 +1,4 @@
-# Multi-Space Queries - Complete ✅
+﻿# Multi-Space Queries - Complete ✅
 
 **Date:** 2025-10-17
 
@@ -414,7 +414,7 @@ async def _handle_multi_space_query(query: str) -> Dict:
 ```
 User: "Compare space 3 and space 5"
 
-JARVIS:
+Ironcliw:
   Step 1: Classify → COMPARE
   Step 2: Extract spaces → [3, 5]
   Step 3: Parallel analysis (500ms)
@@ -435,7 +435,7 @@ Response:
 ```
 User: "Find the terminal across all spaces"
 
-JARVIS:
+Ironcliw:
   Step 1: Classify → SEARCH
   Step 2: Resolve spaces → [1-10] (all available)
   Step 3: Parallel analysis of 10 spaces
@@ -454,7 +454,7 @@ Response:
 ```
 User: "Which space has the error?"
 
-JARVIS:
+Ironcliw:
   Step 1: Classify → LOCATE
   Step 2: Resolve spaces → [1-10]
   Step 3: Parallel analysis
@@ -470,13 +470,13 @@ Response:
 
 ```
 User: "What's in space 3?"
-JARVIS: [Shows space 3]
+Ironcliw: [Shows space 3]
 
 User: "What about space 5?"
-JARVIS: [Shows space 5]
+Ironcliw: [Shows space 5]
 
 User: "Compare them"
-JARVIS:
+Ironcliw:
   Step 1: Classify → COMPARE
   Step 2: Contextual resolution → [3, 5] (from conversation)
   Step 3: Parallel analysis
@@ -656,4 +656,4 @@ The multi-space query system provides **advanced cross-space analysis** with:
 
 **Status:** ✅ Production Ready
 
-Users can now perform sophisticated multi-space operations with natural language queries, and JARVIS intelligently routes and executes them with parallel analysis for maximum performance.
+Users can now perform sophisticated multi-space operations with natural language queries, and Ironcliw intelligently routes and executes them with parallel analysis for maximum performance.

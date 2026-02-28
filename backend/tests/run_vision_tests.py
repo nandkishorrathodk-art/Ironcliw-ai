@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Vision Intelligence Test Runner
+Ironcliw Vision Intelligence Test Runner
 Runs all tests for the intelligent vision system
 """
 
@@ -45,7 +45,7 @@ class VisionTestRunner:
     def print_header(self):
         """Print test runner header"""
         print("\n" + "="*70)
-        print("🧪 JARVIS VISION INTELLIGENCE TEST SUITE")
+        print("🧪 Ironcliw VISION INTELLIGENCE TEST SUITE")
         print("="*70)
         print(f"Platform: {platform.system()} {platform.machine()}")
         print(f"Python: {sys.version.split()[0]}")

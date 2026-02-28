@@ -1,5 +1,5 @@
-# =============================================================================
-# JARVIS Monitoring & Cost Alerts - Zero Cost Resources
+﻿# =============================================================================
+# Ironcliw Monitoring & Cost Alerts - Zero Cost Resources
 # =============================================================================
 # All resources in this module are FREE:
 # - Cloud Monitoring dashboards: FREE
@@ -31,7 +31,7 @@ resource "google_monitoring_dashboard" "dashboard" {
   project        = var.project_id
   dashboard_json = <<EOF
 {
-  "displayName": "JARVIS System Health & Cost",
+  "displayName": "Ironcliw System Health & Cost",
   "gridLayout": {
     "columns": "2",
     "widgets": [
@@ -178,7 +178,7 @@ EOF
 
 resource "google_monitoring_alert_policy" "vm_running_too_long" {
   project      = var.project_id
-  display_name = "JARVIS: VM Running > 3 Hours (Cost Alert)"
+  display_name = "Ironcliw: VM Running > 3 Hours (Cost Alert)"
   combiner     = "OR"
 
   conditions {
@@ -200,7 +200,7 @@ resource "google_monitoring_alert_policy" "vm_running_too_long" {
   notification_channels = [] # Add notification channel ID if you want alerts
 
   documentation {
-    content   = "A JARVIS Spot VM has been running for more than 3 hours. This may indicate the Triple-Lock safety system failed. Check and terminate orphaned VMs to save costs."
+    content   = "A Ironcliw Spot VM has been running for more than 3 hours. This may indicate the Triple-Lock safety system failed. Check and terminate orphaned VMs to save costs."
     mime_type = "text/markdown"
   }
 

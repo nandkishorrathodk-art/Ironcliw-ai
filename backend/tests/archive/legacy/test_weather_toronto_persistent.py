@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test that Toronto selection persists"""
 
 import asyncio
@@ -91,5 +91,5 @@ async def test_persistent_toronto():
         print(f"\n❌ Weather system failed: {result.get('error')}")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_persistent_toronto())

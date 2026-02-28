@@ -1,6 +1,6 @@
-# JARVIS Voice System Optimization Guide
+﻿# Ironcliw Voice System Optimization Guide
 
-Complete guide for running JARVIS efficiently on 16GB MacBook Pro and other systems.
+Complete guide for running Ironcliw efficiently on 16GB MacBook Pro and other systems.
 
 ## 🚀 Overview
 
@@ -37,19 +37,19 @@ result = await system.detect_wake_word(audio_data)
 ### Environment Variables
 ```bash
 # Optimization Level
-export JARVIS_OPTIMIZATION_LEVEL=balanced  # max_performance, memory_saver, ultra_light
+export Ironcliw_OPTIMIZATION_LEVEL=balanced  # max_performance, memory_saver, ultra_light
 
 # Memory Limits
-export JARVIS_MAX_MEMORY_PERCENT=25       # Max % of system RAM
-export JARVIS_MAX_MODELS_IN_MEMORY=3      # Max concurrent models
+export Ironcliw_MAX_MEMORY_PERCENT=25       # Max % of system RAM
+export Ironcliw_MAX_MODELS_IN_MEMORY=3      # Max concurrent models
 
 # Streaming
-export JARVIS_CHUNK_SIZE=1024              # Audio chunk size
-export JARVIS_LOW_LATENCY=true             # Low latency mode
+export Ironcliw_CHUNK_SIZE=1024              # Audio chunk size
+export Ironcliw_LOW_LATENCY=true             # Low latency mode
 
 # macOS Acceleration
-export JARVIS_USE_COREML=true              # Use Core ML
-export JARVIS_USE_METAL=true               # Use Metal GPU
+export Ironcliw_USE_COREML=true              # Use Core ML
+export Ironcliw_USE_METAL=true               # Use Metal GPU
 
 # Voice Detection
 export WAKE_WORD_THRESHOLD=0.55            # Sensitivity (lower = more sensitive)
@@ -166,46 +166,46 @@ Real-time system monitoring with adaptive actions:
 
 **8GB Macs**
 ```bash
-export JARVIS_OPTIMIZATION_LEVEL=memory_saver
-export JARVIS_MAX_MEMORY_PERCENT=20
-export JARVIS_MAX_MODELS_IN_MEMORY=2
+export Ironcliw_OPTIMIZATION_LEVEL=memory_saver
+export Ironcliw_MAX_MEMORY_PERCENT=20
+export Ironcliw_MAX_MODELS_IN_MEMORY=2
 ```
 
 **M1/M2 MacBooks**
 ```bash
-export JARVIS_USE_COREML=true
-export JARVIS_USE_NEURAL_ENGINE=true
-export JARVIS_COREML_COMPUTE_UNITS=ALL
+export Ironcliw_USE_COREML=true
+export Ironcliw_USE_NEURAL_ENGINE=true
+export Ironcliw_COREML_COMPUTE_UNITS=ALL
 ```
 
 **Intel Macs**
 ```bash
-export JARVIS_USE_COREML=false  # Not supported
-export JARVIS_OPTIMIZATION_LEVEL=balanced
-export JARVIS_USE_ACCELERATE=true  # Use Accelerate framework
+export Ironcliw_USE_COREML=false  # Not supported
+export Ironcliw_OPTIMIZATION_LEVEL=balanced
+export Ironcliw_USE_ACCELERATE=true  # Use Accelerate framework
 ```
 
 ### For Different Use Cases
 
 **Always Listening Mode**
 ```bash
-export JARVIS_OPTIMIZATION_LEVEL=ultra_light
-export JARVIS_CHUNK_SIZE=512
-export JARVIS_MAX_MODELS_IN_MEMORY=1
+export Ironcliw_OPTIMIZATION_LEVEL=ultra_light
+export Ironcliw_CHUNK_SIZE=512
+export Ironcliw_MAX_MODELS_IN_MEMORY=1
 ```
 
 **High Accuracy Mode**
 ```bash
 export WAKE_WORD_THRESHOLD=0.7
-export JARVIS_MAX_MODELS_IN_MEMORY=5
-export JARVIS_LOW_LATENCY=false
+export Ironcliw_MAX_MODELS_IN_MEMORY=5
+export Ironcliw_LOW_LATENCY=false
 ```
 
 **Battery Saving Mode**
 ```bash
-export JARVIS_OPTIMIZATION_LEVEL=memory_saver
-export JARVIS_CHUNK_SIZE=2048
-export JARVIS_GC_INTERVAL_SECONDS=120
+export Ironcliw_OPTIMIZATION_LEVEL=memory_saver
+export Ironcliw_CHUNK_SIZE=2048
+export Ironcliw_GC_INTERVAL_SECONDS=120
 ```
 
 ## 🔍 Monitoring & Debugging
@@ -225,21 +225,21 @@ system.resource_monitor.export_history("performance.json")
 
 ### Debug Mode
 ```bash
-export JARVIS_DEBUG_MODE=true
-export JARVIS_LOG_PERFORMANCE_METRICS=true
-export JARVIS_PROFILE_INTERVAL_SECONDS=1
+export Ironcliw_DEBUG_MODE=true
+export Ironcliw_LOG_PERFORMANCE_METRICS=true
+export Ironcliw_PROFILE_INTERVAL_SECONDS=1
 ```
 
 ## 🚨 Troubleshooting
 
 ### High Memory Usage
 1. Check loaded models: `model_manager.get_stats()`
-2. Reduce cache: `export JARVIS_MAX_MODELS_IN_MEMORY=2`
-3. Enable aggressive GC: `export JARVIS_FORCE_GC_ON_MODEL_UNLOAD=true`
+2. Reduce cache: `export Ironcliw_MAX_MODELS_IN_MEMORY=2`
+3. Enable aggressive GC: `export Ironcliw_FORCE_GC_ON_MODEL_UNLOAD=true`
 
 ### High CPU Usage
-1. Enable streaming: `export JARVIS_LOW_LATENCY=true`
-2. Reduce chunk size: `export JARVIS_CHUNK_SIZE=512`
+1. Enable streaming: `export Ironcliw_LOW_LATENCY=true`
+2. Reduce chunk size: `export Ironcliw_CHUNK_SIZE=512`
 3. Check thermal state: System may be throttling
 
 ### Poor Wake Word Detection

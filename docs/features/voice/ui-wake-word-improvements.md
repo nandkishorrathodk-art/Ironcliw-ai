@@ -1,7 +1,7 @@
-# JARVIS UI and Wake Word Detection Improvements
+﻿# Ironcliw UI and Wake Word Detection Improvements
 
 ## Overview
-We've completely redesigned the JARVIS interface with a modern, futuristic UI and fixed the wake word detection system to properly respond to "Hey JARVIS" commands.
+We've completely redesigned the Ironcliw interface with a modern, futuristic UI and fixed the wake word detection system to properly respond to "Hey Ironcliw" commands.
 
 ## 🎨 UI Improvements
 
@@ -15,8 +15,8 @@ We've completely redesigned the JARVIS interface with a modern, futuristic UI an
 ### 2. **Status Cards System**
 - Replaced simple text indicators with modern card-based status display
 - Three main status cards:
-  - **Wake Word Active**: Shows when system is listening for "Hey JARVIS"
-  - **Listening**: Indicates when JARVIS is actively waiting for commands
+  - **Wake Word Active**: Shows when system is listening for "Hey Ironcliw"
+  - **Listening**: Indicates when Ironcliw is actively waiting for commands
   - **Autonomous Mode**: Shows AI assistance status
 - Cards feature:
   - Glassmorphism effect with backdrop blur
@@ -38,8 +38,8 @@ We've completely redesigned the JARVIS interface with a modern, futuristic UI an
 - Better placeholder text based on system status
 
 ### 5. **Transcript Display**
-- Beautiful message bubbles for user/JARVIS conversation
-- Color-coded messages (teal for user, cyan for JARVIS)
+- Beautiful message bubbles for user/Ironcliw conversation
+- Color-coded messages (teal for user, cyan for Ironcliw)
 - Smooth slide-in animations
 - Better readability with monospace font
 
@@ -61,10 +61,10 @@ We've completely redesigned the JARVIS interface with a modern, futuristic UI an
 ### 1. **Frontend Detection Logic**
 - Added direct speech recognition handling for wake words
 - Supports multiple wake phrases:
-  - "Hey JARVIS"
-  - "JARVIS" 
-  - "OK JARVIS"
-  - "Hello JARVIS"
+  - "Hey Ironcliw"
+  - "Ironcliw" 
+  - "OK Ironcliw"
+  - "Hello Ironcliw"
 
 ### 2. **Improved State Management**
 - Proper state transitions between:
@@ -73,7 +73,7 @@ We've completely redesigned the JARVIS interface with a modern, futuristic UI an
   - Processing (handling user command)
 
 ### 3. **Auto-Enable on Activation**
-- When user clicks "Activate JARVIS", the system automatically:
+- When user clicks "Activate Ironcliw", the system automatically:
   - Initializes wake word service
   - Starts continuous listening
   - Shows confirmation message
@@ -85,8 +85,8 @@ We've completely redesigned the JARVIS interface with a modern, futuristic UI an
 - Clear visual feedback during all states
 
 ### 5. **Voice Feedback**
-- JARVIS responds with "Yes sir, I'm listening" when wake word detected
-- Uses British male voice (Daniel) for more authentic JARVIS experience
+- Ironcliw responds with "Yes sir, I'm listening" when wake word detected
+- Uses British male voice (Daniel) for more authentic Ironcliw experience
 - Fallback to browser speech synthesis if audio endpoint fails
 
 ## 📋 Technical Implementation
@@ -119,14 +119,14 @@ if (!isWaitingForCommand && continuousListening) {
 ## 🚀 User Experience Flow
 
 ### New Flow:
-1. **System Start**: User sees beautiful JARVIS interface
-2. **Activation**: Click "ACTIVATE JARVIS" button
-3. **Confirmation**: JARVIS announces it's online
+1. **System Start**: User sees beautiful Ironcliw interface
+2. **Activation**: Click "ACTIVATE Ironcliw" button
+3. **Confirmation**: Ironcliw announces it's online
 4. **Wake Word**: System shows "Wake Word Active" card
-5. **Voice Command**: User says "Hey JARVIS" anytime
-6. **Response**: JARVIS responds "Yes sir, I'm listening"
+5. **Voice Command**: User says "Hey Ironcliw" anytime
+6. **Response**: Ironcliw responds "Yes sir, I'm listening"
 7. **Command Input**: User speaks their command
-8. **Processing**: JARVIS processes and responds
+8. **Processing**: Ironcliw processes and responds
 
 ## 🐛 Issues Fixed
 
@@ -150,9 +150,9 @@ if (!isWaitingForCommand && continuousListening) {
 
 1. Start the system: `python start_system.py`
 2. Open browser to `http://localhost:3000`
-3. Click "ACTIVATE JARVIS" button
+3. Click "ACTIVATE Ironcliw" button
 4. Wait for confirmation message
-5. Say "Hey JARVIS" to activate voice commands
+5. Say "Hey Ironcliw" to activate voice commands
 6. Give your command when prompted
 7. Alternatively, type commands in the input field
 

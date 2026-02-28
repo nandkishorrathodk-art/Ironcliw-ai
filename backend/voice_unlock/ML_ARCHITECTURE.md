@@ -1,8 +1,8 @@
-# 🧠 JARVIS Continuous Learning ML Architecture
+﻿# 🧠 Ironcliw Continuous Learning ML Architecture
 
 ## Overview
 
-JARVIS uses a **dual-track continuous learning system** to progressively improve both voice biometric authentication and password typing accuracy. The system learns from every unlock attempt and adapts in real-time.
+Ironcliw uses a **dual-track continuous learning system** to progressively improve both voice biometric authentication and password typing accuracy. The system learns from every unlock attempt and adapts in real-time.
 
 ---
 
@@ -14,7 +14,7 @@ JARVIS uses a **dual-track continuous learning system** to progressively improve
 
 #### 1. **Online Learning (Incremental Learning)**
 - **What it does**: Updates the model with each new voice sample without retraining from scratch
-- **Why**: Allows JARVIS to adapt to voice changes (morning voice, tired voice, background noise, etc.)
+- **Why**: Allows Ironcliw to adapt to voice changes (morning voice, tired voice, background noise, etc.)
 - **Implementation**: Weighted moving average of confidence scores
 
 #### 2. **Adaptive Thresholding**
@@ -376,11 +376,11 @@ ORDER BY success_rate ASC;
 
 ## 🎓 Summary
 
-JARVIS uses **state-of-the-art ML algorithms** to continuously learn and improve:
+Ironcliw uses **state-of-the-art ML algorithms** to continuously learn and improve:
 
 1. **Voice Biometrics**: Online learning + adaptive thresholding
 2. **Password Typing**: Reinforcement learning (Q-Learning) + Bayesian optimization + Random Forest
 
-Every unlock attempt makes JARVIS smarter, faster, and more accurate. The system adapts to Derek's unique voice patterns and learns the optimal way to type his password under different conditions.
+Every unlock attempt makes Ironcliw smarter, faster, and more accurate. The system adapts to Derek's unique voice patterns and learns the optimal way to type his password under different conditions.
 
 **Result**: Progressively better unlock experience that gets faster and more reliable with every use! 🚀

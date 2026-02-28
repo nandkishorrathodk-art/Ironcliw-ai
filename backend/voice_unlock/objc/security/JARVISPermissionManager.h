@@ -1,6 +1,6 @@
-/**
- * JARVISPermissionManager.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwPermissionManager.h
+ * Ironcliw Voice Unlock System
  *
  * Manages macOS permissions required for voice unlock functionality
  * including microphone, accessibility, and security permissions.
@@ -12,28 +12,28 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // Permission types
-typedef NS_ENUM(NSInteger, JARVISPermissionType) {
-    JARVISPermissionTypeMicrophone = 0,
-    JARVISPermissionTypeAccessibility,
-    JARVISPermissionTypeScreenRecording,
-    JARVISPermissionTypeFullDiskAccess,
-    JARVISPermissionTypeInputMonitoring,
-    JARVISPermissionTypeSystemEvents,
-    JARVISPermissionTypeKeychain
+typedef NS_ENUM(NSInteger, IroncliwPermissionType) {
+    IroncliwPermissionTypeMicrophone = 0,
+    IroncliwPermissionTypeAccessibility,
+    IroncliwPermissionTypeScreenRecording,
+    IroncliwPermissionTypeFullDiskAccess,
+    IroncliwPermissionTypeInputMonitoring,
+    IroncliwPermissionTypeSystemEvents,
+    IroncliwPermissionTypeKeychain
 };
 
 // Permission status
-typedef NS_ENUM(NSInteger, JARVISPermissionStatus) {
-    JARVISPermissionStatusNotDetermined = 0,
-    JARVISPermissionStatusDenied,
-    JARVISPermissionStatusAuthorized,
-    JARVISPermissionStatusRestricted
+typedef NS_ENUM(NSInteger, IroncliwPermissionStatus) {
+    IroncliwPermissionStatusNotDetermined = 0,
+    IroncliwPermissionStatusDenied,
+    IroncliwPermissionStatusAuthorized,
+    IroncliwPermissionStatusRestricted
 };
 
 // Permission info
-@interface JARVISPermissionInfo : NSObject
-@property (nonatomic, assign) JARVISPermissionType type;
-@property (nonatomic, assign) JARVISPermissionStatus status;
+@interface IroncliwPermissionInfo : NSObject
+@property (nonatomic, assign) IroncliwPermissionType type;
+@property (nonatomic, assign) IroncliwPermissionStatus status;
 @property (nonatomic, strong) NSString *displayName;
 @property (nonatomic, strong) NSString *explanation;
 @property (nonatomic, assign) BOOL isRequired;
@@ -41,25 +41,25 @@ typedef NS_ENUM(NSInteger, JARVISPermissionStatus) {
 @end
 
 // Permission delegate
-@protocol JARVISPermissionManagerDelegate <NSObject>
+@protocol IroncliwPermissionManagerDelegate <NSObject>
 @optional
-- (void)permissionStatusChanged:(JARVISPermissionType)permission status:(JARVISPermissionStatus)status;
+- (void)permissionStatusChanged:(IroncliwPermissionType)permission status:(IroncliwPermissionStatus)status;
 - (void)allRequiredPermissionsGranted;
-- (void)missingRequiredPermissions:(NSArray<JARVISPermissionInfo *> *)permissions;
+- (void)missingRequiredPermissions:(NSArray<IroncliwPermissionInfo *> *)permissions;
 @end
 
 // Main permission manager interface
-@interface JARVISPermissionManager : NSObject
+@interface IroncliwPermissionManager : NSObject
 
-@property (nonatomic, weak, nullable) id<JARVISPermissionManagerDelegate> delegate;
+@property (nonatomic, weak, nullable) id<IroncliwPermissionManagerDelegate> delegate;
 @property (nonatomic, readonly) BOOL hasAllRequiredPermissions;
-@property (nonatomic, readonly) NSArray<JARVISPermissionInfo *> *allPermissions;
-@property (nonatomic, readonly) NSArray<JARVISPermissionInfo *> *missingPermissions;
+@property (nonatomic, readonly) NSArray<IroncliwPermissionInfo *> *allPermissions;
+@property (nonatomic, readonly) NSArray<IroncliwPermissionInfo *> *missingPermissions;
 
 // Permission checking
-- (JARVISPermissionStatus)statusForPermission:(JARVISPermissionType)permission;
+- (IroncliwPermissionStatus)statusForPermission:(IroncliwPermissionType)permission;
 - (BOOL)checkAndRequestPermissions:(NSError **)error;
-- (void)checkAllPermissionsWithCompletion:(void (^)(BOOL allGranted, NSArray<JARVISPermissionInfo *> *missing))completion;
+- (void)checkAllPermissionsWithCompletion:(void (^)(BOOL allGranted, NSArray<IroncliwPermissionInfo *> *missing))completion;
 
 // Individual permission requests
 - (void)requestMicrophonePermission:(void (^)(BOOL granted))completion;
@@ -69,14 +69,14 @@ typedef NS_ENUM(NSInteger, JARVISPermissionStatus) {
 - (BOOL)requestInputMonitoringPermission;
 
 // System preferences
-- (void)openSystemPreferencesForPermission:(JARVISPermissionType)permission;
+- (void)openSystemPreferencesForPermission:(IroncliwPermissionType)permission;
 - (void)openPrivacyPreferences;
 - (void)openAccessibilityPreferences;
 - (void)openSecurityPreferences;
 
 // Permission explanations
-- (NSString *)explanationForPermission:(JARVISPermissionType)permission;
-- (NSString *)instructionsForPermission:(JARVISPermissionType)permission;
+- (NSString *)explanationForPermission:(IroncliwPermissionType)permission;
+- (NSString *)instructionsForPermission:(IroncliwPermissionType)permission;
 
 // Monitoring
 - (void)startMonitoringPermissions;

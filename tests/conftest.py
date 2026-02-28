@@ -1,5 +1,5 @@
-"""
-Pytest configuration and shared fixtures for JARVIS AI Agent tests.
+﻿"""
+Pytest configuration and shared fixtures for Ironcliw AI Agent tests.
 
 This file contains:
 - Shared fixtures available to all tests
@@ -46,7 +46,7 @@ def mock_env_vars(monkeypatch):
     """Fixture to set mock environment variables for testing."""
     test_vars = {
         "ANTHROPIC_API_KEY": "test_api_key_placeholder",
-        "JARVIS_ENV": "test",
+        "Ironcliw_ENV": "test",
     }
     for key, value in test_vars.items():
         monkeypatch.setenv(key, value)
@@ -132,6 +132,6 @@ def pytest_collection_modifyitems(config, items):
 def pytest_report_header(config):
     """Add custom header to pytest report."""
     return [
-        "JARVIS AI Agent Test Suite",
+        "Ironcliw AI Agent Test Suite",
         f"Project Root: {project_root}",
     ]

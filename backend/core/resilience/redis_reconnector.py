@@ -1,4 +1,4 @@
-"""
+﻿"""
 Auto-Reconnecting Redis Client
 ==============================
 
@@ -13,7 +13,7 @@ Features:
     - Comprehensive metrics and health status
     - v93.0: Redis is optional - graceful no-op when not installed
 
-Author: JARVIS Cross-Repo Resilience
+Author: Ironcliw Cross-Repo Resilience
 """
 
 from __future__ import annotations

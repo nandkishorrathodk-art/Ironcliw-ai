@@ -1,6 +1,6 @@
-# JARVIS Windows Port Blueprint
+﻿# Ironcliw Windows Port Blueprint
 ## Complete macOS → Windows Conversion Guide
-**Repo:** `drussell23/JARVIS` → `nandkishorrathodk-art/Ironcliw-ai`
+**Repo:** `drussell23/Ironcliw` → `nandkishorrathodk-art/Ironcliw-ai`
 **Status:** Phase 11 Session 9 Complete | Phase 12 Remaining
 
 ---
@@ -92,7 +92,7 @@ backend/platform_adapter/
 - Removed: `pyobjc-*`, `CoreML`, `Metal`, `AppKit`
 - Added: `pywin32`, `pyttsx3`, `edge-tts`, `mss`, `pyautogui`
 - Fixed: torch CPU-only, speechbrain skipped, torchaudio skipped
-- `.env` set: `JARVIS_ML_DEVICE=cpu`, `JARVIS_SKIP_DOCKER=true`
+- `.env` set: `Ironcliw_ML_DEVICE=cpu`, `Ironcliw_SKIP_DOCKER=true`
 
 ### Phase 3 — Screen Capture
 **Files modified:** `backend/vision/`, `backend/chatbots/claude_vision_chatbot.py`
@@ -120,7 +120,7 @@ backend/platform_adapter/
 ### Phase 7 — Critical Runtime Bug Fixes
 - WebSocket router: `node` → `node.cmd` / `npm.cmd` on Windows
 - DynamicConfigService: port scan expanded
-- `JARVIS_DYNAMIC_PORTS=false` env var
+- `Ironcliw_DYNAMIC_PORTS=false` env var
 - DB migration inline for `confidence` column
 - GCP shift spam eliminated
 
@@ -141,7 +141,7 @@ backend/platform_adapter/
 - TTS voice: pyttsx3 → edge-tts `en-GB-RyanNeural`
 
 ### Phase 10-11 — Upstream Sync
-- 130 new commits from `drussell23/JARVIS` merged
+- 130 new commits from `drussell23/Ironcliw` merged
 - 4 conflicts resolved (all keeping Windows fixes)
 - Pushed to fork as merge commit `3ce7237a`
 
@@ -217,7 +217,7 @@ async def _notify_windows(title: str, body: str, urgency: str) -> bool:
             notification.notify(
                 title=title,
                 message=body,
-                app_name="JARVIS",
+                app_name="Ironcliw",
                 timeout=5 if urgency == "HIGH" else 3,
             )
             return True
@@ -646,7 +646,7 @@ class WindowsPlatform:
         try:
             from plyer import notification
             notification.notify(title=title, message=message,
-                                app_name="JARVIS", timeout=timeout)
+                                app_name="Ironcliw", timeout=timeout)
             return True
         except Exception:
             return False
@@ -816,7 +816,7 @@ Create `backend/system_control/windows_controller.py` with equivalent functional
 ## 9. Phase 17 — Yabai / Window Management
 
 ### 9.1 What is Yabai?
-Yabai is a macOS tiling window manager. JARVIS uses it to:
+Yabai is a macOS tiling window manager. Ironcliw uses it to:
 - Detect which "space" (virtual desktop) is active
 - Move windows between spaces
 - Get window positions for ghost overlay display
@@ -1237,7 +1237,7 @@ pip install mss            # Screen capture ✅ Done
 ### Test Command Template
 After each phase fix, run:
 ```powershell
-cd C:\Users\nandk\JARVIS
+cd C:\Users\nandk\Ironcliw
 
 # Test backend import
 python -c "from backend.main import app; print('OK')"
@@ -1259,7 +1259,7 @@ import asyncio
 from backend.agi_os.notification_bridge import show_notification
 
 async def test():
-    ok = await show_notification("JARVIS Test", "Windows notification working!", "NORMAL")
+    ok = await show_notification("Ironcliw Test", "Windows notification working!", "NORMAL")
     print("Notification:", "OK" if ok else "FAILED")
 
 asyncio.run(test())
@@ -1288,7 +1288,7 @@ print("Testing mouse click at 100,100...")
 p.click(100, 100)
 
 print("Testing type text...")
-p.type_text("Hello JARVIS")
+p.type_text("Hello Ironcliw")
 
 print("Testing hotkey Ctrl+Z...")
 p.hotkey('ctrl', 'z')

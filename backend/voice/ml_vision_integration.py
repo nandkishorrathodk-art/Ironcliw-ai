@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 ML Vision Integration - Seamlessly integrates vision routing with existing handlers
 Zero hardcoding approach to fixing vision command routing
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class MLVisionIntegration:
     """
-    Integrates ML-based vision routing with existing JARVIS command handlers
+    Integrates ML-based vision routing with existing Ironcliw command handlers
     Fixes the routing issue without any hardcoding
     """
     

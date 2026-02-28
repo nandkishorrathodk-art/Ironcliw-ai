@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Authentication Implementation
+﻿"""
+Ironcliw Windows Authentication Implementation
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows authentication implementation with BYPASS mode for MVP.
@@ -12,14 +12,14 @@ Future versions will integrate:
 
 Current Mode: BYPASS
     - All authentication requests return success
-    - Controlled by environment variable: JARVIS_SKIP_VOICE_AUTH=true
+    - Controlled by environment variable: Ironcliw_SKIP_VOICE_AUTH=true
 
 Future Integration:
     - Windows.Security.Credentials API for Windows Hello
     - Windows Credential Manager for password storage
     - TPM integration for secure key storage
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - MVP Bypass Mode)
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ class WindowsAuthentication(BaseAuthentication):
     
     def __init__(self):
         """Initialize Windows authentication in bypass mode"""
-        self._bypass_mode = os.environ.get('JARVIS_SKIP_VOICE_AUTH', 'true').lower() == 'true'
+        self._bypass_mode = os.environ.get('Ironcliw_SKIP_VOICE_AUTH', 'true').lower() == 'true'
         self._auth_mode = os.environ.get('WINDOWS_AUTH_MODE', 'BYPASS').upper()
         
         if not self._bypass_mode and self._auth_mode != 'BYPASS':

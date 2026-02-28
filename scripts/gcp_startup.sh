@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 set -e
-echo "🚀 JARVIS GCP Auto-Deployment Starting..."
+echo "🚀 Ironcliw GCP Auto-Deployment Starting..."
 
 # Install dependencies
 sudo apt-get update -qq
@@ -17,7 +17,7 @@ LATEST_COMMIT=$(gcloud storage cat $DEPLOYMENT_BUCKET/latest-multi-monitor-suppo
 
 if [ -z "$LATEST_COMMIT" ]; then
     echo "⚠️  No deployment found for branch multi-monitor-support, falling back to git clone..."
-    REPO_URL="https://github.com/drussell23/JARVIS-AI-Agent.git"
+    REPO_URL="https://github.com/drussell23/Ironcliw-AI-Agent.git"
     if [ -d "$PROJECT_DIR" ]; then
         cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/multi-monitor-support
     else
@@ -59,9 +59,9 @@ fi
 
 # Configure environment
 cat > "$PROJECT_DIR/backend/.env.gcp" <<EOF
-JARVIS_HYBRID_MODE=true
+Ironcliw_HYBRID_MODE=true
 GCP_INSTANCE=true
-JARVIS_DB_TYPE=cloudsql
+Ironcliw_DB_TYPE=cloudsql
 EOF
 
 # Start Cloud SQL Proxy (if config available)
@@ -81,7 +81,7 @@ for i in {1..30}; do
     sleep 2
     if curl -sf http://localhost:8010/health > /dev/null; then
         INSTANCE_IP=$(curl -sf http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -H "Metadata-Flavor: Google" || echo "unknown")
-        echo "✅ JARVIS Ready at http://$INSTANCE_IP:8010"
+        echo "✅ Ironcliw Ready at http://$INSTANCE_IP:8010"
         exit 0
     fi
 done

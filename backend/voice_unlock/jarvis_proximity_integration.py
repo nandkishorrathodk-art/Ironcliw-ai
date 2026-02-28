@@ -1,8 +1,8 @@
-"""
-JARVIS Proximity + Voice Authentication Integration
+﻿"""
+Ironcliw Proximity + Voice Authentication Integration
 ==================================================
 
-Integrates the advanced proximity + voice authentication system with JARVIS.
+Integrates the advanced proximity + voice authentication system with Ironcliw.
 """
 
 import asyncio
@@ -31,7 +31,7 @@ except ImportError:
 
 
 class ProximityVoiceAuthManager:
-    """Manages the proximity + voice authentication system for JARVIS."""
+    """Manages the proximity + voice authentication system for Ironcliw."""
     
     def __init__(self):
         self.auth_engine: Optional[DualFactorAuthEngine] = None
@@ -183,7 +183,7 @@ class ProximityVoiceAuthManager:
             # Full dual-factor authentication
             result = await self.auth_engine.authenticate(audio_data, sample_rate)
             
-            # Convert auth result to JARVIS response
+            # Convert auth result to Ironcliw response
             response = {
                 "success": result.success,
                 "reason": result.reason,
@@ -267,10 +267,10 @@ async def get_proximity_auth_manager() -> ProximityVoiceAuthManager:
     return _proximity_auth_manager
 
 
-# Integration with JARVIS commands
+# Integration with Ironcliw commands
 async def handle_proximity_voice_command(command: str, audio_data: bytes = None) -> Dict[str, Any]:
     """
-    Handle proximity + voice authentication commands from JARVIS.
+    Handle proximity + voice authentication commands from Ironcliw.
     
     Args:
         command: Command type (enroll, authenticate, status, etc.)

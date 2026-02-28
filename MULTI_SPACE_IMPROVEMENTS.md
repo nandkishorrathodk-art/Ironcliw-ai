@@ -1,9 +1,9 @@
-# Multi-Space Vision Improvements
+﻿# Multi-Space Vision Improvements
 
 ## Summary of Changes
 
 ### Problem Solved
-JARVIS was incorrectly describing the browser's developer console when asked about "Terminal in the other window space" instead of describing the actual Terminal application.
+Ironcliw was incorrectly describing the browser's developer console when asked about "Terminal in the other window space" instead of describing the actual Terminal application.
 
 ### Root Causes Identified & Fixed
 
@@ -30,7 +30,7 @@ JARVIS was incorrectly describing the browser's developer console when asked abo
 
 ### Key Improvements
 
-1. **Smart Space Selection**: When user asks about "other window/space", JARVIS now:
+1. **Smart Space Selection**: When user asks about "other window/space", Ironcliw now:
    - Detects this is specifically about OTHER spaces
    - Finds the target app (e.g., Terminal) in other spaces
    - ONLY captures those spaces, excluding current space
@@ -71,8 +71,8 @@ JARVIS was incorrectly describing the browser's developer console when asked abo
 
 ### Usage
 
-Now when a user asks JARVIS about windows in "other" spaces:
-- JARVIS will correctly identify and capture only those spaces
+Now when a user asks Ironcliw about windows in "other" spaces:
+- Ironcliw will correctly identify and capture only those spaces
 - Terminal will be properly recognized and captured
 - The response will describe the actual Terminal content, not browser console
 

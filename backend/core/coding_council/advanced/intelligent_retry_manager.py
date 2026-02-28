@@ -1,4 +1,4 @@
-"""
+﻿"""
 v78.0: Intelligent Retry Manager
 =================================
 
@@ -46,7 +46,7 @@ Usage:
     async with manager.retry_context("api_call", max_attempts=5) as ctx:
         result = await some_operation()
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 from __future__ import annotations

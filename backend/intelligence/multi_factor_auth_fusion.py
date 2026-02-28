@@ -1,4 +1,4 @@
-"""
+﻿"""
 Multi-Factor Authentication Fusion Engine
 
 Central orchestrator for combining multiple authentication signals into
@@ -17,9 +17,9 @@ Uses advanced fusion techniques:
 - Anomaly-aware risk assessment
 - Multi-factor reasoning chains
 
-Part of JARVIS v5.0 Advanced Voice Biometric Intelligence System
+Part of Ironcliw v5.0 Advanced Voice Biometric Intelligence System
 
-Author: JARVIS AI Agent
+Author: Ironcliw AI Agent
 Version: 5.0.0
 """
 
@@ -746,7 +746,7 @@ if __name__ == "__main__":
         fusion = await get_fusion_engine()
 
         print("\n" + "="*80)
-        print("JARVIS Multi-Factor Authentication Fusion - Test")
+        print("Ironcliw Multi-Factor Authentication Fusion - Test")
         print("="*80 + "\n")
 
         # Test case 1: High confidence all factors

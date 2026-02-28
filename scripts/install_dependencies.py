@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Dependency Installer v2.0
+Ironcliw Dependency Installer v2.0
 ================================
 
 Robust, async, parallel, intelligent dependency installer that:
@@ -14,7 +14,7 @@ Robust, async, parallel, intelligent dependency installer that:
 Usage:
     python3 scripts/install_dependencies.py [--all] [--optional] [--system] [--verify]
 
-Author: JARVIS System
+Author: Ironcliw System
 """
 
 from __future__ import annotations
@@ -79,9 +79,9 @@ class InstallationReport:
         return sum(1 for d in self.python_deps + self.optional_deps if d.skipped)
 
 
-class JARVISDependencyInstaller:
+class IroncliwDependencyInstaller:
     """
-    Intelligent, robust dependency installer for JARVIS.
+    Intelligent, robust dependency installer for Ironcliw.
 
     Features:
     - Platform detection (macOS, Linux, Windows)
@@ -382,9 +382,9 @@ class JARVISDependencyInstaller:
         include_optional: bool = True,
         include_system: bool = True
     ) -> InstallationReport:
-        """Install all JARVIS dependencies."""
+        """Install all Ironcliw dependencies."""
         print(f"\n{Colors.HEADER}{'='*60}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.HEADER}JARVIS Dependency Installer v2.0{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.HEADER}Ironcliw Dependency Installer v2.0{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         print(f"Platform: {self.platform}")
         print(f"Python: {sys.version.split()[0]}")
@@ -497,7 +497,7 @@ async def main():
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="JARVIS Dependency Installer")
+    parser = argparse.ArgumentParser(description="Ironcliw Dependency Installer")
     parser.add_argument("--all", action="store_true", help="Install all dependencies")
     parser.add_argument("--optional", action="store_true", help="Include optional packages")
     parser.add_argument("--system", action="store_true", help="Install system dependencies")
@@ -507,7 +507,7 @@ async def main():
     args = parser.parse_args()
 
     project_root = Path(args.project) if args.project else None
-    installer = JARVISDependencyInstaller(project_root)
+    installer = IroncliwDependencyInstaller(project_root)
 
     if args.verify:
         await installer.verify_critical_packages()

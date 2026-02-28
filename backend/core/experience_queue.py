@@ -1,4 +1,4 @@
-"""
+﻿"""
 Experience Data Queue - Persistent Queue for Training Data.
 ============================================================
 
@@ -29,7 +29,7 @@ Architecture:
     │  └── RetryHandler (exponential backoff for failures)                │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS Trinity v81.0 - Experience Data Persistence
+Author: Ironcliw Trinity v81.0 - Experience Data Persistence
 """
 
 from __future__ import annotations

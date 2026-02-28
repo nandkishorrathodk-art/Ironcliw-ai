@@ -1,8 +1,8 @@
-# JARVIS Advanced Loading System
+﻿# Ironcliw Advanced Loading System
 
 ## Overview
 
-A robust, async, dynamic loading system with zero hardcoding that provides real-time feedback during JARVIS initialization.
+A robust, async, dynamic loading system with zero hardcoding that provides real-time feedback during Ironcliw initialization.
 
 ## Architecture
 
@@ -77,7 +77,7 @@ start_system.py           # Progress broadcasting integration
 
 ### For Users
 
-1. **Start JARVIS:**
+1. **Start Ironcliw:**
    ```bash
    python start_system.py --restart
    ```
@@ -85,7 +85,7 @@ start_system.py           # Progress broadcasting integration
 2. **Loading page opens automatically** at `http://localhost:3000/loading.html`
 
 3. **Watch real-time progress:**
-   - 🔍 Detecting - Scans for existing JARVIS processes
+   - 🔍 Detecting - Scans for existing Ironcliw processes
    - ⚔️ Terminating - Kills old instances
    - 🧹 Cleanup - Cleans up resources
    - 🚀 Starting - Launches new services
@@ -154,7 +154,7 @@ await startup_progress.broadcast_complete(
 
 The loading manager automatically discovers configuration from:
 
-1. `window.JARVIS_CONFIG.backendPort`
+1. `window.Ironcliw_CONFIG.backendPort`
 2. `localStorage.getItem('jarvis_backend_port')`
 3. `sessionStorage.getItem('jarvis_backend_port')`
 4. URL query parameter `?backend_port=8010`
@@ -165,7 +165,7 @@ The loading manager automatically discovers configuration from:
 ```html
 <!-- In HTML -->
 <script>
-window.JARVIS_CONFIG = {
+window.Ironcliw_CONFIG = {
     backendPort: 8010
 };
 </script>
@@ -246,7 +246,7 @@ After 60 failed attempts, automatically falls back to HTTP polling.
 ```json
 {
     "stage": "detecting",
-    "message": "Detecting existing JARVIS processes...",
+    "message": "Detecting existing Ironcliw processes...",
     "progress": 5,
     "timestamp": "2025-11-09T01:46:00.123Z",
     "metadata": {
@@ -268,7 +268,7 @@ After 60 failed attempts, automatically falls back to HTTP polling.
 ```json
 {
     "stage": "starting",
-    "message": "Starting fresh JARVIS instance...",
+    "message": "Starting fresh Ironcliw instance...",
     "progress": 50,
     "timestamp": "2025-11-09T01:46:30.456Z"
 }
@@ -310,7 +310,7 @@ await startup_progress.broadcast_progress(
 ## Future Enhancements
 
 - [ ] Sound effects for stage transitions
-- [ ] Voice narration (using JARVIS TTS)
+- [ ] Voice narration (using Ironcliw TTS)
 - [ ] Animated stage transitions
 - [ ] Customizable themes
 - [ ] Progress history/replay
@@ -320,9 +320,9 @@ await startup_progress.broadcast_progress(
 
 ## Credits
 
-Built with ❤️ by the JARVIS AI Team
+Built with ❤️ by the Ironcliw AI Team
 
 Inspired by:
-- Iron Man's JARVIS interface
+- Iron Man's Ironcliw interface
 - Modern async/await patterns
 - Progressive web app principles

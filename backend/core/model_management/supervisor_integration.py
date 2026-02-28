@@ -1,9 +1,9 @@
-"""
+﻿"""
 Model Management Supervisor Integration v1.0
 =============================================
 
 Provides seamless integration of the Unified Model Management System with the
-JARVIS Trinity Supervisor. Enables single-command initialization and shutdown
+Ironcliw Trinity Supervisor. Enables single-command initialization and shutdown
 of all model management capabilities.
 
 Features:

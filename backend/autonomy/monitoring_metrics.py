@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Monitoring and Metrics System for JARVIS.
+Monitoring and Metrics System for Ironcliw.
 
 This module provides comprehensive monitoring and metrics collection capabilities
-for the JARVIS autonomous system. It tracks performance, health, and usage metrics
+for the Ironcliw autonomous system. It tracks performance, health, and usage metrics
 across all components, providing real-time insights and alerting capabilities.
 
 The system includes:
@@ -406,7 +406,7 @@ class MetricCollector:
 class SystemMonitor:
     """High-level system monitoring and health tracking.
     
-    This class provides a comprehensive monitoring interface for the JARVIS
+    This class provides a comprehensive monitoring interface for the Ironcliw
     system, tracking performance metrics, component health, and generating
     detailed reports. It includes automatic anomaly detection and continuous
     monitoring capabilities.

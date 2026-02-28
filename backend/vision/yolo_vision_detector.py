@@ -1,5 +1,5 @@
-"""
-YOLOv8 Vision Detector for JARVIS
+﻿"""
+YOLOv8 Vision Detector for Ironcliw
 ==================================
 
 Advanced, production-ready YOLOv8 implementation for real-time UI element detection.
@@ -23,7 +23,7 @@ Performance:
 - Faster than Claude Vision for UI elements
 - Real-time capable (10-20 FPS)
 
-Author: JARVIS AI Team
+Author: Ironcliw AI Team
 Date: 2025-10-27
 """
 

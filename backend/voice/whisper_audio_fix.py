@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Robust Whisper audio handler that works with any input format
 
@@ -1542,7 +1542,7 @@ class WhisperAudioHandler:
         - Windowing/truncation (5s global, 2s unlock, 3s command)
         - Mode-aware optimization for ultra-low latency
         - Non-blocking async model loading
-        - v8.0: Self-voice suppression to prevent JARVIS from hearing itself
+        - v8.0: Self-voice suppression to prevent Ironcliw from hearing itself
 
         Args:
             audio_data: Audio bytes or base64 string

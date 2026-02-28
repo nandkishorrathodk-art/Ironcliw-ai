@@ -1,4 +1,4 @@
-# JARVIS Voice System - Performance Improvements
+﻿# Ironcliw Voice System - Performance Improvements
 
 ## Summary
 Fixed critical blocking bottleneck causing slow response times when asking questions like "can you see my screen".
@@ -218,11 +218,11 @@ async def optimize_loop():
   - Added `EnhancedVoiceEngine.get_cached_memory_usage()`
   - Added `EnhancedVoiceEngine.get_system_health()`
   - Added `EnhancedVoiceEngine._start_optimization_async()`
-  - Modified `EnhancedJARVISPersonality._optimize_voice_command()` - removed blocking CPU check
-  - Modified `EnhancedJARVISPersonality.__init__()` - added voice engine reference
-  - Added `EnhancedJARVISPersonality.set_voice_engine()`
-  - Modified `EnhancedJARVISVoiceAssistant.start()` - start monitors
-  - Modified `EnhancedJARVISVoiceAssistant._shutdown()` - proper cleanup
+  - Modified `EnhancedIroncliwPersonality._optimize_voice_command()` - removed blocking CPU check
+  - Modified `EnhancedIroncliwPersonality.__init__()` - added voice engine reference
+  - Added `EnhancedIroncliwPersonality.set_voice_engine()`
+  - Modified `EnhancedIroncliwVoiceAssistant.start()` - start monitors
+  - Modified `EnhancedIroncliwVoiceAssistant._shutdown()` - proper cleanup
 
 ## Conclusion
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Ghost Hands Full Pipeline Test
 ===============================
@@ -185,7 +185,7 @@ async def simulate_full_pipeline():
         print(f"  3. GHOST HANDS: Clicked window {vision_event.window_id}")
         print(f"  4. FOCUS: User remained on Space {final_space_idx}")
         print("")
-        print("JARVIS can now autonomously act across Spaces without")
+        print("Ironcliw can now autonomously act across Spaces without")
         print("ever disturbing the user's workflow!")
     else:
         print("❌ FULL PIPELINE TEST FAILED")
@@ -243,7 +243,7 @@ async def show_pipeline_diagram():
 │  │  👤 USER                                                         │ │
 │  │  → Stayed on Space 7 the entire time                             │ │
 │  │  → Never saw focus change                                        │ │
-│  │  → JARVIS acted invisibly in the background                      │ │
+│  │  → Ironcliw acted invisibly in the background                      │ │
 │  └─────────────────────────────────────────────────────────────────┘ │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
@@ -263,7 +263,7 @@ async def main():
     success = await simulate_full_pipeline()
 
     if success:
-        print("\n\n🚀 JARVIS is now a multi-dimensional autonomous agent!")
+        print("\n\n🚀 Ironcliw is now a multi-dimensional autonomous agent!")
         print("   The Voice → Vision → Ghost Hands pipeline is complete.")
 
     return success

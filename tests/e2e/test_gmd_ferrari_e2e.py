@@ -1,4 +1,4 @@
-"""
+﻿"""
 End-to-End Tests — Ghost Mode Display (GMD) + Ferrari Engine
 
 Full pipeline validation:
@@ -298,7 +298,7 @@ class TestE2EGodModeDualWindow:
     """End-to-end: Two concurrent bounce windows tracked simultaneously.
 
     God Mode proves the Ferrari Engine can run multiple VideoWatchers
-    in parallel and JARVIS can independently track state in each window.
+    in parallel and Ironcliw can independently track state in each window.
     """
 
     async def test_dual_window_independent_tracking(self):

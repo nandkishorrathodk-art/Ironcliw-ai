@@ -1,12 +1,12 @@
-# 🎤 JARVIS Voice System - Implementation Guide
+﻿# 🎤 Ironcliw Voice System - Implementation Guide
 
 ## Overview
-Transform JARVIS into a fully voice-activated AI assistant like Iron Man's, powered by Claude AI.
+Transform Ironcliw into a fully voice-activated AI assistant like Iron Man's, powered by Claude AI.
 
 ## Core Features
 
 ### 1. Voice Activation
-- **Wake Word**: "Hey JARVIS" or "JARVIS"
+- **Wake Word**: "Hey Ironcliw" or "Ironcliw"
 - **Continuous Listening**: Always ready, low power consumption
 - **Visual Feedback**: Arc reactor animation when activated
 
@@ -15,16 +15,16 @@ Transform JARVIS into a fully voice-activated AI assistant like Iron Man's, powe
 - **Context Awareness**: Remembers conversation context
 - **Multi-turn Dialogue**: Natural back-and-forth conversation
 
-### 3. JARVIS Personality
+### 3. Ironcliw Personality
 - **British Butler Style**: Sophisticated, witty, professional
 - **Contextual Responses**: Adapts tone based on situation
-- **Humor & Sass**: Occasional dry humor like the movie JARVIS
+- **Humor & Sass**: Occasional dry humor like the movie Ironcliw
 
 ## Technical Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
-│             JARVIS Voice System              │
+│             Ironcliw Voice System              │
 ├─────────────────────────────────────────────┤
 │  Wake Word Detection (Porcupine/Whisper)     │
 │              ↓                               │
@@ -61,7 +61,7 @@ for voice in voices:
 
 def listen_for_wake_word():
     with sr.Microphone() as source:
-        print("Listening for 'JARVIS'...")
+        print("Listening for 'Ironcliw'...")
         audio = recognizer.listen(source)
         try:
             text = recognizer.recognize_google(audio)
@@ -99,8 +99,8 @@ while True:
 
 #### A. Personality System
 ```python
-JARVIS_SYSTEM_PROMPT = """
-You are JARVIS, Tony Stark's AI assistant from Iron Man. You have a sophisticated 
+Ironcliw_SYSTEM_PROMPT = """
+You are Ironcliw, Tony Stark's AI assistant from Iron Man. You have a sophisticated 
 British accent and personality. You are:
 
 - Professional yet personable
@@ -110,7 +110,7 @@ British accent and personality. You are:
 - Occasionally sarcastic (but respectfully so)
 - Always address the user as "Sir" or "Miss" (based on preference)
 
-Respond in character as JARVIS would, maintaining his distinctive speaking style.
+Respond in character as Ironcliw would, maintaining his distinctive speaking style.
 Example: "Of course, sir. Shall I also cancel your 3 o'clock? You do seem to have 
 a habit of double-booking yourself when you're excited about a new project."
 """
@@ -143,7 +143,7 @@ class ArcReactorVisualizer:
 import threading
 import queue
 
-class InterruptibleJARVIS:
+class InterruptibleIroncliw:
     def __init__(self):
         self.speaking = False
         self.interrupt_queue = queue.Queue()
@@ -171,7 +171,7 @@ class InterruptibleJARVIS:
 
 #### 1. Multi-Modal Responses
 ```python
-# JARVIS can show information on screen while speaking
+# Ironcliw can show information on screen while speaking
 def respond_with_visuals(command, response):
     if "weather" in command:
         display_weather_widget()
@@ -186,8 +186,8 @@ def respond_with_visuals(command, response):
 
 #### 2. Proactive Assistance
 ```python
-# JARVIS initiates conversation based on context
-class ProactiveJARVIS:
+# Ironcliw initiates conversation based on context
+class ProactiveIroncliw:
     def check_calendar(self):
         # "Sir, you have a meeting in 10 minutes"
         pass
@@ -254,7 +254,7 @@ import pyttsx3
 import json
 from datetime import datetime
 
-class JARVIS:
+class Ironcliw:
     def __init__(self, api_key):
         self.claude = Anthropic(api_key=api_key)
         self.recognizer = sr.Recognizer()
@@ -285,7 +285,7 @@ class JARVIS:
                     continue
                     
     async def activate(self):
-        """JARVIS activation sequence"""
+        """Ironcliw activation sequence"""
         responses = [
             f"Yes, {self.user_name}?",
             f"At your service, {self.user_name}.",
@@ -317,11 +317,11 @@ class JARVIS:
                 await self.speak("I'm having trouble understanding. Please try again.")
                 
     async def process_with_personality(self, command):
-        """Process command with JARVIS personality"""
+        """Process command with Ironcliw personality"""
         message = self.claude.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=300,
-            system=JARVIS_SYSTEM_PROMPT,
+            system=Ironcliw_SYSTEM_PROMPT,
             messages=[
                 *self.context,
                 {"role": "user", "content": command}
@@ -341,15 +341,15 @@ class JARVIS:
         return response
         
     async def speak(self, text):
-        """Text-to-speech with JARVIS voice"""
+        """Text-to-speech with Ironcliw voice"""
         self.engine.say(text)
         self.engine.runAndWait()
 
 # Initialize and run
 async def main():
-    jarvis = JARVIS(api_key="your-api-key")
-    print("JARVIS Voice System Initialized")
-    print("Say 'JARVIS' to activate...")
+    jarvis = Ironcliw(api_key="your-api-key")
+    print("Ironcliw Voice System Initialized")
+    print("Say 'Ironcliw' to activate...")
     
     await jarvis.wake_word_detection()
 

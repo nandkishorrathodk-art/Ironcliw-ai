@@ -1,8 +1,8 @@
-"""
-JARVIS Unified Readiness Predicate Module
+﻿"""
+Ironcliw Unified Readiness Predicate Module
 ==========================================
 
-This module provides the unified predicate for determining when JARVIS
+This module provides the unified predicate for determining when Ironcliw
 can be marked FULLY_READY.
 
 Key logic:
@@ -26,11 +26,11 @@ Usage:
     }
     result = predicate.evaluate(component_states)
     if result.is_fully_ready:
-        print("JARVIS is FULLY_READY!")
+        print("Ironcliw is FULLY_READY!")
     else:
         print(f"Blocked by: {result.blocking_components}")
 
-Author: JARVIS Trinity - Readiness Integrity Fixes
+Author: Ironcliw Trinity - Readiness Integrity Fixes
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ class ReadinessResult:
 
 class ReadinessPredicate:
     """
-    Unified predicate for determining JARVIS system readiness.
+    Unified predicate for determining Ironcliw system readiness.
 
     This predicate evaluates component states to determine if the system
     can be marked FULLY_READY.

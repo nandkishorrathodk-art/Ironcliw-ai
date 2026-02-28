@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Supervisor Singleton v123.0
+Ironcliw Supervisor Singleton v123.0
 ==================================
 
-Enterprise-grade singleton enforcement for the JARVIS system.
+Enterprise-grade singleton enforcement for the Ironcliw system.
 Prevents multiple supervisors/entry points from running simultaneously.
 
 This module provides:
@@ -23,7 +23,7 @@ Usage:
     from backend.core.supervisor_singleton import acquire_supervisor_lock, release_supervisor_lock
 
     if not acquire_supervisor_lock("run_supervisor"):
-        print("Another JARVIS instance is running!")
+        print("Another Ironcliw instance is running!")
         sys.exit(1)
 
     try:
@@ -41,7 +41,7 @@ IPC Commands (v113.0+):
     - cross-repo-status: v115.0 - Get status of all connected repos
     - restart-status: v120.0 - Check restart marker and initialization status
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 120.0.0 (January 2026)
 """
 
@@ -112,8 +112,8 @@ def _is_writable_dir(path: Path) -> bool:
 
 def _resolve_writable_lock_dir() -> Path:
     """Resolve a writable lock directory with deterministic fallback."""
-    env_lock = os.environ.get("JARVIS_LOCK_DIR", "").strip()
-    env_home = os.environ.get("JARVIS_HOME", "").strip()
+    env_lock = os.environ.get("Ironcliw_LOCK_DIR", "").strip()
+    env_home = os.environ.get("Ironcliw_HOME", "").strip()
     home_root = Path(env_home).expanduser() if env_home else (Path.home() / ".jarvis")
 
     candidates = []
@@ -138,31 +138,31 @@ def _resolve_writable_lock_dir() -> Path:
 
 # Lock file location - configurable via environment
 LOCK_DIR = _resolve_writable_lock_dir()
-os.environ["JARVIS_LOCK_DIR"] = str(LOCK_DIR)
+os.environ["Ironcliw_LOCK_DIR"] = str(LOCK_DIR)
 
 _resolved_home = Path(
-    os.environ.get("JARVIS_HOME", str(LOCK_DIR.parent))
+    os.environ.get("Ironcliw_HOME", str(LOCK_DIR.parent))
 ).expanduser()
 if not _is_writable_dir(_resolved_home):
     _resolved_home = LOCK_DIR.parent
-os.environ["JARVIS_HOME"] = str(_resolved_home)
+os.environ["Ironcliw_HOME"] = str(_resolved_home)
 
 SUPERVISOR_LOCK_FILE = LOCK_DIR / "supervisor.lock"
 SUPERVISOR_STATE_FILE = LOCK_DIR / "supervisor.state"
 SUPERVISOR_IPC_SOCKET = LOCK_DIR / "supervisor.sock"
 
 # v115.0: Cross-repo state directory
-CROSS_REPO_DIR = _get_env_path("JARVIS_CROSS_REPO_DIR", _resolved_home / "cross_repo")
-TRINITY_READINESS_DIR = _get_env_path("JARVIS_TRINITY_DIR", _resolved_home / "trinity" / "readiness")
-os.environ.setdefault("JARVIS_CROSS_REPO_DIR", str(CROSS_REPO_DIR))
-os.environ.setdefault("JARVIS_TRINITY_DIR", str(TRINITY_READINESS_DIR))
+CROSS_REPO_DIR = _get_env_path("Ironcliw_CROSS_REPO_DIR", _resolved_home / "cross_repo")
+TRINITY_READINESS_DIR = _get_env_path("Ironcliw_TRINITY_DIR", _resolved_home / "trinity" / "readiness")
+os.environ.setdefault("Ironcliw_CROSS_REPO_DIR", str(CROSS_REPO_DIR))
+os.environ.setdefault("Ironcliw_TRINITY_DIR", str(TRINITY_READINESS_DIR))
 
 # v115.0: Configurable thresholds
-STALE_LOCK_THRESHOLD = _get_env_float("JARVIS_STALE_LOCK_THRESHOLD", 90.0)  # Reduced from 300s
-HEARTBEAT_INTERVAL = _get_env_float("JARVIS_HEARTBEAT_INTERVAL", 5.0)  # Reduced from 10s
-HEALTH_CHECK_TIMEOUT = _get_env_float("JARVIS_HEALTH_CHECK_TIMEOUT", 3.0)
-IPC_TIMEOUT = _get_env_float("JARVIS_IPC_TIMEOUT", 2.0)
-HTTP_HEALTH_PORTS = [int(p) for p in os.environ.get("JARVIS_HTTP_PORTS", "8080,8000,8010").split(",")]
+STALE_LOCK_THRESHOLD = _get_env_float("Ironcliw_STALE_LOCK_THRESHOLD", 90.0)  # Reduced from 300s
+HEARTBEAT_INTERVAL = _get_env_float("Ironcliw_HEARTBEAT_INTERVAL", 5.0)  # Reduced from 10s
+HEALTH_CHECK_TIMEOUT = _get_env_float("Ironcliw_HEALTH_CHECK_TIMEOUT", 3.0)
+IPC_TIMEOUT = _get_env_float("Ironcliw_IPC_TIMEOUT", 2.0)
+HTTP_HEALTH_PORTS = [int(p) for p in os.environ.get("Ironcliw_HTTP_PORTS", "8080,8000,8010").split(",")]
 
 # =============================================================================
 # v120.0: Restart Marker System for Cross-Process Coordination
@@ -174,8 +174,8 @@ HTTP_HEALTH_PORTS = [int(p) for p in os.environ.get("JARVIS_HTTP_PORTS", "8080,8
 # 3. Cross-repo components to be notified of restart in progress
 # =============================================================================
 RESTART_MARKER_FILE = LOCK_DIR / "restart.marker"
-RESTART_TIMEOUT = _get_env_float("JARVIS_RESTART_TIMEOUT", 120.0)  # Max seconds for restart
-IPC_THREAD_ENABLED = os.environ.get("JARVIS_IPC_THREAD", "true").lower() in ("1", "true", "yes")
+RESTART_TIMEOUT = _get_env_float("Ironcliw_RESTART_TIMEOUT", 120.0)  # Max seconds for restart
+IPC_THREAD_ENABLED = os.environ.get("Ironcliw_IPC_THREAD", "true").lower() in ("1", "true", "yes")
 
 # =============================================================================
 # v116.0: Global Process Registry for Trinity Component Tracking
@@ -211,13 +211,13 @@ import threading
 #   3. If heartbeat is stale (>30s) OR supervisor PID is dead → child exits
 #
 # Cross-repo integration:
-#   - JARVIS: Supervisor writes heartbeat
-#   - JARVIS-PRIME: Checks heartbeat via imported module
+#   - Ironcliw: Supervisor writes heartbeat
+#   - Ironcliw-PRIME: Checks heartbeat via imported module
 #   - REACTOR-CORE: Checks heartbeat via imported module
 # =============================================================================
 
 SUPERVISOR_HEARTBEAT_FILE = LOCK_DIR / "supervisor_heartbeat.json"
-HEARTBEAT_STALE_THRESHOLD = float(os.environ.get("JARVIS_HEARTBEAT_STALE_THRESHOLD", "30.0"))
+HEARTBEAT_STALE_THRESHOLD = float(os.environ.get("Ironcliw_HEARTBEAT_STALE_THRESHOLD", "30.0"))
 
 
 class SupervisorHeartbeat:
@@ -320,7 +320,7 @@ class ParentDeathDetector:
     _lock = threading.Lock()
     _running = False
     _thread: Optional[threading.Thread] = None
-    _check_interval = float(os.environ.get("JARVIS_PARENT_CHECK_INTERVAL", "10.0"))
+    _check_interval = float(os.environ.get("Ironcliw_PARENT_CHECK_INTERVAL", "10.0"))
     _on_orphan_callback: Optional[Callable[[], None]] = None
     
     @classmethod
@@ -1097,7 +1097,7 @@ class ThreadedIPCServer:
             self._running.clear()
             self._thread = threading.Thread(
                 target=self._run_server_thread,
-                name="JARVIS-IPC-Server-v123",
+                name="Ironcliw-IPC-Server-v123",
                 daemon=True
             )
             self._thread.start()
@@ -1726,15 +1726,15 @@ class ProcessValidStrategy(HealthCheckStrategy):
                         details={"stored_start": state.process_start_time, "current_start": current_start}
                     )
 
-            # Validate command line contains JARVIS patterns
+            # Validate command line contains Ironcliw patterns
             try:
                 cmdline = " ".join(proc.cmdline())
-                jarvis_patterns = ["run_supervisor", "jarvis", "JARVIS", "start_system"]
+                jarvis_patterns = ["run_supervisor", "jarvis", "Ironcliw", "start_system"]
                 if not any(p in cmdline for p in jarvis_patterns):
                     return HealthCheckResult(
                         healthy=False,
                         level=HealthLevel.UNKNOWN,
-                        message=f"Process {state.pid} is not a JARVIS process",
+                        message=f"Process {state.pid} is not a Ironcliw process",
                         details={"cmdline": cmdline[:200]}
                     )
             except (psutil.AccessDenied, psutil.NoSuchProcess):
@@ -1884,7 +1884,7 @@ class HTTPHealthStrategy(HealthCheckStrategy):
         try:
             url = f"http://127.0.0.1:{port}/health"
             req = urllib.request.Request(url)
-            req.add_header("User-Agent", "JARVIS-Supervisor-Singleton/115.0")
+            req.add_header("User-Agent", "Ironcliw-Supervisor-Singleton/115.0")
 
             with urllib.request.urlopen(req, timeout=HEALTH_CHECK_TIMEOUT) as response:
                 if response.status == 200:
@@ -2217,7 +2217,7 @@ class SupervisorState:
 
 class SupervisorSingleton:
     """
-    Singleton enforcement for JARVIS supervisor processes.
+    Singleton enforcement for Ironcliw supervisor processes.
 
     Uses file-based locking with fcntl for cross-process synchronization.
     """
@@ -2252,7 +2252,7 @@ class SupervisorSingleton:
             return False
 
     def _is_jarvis_process(self, pid: int) -> bool:
-        """Check if a PID is a JARVIS-related process."""
+        """Check if a PID is a Ironcliw-related process."""
         try:
             # Read process command line
             if sys.platform == "darwin":
@@ -2271,12 +2271,12 @@ class SupervisorSingleton:
                 else:
                     return False
 
-            # Check for JARVIS patterns
+            # Check for Ironcliw patterns
             jarvis_patterns = [
                 "run_supervisor.py",
                 "start_system.py",
                 "jarvis",
-                "JARVIS",
+                "Ironcliw",
             ]
             return any(pattern in cmdline for pattern in jarvis_patterns)
         except Exception:
@@ -2374,9 +2374,9 @@ class SupervisorSingleton:
             logger.info(f"[Singleton] Lock holder PID {state.pid} is dead")
             return True, state
 
-        # Layer 2: Check if it's a JARVIS process (not PID reuse)
+        # Layer 2: Check if it's a Ironcliw process (not PID reuse)
         if not self._is_jarvis_process(state.pid):
-            logger.info(f"[Singleton] PID {state.pid} is not a JARVIS process (PID reuse detected)")
+            logger.info(f"[Singleton] PID {state.pid} is not a Ironcliw process (PID reuse detected)")
             return True, state
 
         # Layer 3: Validate process start time (PID reuse detection)
@@ -2454,7 +2454,7 @@ class SupervisorSingleton:
             try:
                 url = f"http://127.0.0.1:{port}/health"
                 req = urllib.request.Request(url)
-                req.add_header("User-Agent", "JARVIS-Singleton/115.0")
+                req.add_header("User-Agent", "Ironcliw-Singleton/115.0")
 
                 with urllib.request.urlopen(req, timeout=HEALTH_CHECK_TIMEOUT) as response:
                     if response.status == 200:
@@ -2601,7 +2601,7 @@ class SupervisorSingleton:
 
                     if state:
                         logger.error(
-                            f"[Singleton] ❌ JARVIS already running!\n"
+                            f"[Singleton] ❌ Ironcliw already running!\n"
                             f"  Entry point: {state.entry_point}\n"
                             f"  PID: {state.pid}\n"
                             f"  Started: {state.started_at}\n"
@@ -2755,7 +2755,7 @@ class SupervisorSingleton:
         """
         status = {}
 
-        # Check JARVIS Prime
+        # Check Ironcliw Prime
         prime_state_file = CROSS_REPO_DIR / "prime_state.json"
         if prime_state_file.exists():
             try:
@@ -3304,7 +3304,7 @@ class SupervisorSingleton:
         """
         cross_repo_status = {}
 
-        # Check JARVIS Prime status
+        # Check Ironcliw Prime status
         prime_state_file = CROSS_REPO_DIR / "prime_state.json"
         if prime_state_file.exists():
             try:
@@ -3363,7 +3363,7 @@ class SupervisorSingleton:
         return {
             "total_repos": 3,
             "connected_repos": connected_count,
-            "all_connected": connected_count >= 2,  # At least JARVIS + one other
+            "all_connected": connected_count >= 2,  # At least Ironcliw + one other
             "repos": cross_repo_status
         }
 
@@ -3473,9 +3473,9 @@ class SupervisorSingleton:
 
         # Environment
         diagnostics["environment"] = {
-            "JARVIS_LOCK_DIR": os.environ.get("JARVIS_LOCK_DIR"),
-            "JARVIS_CROSS_REPO_DIR": os.environ.get("JARVIS_CROSS_REPO_DIR"),
-            "JARVIS_STALE_LOCK_THRESHOLD": os.environ.get("JARVIS_STALE_LOCK_THRESHOLD")
+            "Ironcliw_LOCK_DIR": os.environ.get("Ironcliw_LOCK_DIR"),
+            "Ironcliw_CROSS_REPO_DIR": os.environ.get("Ironcliw_CROSS_REPO_DIR"),
+            "Ironcliw_STALE_LOCK_THRESHOLD": os.environ.get("Ironcliw_STALE_LOCK_THRESHOLD")
         }
 
         return diagnostics
@@ -3953,12 +3953,12 @@ async def _cleanup_cross_repo_stale_resources() -> None:
     """
     v130.0: Clean stale resources in connected repos.
 
-    Checks JARVIS-Prime and Reactor-Core for orphaned locks/sockets.
+    Checks Ironcliw-Prime and Reactor-Core for orphaned locks/sockets.
     """
     try:
         # Get cross-repo directories from environment or defaults
         cross_repo_dirs = [
-            _get_env_path("JARVIS_PRIME_DIR", Path.home() / "Documents/repos/jarvis-prime"),
+            _get_env_path("Ironcliw_PRIME_DIR", Path.home() / "Documents/repos/jarvis-prime"),
             _get_env_path("REACTOR_CORE_DIR", Path.home() / "Documents/repos/reactor-core"),
         ]
 
@@ -4276,7 +4276,7 @@ def _setup_sighup_handler() -> None:
             current_ppid = os.getppid()
 
             # Trinity ports that MUST be free for restart
-            TRINITY_PORTS = [8000, 8010, 8090]  # J-Prime, JARVIS, Reactor-Core
+            TRINITY_PORTS = [8000, 8010, 8090]  # J-Prime, Ironcliw, Reactor-Core
 
             # Step 4a: Kill our direct children EXCEPT registered Trinity services
             # v117.0: Check GlobalProcessRegistry BEFORE killing to preserve Trinity services
@@ -4358,7 +4358,7 @@ def _setup_sighup_handler() -> None:
                             proc = psutil.Process(pid)
                             cmdline = " ".join(proc.cmdline())
 
-                            # Only kill JARVIS-related processes
+                            # Only kill Ironcliw-related processes
                             if any(p in cmdline.lower() for p in
                                    ['jarvis', 'uvicorn', 'trinity_orchestrator', 'reactor']):
                                 logger.info(

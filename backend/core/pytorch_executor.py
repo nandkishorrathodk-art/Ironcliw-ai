@@ -1,4 +1,4 @@
-"""
+﻿"""
 PyTorch Single-Thread Executor for Apple Silicon Stability
 
 A robust, production-grade executor that serializes ALL PyTorch operations
@@ -99,7 +99,7 @@ def _apply_pytree_compatibility_shim() -> bool:
 
     def _log(msg: str, level: str = "INFO") -> None:
         """Early logging before logger is available."""
-        if os.environ.get("JARVIS_DEBUG") or os.environ.get("DEBUG"):
+        if os.environ.get("Ironcliw_DEBUG") or os.environ.get("DEBUG"):
             print(f"[{level}] {msg}", file=sys.stderr)
 
     try:
@@ -183,7 +183,7 @@ def _apply_transformers_security_bypass() -> bool:
 
     Returns True if bypass was applied, False otherwise.
     """
-    if os.environ.get("JARVIS_STRICT_TORCH_SECURITY") == "1":
+    if os.environ.get("Ironcliw_STRICT_TORCH_SECURITY") == "1":
         return False
 
     try:
@@ -756,6 +756,12 @@ class ModelLoadCoordinator:
         """
         lock_file = self._lock_dir / f"{model_name.replace('/', '_')}.lock"
         start_time = time.time()
+
+        import platform
+        if platform.system() == "Windows":
+            self._held_locks[model_name] = None
+            logger.debug(f"Windows: skipping file lock for {model_name} (fcntl unavailable)")
+            return True
 
         while (time.time() - start_time) < timeout:
             try:

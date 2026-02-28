@@ -1,5 +1,5 @@
-"""
-Computer Use Tool for JARVIS Autonomous Agent
+﻿"""
+Computer Use Tool for Ironcliw Autonomous Agent
 
 This module exposes the Claude Computer Use capabilities as a tool
 that can be used by the Neural Mesh, Autonomous Agent, and UAE.
@@ -37,7 +37,7 @@ from uuid import uuid4
 
 # Import base tool classes
 from .langchain_tools import (
-    JARVISTool,
+    IroncliwTool,
     ToolMetadata,
     ToolCategory,
     ToolRiskLevel,
@@ -168,7 +168,7 @@ class GoalAnalysis:
 # Computer Use Tool
 # ============================================================================
 
-class ComputerUseTool(JARVISTool):
+class ComputerUseTool(IroncliwTool):
     """
     Tool that allows the Autonomous Agent to control the computer interface
     to achieve goals that require visual interaction.

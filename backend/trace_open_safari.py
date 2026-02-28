@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Trace the execution of 'open safari' command"""
 
 import asyncio
 import sys
 import logging
-sys.path.append('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.append('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s - %(message)s')

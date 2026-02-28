@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Setup Voice Unlock for JARVIS
+Setup Voice Unlock for Ironcliw
 =============================
 
 This script securely enrolls your voice and stores your password
@@ -16,7 +16,7 @@ import numpy as np
 from datetime import datetime
 
 def setup_voice_unlock():
-    print("🔐 JARVIS Voice Unlock Setup")
+    print("🔐 Ironcliw Voice Unlock Setup")
     print("=" * 40)
     print()
     
@@ -104,15 +104,15 @@ def setup_voice_unlock():
     print("\nYour Voice Unlock system is now ready to actually unlock your Mac.")
     print("\nHow to use:")
     print("1. Make sure the Voice Unlock system is running:")
-    print("   cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock")
+    print("   cd ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock")
     print("   ./start_voice_unlock_system.sh")
     print()
     print("2. Lock your screen (⌘+Control+Q)")
     print()
     print("3. Say one of these phrases:")
-    print("   - 'Hello JARVIS, unlock my Mac'")
-    print("   - 'JARVIS, this is " + username.capitalize() + "'")
-    print("   - 'Open sesame, JARVIS'")
+    print("   - 'Hello Ironcliw, unlock my Mac'")
+    print("   - 'Ironcliw, this is " + username.capitalize() + "'")
+    print("   - 'Open sesame, Ironcliw'")
     print()
     print("⚠️  Security Note:")
     print("Your password is stored securely in the macOS Keychain.")

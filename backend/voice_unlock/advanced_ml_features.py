@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced ML Features for JARVIS Continuous Learning
+Advanced ML Features for Ironcliw Continuous Learning
 ===================================================
 
 This module provides advanced ML capabilities:

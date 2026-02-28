@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Orchestrator-Narrator Bridge v1.0 - Real-Time Event-Driven Integration
 =======================================================================
@@ -26,7 +26,7 @@ Advanced Patterns:
 - Priority-based announcement queuing
 - Semantic deduplication
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -280,8 +280,8 @@ EVENT_MESSAGE_TEMPLATES: Dict[OrchestratorEvent, Dict[str, List[str]]] = {
     # Service lifecycle
     OrchestratorEvent.SERVICE_SPAWNING: {
         "jarvis-prime": [
-            "Spawning JARVIS Prime. The Mind is awakening.",
-            "Starting JARVIS Prime service. Cognitive layer initializing.",
+            "Spawning Ironcliw Prime. The Mind is awakening.",
+            "Starting Ironcliw Prime service. Cognitive layer initializing.",
         ],
         "reactor-core": [
             "Spawning Reactor Core. The Nerves are activating.",
@@ -294,8 +294,8 @@ EVENT_MESSAGE_TEMPLATES: Dict[OrchestratorEvent, Dict[str, List[str]]] = {
     },
     OrchestratorEvent.SERVICE_HEALTHY: {
         "jarvis-prime": [
-            "JARVIS Prime is healthy and responsive.",
-            "The Mind is online. JARVIS Prime ready.",
+            "Ironcliw Prime is healthy and responsive.",
+            "The Mind is online. Ironcliw Prime ready.",
         ],
         "reactor-core": [
             "Reactor Core is healthy. Learning systems active.",

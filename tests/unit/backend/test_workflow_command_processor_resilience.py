@@ -1,4 +1,4 @@
-import importlib
+﻿import importlib
 import sys
 import types
 from dataclasses import dataclass
@@ -11,11 +11,11 @@ def _load_workflow_command_processor_module(monkeypatch):
     fake_voice_module = types.ModuleType("backend.api.jarvis_voice_api")
 
     @dataclass
-    class JARVISCommand:
+    class IroncliwCommand:
         text: str
         deadline: float = None
 
-    fake_voice_module.JARVISCommand = JARVISCommand
+    fake_voice_module.IroncliwCommand = IroncliwCommand
     monkeypatch.setitem(sys.modules, "backend.api.jarvis_voice_api", fake_voice_module)
 
     fake_engine_module = types.ModuleType("backend.api.workflow_engine")
@@ -69,7 +69,7 @@ async def test_process_workflow_command_uses_basic_fallback_when_response_genera
     processor._generate_response_with_claude = failing_dynamic_response
     processor._generate_basic_response = lambda *_args, **_kwargs: "fallback response"
 
-    response = await processor.process_workflow_command(module.JARVISCommand(text=workflow.original_command))
+    response = await processor.process_workflow_command(module.IroncliwCommand(text=workflow.original_command))
 
     assert response["command_type"] == "workflow"
     assert response["response"] == "fallback response"

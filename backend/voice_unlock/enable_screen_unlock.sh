@@ -1,16 +1,16 @@
-#!/bin/bash
-# Enable Screen Unlock for JARVIS Voice Unlock
+﻿#!/bin/bash
+# Enable Screen Unlock for Ironcliw Voice Unlock
 # ============================================
 
-echo "🔐 JARVIS Voice Unlock - Enable Screen Unlock"
+echo "🔐 Ironcliw Voice Unlock - Enable Screen Unlock"
 echo "============================================="
 echo
-echo "This script will enable JARVIS to actually unlock your screen."
+echo "This script will enable Ironcliw to actually unlock your screen."
 echo "Your password will be stored securely in the macOS Keychain."
 echo
 echo "⚠️  IMPORTANT: Run this script directly in your terminal:"
 echo
-echo "cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock"
+echo "cd ~/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock"
 echo "./enable_screen_unlock.sh"
 echo
 echo "The script will:"
@@ -103,9 +103,9 @@ echo
 echo "2. Lock your screen (⌘+Control+Q)"
 echo
 echo "3. Say one of these phrases:"
-echo "   - 'Hello JARVIS, unlock my Mac'"
-echo "   - 'JARVIS, this is $USERNAME'"
-echo "   - 'Open sesame, JARVIS'"
+echo "   - 'Hello Ironcliw, unlock my Mac'"
+echo "   - 'Ironcliw, this is $USERNAME'"
+echo "   - 'Open sesame, Ironcliw'"
 echo
 echo "The system will type your password and unlock the screen!"
 echo

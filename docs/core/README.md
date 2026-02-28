@@ -1,9 +1,9 @@
-# Core Infrastructure Documentation
+﻿# Core Infrastructure Documentation
 
 > **Version:** 17.9.7
 > **Last Updated:** December 2024
 
-This directory contains documentation for JARVIS's core infrastructure components - the foundational classes and systems that ensure reliability, consistency, and robustness across the entire application.
+This directory contains documentation for Ironcliw's core infrastructure components - the foundational classes and systems that ensure reliability, consistency, and robustness across the entire application.
 
 ---
 

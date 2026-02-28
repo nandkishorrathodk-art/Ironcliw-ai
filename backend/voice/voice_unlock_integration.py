@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Unlock Integration Service
 ==================================
 
@@ -21,7 +21,7 @@ from typing import Optional, Tuple
 # Add parent directories to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from intelligence.learning_database import JARVISLearningDatabase
+from intelligence.learning_database import IroncliwLearningDatabase
 from voice.speaker_verification_service import SpeakerVerificationService
 from voice_unlock.services.keychain_service import KeychainService
 
@@ -71,9 +71,9 @@ class VoiceUnlockIntegration:
         self.initialized = False
         self.enable_voice_feedback = True  # Enable spoken responses
 
-        # JARVIS Voice configuration (matching codebase standards)
-        self.jarvis_voice_name = os.getenv('JARVIS_VOICE_NAME', 'Daniel')  # British male voice
-        self.jarvis_voice_rate = int(os.getenv('JARVIS_VOICE_RATE_WPM', '175'))  # Words per minute
+        # Ironcliw Voice configuration (matching codebase standards)
+        self.jarvis_voice_name = os.getenv('Ironcliw_VOICE_NAME', 'Daniel')  # British male voice
+        self.jarvis_voice_rate = int(os.getenv('Ironcliw_VOICE_RATE_WPM', '175'))  # Words per minute
         self.urgent_voice_rate = 200  # For urgent/important messages
 
         # Configuration - these are now base thresholds, actual will be adaptive
@@ -296,7 +296,7 @@ class VoiceUnlockIntegration:
             # Fallback: Try to get from environment variable (for testing)
             import os
 
-            password = os.environ.get("JARVIS_UNLOCK_PASSWORD")
+            password = os.environ.get("Ironcliw_UNLOCK_PASSWORD")
 
             if password:
                 logger.warning(
@@ -431,7 +431,7 @@ class VoiceUnlockIntegration:
 
     async def _speak_jarvis(self, message: str, urgent: bool = False) -> None:
         """
-        Speak message using JARVIS voice (Daniel - British male voice)
+        Speak message using Ironcliw voice (Daniel - British male voice)
 
         Uses macOS 'say' command with the same voice configuration used throughout the codebase.
         Runs asynchronously in the background to not block unlock operations.
@@ -458,10 +458,10 @@ class VoiceUnlockIntegration:
             )
 
             # Don't wait for completion - let it speak in background
-            logger.info(f"🔊 [JARVIS VOICE] Speaking: '{message}' (voice={self.jarvis_voice_name}, rate={rate} WPM)")
+            logger.info(f"🔊 [Ironcliw VOICE] Speaking: '{message}' (voice={self.jarvis_voice_name}, rate={rate} WPM)")
 
         except Exception as e:
-            logger.error(f"Failed to speak with JARVIS voice: {e}")
+            logger.error(f"Failed to speak with Ironcliw voice: {e}")
 
     async def cleanup(self):
         """Cleanup resources"""

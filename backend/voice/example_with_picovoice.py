@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Example: Using JARVIS with Picovoice for ultra-fast wake word detection
+Example: Using Ironcliw with Picovoice for ultra-fast wake word detection
 """
 
 import os
@@ -15,12 +15,12 @@ os.environ["USE_PICOVOICE"] = "true"
 from voice.optimized_voice_system import create_optimized_jarvis
 
 async def main():
-    """Example of using optimized JARVIS with Picovoice"""
+    """Example of using optimized Ironcliw with Picovoice"""
     
     # Your Anthropic API key
     api_key = os.getenv("ANTHROPIC_API_KEY", "your-anthropic-key")
     
-    print("🚀 Starting JARVIS with Picovoice wake word detection...")
+    print("🚀 Starting Ironcliw with Picovoice wake word detection...")
     print("=" * 60)
     
     # Create optimized system for 16GB MacBook Pro
@@ -101,7 +101,7 @@ async def test_sensitivity_levels():
         # ... run detection tests ...
 
 if __name__ == "__main__":
-    print("JARVIS + Picovoice Integration Example")
+    print("Ironcliw + Picovoice Integration Example")
     print("=====================================")
     print(f"Picovoice Key: {'✅ Set' if os.getenv('PICOVOICE_ACCESS_KEY') else '❌ Not set'}")
     print()

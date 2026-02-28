@@ -1,4 +1,4 @@
-# Advanced Component Warmup System
+﻿# Advanced Component Warmup System
 
 ## Overview
 
@@ -66,7 +66,7 @@ Components load in order of criticality:
 ## 🔧 Usage
 
 ### Automatic Startup
-Warmup happens automatically on JARVIS startup via `main.py`:
+Warmup happens automatically on Ironcliw startup via `main.py`:
 
 ```python
 # In lifespan function

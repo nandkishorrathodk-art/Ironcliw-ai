@@ -1,4 +1,4 @@
-# JARVIS Voice Pipeline Documentation
+﻿# Ironcliw Voice Pipeline Documentation
 
 **Last Updated**: 2025-01-13
 **Status**: Production (Enhanced with VAD + Windowing + Streaming Safeguard)
@@ -7,13 +7,13 @@
 
 ## 🎯 Overview
 
-This document describes the complete JARVIS voice processing pipeline, from microphone capture in the frontend to screen unlock execution in the backend.
+This document describes the complete Ironcliw voice processing pipeline, from microphone capture in the frontend to screen unlock execution in the backend.
 
 ### Problem Statement
 
 **Before Enhancement**:
 - User says "unlock my screen"
-- JARVIS responds: "Screen unlock timed out."
+- Ironcliw responds: "Screen unlock timed out."
 - **Root Cause**: Frontend continuously streams audio while backend accumulates chunks → Whisper receives 60+ seconds of audio → slow processing + hallucinations
 
 **After Enhancement**:
@@ -566,9 +566,9 @@ print(f"Duration: {manager.get_duration(windowed_audio):.1f}s")
 - [WebRTC VAD Documentation](https://webrtc.org/architecture/)
 - [Silero VAD Model](https://github.com/snakers4/silero-vad)
 - [Faster Whisper](https://github.com/guillaumekln/faster-whisper)
-- [JARVIS Architecture Overview](../README.md)
+- [Ironcliw Architecture Overview](../README.md)
 
 ---
 
-**Maintained by**: JARVIS AI Team
+**Maintained by**: Ironcliw AI Team
 **Questions**: File an issue in the GitHub repository

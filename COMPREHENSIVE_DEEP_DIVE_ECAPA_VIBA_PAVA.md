@@ -1,4 +1,4 @@
-# Comprehensive Deep Dive: ECAPA, VIBA, and PAVA Integration
+﻿# Comprehensive Deep Dive: ECAPA, VIBA, and PAVA Integration
 
 **Complete Analysis of All Three Areas:**
 - (A) Why ECAPA Keeps Failing to Load
@@ -143,7 +143,7 @@ if use_cloud:
 1. **Low RAM (<4GB)** → Routes to cloud
 2. **Cloud not configured** → `_cloud_endpoint` is None
 3. **Cloud verification fails** → Backend not ready
-4. **Local fallback disabled** → `JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED=false`
+4. **Local fallback disabled** → `Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED=false`
 5. **Local fallback also fails** → Both paths fail
 
 **Your Diagnostic Shows:**
@@ -257,9 +257,9 @@ Based on diagnostics, here's the exact failure chain:
 | Model download fails | `from_hparams()` line 448 | `ConnectionError` or `TimeoutError` | Check internet, retry |
 | Cache write fails | `savedir` parameter | `PermissionError` | Fix cache directory permissions |
 | Memory insufficient | `check_memory_pressure()` | Routes to cloud | Increase RAM or configure cloud |
-| Cloud not configured | `_activate_cloud_routing()` | `_cloud_endpoint is None` | Set `JARVIS_CLOUD_ML_ENDPOINT` |
+| Cloud not configured | `_activate_cloud_routing()` | `_cloud_endpoint is None` | Set `Ironcliw_CLOUD_ML_ENDPOINT` |
 | Cloud verification fails | `_verify_cloud_backend_ready()` | Backend not responding | Check cloud service status |
-| Local fallback disabled | `_fallback_to_local_ecapa()` | `JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED=false` | Enable fallback |
+| Local fallback disabled | `_fallback_to_local_ecapa()` | `Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED=false` | Enable fallback |
 | Load timeout | `asyncio.wait_for()` | `TimeoutError after 120s` | Increase timeout or check system load |
 | Thread pool error | `run_in_executor()` | Exception in thread | Check system resources |
 | Warmup fails | `_warmup_impl()` | Embedding extraction fails | Check model integrity |
@@ -941,7 +941,7 @@ class VerificationResult:
             if self.diagnostics.get("ecapa_unavailable"):
                 return "Voice identification unavailable. ECAPA encoder not loaded. Please check system configuration."
             elif self.diagnostics.get("enrollment_missing"):
-                return "Voice profile not found. Please complete enrollment by saying 'JARVIS, learn my voice'."
+                return "Voice profile not found. Please complete enrollment by saying 'Ironcliw, learn my voice'."
             # ... etc
         return f"Voice verified: {self.speaker_name} ({self.confidence:.1%})"
 ```

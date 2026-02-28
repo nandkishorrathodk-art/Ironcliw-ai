@@ -1,4 +1,4 @@
-"""
+﻿"""
 Environment Configuration Utilities
 ====================================
 
@@ -43,7 +43,7 @@ Usage:
         port: int = 8080
         debug: bool = False
 
-    config = AppConfig.from_env()  # Reads JARVIS_PORT, JARVIS_DEBUG
+    config = AppConfig.from_env()  # Reads Ironcliw_PORT, Ironcliw_DEBUG
 """
 
 from __future__ import annotations
@@ -362,7 +362,7 @@ class EnvConfig:
 
     Convention:
         Field 'my_setting' -> env key '{prefix}MY_SETTING'
-        Default prefix: "JARVIS_"
+        Default prefix: "Ironcliw_"
         Override via class attribute: _env_prefix = "CUSTOM_"
 
     Supported field types:
@@ -374,9 +374,9 @@ class EnvConfig:
     Example:
         @dataclass
         class VoiceConfig(EnvConfig):
-            sample_rate: int = 16000      # -> JARVIS_SAMPLE_RATE
-            base_threshold: float = 0.85  # -> JARVIS_BASE_THRESHOLD
-            enabled: bool = True          # -> JARVIS_ENABLED
+            sample_rate: int = 16000      # -> Ironcliw_SAMPLE_RATE
+            base_threshold: float = 0.85  # -> Ironcliw_BASE_THRESHOLD
+            enabled: bool = True          # -> Ironcliw_ENABLED
 
         config = VoiceConfig.from_env()
 
@@ -387,7 +387,7 @@ class EnvConfig:
             port: int = 8080  # -> MYAPP_PORT
     """
 
-    _env_prefix: ClassVar[str] = "JARVIS_"
+    _env_prefix: ClassVar[str] = "Ironcliw_"
 
     @classmethod
     def from_env(cls: Type[T]) -> T:
@@ -396,7 +396,7 @@ class EnvConfig:
 
         For each field in the dataclass:
         1. Convert field name to UPPER_SNAKE_CASE
-        2. Prepend the prefix (default: JARVIS_)
+        2. Prepend the prefix (default: Ironcliw_)
         3. Read from environment with appropriate type conversion
         4. Use field default if env var not set or invalid
 

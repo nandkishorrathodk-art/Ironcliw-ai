@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Debug script for multi-space integration issues
 """
@@ -136,7 +136,7 @@ def test_multi_space_query_detection():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("=== JARVIS Multi-Space Debug Script ===\n")
+    print("=== Ironcliw Multi-Space Debug Script ===\n")
     
     # Check dependencies first
     check_dependencies()

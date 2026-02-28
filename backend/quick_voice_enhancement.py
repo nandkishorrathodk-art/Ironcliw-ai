@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 🚀 ADVANCED QUICK VOICE ENHANCEMENT SYSTEM
 ═══════════════════════════════════════════
@@ -882,7 +882,7 @@ class IntelligentPhraseSelector:
         # Phonetically diverse phrases (hand-selected for max coverage)
         self.phrases = [
             # Vowel-heavy (covers all major vowels)
-            "Hey JARVIS, show me photos from our vacation in Hawaii",
+            "Hey Ironcliw, show me photos from our vacation in Hawaii",
             "Open Safari and search for authentic Italian restaurants",
 
             # Consonant clusters (difficult sounds)

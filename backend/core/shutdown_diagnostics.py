@@ -1,9 +1,9 @@
-"""
+﻿"""
 Shutdown Diagnostics v151.0 - Deep Forensic Logging for Shutdown Analysis
 ==========================================================================
 
 This module provides enterprise-grade diagnostic logging to trace exactly
-what triggers shutdown events in the JARVIS Trinity system.
+what triggers shutdown events in the Ironcliw Trinity system.
 
 PROBLEM SOLVED:
     System was shutting down within 100ms of startup with no clear trigger.
@@ -27,7 +27,7 @@ DIAGNOSTIC OUTPUT:
     - ~/.jarvis/trinity/shutdown_diagnostics.log (DEBUG level - full detail)
     - ~/.jarvis/trinity/shutdown_forensics.json (structured JSON for analysis)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 151.0.0
 """
 
@@ -59,9 +59,9 @@ _diag_logger.setLevel(logging.DEBUG)
 
 def _resolve_diag_log_dir() -> Path:
     """Resolve a writable diagnostics directory with deterministic fallback."""
-    explicit = os.environ.get("JARVIS_SHUTDOWN_DIAG_DIR", "").strip()
+    explicit = os.environ.get("Ironcliw_SHUTDOWN_DIAG_DIR", "").strip()
     jarvis_home = Path(
-        os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis"))
+        os.environ.get("Ironcliw_HOME", str(Path.home() / ".jarvis"))
     ).expanduser()
 
     candidates = []
@@ -196,7 +196,7 @@ class ShutdownDiagnostics:
     def _capture_env_snapshot(self) -> Dict[str, str]:
         """Capture relevant environment variables."""
         relevant_prefixes = (
-            "JARVIS_", "GCP_", "TRINITY_", "REACTOR_",
+            "Ironcliw_", "GCP_", "TRINITY_", "REACTOR_",
             "PYTHONPATH", "PATH", "HOME", "USER"
         )
         return {

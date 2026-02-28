@@ -1,8 +1,8 @@
-# Claude Vision Analyzer - Comprehensive Analysis
+﻿# Claude Vision Analyzer - Comprehensive Analysis
 
 ## Purpose & Role
 
-`claude_vision_analyzer_main.py` is the **central vision intelligence hub** for JARVIS. It serves as the primary interface between JARVIS and Claude's vision API, providing sophisticated screen understanding capabilities.
+`claude_vision_analyzer_main.py` is the **central vision intelligence hub** for Ironcliw. It serves as the primary interface between Ironcliw and Claude's vision API, providing sophisticated screen understanding capabilities.
 
 ### Core Purpose:
 1. **Screen Analysis** - Analyzes screenshots using Claude Vision API to understand what's on screen
@@ -163,6 +163,6 @@
 
 ## Summary
 
-`claude_vision_analyzer_main.py` is a powerful but overly complex monolithic file that serves as JARVIS's visual cortex. While it provides impressive capabilities including the newly integrated proactive monitoring, its size and complexity create significant maintenance, testing, and scalability challenges. The file would benefit greatly from refactoring into a more modular architecture while maintaining its current functionality.
+`claude_vision_analyzer_main.py` is a powerful but overly complex monolithic file that serves as Ironcliw's visual cortex. While it provides impressive capabilities including the newly integrated proactive monitoring, its size and complexity create significant maintenance, testing, and scalability challenges. The file would benefit greatly from refactoring into a more modular architecture while maintaining its current functionality.
 
 The integration of proactive vision intelligence directly into this file (as requested) has made it even larger and more complex, highlighting the need for future architectural improvements.

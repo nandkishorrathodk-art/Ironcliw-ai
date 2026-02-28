@@ -1,4 +1,4 @@
-"""
+﻿"""
 Bounded Async Queue with configurable overflow policies.
 
 Phase 5A of Enterprise Hardening Plan.
@@ -38,8 +38,8 @@ T = TypeVar("T")
 # Configuration via environment variables
 # ---------------------------------------------------------------------------
 
-_DEFAULT_QUEUE_SIZE = int(os.environ.get("JARVIS_DEFAULT_QUEUE_SIZE", "1000"))
-_LOG_THRESHOLD_PCT = float(os.environ.get("JARVIS_QUEUE_WARN_PCT", "0.8"))
+_DEFAULT_QUEUE_SIZE = int(os.environ.get("Ironcliw_DEFAULT_QUEUE_SIZE", "1000"))
+_LOG_THRESHOLD_PCT = float(os.environ.get("Ironcliw_QUEUE_WARN_PCT", "0.8"))
 
 # ---------------------------------------------------------------------------
 # Overflow policy enum
@@ -118,7 +118,7 @@ class BoundedAsyncQueue(asyncio.Queue, Generic[T]):
     ----------
     maxsize:
         Maximum number of items the queue can hold.  Defaults to the
-        ``JARVIS_DEFAULT_QUEUE_SIZE`` env-var (1000).
+        ``Ironcliw_DEFAULT_QUEUE_SIZE`` env-var (1000).
     policy:
         What to do when the queue is full.  See :class:`OverflowPolicy`.
     name:
@@ -389,7 +389,7 @@ def create_bounded_queue(
     Parameters
     ----------
     maxsize:
-        Upper bound.  ``0`` means use ``JARVIS_DEFAULT_QUEUE_SIZE`` (1000).
+        Upper bound.  ``0`` means use ``Ironcliw_DEFAULT_QUEUE_SIZE`` (1000).
     policy:
         Overflow policy to apply.
     name:

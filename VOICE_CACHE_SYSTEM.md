@@ -1,4 +1,4 @@
-# Ultra-Robust Voice Profile Caching System
+﻿# Ultra-Robust Voice Profile Caching System
 
 ## 🎯 Overview
 
@@ -216,7 +216,7 @@ python diagnose_connections.py
 
 # Test offline authentication (with proxy stopped)
 pkill cloud-sql-proxy
-# Then try: "Hey JARVIS, unlock my screen"
+# Then try: "Hey Ironcliw, unlock my screen"
 # Should still work! ✅
 ```
 
@@ -248,10 +248,10 @@ pkill cloud-sql-proxy
 
 ### In Your Code
 ```python
-from intelligence.learning_database import JARVISLearningDatabase
+from intelligence.learning_database import IroncliwLearningDatabase
 
 # Initialize (automatic bootstrap if needed)
-db = JARVISLearningDatabase()
+db = IroncliwLearningDatabase()
 await db.initialize()
 
 # Read voice profile (offline-capable)
@@ -307,7 +307,7 @@ pgrep -fl cloud-sql-proxy
 # 3. Start proxy if needed
 ~/.local/bin/cloud-sql-proxy <connection-name>
 
-# 4. Restart JARVIS (will auto-bootstrap)
+# 4. Restart Ironcliw (will auto-bootstrap)
 ```
 
 ### Issue: Cache not refreshing
@@ -328,7 +328,7 @@ python diagnose_connections.py
 ### Issue: Stale profiles after new enrollment
 
 **Wait:** Up to 5 minutes for automatic refresh
-**Or Force:** Restart JARVIS to trigger immediate bootstrap
+**Or Force:** Restart Ironcliw to trigger immediate bootstrap
 
 ---
 

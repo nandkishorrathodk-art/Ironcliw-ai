@@ -1,8 +1,8 @@
-[package]
+﻿[package]
 name = "jarvis-vision-intelligence"
 version = "0.1.0"
 edition = "2021"
-authors = ["JARVIS Vision Team"]
+authors = ["Ironcliw Vision Team"]
 
 [lib]
 name = "vision_intelligence"

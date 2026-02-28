@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligent Port Manager - Async, Parallel, and Dynamic Port Coordination
 ==========================================================================
 
@@ -17,7 +17,7 @@ Architecture:
     │  └── PortStateMonitor (async port availability tracking)            │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS v11.1 - Intelligent Port Management
+Author: Ironcliw v11.1 - Intelligent Port Management
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ class ProcessType(enum.Enum):
     PERMISSION_DENIED = "permission_denied"  # Requires elevated privileges
     OUR_PROCESS = "our_process"              # Our own managed process
     RELATED_PROCESS = "related_process"      # Parent/child/sibling
-    HEALTHY_JARVIS = "healthy_jarvis"        # Existing healthy JARVIS Prime
+    HEALTHY_Ironcliw = "healthy_jarvis"        # Existing healthy Ironcliw Prime
     UNRESPONSIVE = "unresponsive"            # Process exists but not responding
     UNKNOWN = "unknown"                      # Cannot determine
 
@@ -85,7 +85,7 @@ class ProcessInfo:
     @property
     def should_adopt(self) -> bool:
         """Check if we should adopt this process instead of killing."""
-        return self.process_type == ProcessType.HEALTHY_JARVIS
+        return self.process_type == ProcessType.HEALTHY_Ironcliw
 
     @property
     def needs_fallback(self) -> bool:
@@ -123,7 +123,7 @@ class IntelligentPortManager:
     2. Runs cleanup strategies in PARALLEL with first-success wins
     3. Switches to fallback port IMMEDIATELY when process is unkillable
     4. Uses adaptive timeouts based on process classification
-    5. Supports instance adoption for existing healthy JARVIS Prime
+    5. Supports instance adoption for existing healthy Ironcliw Prime
     """
 
     def __init__(
@@ -162,7 +162,7 @@ class IntelligentPortManager:
 
     async def ensure_port_available(self) -> Tuple[int, Optional[ProcessInfo]]:
         """
-        Ensure a port is available for JARVIS Prime, returning the port to use.
+        Ensure a port is available for Ironcliw Prime, returning the port to use.
 
         This is the main entry point that orchestrates all cleanup strategies.
 
@@ -202,7 +202,7 @@ class IntelligentPortManager:
             if result.success:
                 if result.adopted_process:
                     logger.info(
-                        f"[PortManager] ✅ Adopted existing JARVIS Prime on port {self._current_port} "
+                        f"[PortManager] ✅ Adopted existing Ironcliw Prime on port {self._current_port} "
                         f"(took {elapsed:.0f}ms)"
                     )
                     return (self._current_port, process_info)
@@ -223,7 +223,7 @@ class IntelligentPortManager:
 
             # All cleanup failed - raise error
             raise RuntimeError(
-                f"Cannot obtain port for JARVIS Prime after {elapsed:.0f}ms. "
+                f"Cannot obtain port for Ironcliw Prime after {elapsed:.0f}ms. "
                 f"Port {self.primary_port} held by PID {pid} ({process_info.process_type.value}). "
                 f"Error: {result.error}"
             )
@@ -295,7 +295,7 @@ class IntelligentPortManager:
                     info.is_jarvis_prime = True
                     # Check if it's healthy
                     if await self._probe_jarvis_health(port):
-                        info.process_type = ProcessType.HEALTHY_JARVIS
+                        info.process_type = ProcessType.HEALTHY_Ironcliw
                         info.is_healthy = True
                     else:
                         info.process_type = ProcessType.UNRESPONSIVE
@@ -326,7 +326,7 @@ class IntelligentPortManager:
         return info
 
     def _looks_like_jarvis_prime(self, cmdline: str, name: str) -> bool:
-        """Check if process looks like JARVIS Prime."""
+        """Check if process looks like Ironcliw Prime."""
         cmdline_lower = cmdline.lower()
         name_lower = name.lower()
 
@@ -334,8 +334,8 @@ class IntelligentPortManager:
             "jarvis_prime" in cmdline_lower,
             "jarvis-prime" in cmdline_lower,
             "jarvis.prime" in cmdline_lower,
-            "8000" in cmdline_lower and "python" in name_lower,  # Current JARVIS Prime port
-            "8002" in cmdline_lower and "python" in name_lower,  # Legacy JARVIS Prime port
+            "8000" in cmdline_lower and "python" in name_lower,  # Current Ironcliw Prime port
+            "8002" in cmdline_lower and "python" in name_lower,  # Legacy Ironcliw Prime port
             "llama" in cmdline_lower and "server" in cmdline_lower,
         ])
 
@@ -397,11 +397,11 @@ class IntelligentPortManager:
                 # Check for zombie
                 if "Z" in info.status:
                     info.process_type = ProcessType.ZOMBIE
-                # Check for JARVIS Prime
+                # Check for Ironcliw Prime
                 elif self._looks_like_jarvis_prime("", info.name):
                     info.is_jarvis_prime = True
                     if await self._probe_jarvis_health(port):
-                        info.process_type = ProcessType.HEALTHY_JARVIS
+                        info.process_type = ProcessType.HEALTHY_Ironcliw
                     else:
                         info.process_type = ProcessType.UNRESPONSIVE
                 else:
@@ -449,7 +449,7 @@ class IntelligentPortManager:
 
     async def _probe_jarvis_health(self, port: int) -> bool:
         """
-        Health probe for JARVIS Prime with retry logic.
+        Health probe for Ironcliw Prime with retry logic.
 
         v78.1: Added configurable retries with exponential backoff for slow startups.
         """
@@ -517,7 +517,7 @@ class IntelligentPortManager:
 
         Uses PARALLEL execution where possible for maximum speed.
         """
-        # Strategy 1: Adopt healthy JARVIS Prime
+        # Strategy 1: Adopt healthy Ironcliw Prime
         if info.should_adopt and self.adopt_existing:
             return CleanupResult(
                 success=True,
@@ -715,7 +715,7 @@ class IntelligentPortManager:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _graceful_http_shutdown(self, info: ProcessInfo) -> CleanupResult:
-        """Attempt graceful HTTP shutdown for JARVIS Prime instances."""
+        """Attempt graceful HTTP shutdown for Ironcliw Prime instances."""
         if not info.is_jarvis_prime:
             return CleanupResult(success=False, method="http_shutdown", elapsed_ms=0)
 

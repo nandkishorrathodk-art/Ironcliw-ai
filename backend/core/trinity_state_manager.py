@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity State Manager v4.0 - Enterprise-Grade Distributed State Management
 ===========================================================================
 
@@ -50,7 +50,7 @@ Features:
 - Incremental snapshots with full backup support
 - WAL (Write-Ahead Log) for durability
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 4.0.0
 """
 
@@ -127,8 +127,8 @@ class StateObserver(Protocol):
 
 class StateNamespace(str, Enum):
     """State namespace partitions."""
-    JARVIS_BODY = "jarvis"
-    JARVIS_PRIME = "prime"
+    Ironcliw_BODY = "jarvis"
+    Ironcliw_PRIME = "prime"
     REACTOR_CORE = "reactor"
     SHARED = "shared"
     SYSTEM = "system"
@@ -181,7 +181,7 @@ class StateManagerConfig:
     # Base directory
     state_base_dir: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_STATE_DIR",
+            "Ironcliw_STATE_DIR",
             str(Path.home() / ".jarvis" / "state")
         ))
     )

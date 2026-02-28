@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Safely Restart JARVIS
+Safely Restart Ironcliw
 ====================
 
-Kills old JARVIS instance and starts a new one with updated code.
+Kills old Ironcliw instance and starts a new one with updated code.
 """
 
 import subprocess
@@ -13,15 +13,15 @@ import signal
 import psutil
 
 def find_jarvis_processes():
-    """Find all JARVIS-related processes"""
+    """Find all Ironcliw-related processes"""
     jarvis_processes = []
     
     for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
         try:
             cmdline = proc.info.get('cmdline')
             if cmdline and any('main.py' in arg for arg in cmdline):
-                # Check if it's in the JARVIS directory
-                if any('JARVIS-AI-Agent/backend' in arg for arg in cmdline):
+                # Check if it's in the Ironcliw directory
+                if any('Ironcliw-AI-Agent/backend' in arg for arg in cmdline):
                     jarvis_processes.append({
                         'pid': proc.info['pid'],
                         'cmdline': ' '.join(cmdline),
@@ -35,14 +35,14 @@ def find_jarvis_processes():
 
 
 def kill_old_jarvis():
-    """Kill old JARVIS instances"""
+    """Kill old Ironcliw instances"""
     processes = find_jarvis_processes()
     
     if not processes:
-        print("No JARVIS processes found.")
+        print("No Ironcliw processes found.")
         return
     
-    print(f"Found {len(processes)} JARVIS process(es):")
+    print(f"Found {len(processes)} Ironcliw process(es):")
     for proc in processes:
         print(f"  PID {proc['pid']}: Running for {proc['age_hours']:.1f} hours")
         print(f"  Command: {proc['cmdline'][:80]}...")
@@ -114,8 +114,8 @@ def verify_intelligent_system():
 
 
 def start_new_jarvis():
-    """Start new JARVIS instance"""
-    print("\n🚀 Starting new JARVIS instance...")
+    """Start new Ironcliw instance"""
+    print("\n🚀 Starting new Ironcliw instance...")
 
     jarvis_dir = os.path.dirname(os.path.abspath(__file__))
     main_py = os.path.join(jarvis_dir, "main.py")
@@ -124,7 +124,7 @@ def start_new_jarvis():
         print(f"❌ main.py not found at {main_py}")
         return False
 
-    # Start JARVIS in background
+    # Start Ironcliw in background
     try:
         process = subprocess.Popen(
             ["python", main_py, "--port", "8010"],
@@ -138,26 +138,26 @@ def start_new_jarvis():
         time.sleep(3)
 
         if process.poll() is None:
-            print(f"✅ JARVIS started with PID {process.pid}")
+            print(f"✅ Ironcliw started with PID {process.pid}")
             return True
         else:
             stdout, stderr = process.communicate()
-            print(f"❌ JARVIS failed to start")
+            print(f"❌ Ironcliw failed to start")
             print(f"Error: {stderr.decode()}")
             return False
 
     except Exception as e:
-        print(f"❌ Failed to start JARVIS: {e}")
+        print(f"❌ Failed to start Ironcliw: {e}")
         return False
 
 
 def main():
     """Main restart process"""
-    print("🔄 JARVIS Safe Restart Tool")
+    print("🔄 Ironcliw Safe Restart Tool")
     print("="*50)
 
     # Kill old instances
-    print("\n1️⃣ Killing old JARVIS instances...")
+    print("\n1️⃣ Killing old Ironcliw instances...")
     kill_old_jarvis()
 
     # Wait a moment
@@ -172,9 +172,9 @@ def main():
         print("✅ All old processes terminated")
 
     # Start new instance
-    print("\n2️⃣ Starting fresh JARVIS instance...")
+    print("\n2️⃣ Starting fresh Ironcliw instance...")
     if start_new_jarvis():
-        print("\n✅ JARVIS restart complete!")
+        print("\n✅ Ironcliw restart complete!")
 
         # Verify intelligent system loaded
         print("\n3️⃣ Verifying intelligent routing system...")
@@ -183,9 +183,9 @@ def main():
         print("\n" + "="*50)
         print("🎉 All systems ready!")
     else:
-        print("\n❌ Failed to start JARVIS")
+        print("\n❌ Failed to start Ironcliw")
         print("You may need to start it manually:")
-        print("cd ~/Documents/repos/JARVIS-AI-Agent/backend")
+        print("cd ~/Documents/repos/Ironcliw-AI-Agent/backend")
         print("python main.py --port 8010")
 
 

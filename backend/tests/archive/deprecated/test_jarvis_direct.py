@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Weather Directly
+Test Ironcliw Weather Directly
 Bypass WebSocket to see if the issue is there
 """
 
@@ -24,8 +24,8 @@ logging.getLogger("workflows.weather_app_vision_unified").setLevel(logging.DEBUG
 logging.getLogger("system_control.unified_vision_weather").setLevel(logging.DEBUG)
 
 async def test_jarvis_direct():
-    """Test JARVIS weather handling directly without WebSocket"""
-    print("🔍 Testing JARVIS Weather Directly")
+    """Test Ironcliw weather handling directly without WebSocket"""
+    print("🔍 Testing Ironcliw Weather Directly")
     print("=" * 60)
     
     # Check API key
@@ -34,17 +34,17 @@ async def test_jarvis_direct():
         print("❌ ERROR: ANTHROPIC_API_KEY not found")
         return
     
-    print("\n1. Initializing JARVIS components...")
+    print("\n1. Initializing Ironcliw components...")
     
     # Initialize vision analyzer
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzerMain
     vision_analyzer = ClaudeVisionAnalyzerMain(api_key)
     print("✅ Vision analyzer initialized")
     
-    # Initialize JARVIS
-    from voice.jarvis_agent_voice import JARVISAgentVoice
-    jarvis = JARVISAgentVoice(user_name="Sir", vision_analyzer=vision_analyzer)
-    print("✅ JARVIS initialized")
+    # Initialize Ironcliw
+    from voice.jarvis_agent_voice import IroncliwAgentVoice
+    jarvis = IroncliwAgentVoice(user_name="Sir", vision_analyzer=vision_analyzer)
+    print("✅ Ironcliw initialized")
     
     # Test queries
     test_queries = [

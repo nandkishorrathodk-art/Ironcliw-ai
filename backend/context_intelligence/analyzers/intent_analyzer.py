@@ -1,8 +1,8 @@
-"""
-Intent Analyzer for JARVIS Context Intelligence
+﻿"""
+Intent Analyzer for Ironcliw Context Intelligence
 ==============================================
 
-This module provides intent analysis capabilities for the JARVIS context intelligence system.
+This module provides intent analysis capabilities for the Ironcliw context intelligence system.
 It analyzes user commands to determine their intent, extract relevant entities, and assess
 whether screen access is required for execution.
 

@@ -1,6 +1,6 @@
-# Architecture & Design
+﻿# Architecture & Design
 
-Complete system architecture documentation for JARVIS AI Agent, including hybrid infrastructure, intelligence systems, component distribution, and data flow.
+Complete system architecture documentation for Ironcliw AI Agent, including hybrid infrastructure, intelligence systems, component distribution, and data flow.
 
 ---
 
@@ -21,7 +21,7 @@ Complete system architecture documentation for JARVIS AI Agent, including hybrid
 
 ## Overview
 
-JARVIS features a **state-of-the-art hybrid architecture** with intelligent component lifecycle management that dynamically routes processing between local and cloud based on memory pressure, command complexity, and context.
+Ironcliw features a **state-of-the-art hybrid architecture** with intelligent component lifecycle management that dynamically routes processing between local and cloud based on memory pressure, command complexity, and context.
 
 ### Key Architectural Principles
 
@@ -40,7 +40,7 @@ JARVIS features a **state-of-the-art hybrid architecture** with intelligent comp
 
 ```mermaid
 graph TB
-    subgraph "JARVIS HYBRID ARCHITECTURE"
+    subgraph "Ironcliw HYBRID ARCHITECTURE"
         subgraph Local["LOCAL MAC (16GB RAM)"]
             AlwaysOn["ALWAYS-ON (~730MB)<br/>• Wake word (CoreML 50MB)<br/>• Voice unlock (80MB)<br/>• Display monitor (100MB)<br/>• SQLite database (50MB)"]
             OnDemand["ON-DEMAND (2-4GB)<br/>• Voice commands (200MB)<br/>• Vision capture (150MB)<br/>• UAE light (150MB)<br/>• CAI light (100MB)"]
@@ -125,7 +125,7 @@ Monthly estimate: ~$2-4/month (vs $15-30 regular VMs)
 
 ## Intelligence Systems
 
-JARVIS features four unified intelligence systems that work collaboratively:
+Ironcliw features four unified intelligence systems that work collaboratively:
 
 ### UAE (Unified Awareness Engine)
 
@@ -332,7 +332,7 @@ Components are prioritized for resource allocation:
 
 ```mermaid
 flowchart TD
-    Start["User speaks: 'Hey JARVIS, unlock my screen'"] --> WakeWord["Wake Word Detection<br/>(Local, CoreML, 50MB)<br/>Picovoice - Confidence: HIGH"]
+    Start["User speaks: 'Hey Ironcliw, unlock my screen'"] --> WakeWord["Wake Word Detection<br/>(Local, CoreML, 50MB)<br/>Picovoice - Confidence: HIGH"]
     WakeWord -->|Detected| AudioCapture["Audio Capture<br/>(Local, 3.2s recording)<br/>+ Preprocessing<br/>SNR: 18.5 dB"]
     AudioCapture --> STT["Speech-to-Text<br/>(Local or Cloud based on RAM)<br/>SpeechBrain<br/>RTF: 0.08, Latency: 156ms"]
     STT -->|Text: 'unlock my screen'| Speaker["Speaker Recognition<br/>(Cloud SQL lookup)<br/>ECAPA-TDNN<br/>Confidence: 95%"]
@@ -570,7 +570,7 @@ Local Mac                          GCP Spot VM
 
 ## Multi-Agent System
 
-JARVIS implements a **Hierarchical Multi-Agent System (MAS)** with 60+ specialized agents working collaboratively.
+Ironcliw implements a **Hierarchical Multi-Agent System (MAS)** with 60+ specialized agents working collaboratively.
 
 ### Three-Tier Architecture
 
@@ -720,7 +720,7 @@ TIER 3: SPECIALIZED SUB-AGENTS (30+ agents)
 
 **Cloud → Local (On startup + every 12 hours):**
 ```python
-# On JARVIS startup
+# On Ironcliw startup
 - Download recent patterns from Cloud SQL
 - Populate SQLite cache
 - Sync user preferences
@@ -741,7 +741,7 @@ See [Voice Processing Pipeline](#voice-processing-stack) section above for compl
 
 ### Voice Biometric Intelligence (VBI) v4.0
 
-JARVIS features an advanced **Voice Biometric Intelligence (VBI)** system for secure voice authentication:
+Ironcliw features an advanced **Voice Biometric Intelligence (VBI)** system for secure voice authentication:
 
 ```mermaid
 graph TB
@@ -815,7 +815,7 @@ Audio Playback (pygame mixer, async)
 
 ### Claude Vision API Integration
 
-JARVIS uses Anthropic's Claude Vision API for advanced screen understanding:
+Ironcliw uses Anthropic's Claude Vision API for advanced screen understanding:
 
 **Capabilities:**
 - Screen content analysis
@@ -865,7 +865,7 @@ return enriched.natural_language_response
 
 ## Summary
 
-JARVIS's architecture is designed for:
+Ironcliw's architecture is designed for:
 
 - **Performance** - Hybrid local/cloud processing for optimal speed
 - **Efficiency** - Intelligent resource management and cost optimization
@@ -879,14 +879,14 @@ The architecture supports current production features while enabling future expa
 ---
 
 **Related Documentation:**
-- [Setup & Installation](Setup-&-Installation.md) - Get started with JARVIS
+- [Setup & Installation](Setup-&-Installation.md) - Get started with Ironcliw
 - [API Documentation](API-Documentation.md) - API reference
 - [Troubleshooting Guide](Troubleshooting-Guide.md) - Common issues
 
 **External Resources:**
 - [HYBRID_ARCHITECTURE.md](../HYBRID_ARCHITECTURE.md) - 7500+ line detailed guide
-- [JARVIS_MULTI_AGENT_SYSTEM_DOCUMENTATION.md](../JARVIS_MULTI_AGENT_SYSTEM_DOCUMENTATION.md)
-- [JARVIS_NEURAL_MESH_ARCHITECTURE.md](../JARVIS_NEURAL_MESH_ARCHITECTURE.md)
+- [Ironcliw_MULTI_AGENT_SYSTEM_DOCUMENTATION.md](../Ironcliw_MULTI_AGENT_SYSTEM_DOCUMENTATION.md)
+- [Ironcliw_NEURAL_MESH_ARCHITECTURE.md](../Ironcliw_NEURAL_MESH_ARCHITECTURE.md)
 
 ---
 

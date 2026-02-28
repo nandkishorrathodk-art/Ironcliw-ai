@@ -1,5 +1,5 @@
-"""
-JARVIS Hyper-Speed Startup: LazyProxy Metaprogramming Engine
+﻿"""
+Ironcliw Hyper-Speed Startup: LazyProxy Metaprogramming Engine
 =============================================================
 
 Advanced metaprogramming wrapper that defers the cost of heavy imports
@@ -52,7 +52,7 @@ Architecture:
     │  6. Return real attribute                                   │
     └─────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 from __future__ import annotations
@@ -512,7 +512,7 @@ class SlottedDataClass:
 
 
 # =============================================================================
-# Example Slotted Classes for JARVIS
+# Example Slotted Classes for Ironcliw
 # =============================================================================
 
 class SlottedMessage(SlottedDataClass):

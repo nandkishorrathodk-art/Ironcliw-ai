@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fresh backend that ensures all fixes are loaded
 This is a guaranteed clean start with no caching issues
@@ -73,7 +73,7 @@ else:
 
 # Start the server
 if __name__ == "__main__":
-    print("\n🚀 Starting FRESH JARVIS Backend on port 8010")
+    print("\n🚀 Starting FRESH Ironcliw Backend on port 8010")
     print("   All vision fixes are active!")
     print("   Multi-space queries will work!\n")
     

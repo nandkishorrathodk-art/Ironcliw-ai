@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Profile Consolidation Service for JARVIS Voice System
+Advanced Profile Consolidation Service for Ironcliw Voice System
 Handles profile merging, embedding management, and dynamic feature extraction
 """
 

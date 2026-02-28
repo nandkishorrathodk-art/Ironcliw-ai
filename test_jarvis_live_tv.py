@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS live with Living Room TV connection
+Test Ironcliw live with Living Room TV connection
 Ensures fresh instances with drag fix are used
 """
 
@@ -13,9 +13,9 @@ import time
 sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
 async def test_live_jarvis():
-    """Test JARVIS with fresh instances"""
+    """Test Ironcliw with fresh instances"""
     print("\n" + "=" * 80)
-    print("TESTING LIVE JARVIS WITH FRESH INSTANCES")
+    print("TESTING LIVE Ironcliw WITH FRESH INSTANCES")
     print("=" * 80)
 
     # Step 1: Clear singletons
@@ -86,7 +86,7 @@ async def test_live_jarvis():
 async def main():
     """Run the test"""
     print("\n" + "=" * 80)
-    print("JARVIS LIVE TEST WITH DRAG FIX")
+    print("Ironcliw LIVE TEST WITH DRAG FIX")
     print("=" * 80)
     print("\nThis test will:")
     print("1. Clear all singleton instances")
@@ -102,14 +102,14 @@ async def main():
         print("=" * 80)
 
         if success:
-            print("✅ JARVIS is working correctly with the drag fix!")
+            print("✅ Ironcliw is working correctly with the drag fix!")
             print("\nThe Living Room TV connection is functioning properly.")
-            print("JARVIS should now respond correctly when you ask it to")
+            print("Ironcliw should now respond correctly when you ask it to")
             print("connect to the Living Room TV during normal usage.")
         else:
             print("❌ There may still be issues.")
             print("\nTry the following:")
-            print("1. Restart JARVIS completely")
+            print("1. Restart Ironcliw completely")
             print("2. Clear the cache: rm -rf ~/.jarvis/*.json")
             print("3. Check if Control Center is accessible manually")
 

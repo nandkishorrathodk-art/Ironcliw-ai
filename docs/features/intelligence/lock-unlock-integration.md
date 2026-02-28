@@ -1,4 +1,4 @@
-# Context Intelligence Lock/Unlock Integration
+﻿# Context Intelligence Lock/Unlock Integration
 
 ## Overview
 
@@ -113,7 +113,7 @@ python test_lock_screen_integration.py
 ### Test Full Context Flow
 ```bash
 # Lock screen manually or via command
-# Then say: "JARVIS, open Safari and search for dogs"
+# Then say: "Ironcliw, open Safari and search for dogs"
 ```
 
 ## Integration Status

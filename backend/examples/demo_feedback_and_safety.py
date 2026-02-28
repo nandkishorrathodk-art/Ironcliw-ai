@@ -1,4 +1,4 @@
-"""
+﻿"""
 Demo: Feedback Learning Loop & Command Safety Classification
 
 This example demonstrates the "Invisible Assistant" UX philosophy:
@@ -7,7 +7,7 @@ This example demonstrates the "Invisible Assistant" UX philosophy:
 - Safe command classification
 - Terminal intelligence with safety warnings
 
-Run this to see how JARVIS learns and improves over time.
+Run this to see how Ironcliw learns and improves over time.
 """
 import asyncio
 import logging
@@ -36,7 +36,7 @@ async def demo_feedback_learning():
     # Create feedback loop
     loop = FeedbackLearningLoop(storage_path=Path("/tmp/jarvis_feedback_demo.json"))
 
-    print("📚 Scenario: Teaching JARVIS what notifications you care about\n")
+    print("📚 Scenario: Teaching Ironcliw what notifications you care about\n")
 
     # Simulate user engaging with terminal errors
     print("→ User engages with terminal errors (5 times)...")
@@ -283,7 +283,7 @@ async def demo_integrated_workflow():
             print(f"   - Adjusted importance: {adjusted_importance:.2f}")
 
             if should_show:
-                print(f"\n💬 JARVIS: {suggestion.purpose}")
+                print(f"\n💬 Ironcliw: {suggestion.purpose}")
                 print(f"   Suggested command: {suggestion.command}")
                 print(f"   Safety tier: {suggestion.safety_tier}")
 
@@ -317,7 +317,7 @@ async def demo_integrated_workflow():
 async def main():
     """Run all demos."""
     print("\n" + "=" * 80)
-    print("  JARVIS Feedback Learning & Command Safety - Interactive Demo")
+    print("  Ironcliw Feedback Learning & Command Safety - Interactive Demo")
     print("=" * 80)
 
     try:
@@ -330,7 +330,7 @@ async def main():
         print("✨ Demo Complete!")
         print("=" * 80)
         print("\nKey Takeaways:")
-        print("1. JARVIS learns from your engagement/dismissal patterns")
+        print("1. Ironcliw learns from your engagement/dismissal patterns")
         print("2. Notifications adapt in real-time to your preferences")
         print("3. Commands are classified by safety tier (GREEN/YELLOW/RED)")
         print("4. Terminal intelligence provides context-aware suggestions")

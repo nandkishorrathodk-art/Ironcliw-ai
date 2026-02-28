@@ -1,4 +1,4 @@
-"""
+﻿"""
 Docker Daemon Manager v11.0 - Intelligent Self-Healing Engine
 
 Enterprise-grade async Docker daemon management with:
@@ -16,7 +16,7 @@ ROOT CAUSE FIXES (v11.0):
 - Added resource pre-flight checks before startup attempts
 - Added intelligent failure pattern recognition
 
-Author: JARVIS AGI System
+Author: Ironcliw AGI System
 Version: 11.0.0
 """
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.1: Partial Success Handler - Gap #41
 =========================================
 
@@ -25,7 +25,7 @@ Features:
     - Fallback framework selection
     - Progressive enhancement
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations

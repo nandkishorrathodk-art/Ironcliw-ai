@@ -1,4 +1,4 @@
-"""
+﻿"""
 Finite State Machine Framework with Compare-And-Swap (CAS) Pattern
 ===================================================================
 
@@ -14,7 +14,7 @@ Provides a reusable, generic FiniteStateMachine base class with:
 The original AtomicStateMachine (circuit breaker CAS pattern) inherits from
 FiniteStateMachine for full backward compatibility.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -656,7 +656,7 @@ class AtomicStateMachine(FiniteStateMachine[CircuitState]):
     """
     Atomic state machine with CAS pattern for concurrent safety.
 
-    This is the original JARVIS circuit-breaker state machine, now
+    This is the original Ironcliw circuit-breaker state machine, now
     implemented as a thin subclass of :class:`FiniteStateMachine`.
 
     **Full backward compatibility** is preserved:

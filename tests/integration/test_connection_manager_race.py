@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration Tests: Connection Manager Race Condition Fixes
 ============================================================
 
@@ -12,7 +12,7 @@ the 8 critical race conditions identified in cloud_sql_connection_manager.py:
 
 These tests verify the fixes work under realistic concurrent load.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

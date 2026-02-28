@@ -1,15 +1,15 @@
-#!/usr/bin/env python3
-"""Test the enhanced Toronto selection with JARVIS"""
+﻿#!/usr/bin/env python3
+"""Test the enhanced Toronto selection with Ironcliw"""
 
 import asyncio
 import os
 
 async def test_enhanced_selection():
-    """Test JARVIS with enhanced Toronto selection"""
+    """Test Ironcliw with enhanced Toronto selection"""
     print("🌟 Testing Enhanced Toronto Selection")
     print("="*60)
     
-    from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+    from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
     from api.jarvis_factory import set_app_state
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
     from system_control.macos_controller import MacOSController
@@ -27,7 +27,7 @@ async def test_enhanced_selection():
     )
     set_app_state(app_state)
     
-    jarvis_api = JARVISVoiceAPI()
+    jarvis_api = IroncliwVoiceAPI()
     
     # Test 1: Direct enhanced navigation test
     print("\n1. Testing direct enhanced navigation...")
@@ -52,15 +52,15 @@ async def test_enhanced_selection():
     # Small delay before main test
     await asyncio.sleep(2)
     
-    # Test 2: Full JARVIS weather command
-    print("\n2. Testing full JARVIS weather command...")
+    # Test 2: Full Ironcliw weather command
+    print("\n2. Testing full Ironcliw weather command...")
     print("   Asking: 'What's the weather for today?'")
     
-    command = JARVISCommand(text="What's the weather for today?")
+    command = IroncliwCommand(text="What's the weather for today?")
     result = await jarvis_api.process_command(command)
     
     response = result.get('response', '')
-    print(f"\n   JARVIS Response:")
+    print(f"\n   Ironcliw Response:")
     print(f"   {response}")
     
     # Analysis
@@ -68,13 +68,13 @@ async def test_enhanced_selection():
     print("Analysis:")
     
     if 'toronto' in response.lower():
-        print("✅ SUCCESS: JARVIS is reading Toronto weather!")
+        print("✅ SUCCESS: Ironcliw is reading Toronto weather!")
         print("   The enhanced navigation worked!")
     elif 'new york' in response.lower():
-        print("⚠️  JARVIS is still reading New York weather")
+        print("⚠️  Ironcliw is still reading New York weather")
         print("   Enhanced navigation may need adjustment")
     elif 'having trouble' in response.lower():
-        print("❌ JARVIS couldn't read the Weather app")
+        print("❌ Ironcliw couldn't read the Weather app")
     else:
         print("🔍 Check the response for location information")
     
@@ -82,5 +82,5 @@ async def test_enhanced_selection():
     print("Test complete!")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_enhanced_selection())

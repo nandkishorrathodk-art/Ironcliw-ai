@@ -1,4 +1,4 @@
-"""
+﻿"""
 Multi-Space Query Handler - Advanced Cross-Space Analysis
 ==========================================================
 
@@ -112,7 +112,7 @@ class MultiSpaceQueryHandler:
             context_graph: MultiSpaceContextGraph instance
             implicit_resolver: ImplicitReferenceResolver instance
             contextual_resolver: ContextualQueryResolver instance
-            learning_db: JARVISLearningDatabase instance for pattern learning
+            learning_db: IroncliwLearningDatabase instance for pattern learning
             yabai_detector: YabaiSpaceDetector for yabai integration
             cg_window_detector: MultiSpaceWindowDetector for Core Graphics windows
         """

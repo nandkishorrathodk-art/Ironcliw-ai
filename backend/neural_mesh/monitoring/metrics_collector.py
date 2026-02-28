@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Advanced Metrics Collector
+﻿"""
+Ironcliw Neural Mesh - Advanced Metrics Collector
 
 Comprehensive metrics collection system for monitoring Neural Mesh performance.
 
@@ -405,7 +405,7 @@ class MetricsCollector:
             Prometheus-formatted metrics string
         """
         lines = []
-        lines.append("# HELP neural_mesh_metrics JARVIS Neural Mesh metrics")
+        lines.append("# HELP neural_mesh_metrics Ironcliw Neural Mesh metrics")
         lines.append("# TYPE neural_mesh_metrics gauge")
         lines.append("")
 

@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Main Coordinator
+﻿"""
+Ironcliw macOS Helper - Main Coordinator
 
 Central coordinator for the macOS helper layer.
 Integrates all monitoring components and provides a unified interface
@@ -137,7 +137,7 @@ class HelperStats:
 
 class MacOSHelperCoordinator:
     """
-    Central coordinator for the JARVIS macOS helper layer.
+    Central coordinator for the Ironcliw macOS helper layer.
 
     Manages:
     - Event bus
@@ -1015,7 +1015,7 @@ async def main():
     """Main entry point for running as a background service."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="JARVIS macOS Helper Service")
+    parser = argparse.ArgumentParser(description="Ironcliw macOS Helper Service")
     parser.add_argument("--no-voice", action="store_true", help="Disable voice feedback")
     parser.add_argument("--no-agi", action="store_true", help="Disable AGI OS integration")
     parser.add_argument("--no-menu-bar", action="store_true", help="Disable menu bar indicator")

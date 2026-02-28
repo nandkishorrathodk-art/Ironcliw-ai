@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Supervisor-Aware GCP Controller
 ================================
 
-Intelligent GCP Spot VM management integrated with the JARVIS Supervisor.
+Intelligent GCP Spot VM management integrated with the Ironcliw Supervisor.
 
 Key Principles:
 - VMs are expensive - only create when ABSOLUTELY necessary
@@ -16,7 +16,7 @@ Key Principles:
 This is the unified brain for GCP resource management that prevents
 unnecessary spending while ensuring performance when truly needed.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -263,7 +263,7 @@ class SupervisorAwareGCPController:
         # v3.1: Stall recovery tracking
         self._stall_count: int = 0
         self._max_stall_retries: int = int(
-            os.environ.get("JARVIS_GCP_MAX_STALL_RETRIES", "2")
+            os.environ.get("Ironcliw_GCP_MAX_STALL_RETRIES", "2")
         )
         self._last_stall_time: Optional[datetime] = None
         self._gcp_marked_unavailable: bool = False

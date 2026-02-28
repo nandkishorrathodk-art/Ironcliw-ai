@@ -1,4 +1,4 @@
-# JARVIS Cleanup Integration Complete ✅
+﻿# Ironcliw Cleanup Integration Complete ✅
 
 ## Overview
 The advanced cleanup functionality has been fully integrated into `start_system.py`, providing automatic crash recovery, process cleanup, and system health management.
@@ -15,11 +15,11 @@ The existing cleanup method in `start_system.py` now includes:
 ### 2. New Command-Line Options
 
 #### `--emergency-cleanup`
-Performs forceful cleanup of ALL JARVIS processes:
+Performs forceful cleanup of ALL Ironcliw processes:
 ```bash
 python start_system.py --emergency-cleanup
 ```
-- Kills all JARVIS-related processes
+- Kills all Ironcliw-related processes
 - Frees all ports (3000, 8000, 8001, 8010, etc.)
 - Cleans up IPC resources (semaphores, shared memory)
 - Removes state files for fresh start
@@ -57,14 +57,14 @@ cleanup_stuck_processes()
     ├─→ smart_cleanup() [if needed]
     └─→ ensure_fresh_jarvis_instance()
     ↓
-Start JARVIS Services
+Start Ironcliw Services
 ```
 
 ### Emergency Thresholds
 Emergency cleanup triggers when:
 - Memory usage >80%
 - More than 2 zombie processes
-- More than 3 JARVIS processes running
+- More than 3 Ironcliw processes running
 
 ### Normal Cleanup Thresholds
 Normal cleanup triggers when:
@@ -72,7 +72,7 @@ Normal cleanup triggers when:
 - Any zombie processes exist
 - CPU usage >70%
 - Memory usage >70%
-- JARVIS processes older than 5 minutes
+- Ironcliw processes older than 5 minutes
 
 ## Usage Examples
 
@@ -82,17 +82,17 @@ python start_system.py
 ```
 Automatically cleans up before starting.
 
-### 2. Emergency Cleanup (when JARVIS won't start)
+### 2. Emergency Cleanup (when Ironcliw won't start)
 ```bash
 python start_system.py --emergency-cleanup
 ```
-Forcefully kills everything JARVIS-related.
+Forcefully kills everything Ironcliw-related.
 
 ### 3. Check System State
 ```bash
 python start_system.py --cleanup-only
 ```
-Analyzes and cleans without starting JARVIS.
+Analyzes and cleans without starting Ironcliw.
 
 ### 4. Start Without Cleanup (risky)
 ```bash
@@ -153,7 +153,7 @@ Wrapper that ensures cleanup before start.
 
 ## Troubleshooting
 
-### If JARVIS Won't Start
+### If Ironcliw Won't Start
 ```bash
 # Try emergency cleanup first
 python start_system.py --emergency-cleanup
@@ -204,4 +204,4 @@ The cleanup system is now fully integrated and automatic. Users can:
 2. **Use emergency cleanup**: `python start_system.py --emergency-cleanup`
 3. **Check system health**: `python start_system.py --cleanup-only`
 
-The system will handle all cleanup automatically, ensuring JARVIS always starts fresh and clean.
+The system will handle all cleanup automatically, ensuring Ironcliw always starts fresh and clean.

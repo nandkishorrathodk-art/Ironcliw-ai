@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Resource Manager
+Ironcliw Resource Manager
 ======================
 
 Strict resource management for 16GB MacBook systems.
-Ensures JARVIS stays within 70% total system memory usage.
+Ensures Ironcliw stays within 70% total system memory usage.
 """
 
 import psutil
@@ -48,7 +48,7 @@ class ResourceSnapshot:
 
 class ResourceManager:
     """
-    Strict resource management for JARVIS on 16GB systems
+    Strict resource management for Ironcliw on 16GB systems
     
     Goals:
     - Keep total system memory usage below 70% (11.2GB on 16GB system)
@@ -62,7 +62,7 @@ class ResourceManager:
         self.TOTAL_RAM_GB = 16
         self.MAX_MEMORY_PERCENT = 30.0  # Ultra-aggressive: 30% total system usage (4.8GB)
         self.PANIC_MEMORY_PERCENT = 35.0  # Panic mode above 35%
-        self.MAX_JARVIS_MEMORY_MB = 1024  # 1GB hard limit for JARVIS (reduced from 2GB)
+        self.MAX_Ironcliw_MEMORY_MB = 1024  # 1GB hard limit for Ironcliw (reduced from 2GB)
         self.MAX_ML_MEMORY_MB = 300  # 300MB for ML models (reduced from 400MB)
         self.MAX_CPU_PERCENT = 40.0  # Throttle above 40% CPU (more aggressive)
         
@@ -160,7 +160,7 @@ class ResourceManager:
         cpu_percent = psutil.cpu_percent(interval=0.1)
         cpu_per_core = psutil.cpu_percent(interval=0.1, percpu=True)
         
-        # Get JARVIS process memory
+        # Get Ironcliw process memory
         try:
             process = psutil.Process()
             jarvis_memory = process.memory_info().rss / (1024 * 1024)  # MB
@@ -434,7 +434,7 @@ class ResourceManager:
             new_snapshot = self._take_snapshot()
             available_gb = new_snapshot.memory_available_mb / 1024.0
             if available_gb < 0.5:  # Less than 500MB available
-                logger.critical(f"Memory critical ({available_gb:.1f}GB available) - recommend JARVIS restart")
+                logger.critical(f"Memory critical ({available_gb:.1f}GB available) - recommend Ironcliw restart")
                 
 
 # Global instance

@@ -1,5 +1,5 @@
-"""
-Intelligent Message Generator for JARVIS Loading Server v212.0
+﻿"""
+Intelligent Message Generator for Ironcliw Loading Server v212.0
 ===============================================================
 
 Context-aware message generation for better UX during startup.
@@ -20,7 +20,7 @@ Usage:
     generator.track_stage_start("backend")
     message = generator.generate_message("backend", progress=50)
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 
@@ -40,19 +40,19 @@ logger = logging.getLogger("LoadingServer.Messages")
 # Message templates by stage
 STAGE_MESSAGES: Dict[str, List[str]] = {
     "initializing": [
-        "Initializing JARVIS systems...",
+        "Initializing Ironcliw systems...",
         "Preparing the neural pathways...",
         "Warming up the cognitive engines...",
     ],
     "backend": [
-        "Starting JARVIS backend services...",
+        "Starting Ironcliw backend services...",
         "Initializing core systems and APIs...",
         "Loading backend configuration...",
     ],
     "frontend": [
         "Preparing the user interface...",
         "Loading frontend components...",
-        "Rendering the JARVIS dashboard...",
+        "Rendering the Ironcliw dashboard...",
     ],
     "models": [
         "Loading AI models... This may take a moment.",
@@ -60,7 +60,7 @@ STAGE_MESSAGES: Dict[str, List[str]] = {
         "Preparing language models...",
     ],
     "jarvis_prime": [
-        "JARVIS Prime brain initializing...",
+        "Ironcliw Prime brain initializing...",
         "Loading local LLM models...",
         "Preparing the Prime intelligence layer...",
     ],
@@ -86,7 +86,7 @@ STAGE_MESSAGES: Dict[str, List[str]] = {
     ],
     "complete": [
         "All systems online!",
-        "JARVIS is ready to assist you.",
+        "Ironcliw is ready to assist you.",
         "Startup complete - Welcome!",
     ],
 }
@@ -105,21 +105,21 @@ SLOW_EXPLANATIONS: Dict[str, str] = {
 TIME_GREETINGS: Dict[str, List[str]] = {
     "morning": [
         "Good morning!",
-        "Starting your day with JARVIS...",
-        "Rise and shine! JARVIS is booting up...",
+        "Starting your day with Ironcliw...",
+        "Rise and shine! Ironcliw is booting up...",
     ],
     "afternoon": [
         "Good afternoon!",
-        "JARVIS is getting ready...",
+        "Ironcliw is getting ready...",
         "Afternoon startup initiated...",
     ],
     "evening": [
         "Good evening!",
         "Evening session starting...",
-        "JARVIS is preparing for the evening...",
+        "Ironcliw is preparing for the evening...",
     ],
     "night": [
-        "Working late? JARVIS is here to help.",
+        "Working late? Ironcliw is here to help.",
         "Night owl mode activated...",
         "Burning the midnight oil? Let's get to work.",
     ],
@@ -289,7 +289,7 @@ class IntelligentMessageGenerator:
         """Generate message for stages in progress."""
         # Component-specific messages
         if component == "jarvis_prime":
-            return "JARVIS Prime brain initializing... Loading local LLM models..."
+            return "Ironcliw Prime brain initializing... Loading local LLM models..."
         elif component == "reactor_core":
             return "Reactor-Core orchestrator starting... Initializing Trinity integration..."
 

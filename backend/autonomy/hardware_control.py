@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Hardware Control Module for JARVIS
+Hardware Control Module for Ironcliw
 Controls camera, displays, audio, and other hardware components
 Powered by Anthropic's Claude API for intelligent control decisions
 """

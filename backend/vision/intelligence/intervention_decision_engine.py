@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Intervention Decision Engine - Proactive Intelligence System Component
-Determines when and how JARVIS should proactively assist users
+Determines when and how Ironcliw should proactively assist users
 Implements multi-factor decision making with zero hardcoding
 """
 

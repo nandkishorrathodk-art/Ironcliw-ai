@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Vision Decision Pipeline for JARVIS.
+﻿#!/usr/bin/env python3
+"""Vision Decision Pipeline for Ironcliw.
 
 This module integrates the vision system with the decision engine to create
 a comprehensive autonomous processing pipeline. It captures screen data,

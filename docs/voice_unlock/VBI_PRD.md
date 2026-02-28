@@ -1,9 +1,9 @@
-# Voice Biometric Identification (VBI) - Product Requirements Document
+﻿# Voice Biometric Identification (VBI) - Product Requirements Document
 
 **Version:** 2.0  
 **Date:** 2025-01-XX  
 **Status:** Production  
-**Owner:** JARVIS AI System
+**Owner:** Ironcliw AI System
 
 ---
 
@@ -26,7 +26,7 @@
 
 ### Vision
 
-Voice Biometric Identification (VBI) is JARVIS's advanced voice authentication system that enables secure, hands-free MacBook unlocking through voice biometrics. VBI combines deep learning (ECAPA-TDNN), physics-based validation, and multi-modal fusion to provide Apple Watch-level convenience without additional hardware.
+Voice Biometric Identification (VBI) is Ironcliw's advanced voice authentication system that enables secure, hands-free MacBook unlocking through voice biometrics. VBI combines deep learning (ECAPA-TDNN), physics-based validation, and multi-modal fusion to provide Apple Watch-level convenience without additional hardware.
 
 ### Value Proposition
 
@@ -65,7 +65,7 @@ Voice Biometric Identification (VBI) is a comprehensive voice authentication sys
 ### User Flow
 
 ```
-User: "Hey JARVIS, unlock my screen"
+User: "Hey Ironcliw, unlock my screen"
   ↓
 [VBI Processing - 200-500ms]
   ├─ Audio Capture
@@ -74,7 +74,7 @@ User: "Hey JARVIS, unlock my screen"
   ├─ Physics Validation
   └─ Bayesian Fusion
   ↓
-JARVIS: "Voice verified, Derek. 94% confidence. Unlocking now..."
+Ironcliw: "Voice verified, Derek. 94% confidence. Unlocking now..."
   ↓
 [Screen Unlocks]
 ```

@@ -1,4 +1,4 @@
-# 🎯 COMPLETE Proximity-Aware Display System
+﻿# 🎯 COMPLETE Proximity-Aware Display System
 
 ## ✅ **FULLY IMPLEMENTED - Phase 1.2 (A+B+C+D) + AirPlay Discovery**
 
@@ -169,9 +169,9 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 
 USAGE:
   1. Walk to office with Apple Watch
-  2. JARVIS detects: 2.5m proximity
+  2. Ironcliw detects: 2.5m proximity
   3. Display check: Display ID 23 active ✅
-  4. JARVIS: "Would you like to extend to Office Monitor?"
+  4. Ironcliw: "Would you like to extend to Office Monitor?"
   5. YOU: "Yes"
   6. Connection: ~0.5s (instant - already connected)
   7. Result: Display extends to monitor
@@ -198,9 +198,9 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 
 USAGE:
   1. Walk to living room with Apple Watch
-  2. JARVIS detects: 2.5m proximity
+  2. Ironcliw detects: 2.5m proximity
   3. AirPlay scan: "Sony Living Room TV" found ✅
-  4. JARVIS: "Would you like to connect to Sony Living Room TV?"
+  4. Ironcliw: "Would you like to connect to Sony Living Room TV?"
   5. YOU: "Yes"
   6. Connection: ~3-5s (wireless AirPlay handshake)
   7. Result: Display wirelessly extends to Sony TV
@@ -356,11 +356,11 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 ```
 1. Ensure Apple Watch (or iPhone) is on and paired
 2. Walk near registered display (2-8 meters)
-3. JARVIS detects proximity
-4. JARVIS checks display availability:
+3. Ironcliw detects proximity
+4. Ironcliw checks display availability:
    - HDMI: Is display ID active?
    - AirPlay: Is device on network?
-5. JARVIS prompts: "Would you like to connect?"
+5. Ironcliw prompts: "Would you like to connect?"
 6. YOU: "Yes" or "No"
 7. If yes:
    - HDMI: Instant connection (~0.5s)
@@ -460,7 +460,7 @@ Phase 1.2E: AirPlay Discovery (NEW!)
 ## ✨ **The Complete Picture**
 
 **What Started As:**
-> "Make JARVIS detect proximity and prompt for display connection"
+> "Make Ironcliw detect proximity and prompt for display connection"
 
 **What You Built:**
 - ✅ **Bluetooth proximity detection** (Apple Watch/iPhone)

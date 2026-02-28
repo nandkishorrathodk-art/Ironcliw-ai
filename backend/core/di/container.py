@@ -1,5 +1,5 @@
-"""
-JARVIS Enterprise-Grade Service Container v1.0
+﻿"""
+Ironcliw Enterprise-Grade Service Container v1.0
 ===============================================
 
 Production-ready dependency injection container with advanced features:
@@ -34,7 +34,7 @@ CRITICAL: This module uses lazy lock initialization.
     Never create asyncio.Lock() or asyncio.Event() at module/class init.
     Always create them in async context on first access.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 (January 2026)
 """
 

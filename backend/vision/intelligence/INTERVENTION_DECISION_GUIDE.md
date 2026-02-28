@@ -1,8 +1,8 @@
-# Intervention Decision Engine Guide
+﻿# Intervention Decision Engine Guide
 
 ## Overview
 
-The Intervention Decision Engine is a sophisticated component of the Proactive Intelligence System (PIS) that determines when and how JARVIS should proactively assist users. It implements multi-factor decision making with zero hardcoding, learning from user responses to optimize future interventions.
+The Intervention Decision Engine is a sophisticated component of the Proactive Intelligence System (PIS) that determines when and how Ironcliw should proactively assist users. It implements multi-factor decision making with zero hardcoding, learning from user responses to optimize future interventions.
 
 ## Architecture
 

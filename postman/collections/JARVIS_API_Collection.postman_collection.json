@@ -1,8 +1,8 @@
-{
+﻿{
 	"info": {
 		"_postman_id": "jarvis-api-collection-2024",
-		"name": "JARVIS AI Agent API",
-		"description": "Complete API collection for JARVIS AI Agent - A sophisticated multi-modal AI system with voice biometrics, vision intelligence, and autonomous capabilities.\n\n## Base URL\n`http://localhost:8010`\n\n## Features\n- Voice Biometric Authentication\n- Screen Control & Unlock\n- Vision Intelligence\n- Wake Word Detection\n- Display Monitoring\n- Memory Management\n- Self-Healing System\n- Hybrid Cloud Integration\n\n## API Documentation\nSwagger UI: http://localhost:8010/docs",
+		"name": "Ironcliw AI Agent API",
+		"description": "Complete API collection for Ironcliw AI Agent - A sophisticated multi-modal AI system with voice biometrics, vision intelligence, and autonomous capabilities.\n\n## Base URL\n`http://localhost:8010`\n\n## Features\n- Voice Biometric Authentication\n- Screen Control & Unlock\n- Vision Intelligence\n- Wake Word Detection\n- Display Monitoring\n- Memory Management\n- Self-Healing System\n- Hybrid Cloud Integration\n\n## API Documentation\nSwagger UI: http://localhost:8010/docs",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -53,7 +53,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["components", "status"]
 						},
-						"description": "Get status of all JARVIS components"
+						"description": "Get status of all Ironcliw components"
 					}
 				},
 				{
@@ -124,7 +124,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "startup-voice", "announce-online"]
 						},
-						"description": "Play JARVIS startup announcement using macOS Daniel voice"
+						"description": "Play Ironcliw startup announcement using macOS Daniel voice"
 					}
 				},
 				{
@@ -219,11 +219,11 @@
 			]
 		},
 		{
-			"name": "JARVIS Voice",
-			"description": "JARVIS voice system - activation, commands, TTS, and CoreML",
+			"name": "Ironcliw Voice",
+			"description": "Ironcliw voice system - activation, commands, TTS, and CoreML",
 			"item": [
 				{
-					"name": "Get JARVIS Status",
+					"name": "Get Ironcliw Status",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -232,11 +232,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "status"]
 						},
-						"description": "Get JARVIS system status"
+						"description": "Get Ironcliw system status"
 					}
 				},
 				{
-					"name": "Activate JARVIS",
+					"name": "Activate Ironcliw",
 					"request": {
 						"method": "POST",
 						"header": [],
@@ -245,11 +245,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "activate"]
 						},
-						"description": "Activate JARVIS voice system"
+						"description": "Activate Ironcliw voice system"
 					}
 				},
 				{
-					"name": "Deactivate JARVIS",
+					"name": "Deactivate Ironcliw",
 					"request": {
 						"method": "POST",
 						"header": [],
@@ -258,11 +258,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "deactivate"]
 						},
-						"description": "Deactivate JARVIS voice system"
+						"description": "Deactivate Ironcliw voice system"
 					}
 				},
 				{
-					"name": "Process JARVIS Command",
+					"name": "Process Ironcliw Command",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -280,11 +280,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "command"]
 						},
-						"description": "Process a JARVIS command"
+						"description": "Process a Ironcliw command"
 					}
 				},
 				{
-					"name": "JARVIS Speak (POST)",
+					"name": "Ironcliw Speak (POST)",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -302,11 +302,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "speak"]
 						},
-						"description": "Make JARVIS speak the given text"
+						"description": "Make Ironcliw speak the given text"
 					}
 				},
 				{
-					"name": "JARVIS Speak (GET)",
+					"name": "Ironcliw Speak (GET)",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -360,7 +360,7 @@
 					}
 				},
 				{
-					"name": "Get JARVIS Config",
+					"name": "Get Ironcliw Config",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -369,11 +369,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "config"]
 						},
-						"description": "Get JARVIS configuration"
+						"description": "Get Ironcliw configuration"
 					}
 				},
 				{
-					"name": "Update JARVIS Config",
+					"name": "Update Ironcliw Config",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -391,11 +391,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "config"]
 						},
-						"description": "Update JARVIS configuration"
+						"description": "Update Ironcliw configuration"
 					}
 				},
 				{
-					"name": "Get JARVIS Personality",
+					"name": "Get Ironcliw Personality",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -404,7 +404,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "jarvis", "personality"]
 						},
-						"description": "Get JARVIS personality information"
+						"description": "Get Ironcliw personality information"
 					}
 				},
 				{
@@ -511,7 +511,7 @@
 			"description": "Enhanced voice processing with Rust acceleration",
 			"item": [
 				{
-					"name": "Activate JARVIS (Enhanced)",
+					"name": "Activate Ironcliw (Enhanced)",
 					"request": {
 						"method": "POST",
 						"header": [],
@@ -520,11 +520,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "enhanced", "voice", "jarvis", "activate"]
 						},
-						"description": "Activate JARVIS voice system with Rust acceleration"
+						"description": "Activate Ironcliw voice system with Rust acceleration"
 					}
 				},
 				{
-					"name": "JARVIS Status (Enhanced)",
+					"name": "Ironcliw Status (Enhanced)",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -533,7 +533,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["voice", "enhanced", "voice", "jarvis", "status"]
 						},
-						"description": "Get JARVIS system status with performance metrics"
+						"description": "Get Ironcliw system status with performance metrics"
 					}
 				},
 				{
@@ -613,7 +613,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["audio", "speak"]
 						},
-						"description": "Forward audio speak requests to JARVIS voice API"
+						"description": "Forward audio speak requests to Ironcliw voice API"
 					}
 				},
 				{
@@ -639,7 +639,7 @@
 		},
 		{
 			"name": "Wake Word",
-			"description": "Wake word detection (Hey JARVIS)",
+			"description": "Wake word detection (Hey Ironcliw)",
 			"item": [
 				{
 					"name": "Wake Word Status",
@@ -2182,7 +2182,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "command"]
 						},
-						"description": "Execute a JARVIS command"
+						"description": "Execute a Ironcliw command"
 					}
 				}
 			]
@@ -3337,7 +3337,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"ocr_text\": \"VS Code - main.py - JARVIS-AI-Agent\",\n    \"source\": \"screen_capture\",\n    \"confidence\": 0.95\n}"
+							"raw": "{\n    \"ocr_text\": \"VS Code - main.py - Ironcliw-AI-Agent\",\n    \"source\": \"screen_capture\",\n    \"confidence\": 0.95\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/context/ocr_update",
@@ -3511,7 +3511,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["monitoring", "components"]
 						},
-						"description": "Get health status of all JARVIS components"
+						"description": "Get health status of all Ironcliw components"
 					}
 				},
 				{

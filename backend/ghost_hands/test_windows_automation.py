@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Suite for Windows Ghost Hands Automation
 ══════════════════════════════════════════════
 
@@ -17,7 +17,7 @@ Usage:
     pytest backend/ghost_hands/test_windows_automation.py::TestWindowManager -v
     pytest backend/ghost_hands/test_windows_automation.py::TestMouseKeyboard -v
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 8)
 """
 import asyncio

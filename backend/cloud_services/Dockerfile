@@ -1,4 +1,4 @@
-# ECAPA Cloud Service Dockerfile v20.3.0
+﻿# ECAPA Cloud Service Dockerfile v20.3.0
 # =======================================
 #
 # Production-ready container for ECAPA-TDNN speaker embedding service.
@@ -120,7 +120,7 @@ ARG CACHE_DIR
 ARG HF_CACHE_DIR
 
 # Labels
-LABEL maintainer="JARVIS AI Agent Team"
+LABEL maintainer="Ironcliw AI Agent Team"
 LABEL version="20.3.0"
 LABEL description="ECAPA-TDNN Cloud Speaker Embedding Service - Ultra-Fast Cold Starts with JIT/ONNX/Quantization"
 

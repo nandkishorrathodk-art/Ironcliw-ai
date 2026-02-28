@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Unlock Circuit Breaker Fix & Diagnostics
 ==============================================
 This script diagnoses and fixes the circuit breaker issues 
-preventing JARVIS from locking/unlocking your screen.
+preventing Ironcliw from locking/unlocking your screen.
 
 Run: python fix_voice_unlock_circuit_breaker.py
 """
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 async def main():
     print("=" * 70)
-    print("🔧 JARVIS Voice Unlock Circuit Breaker Diagnostic & Fix")
+    print("🔧 Ironcliw Voice Unlock Circuit Breaker Diagnostic & Fix")
     print("=" * 70)
     print()
     
@@ -125,9 +125,9 @@ async def main():
     print("━" * 70)
     
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
+        from intelligence.learning_database import IroncliwLearningDatabase
         
-        db = JARVISLearningDatabase()
+        db = IroncliwLearningDatabase()
         await db.initialize()
         
         profiles = await db.get_all_speaker_profiles()
@@ -136,7 +136,7 @@ async def main():
             print("   ⚠️  No voice profiles found!")
             print("   └─ Voice unlock requires at least one enrolled speaker")
             print()
-            print("   📝 To enroll your voice, say 'JARVIS, enroll my voice'")
+            print("   📝 To enroll your voice, say 'Ironcliw, enroll my voice'")
         else:
             print(f"   Found {len(profiles)} voice profile(s):")
             for profile in profiles:
@@ -201,12 +201,12 @@ async def main():
     print("   If voice unlock continues to fail, check:")
     print("   1. Microphone permissions (System Preferences > Privacy > Microphone)")
     print("   2. Audio quality (quiet environment, clear speech)")
-    print("   3. Voice enrollment (say 'JARVIS, enroll my voice' to re-enroll)")
+    print("   3. Voice enrollment (say 'Ironcliw, enroll my voice' to re-enroll)")
     print("   4. Backend logs for specific errors")
     print()
     print("   To test voice unlock, say:")
-    print("   • 'JARVIS, lock my screen'")
-    print("   • 'JARVIS, unlock my screen'")
+    print("   • 'Ironcliw, lock my screen'")
+    print("   • 'Ironcliw, unlock my screen'")
     print()
     print("=" * 70)
     print("🔧 Fix Complete!")

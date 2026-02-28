@@ -1,7 +1,7 @@
-# 🚀 JARVIS Quick Start Guide - FIXED!
+﻿# 🚀 Ironcliw Quick Start Guide - FIXED!
 
 ## The Problem
-The `start_system.py` script is failing because of outdated dependencies in `backend/requirements.txt`. Here's how to bypass it and get JARVIS running.
+The `start_system.py` script is failing because of outdated dependencies in `backend/requirements.txt`. Here's how to bypass it and get Ironcliw running.
 
 ## Quick Solution (3 Steps)
 
@@ -14,7 +14,7 @@ python3 -m pip install fastapi uvicorn pydantic python-multipart \
     torch numpy scipy
 ```
 
-### Step 2: Start JARVIS
+### Step 2: Start Ironcliw
 ```bash
 # Option A: Use the shell script
 ./run_jarvis.sh
@@ -24,7 +24,7 @@ cd backend
 python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Step 3: Access JARVIS
+### Step 3: Access Ironcliw
 Open your browser to:
 - API Docs: http://localhost:8000/docs
 - Chat Demo: http://localhost:8000/demo/chat
@@ -93,7 +93,7 @@ cd backend && python3 -m pip install fastapi uvicorn psutil && python3 -m uvicor
    ```
 
 ## Success Indicators
-You'll know JARVIS is running when you see:
+You'll know Ironcliw is running when you see:
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 INFO:     Started reloader process [xxxxx] using WatchFiles

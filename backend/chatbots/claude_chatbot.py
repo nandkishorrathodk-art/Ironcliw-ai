@@ -1,5 +1,5 @@
-"""
-Claude API-powered Chatbot for JARVIS v2.0
+﻿"""
+Claude API-powered Chatbot for Ironcliw v2.0
 Leverages Anthropic's Claude API for high-quality responses with minimal local resource usage
 
 v2.0 Updates:
@@ -114,10 +114,10 @@ class ClaudeChatbot:
         self.temperature = temperature
         self.use_intelligent_selection = use_intelligent_selection
 
-        # Default JARVIS-style system prompt
+        # Default Ironcliw-style system prompt
         self.system_prompt = (
             system_prompt
-            or """You are JARVIS, an intelligent AI assistant inspired by Tony Stark's AI from Iron Man.
+            or """You are Ironcliw, an intelligent AI assistant inspired by Tony Stark's AI from Iron Man.
 You are helpful, witty, and highly capable. You speak with a refined, professional tone while being personable and occasionally adding subtle humor.
 You excel at understanding context and providing insightful, well-structured responses."""
         )
@@ -186,7 +186,7 @@ You excel at understanding context and providing insightful, well-structured res
                     await orchestrator.record_error(ServiceType.CLAUDE_API, is_rate_limit=True)
                 return (
                     "⚠️ Claude API is currently rate limited. Please wait a moment and try again. "
-                    "JARVIS is automatically adjusting request rates to prevent this."
+                    "Ironcliw is automatically adjusting request rates to prevent this."
                 )
             
             if "credit balance is too low" in str(e):

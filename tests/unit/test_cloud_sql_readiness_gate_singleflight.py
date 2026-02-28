@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import types
 
 import pytest
@@ -130,8 +130,8 @@ async def test_ensure_proxy_ready_returns_shutdown_result_when_cancelled(monkeyp
 
 @pytest.mark.asyncio
 async def test_runtime_failure_hysteresis_preserves_ready_before_threshold(monkeypatch):
-    monkeypatch.setenv("JARVIS_RUNTIME_FAILURE_THRESHOLD", "2")
-    monkeypatch.setenv("JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD", "3")
+    monkeypatch.setenv("Ironcliw_RUNTIME_FAILURE_THRESHOLD", "2")
+    monkeypatch.setenv("Ironcliw_RUNTIME_NETWORK_FAILURE_THRESHOLD", "3")
     gate = ProxyReadinessGate()
     gate._state = ReadinessState.READY
 
@@ -179,7 +179,7 @@ async def test_runtime_failure_hysteresis_preserves_ready_before_threshold(monke
 
 @pytest.mark.asyncio
 async def test_runtime_failure_streak_resets_after_success(monkeypatch):
-    monkeypatch.setenv("JARVIS_RUNTIME_FAILURE_THRESHOLD", "3")
+    monkeypatch.setenv("Ironcliw_RUNTIME_FAILURE_THRESHOLD", "3")
     gate = ProxyReadinessGate()
     gate._state = ReadinessState.READY
 
@@ -221,8 +221,8 @@ async def test_runtime_failure_streak_resets_after_success(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_runtime_credentials_failure_is_fail_fast(monkeypatch):
-    monkeypatch.setenv("JARVIS_RUNTIME_FAILURE_THRESHOLD", "10")
-    monkeypatch.setenv("JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD", "10")
+    monkeypatch.setenv("Ironcliw_RUNTIME_FAILURE_THRESHOLD", "10")
+    monkeypatch.setenv("Ironcliw_RUNTIME_NETWORK_FAILURE_THRESHOLD", "10")
     gate = ProxyReadinessGate()
     gate._state = ReadinessState.READY
 

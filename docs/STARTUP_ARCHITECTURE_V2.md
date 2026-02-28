@@ -1,4 +1,4 @@
-# 🚀 JARVIS Startup Architecture v2.0 - Enterprise-Grade Orchestration
+﻿# 🚀 Ironcliw Startup Architecture v2.0 - Enterprise-Grade Orchestration
 
 ## Table of Contents
 - [Executive Summary](#executive-summary)
@@ -14,7 +14,7 @@
 
 ## Executive Summary
 
-**JARVIS v107.0** introduces enterprise-grade startup orchestration that eliminates indefinite blocking, implements graceful degradation, and coordinates three repositories (JARVIS, JARVIS-Prime, Reactor-Core) with a single command.
+**Ironcliw v107.0** introduces enterprise-grade startup orchestration that eliminates indefinite blocking, implements graceful degradation, and coordinates three repositories (Ironcliw, Ironcliw-Prime, Reactor-Core) with a single command.
 
 ### What Changed
 
@@ -53,7 +53,7 @@ python3 run_supervisor.py
 
 ### The Problem
 
-Before v107.0, JARVIS startup would **block indefinitely** if any initialization phase hung:
+Before v107.0, Ironcliw startup would **block indefinitely** if any initialization phase hung:
 
 ```python
 # Before v107.0 - NO TIMEOUT PROTECTION
@@ -204,7 +204,7 @@ $ python3 run_supervisor.py
 
 ### The Three Pillars
 
-JARVIS operates as a **distributed cognitive system** across three repositories:
+Ironcliw operates as a **distributed cognitive system** across three repositories:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -213,7 +213,7 @@ JARVIS operates as a **distributed cognitive system** across three repositories:
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────────┐    ┌──────────────────┐    ┌────────────┐ │
-│  │  JARVIS Core    │    │  JARVIS Prime    │    │  Reactor   │ │
+│  │  Ironcliw Core    │    │  Ironcliw Prime    │    │  Reactor   │ │
 │  │  (Body)         │◄──►│  (Mind)          │◄──►│  (Nerves)  │ │
 │  │                 │    │                  │    │            │ │
 │  │  Port: 8010     │    │  Port: 8000      │    │  Port: 8090│ │
@@ -240,7 +240,7 @@ JARVIS operates as a **distributed cognitive system** across three repositories:
 
 ### Component Responsibilities
 
-#### 1. JARVIS Core (Port 8010) - The Body
+#### 1. Ironcliw Core (Port 8010) - The Body
 **Role:** Central intelligence hub and user interface
 
 **Responsibilities:**
@@ -259,7 +259,7 @@ JARVIS operates as a **distributed cognitive system** across three repositories:
 **Startup time:** ~20-40 seconds
 **Dependencies:** None (can start independently)
 
-#### 2. JARVIS-Prime (Port 8000) - The Mind
+#### 2. Ironcliw-Prime (Port 8000) - The Mind
 **Role:** Local LLM inference engine
 
 **Responsibilities:**
@@ -274,13 +274,13 @@ JARVIS operates as a **distributed cognitive system** across three repositories:
 - Bulk reasoning tasks
 
 **Startup time:** ~40-120 seconds (model loading)
-**Dependencies:** JARVIS Core (for coordination)
+**Dependencies:** Ironcliw Core (for coordination)
 
 #### 3. Reactor-Core (Port 8090) - The Nerves
 **Role:** Continuous learning and improvement
 
 **Responsibilities:**
-- Failure analysis from JARVIS Core
+- Failure analysis from Ironcliw Core
 - Auto-discovery of learning goals
 - Fine-tuning J-Prime models
 - Training status reporting
@@ -291,7 +291,7 @@ JARVIS operates as a **distributed cognitive system** across three repositories:
 - Model performance optimization
 
 **Startup time:** ~10-30 seconds
-**Dependencies:** JARVIS Core and J-Prime (for training data)
+**Dependencies:** Ironcliw Core and J-Prime (for training data)
 
 ### Startup Sequence
 
@@ -326,12 +326,12 @@ T+20s   Phase 3  [3/4] Initializing supervisor
                  • Coding Council
                  • IDE Integration
 
-T+40s   Phase 4  [4/4] Launching JARVIS Core
+T+40s   Phase 4  [4/4] Launching Ironcliw Core
                  • Start Backend (FastAPI server on 8010)
                  • Open UI window (port 3001)
                  • Register health endpoints
 
-T+45s   J-Prime  Spawning JARVIS-Prime
+T+45s   J-Prime  Spawning Ironcliw-Prime
                  • Port 8000 validation
                  • Model loading (Llama 70B GGUF)
                  • GCP Cloud Run fallback setup
@@ -352,7 +352,7 @@ T+60s   Done     ✅ All Systems Operational
 
 **Check Trinity Status:**
 ```bash
-# JARVIS Core
+# Ironcliw Core
 curl http://localhost:8010/health
 {
   "status": "healthy",
@@ -361,7 +361,7 @@ curl http://localhost:8010/health
   "component_manager": {"total_components": 9, "memory_pressure": "high"}
 }
 
-# JARVIS-Prime
+# Ironcliw-Prime
 curl http://localhost:8000/health
 {
   "service": "jarvis_prime",
@@ -392,8 +392,8 @@ python3 run_supervisor.py
 
 **What this does:**
 1. Validates environment
-2. Initializes JARVIS Core with all 107 phases
-3. Spawns JARVIS-Prime subprocess
+2. Initializes Ironcliw Core with all 107 phases
+3. Spawns Ironcliw-Prime subprocess
 4. Spawns Reactor-Core subprocess
 5. Coordinates all three via Trinity layer
 6. Opens UI window
@@ -408,11 +408,11 @@ export AUTONOMOUS_START_LOOPS=true        # Enable autonomous improvement
 
 # Timeout configuration (v107.0)
 export TRINITY_PHASE_TIMEOUT=30.0         # Default timeout for PHASE 4-15 (seconds)
-export JARVIS_INIT_TIMEOUT=60.0           # Timeout for major initializations
+export Ironcliw_INIT_TIMEOUT=60.0           # Timeout for major initializations
 export JPRIME_STARTUP_TIMEOUT=300.0       # Timeout for J-Prime model loading
 
 # Service ports (auto-detected if occupied)
-export JARVIS_PORT=8010
+export Ironcliw_PORT=8010
 export JPRIME_PORT=8000
 export REACTOR_PORT=8090
 
@@ -742,11 +742,11 @@ phase = PhaseDefinition(
 
 ### 1. Network Partitions (Split-Brain)
 
-**Scenario:** JARVIS Core and J-Prime can't communicate
+**Scenario:** Ironcliw Core and J-Prime can't communicate
 
 **Problem:**
 ```
-JARVIS Core (localhost:8010) ← ✗ Network Partition ✗ → J-Prime (localhost:8000)
+Ironcliw Core (localhost:8010) ← ✗ Network Partition ✗ → J-Prime (localhost:8000)
 Both think they're the only instance running
 ```
 
@@ -793,7 +793,7 @@ Error: Port 8000 already in use by process 12345
 
 **B. Force Cleanup:**
 ```bash
-# Kill all JARVIS processes on conflict ports
+# Kill all Ironcliw processes on conflict ports
 lsof -ti :8000,:8010,:8090 | xargs kill -9
 python3 run_supervisor.py
 ```
@@ -840,7 +840,7 @@ class ResourcePool:
 
 **Problem:**
 ```
-JARVIS Core: 50 connections
+Ironcliw Core: 50 connections
 J-Prime: 50 connections
 Reactor: 50 connections
 ───────────────────────
@@ -866,12 +866,12 @@ async with coordinator.acquire_resource("db:primary", quota=10):
 
 ### 5. Cascading Failures
 
-**Scenario:** J-Prime crashes → Reactor depends on it → Reactor crashes → JARVIS loses training
+**Scenario:** J-Prime crashes → Reactor depends on it → Reactor crashes → Ironcliw loses training
 
 **Problem:**
 ```
 J-Prime (crashed) ← Reactor (trying to connect) → timeout → crash
-JARVIS (trying to send to Reactor) → timeout → degraded mode
+Ironcliw (trying to send to Reactor) → timeout → degraded mode
 ```
 
 **Solution:** Graceful Degradation
@@ -893,8 +893,8 @@ if not reactor_available:
 
 **Problem:**
 ```
-JARVIS: Waiting for J-Prime to register...
-J-Prime: Waiting for JARVIS to initialize...
+Ironcliw: Waiting for J-Prime to register...
+J-Prime: Waiting for Ironcliw to initialize...
 [Both stuck forever]
 ```
 
@@ -1167,7 +1167,7 @@ python3 run_supervisor.py
 
 2. **Use different port:**
 ```bash
-export JARVIS_PORT=8011
+export Ironcliw_PORT=8011
 python3 run_supervisor.py
 ```
 
@@ -1279,7 +1279,7 @@ sudo ufw status
 
 4. **Test voice authentication:**
    ```
-   Say: "JARVIS, unlock my screen"
+   Say: "Ironcliw, unlock my screen"
    ```
 
 5. **Review startup report:**
@@ -1300,8 +1300,8 @@ sudo ufw status
 - ✅ Comprehensive edge case handling
 
 **Trinity Status:**
-- ✅ JARVIS Core (8010): Healthy
-- ✅ JARVIS-Prime (8000): Healthy
+- ✅ Ironcliw Core (8010): Healthy
+- ✅ Ironcliw-Prime (8000): Healthy
 - ✅ Reactor-Core (8090): Healthy
 - ✅ UI (3001): Opened
 
@@ -1320,4 +1320,4 @@ sudo ufw status
 
 *Last updated: January 22, 2026*
 *Version: 2.0.0*
-*Authors: JARVIS Development Team*
+*Authors: Ironcliw Development Team*

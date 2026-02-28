@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Contextual Understanding Module for JARVIS
+Advanced Contextual Understanding Module for Ironcliw
 Provides deep emotional intelligence and adaptive personality capabilities
 """
 
@@ -558,7 +558,7 @@ Provide your analysis with:
     
     async def _adapt_personality(self, emotional_state: EmotionalState,
                                work_context: WorkContext) -> Dict[str, float]:
-        """Adapt JARVIS personality based on user state"""
+        """Adapt Ironcliw personality based on user state"""
         # Start with base traits
         adapted_traits = self.personality_model['base_traits'].copy()
         
@@ -724,7 +724,7 @@ Provide your analysis with:
                 max_tokens=300,
                 messages=[{
                     "role": "user",
-                    "content": f"""As JARVIS with the following personality traits and understanding of the user's state:
+                    "content": f"""As Ironcliw with the following personality traits and understanding of the user's state:
 
 Personality Traits:
 {json.dumps(personality_traits, indent=2)}
@@ -738,7 +738,7 @@ Respond in a way that:
 1. Matches the adapted personality traits
 2. Shows understanding of their emotional state
 3. Is helpful and appropriate to the situation
-4. Maintains JARVIS's identity while being emotionally intelligent
+4. Maintains Ironcliw's identity while being emotionally intelligent
 
 Keep the response concise and natural."""
                 }]

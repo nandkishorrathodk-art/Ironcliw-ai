@@ -1,5 +1,5 @@
-"""
-JARVIS AGI OS - Real-Time Voice Communicator
+﻿"""
+Ironcliw AGI OS - Real-Time Voice Communicator
 
 Advanced async voice communication system using Daniel TTS voice for
 real-time proactive communication. Provides:
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Import the centralized speech state manager for self-voice suppression.
 # This ensures ALL parts of the system (backend, frontend, VBI) know when
-# JARVIS is speaking and should reject incoming audio.
+# Ironcliw is speaking and should reject incoming audio.
 # =============================================================================
 try:
     from core.unified_speech_state import (
@@ -219,7 +219,7 @@ class RealTimeVoiceCommunicator:
         import sys as _sys
         try:
             if _sys.platform == 'darwin':
-                _voice_discover_timeout = float(os.getenv("JARVIS_VOICE_DISCOVER_TIMEOUT", "15"))
+                _voice_discover_timeout = float(os.getenv("Ironcliw_VOICE_DISCOVER_TIMEOUT", "15"))
                 result = subprocess.run(
                     ['say', '-v', '?'],
                     capture_output=True,
@@ -552,7 +552,7 @@ class RealTimeVoiceCommunicator:
             try:
                 # Try AudioBus flush first
                 _bus_enabled = os.getenv(
-                    "JARVIS_AUDIO_BUS_ENABLED", "false"
+                    "Ironcliw_AUDIO_BUS_ENABLED", "false"
                 ).lower() in ("true", "1", "yes")
                 if _bus_enabled:
                     try:
@@ -694,7 +694,7 @@ class RealTimeVoiceCommunicator:
             message: Message to speak
         """
         _bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
 
         if _bus_enabled:
@@ -719,12 +719,12 @@ class RealTimeVoiceCommunicator:
                 _ar.DefaultResolver = _ar.ThreadedResolver
                 _ac.DefaultResolver = _ar.ThreadedResolver
 
-                _JARVIS_VOICE = "en-GB-RyanNeural"
+                _Ironcliw_VOICE = "en-GB-RyanNeural"
                 _base_wpm = 175
                 _pct = round((config.rate - _base_wpm) / _base_wpm * 100)
                 _rate_str = f"+{_pct}%" if _pct >= 0 else f"{_pct}%"
 
-                communicate = _edge_tts.Communicate(message.text, voice=_JARVIS_VOICE, rate=_rate_str)
+                communicate = _edge_tts.Communicate(message.text, voice=_Ironcliw_VOICE, rate=_rate_str)
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as _f:
                     _tmp = _f.name
                 try:
@@ -811,7 +811,7 @@ class RealTimeVoiceCommunicator:
             processed = processed.replace(old, new)
 
         # Handle special terms
-        processed = processed.replace('JARVIS', '[[rate -15]]JARVIS[[rate +15]]')
+        processed = processed.replace('Ironcliw', '[[rate -15]]Ironcliw[[rate +15]]')
         processed = processed.replace('Derek', '[[rate -10]]Derek[[rate +10]]')
 
         return processed
@@ -1307,10 +1307,10 @@ class RealTimeVoiceCommunicator:
     @property
     def is_speaking(self) -> bool:
         """
-        Check if JARVIS is currently speaking.
+        Check if Ironcliw is currently speaking.
 
-        This property is used for SELF-VOICE SUPPRESSION - when JARVIS is speaking,
-        audio input should be ignored to prevent feedback loops where JARVIS
+        This property is used for SELF-VOICE SUPPRESSION - when Ironcliw is speaking,
+        audio input should be ignored to prevent feedback loops where Ironcliw
         hears its own voice and tries to process it as a command.
 
         Returns:
@@ -1381,7 +1381,7 @@ class RealTimeVoiceCommunicator:
         return await self.speak(message, mode=mode, priority=priority, allow_repetition=True)
 
     async def thinking(self, about: str = "") -> str:
-        """Express that JARVIS is thinking about something."""
+        """Express that Ironcliw is thinking about something."""
         if about:
             text = f"Let me think about {about} for a moment."
         else:
@@ -1426,7 +1426,7 @@ class RealTimeVoiceCommunicator:
         This bypasses the queue for time-critical VBI narration where
         immediate auditory feedback is essential.
 
-        Uses AudioBus path when enabled (JARVIS_AUDIO_BUS_ENABLED=true) so
+        Uses AudioBus path when enabled (Ironcliw_AUDIO_BUS_ENABLED=true) so
         AEC gets the reference signal for echo cancellation. Falls back to
         raw macOS `say` subprocess when AudioBus is not available.
 
@@ -1446,7 +1446,7 @@ class RealTimeVoiceCommunicator:
             return True
 
         _bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
 
         # If interrupt mode, stop any current speech via the correct path
@@ -1582,7 +1582,7 @@ class RealTimeVoiceCommunicator:
 
                 if not _in_conversation_mode and not _bus_enabled and not _bus_fallback_succeeded:
                     await asyncio.sleep(
-                        float(os.getenv("JARVIS_POST_SPEECH_BUFFER_S", "0.3"))
+                        float(os.getenv("Ironcliw_POST_SPEECH_BUFFER_S", "0.3"))
                     )
 
                 speech_duration_ms = (time.time() - speech_start_time) * 1000
@@ -1725,7 +1725,7 @@ class RealTimeVoiceCommunicator:
         """
         Get context-aware feedback when screen is already unlocked.
 
-        This provides intelligent, self-aware responses that make JARVIS
+        This provides intelligent, self-aware responses that make Ironcliw
         feel conscious of the current system state.
         """
         import random

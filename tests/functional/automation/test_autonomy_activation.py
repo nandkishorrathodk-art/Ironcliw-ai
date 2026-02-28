@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for JARVIS Autonomy Activation
+Test script for Ironcliw Autonomy Activation
 Tests the full autonomy activation flow
 """
 
@@ -14,7 +14,7 @@ async def test_autonomy_activation():
     """Test autonomy activation via WebSocket"""
     uri = "ws://localhost:8000/voice/jarvis/stream"
     
-    print("🤖 JARVIS Autonomy Activation Test")
+    print("🤖 Ironcliw Autonomy Activation Test")
     print("=" * 50)
     
     try:
@@ -22,7 +22,7 @@ async def test_autonomy_activation():
             # Wait for connection confirmation
             message = await websocket.recv()
             data = json.loads(message)
-            print(f"✅ Connected: {data.get('message', 'Connected to JARVIS')}")
+            print(f"✅ Connected: {data.get('message', 'Connected to Ironcliw')}")
             
             # Test 1: Send autonomy activation command
             print("\n📡 Test 1: Sending 'activate full autonomy' command...")
@@ -42,7 +42,7 @@ async def test_autonomy_activation():
                     if data['type'] == 'processing':
                         print("  ⏳ Processing command...")
                     elif data['type'] == 'response':
-                        print(f"  💬 JARVIS: {data['text']}")
+                        print(f"  💬 Ironcliw: {data['text']}")
                         if 'command_type' in data:
                             print(f"  🎯 Command type: {data['command_type']}")
                         if 'autonomy_result' in data:
@@ -93,7 +93,7 @@ async def test_autonomy_activation():
                     message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
                     data = json.loads(message)
                     if data['type'] == 'response':
-                        print(f"  💬 JARVIS: {data['text']}")
+                        print(f"  💬 Ironcliw: {data['text']}")
                     elif data['type'] == 'autonomy_status':
                         print(f"  🔄 Autonomy status: {'ENABLED' if data.get('enabled') else 'DISABLED'}")
                     response_count += 1
@@ -118,7 +118,7 @@ async def test_voice_commands():
     print("=" * 50)
     
     test_commands = [
-        "Hey JARVIS, activate full autonomy",
+        "Hey Ironcliw, activate full autonomy",
         "Enable autonomous mode",
         "Activate iron man mode",
         "Activate all systems",
@@ -161,12 +161,12 @@ async def test_voice_commands():
 
 
 if __name__ == "__main__":
-    print("🚀 Starting JARVIS Autonomy Tests\n")
+    print("🚀 Starting Ironcliw Autonomy Tests\n")
     
     # Run tests
     asyncio.run(test_autonomy_activation())
     asyncio.run(test_voice_commands())
     
     print("\n\n📋 Summary:")
-    print("If all tests passed, JARVIS autonomy activation is working correctly!")
+    print("If all tests passed, Ironcliw autonomy activation is working correctly!")
     print("You can now say 'activate full autonomy' in the UI to enable all systems.")

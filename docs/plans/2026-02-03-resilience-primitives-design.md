@@ -1,8 +1,8 @@
-# Resilience Primitives Implementation Plan
+﻿# Resilience Primitives Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build comprehensive resilience primitives for JARVIS startup to handle broadcast failures, Docker check failures, and Invincible Node failures with graceful degradation and background auto-recovery.
+**Goal:** Build comprehensive resilience primitives for Ironcliw startup to handle broadcast failures, Docker check failures, and Invincible Node failures with graceful degradation and background auto-recovery.
 
 **Architecture:** Hybrid approach - fast startup with degradation (never block on recoverable failures) + background auto-recovery (continuously attempt to restore full capability). Shared resilience library in `backend/core/resilience/` extractable to jarvis-common in Phase 2.
 
@@ -43,7 +43,7 @@ mkdir -p tests/unit/core/resilience
 
 ```python
 """
-Core modules for JARVIS backend.
+Core modules for Ironcliw backend.
 
 This package contains fundamental building blocks used across the system.
 """
@@ -2039,13 +2039,13 @@ class TestCapabilityUpgradeMonitoring:
 
 ---
 
-## Task 7: Wire Resilience into JARVIS Startup
+## Task 7: Wire Resilience into Ironcliw Startup
 
 **Files:**
 - Modify: `backend/unified_supervisor.py`
 - Create: `backend/core/resilience/startup.py` (startup-specific utilities)
 
-This task wires the resilience primitives into the actual JARVIS startup:
+This task wires the resilience primitives into the actual Ironcliw startup:
 
 1. Create health probes for Docker, Invincible Node, Ollama
 2. Configure circuit breakers for external services
@@ -2066,6 +2066,6 @@ This task wires the resilience primitives into the actual JARVIS startup:
 | 4 | health.py | HealthProbe with caching |
 | 5 | recovery.py | BackgroundRecovery with adaptive backoff |
 | 6 | capability.py | CapabilityUpgrade for hot-swapping |
-| 7 | startup.py | Wire into JARVIS startup |
+| 7 | startup.py | Wire into Ironcliw startup |
 
 Each task follows TDD: write failing tests, implement, verify tests pass, commit.

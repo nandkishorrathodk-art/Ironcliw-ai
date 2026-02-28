@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.1: Evolution Event Store - Event Sourcing
 ==============================================
 
@@ -18,7 +18,7 @@ Benefits:
 - Time-travel debugging
 - Audit compliance
 
-Author: JARVIS v77.1
+Author: Ironcliw v77.1
 """
 
 from __future__ import annotations

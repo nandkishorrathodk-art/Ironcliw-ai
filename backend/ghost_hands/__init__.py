@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ghost Hands - Background Automation System
 ===========================================
 
@@ -37,14 +37,14 @@ await ghost.create_task(
 ```
 
 Environment Variables:
-- JARVIS_GHOST_VISION: Enable vision system (default: true)
-- JARVIS_GHOST_ACTUATOR: Enable actuator system (default: true)
-- JARVIS_GHOST_NARRATION: Enable narration (default: true)
-- JARVIS_GHOST_YABAI: Enable Yabai integration (default: true)
-- JARVIS_OPTIC_FPS: Vision capture FPS (default: 10)
-- JARVIS_OPTIC_OCR_ENABLED: Enable OCR (default: true)
-- JARVIS_NARRATION_VERBOSITY: SILENT/MINIMAL/NORMAL/VERBOSE (default: NORMAL)
-- JARVIS_NARRATION_TONE: professional/friendly/concise/detailed (default: friendly)
+- Ironcliw_GHOST_VISION: Enable vision system (default: true)
+- Ironcliw_GHOST_ACTUATOR: Enable actuator system (default: true)
+- Ironcliw_GHOST_NARRATION: Enable narration (default: true)
+- Ironcliw_GHOST_YABAI: Enable Yabai integration (default: true)
+- Ironcliw_OPTIC_FPS: Vision capture FPS (default: 10)
+- Ironcliw_OPTIC_OCR_ENABLED: Enable OCR (default: true)
+- Ironcliw_NARRATION_VERBOSITY: SILENT/MINIMAL/NORMAL/VERBOSE (default: NORMAL)
+- Ironcliw_NARRATION_TONE: professional/friendly/concise/detailed (default: friendly)
 """
 
 # Orchestrator (main entry point)

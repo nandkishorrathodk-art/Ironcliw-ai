@@ -1,8 +1,8 @@
-"""
+﻿"""
 v77.3: IDE Bridge - Real-time IDE Context Management
 =====================================================
 
-The central bridge between IDE (VS Code/Cursor) and JARVIS Coding Council.
+The central bridge between IDE (VS Code/Cursor) and Ironcliw Coding Council.
 
 Features:
 - Real-time context tracking (open files, cursor, errors)
@@ -35,7 +35,7 @@ Architecture:
     │              └─────────────────────────┘                            │
     └─────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ class IDEBridgeConfig:
 
     # Trinity settings
     TRINITY_ENABLED: bool = os.getenv("IDE_BRIDGE_TRINITY_ENABLED", "true").lower() == "true"
-    JARVIS_PRIME_URL: str = os.getenv("JARVIS_PRIME_URL", "http://localhost:8011")
+    Ironcliw_PRIME_URL: str = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8011")
     REACTOR_CORE_URL: str = os.getenv("REACTOR_CORE_URL", "http://localhost:8012")
 
     # Performance
@@ -731,7 +731,7 @@ class ContextCompressor:
 
 class IDEBridge:
     """
-    Central bridge between IDE and JARVIS Coding Council.
+    Central bridge between IDE and Ironcliw Coding Council.
 
     Responsibilities:
     - Track IDE context (files, cursor, errors)

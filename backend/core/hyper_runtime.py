@@ -1,5 +1,5 @@
-"""
-JARVIS Hyper-Runtime v9.0 - Rust-First Async Engine
+﻿"""
+Ironcliw Hyper-Runtime v9.0 - Rust-First Async Engine
 =====================================================
 
 Intelligent runtime selection that maximizes async performance by choosing
@@ -82,37 +82,37 @@ def _get_intelligent_worker_count() -> int:
     Dynamically determine optimal worker count based on context.
 
     Strategy:
-    - JARVIS_SERVER_WORKERS env var: Explicit override (highest priority)
-    - JARVIS_FAST_STARTUP=true: 1 worker (fastest boot, single-user mode)
-    - JARVIS_SINGLE_USER=true: 1-2 workers (personal assistant mode)
-    - Development mode (JARVIS_DEV_MODE): 1 worker (fast iteration)
+    - Ironcliw_SERVER_WORKERS env var: Explicit override (highest priority)
+    - Ironcliw_FAST_STARTUP=true: 1 worker (fastest boot, single-user mode)
+    - Ironcliw_SINGLE_USER=true: 1-2 workers (personal assistant mode)
+    - Development mode (Ironcliw_DEV_MODE): 1 worker (fast iteration)
     - Production mode: CPU cores (max throughput)
 
     Returns:
         Optimal worker count as integer
     """
     # Check for explicit override first
-    explicit_workers = os.getenv("JARVIS_SERVER_WORKERS")
+    explicit_workers = os.getenv("Ironcliw_SERVER_WORKERS")
     if explicit_workers:
         return int(explicit_workers)
 
     # Fast startup mode: Single worker for instant boot
-    fast_startup = os.getenv("JARVIS_FAST_STARTUP", "").lower() in ("1", "true", "yes")
+    fast_startup = os.getenv("Ironcliw_FAST_STARTUP", "").lower() in ("1", "true", "yes")
     if fast_startup:
         return 1
 
     # Single user mode: Personal assistant doesn't need multiple workers
-    single_user = os.getenv("JARVIS_SINGLE_USER", "true").lower() in ("1", "true", "yes")
+    single_user = os.getenv("Ironcliw_SINGLE_USER", "true").lower() in ("1", "true", "yes")
     if single_user:
         return 1
 
     # Development mode: Single worker for fast code iteration
-    dev_mode = os.getenv("JARVIS_DEV_MODE", "").lower() in ("1", "true", "yes")
+    dev_mode = os.getenv("Ironcliw_DEV_MODE", "").lower() in ("1", "true", "yes")
     if dev_mode:
         return 1
 
     # Supervised mode (run_supervisor.py): Single worker for controlled startup
-    supervised = os.getenv("JARVIS_SUPERVISED", "").lower() in ("1", "true", "yes")
+    supervised = os.getenv("Ironcliw_SUPERVISED", "").lower() in ("1", "true", "yes")
     if supervised:
         return 1
 
@@ -128,34 +128,34 @@ class ServerConfig:
     Dynamic server configuration - no hardcoding.
 
     All values can be overridden via environment variables:
-        JARVIS_SERVER_HOST: Bind address (default: 0.0.0.0)
-        JARVIS_SERVER_PORT: Port number (default: 8010)
-        JARVIS_SERVER_WORKERS: Worker count (default: intelligent detection)
-        JARVIS_SERVER_THREADS: Threads per worker (default: 2)
-        JARVIS_SERVER_INTERFACE: ASGI/WSGI (default: asgi)
-        JARVIS_SERVER_HTTP_VERSION: HTTP/1 or HTTP/2 (default: auto)
-        JARVIS_SERVER_WEBSOCKETS: Enable WebSockets (default: true)
-        JARVIS_SERVER_BACKLOG: Connection backlog (default: 1024)
-        JARVIS_SERVER_TIMEOUT_KEEP_ALIVE: Keep-alive timeout (default: 5)
-        JARVIS_RUNTIME_LEVEL: Force runtime level (1=asyncio, 2=uvloop, 3=granian)
+        Ironcliw_SERVER_HOST: Bind address (default: 0.0.0.0)
+        Ironcliw_SERVER_PORT: Port number (default: 8010)
+        Ironcliw_SERVER_WORKERS: Worker count (default: intelligent detection)
+        Ironcliw_SERVER_THREADS: Threads per worker (default: 2)
+        Ironcliw_SERVER_INTERFACE: ASGI/WSGI (default: asgi)
+        Ironcliw_SERVER_HTTP_VERSION: HTTP/1 or HTTP/2 (default: auto)
+        Ironcliw_SERVER_WEBSOCKETS: Enable WebSockets (default: true)
+        Ironcliw_SERVER_BACKLOG: Connection backlog (default: 1024)
+        Ironcliw_SERVER_TIMEOUT_KEEP_ALIVE: Keep-alive timeout (default: 5)
+        Ironcliw_RUNTIME_LEVEL: Force runtime level (1=asyncio, 2=uvloop, 3=granian)
 
     Worker count is intelligently determined:
-        - JARVIS_FAST_STARTUP=true: 1 worker (instant boot)
-        - JARVIS_SINGLE_USER=true: 1 worker (default for personal use)
+        - Ironcliw_FAST_STARTUP=true: 1 worker (instant boot)
+        - Ironcliw_SINGLE_USER=true: 1 worker (default for personal use)
         - Development mode: 1 worker (fast iteration)
         - Production: min(4, CPU cores)
     """
-    host: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_HOST", "0.0.0.0"))
-    port: int = field(default_factory=lambda: int(os.getenv("JARVIS_SERVER_PORT", "8010")))
+    host: str = field(default_factory=lambda: os.getenv("Ironcliw_SERVER_HOST", "0.0.0.0"))
+    port: int = field(default_factory=lambda: int(os.getenv("Ironcliw_SERVER_PORT", "8010")))
     workers: int = field(default_factory=_get_intelligent_worker_count)
-    threads: int = field(default_factory=lambda: int(os.getenv("JARVIS_SERVER_THREADS", "2")))
-    interface: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_INTERFACE", "asgi"))
-    http_version: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_HTTP_VERSION", "auto"))
-    websockets: bool = field(default_factory=lambda: os.getenv("JARVIS_SERVER_WEBSOCKETS", "true").lower() == "true")
-    backlog: int = field(default_factory=lambda: int(os.getenv("JARVIS_SERVER_BACKLOG", "1024")))
-    timeout_keep_alive: int = field(default_factory=lambda: int(os.getenv("JARVIS_SERVER_TIMEOUT_KEEP_ALIVE", "5")))
-    log_level: str = field(default_factory=lambda: os.getenv("JARVIS_SERVER_LOG_LEVEL", "warning"))
-    reload: bool = field(default_factory=lambda: os.getenv("JARVIS_DEV_MODE", "false").lower() == "true")
+    threads: int = field(default_factory=lambda: int(os.getenv("Ironcliw_SERVER_THREADS", "2")))
+    interface: str = field(default_factory=lambda: os.getenv("Ironcliw_SERVER_INTERFACE", "asgi"))
+    http_version: str = field(default_factory=lambda: os.getenv("Ironcliw_SERVER_HTTP_VERSION", "auto"))
+    websockets: bool = field(default_factory=lambda: os.getenv("Ironcliw_SERVER_WEBSOCKETS", "true").lower() == "true")
+    backlog: int = field(default_factory=lambda: int(os.getenv("Ironcliw_SERVER_BACKLOG", "1024")))
+    timeout_keep_alive: int = field(default_factory=lambda: int(os.getenv("Ironcliw_SERVER_TIMEOUT_KEEP_ALIVE", "5")))
+    log_level: str = field(default_factory=lambda: os.getenv("Ironcliw_SERVER_LOG_LEVEL", "warning"))
+    reload: bool = field(default_factory=lambda: os.getenv("Ironcliw_DEV_MODE", "false").lower() == "true")
 
 
 # =============================================================================
@@ -265,7 +265,7 @@ def get_runtime_engine(force_level: Optional[int] = None) -> RuntimeEngine:
     global _runtime_cache
 
     # Check environment variable for forced level
-    env_level = os.getenv("JARVIS_RUNTIME_LEVEL")
+    env_level = os.getenv("Ironcliw_RUNTIME_LEVEL")
     if env_level and force_level is None:
         try:
             force_level = int(env_level)
@@ -557,7 +557,7 @@ def print_runtime_report() -> None:
     current = stats["current_engine"]
 
     print("\n" + "=" * 60)
-    print("  JARVIS Hyper-Runtime Status v9.0")
+    print("  Ironcliw Hyper-Runtime Status v9.0")
     print("=" * 60)
 
     # Current engine

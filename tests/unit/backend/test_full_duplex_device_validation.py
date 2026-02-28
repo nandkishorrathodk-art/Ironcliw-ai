@@ -1,4 +1,4 @@
-"""Validation tests for FullDuplexDevice capability negotiation."""
+﻿"""Validation tests for FullDuplexDevice capability negotiation."""
 
 import types
 
@@ -12,10 +12,10 @@ from backend.audio.full_duplex_device import DeviceConfig, FullDuplexDevice
 def _clear_audio_env(monkeypatch):
     """Ensure tests run with deterministic audio env defaults."""
     for key in (
-        "JARVIS_AUDIO_INPUT_DEVICE",
-        "JARVIS_AUDIO_OUTPUT_DEVICE",
-        "JARVIS_AUDIO_REQUIRE_INPUT",
-        "JARVIS_AUDIO_ALLOW_OUTPUT_ONLY",
+        "Ironcliw_AUDIO_INPUT_DEVICE",
+        "Ironcliw_AUDIO_OUTPUT_DEVICE",
+        "Ironcliw_AUDIO_REQUIRE_INPUT",
+        "Ironcliw_AUDIO_ALLOW_OUTPUT_ONLY",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -86,8 +86,8 @@ def _make_fake_sd(
 
 def test_validate_device_selection_uses_defaults(monkeypatch):
     """Validation should resolve and persist default duplex devices."""
-    monkeypatch.delenv("JARVIS_AUDIO_INPUT_DEVICE", raising=False)
-    monkeypatch.delenv("JARVIS_AUDIO_OUTPUT_DEVICE", raising=False)
+    monkeypatch.delenv("Ironcliw_AUDIO_INPUT_DEVICE", raising=False)
+    monkeypatch.delenv("Ironcliw_AUDIO_OUTPUT_DEVICE", raising=False)
     monkeypatch.setattr(fd_mod, "sd", _make_fake_sd(default_device=(1, 2)))
 
     device = FullDuplexDevice(DeviceConfig())

@@ -1,9 +1,9 @@
-"""
-Trinity Clients - Cross-Repo Integration for JARVIS Ecosystem
+﻿"""
+Trinity Clients - Cross-Repo Integration for Ironcliw Ecosystem
 ==============================================================
 
 This package provides client modules for cross-repo communication between:
-- JARVIS (main AI agent) 
+- Ironcliw (main AI agent) 
 - jarvis-prime (local LLM inference)
 - reactor-core (training pipeline)
 
@@ -13,7 +13,7 @@ These clients enable:
 3. Memory pressure signaling
 
 Usage:
-    # Get embeddings using JARVIS's centralized service
+    # Get embeddings using Ironcliw's centralized service
     from backend.core.trinity_clients import get_embeddings
     embeddings = await get_embeddings(["text1", "text2"])
     
@@ -24,9 +24,9 @@ Usage:
 To use in jarvis-prime or reactor-core:
     1. Copy the desired client module to your repo
     2. Update import paths as needed
-    3. Or add JARVIS-AI-Agent to PYTHONPATH
+    3. Or add Ironcliw-AI-Agent to PYTHONPATH
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -34,7 +34,7 @@ from __future__ import annotations
 
 # Embedding client
 from backend.core.trinity_clients.jarvis_embedding_client import (
-    JARVISEmbeddingClient,
+    IroncliwEmbeddingClient,
     get_embedding_client,
     get_embeddings,
     cleanup_embedding_client,
@@ -49,7 +49,7 @@ try:
         cleanup_all_resources,
     )
 except ImportError:
-    # Fallback stubs for when running outside JARVIS
+    # Fallback stubs for when running outside Ironcliw
     def register_resource(*args, **kwargs):
         pass
     def unregister_resource(*args, **kwargs):
@@ -72,7 +72,7 @@ try:
         get_remaining_budget,
     )
 except ImportError:
-    # Fallback stubs for when running outside JARVIS
+    # Fallback stubs for when running outside Ironcliw
     async def get_cost_client(*args, **kwargs):
         return None
     async def report_cost(*args, **kwargs):
@@ -85,7 +85,7 @@ except ImportError:
 
 __all__ = [
     # Embedding
-    "JARVISEmbeddingClient",
+    "IroncliwEmbeddingClient",
     "get_embedding_client", 
     "get_embeddings",
     "cleanup_embedding_client",

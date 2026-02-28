@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TrainingStatus Component - Real-Time Training Progress Display
  * =============================================================
  *
@@ -10,12 +10,12 @@
  * - Animated progress bar with stage indicators
  * - Minimized/expanded view toggle
  * - Auto-hide when no training active
- * - Cinematic JARVIS styling
+ * - Cinematic Ironcliw styling
  *
  * Architecture (v9.0 - Unified):
  *   Reactor-Core → UnifiedWebSocketService → This Component → UI Display
  *
- * @author JARVIS AI System
+ * @author Ironcliw AI System
  * @version 2.0.0 (Unified WebSocket Edition)
  */
 

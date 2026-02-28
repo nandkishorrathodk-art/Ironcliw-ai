@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Intelligent Notification Triage System
+﻿"""
+Ironcliw macOS Helper - Intelligent Notification Triage System
 
 Smart notification management that categorizes, prioritizes, and batches
 notifications to minimize user interruption while ensuring important

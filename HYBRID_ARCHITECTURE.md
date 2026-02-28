@@ -1,8 +1,8 @@
-# 🚀 JARVIS Hybrid Architecture - Intelligent Component Lifecycle with GCP Spot VMs
+﻿# 🚀 Ironcliw Hybrid Architecture - Intelligent Component Lifecycle with GCP Spot VMs
 
 ## **World-Class Intelligent Hybrid System with Context-Aware Resource Management**
 
-Your JARVIS features a **state-of-the-art hybrid architecture** with intelligent component lifecycle management that dynamically routes processing between local and cloud based on memory pressure, command complexity, and context:
+Your Ironcliw features a **state-of-the-art hybrid architecture** with intelligent component lifecycle management that dynamically routes processing between local and cloud based on memory pressure, command complexity, and context:
 
 ### **💻 Hybrid Infrastructure**
 - **Local Mac (16GB RAM)** - Always-on components (~730MB idle) + context-aware activation
@@ -160,7 +160,7 @@ Your JARVIS features a **state-of-the-art hybrid architecture** with intelligent
     - **Real-Time Video & Vision Processing** (Claude Vision API heavy)
     - **Advanced Memory & Context Management** (UAE + SAI + CAI full power)
     - **Parallel Processing & Batch Operations** (9+ components active)
-    - **Advanced JARVIS Features** (Continuous monitoring, predictions)
+    - **Advanced Ironcliw Features** (Continuous monitoring, predictions)
     - **Cost Optimization** (Spot VMs 60-91% cheaper: $0.029/hr vs $0.15-0.30/hr)
     - **Future Possibilities** (Second VM, larger models, more components)
     - **RAM Usage Comparison** (16GB local vs 32GB cloud capacity)
@@ -267,11 +267,11 @@ intent = cai.predict_intent(command)
 
 ## 📊 Component Distribution & Intelligent Resource Management
 
-> **Key Innovation:** JARVIS uses **GCP Spot VMs (32GB RAM, ~$0.029/hr, 60-91% cheaper)** with intelligent component lifecycle management. Components can be idle, activated on-demand, or routed between local and cloud based on memory pressure and command context.
+> **Key Innovation:** Ironcliw uses **GCP Spot VMs (32GB RAM, ~$0.029/hr, 60-91% cheaper)** with intelligent component lifecycle management. Components can be idle, activated on-demand, or routed between local and cloud based on memory pressure and command context.
 
 ### **Overview: 9+ Core Components & RAM Management**
 
-JARVIS consists of **9+ core components**, each consuming significant RAM. On a 16GB M1 Mac, running all components simultaneously causes memory pressure, swapping, and slow response times (5-15 seconds).
+Ironcliw consists of **9+ core components**, each consuming significant RAM. On a 16GB M1 Mac, running all components simultaneously causes memory pressure, swapping, and slow response times (5-15 seconds).
 
 **The Solution:**
 - **Intelligent Component Lifecycle** - Components can be idle (in swap/virtual memory) when unused
@@ -286,7 +286,7 @@ JARVIS consists of **9+ core components**, each consuming significant RAM. On a 
 🎯 ALWAYS-ON Components (Low RAM, High Priority):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ WAKE_WORD           - CoreML (Neural Engine, ~50MB RAM)
-                       - "Hey JARVIS" detection
+                       - "Hey Ironcliw" detection
                        - Zero CPU, runs on Apple Neural Engine
 
 ✅ VOICE_UNLOCK        - Biometric authentication (~80MB RAM)
@@ -522,13 +522,13 @@ routing:
 **Example User Flow:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ User: "Hey JARVIS, analyze my screen and suggest"          │
+│ User: "Hey Ironcliw, analyze my screen and suggest"          │
 │       "improvements to my code layout"                      │
 └─────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ Step 1: Wake Word Detection (Always-On, 50MB RAM)          │
-│   • CoreML on Neural Engine detected "Hey JARVIS"          │
+│   • CoreML on Neural Engine detected "Hey Ironcliw"          │
 │   • Activates voice input listener                         │
 └─────────────────────────────────────────────────────────────┘
                          ↓
@@ -576,7 +576,7 @@ routing:
 
 | User Command | Components Activated | RAM Usage | Route | Response Time |
 |--------------|---------------------|-----------|-------|---------------|
-| "Hey JARVIS, what time is it?" | CAI (Light) | ~200MB | Local | <1s |
+| "Hey Ironcliw, what time is it?" | CAI (Light) | ~200MB | Local | <1s |
 | "Unlock my screen" | Voice Unlock | ~300MB | Local | <0.5s |
 | "Analyze my screen" | Vision + UAE + Claude | ~4GB | GCP | 2-3s |
 | "What am I working on?" | UAE + Vision + learning_db | ~3GB | GCP | 2-4s |
@@ -701,7 +701,7 @@ Pre-Loading Strategy:
 
 ### **Overview: Intelligent Load Balancing with Real-Time Communication**
 
-JARVIS implements a **bidirectional negotiation protocol** where local Mac and GCP Spot VMs continuously communicate about RAM capacity, current workload, and component availability. This enables intelligent workload distribution and dynamic component handoff.
+Ironcliw implements a **bidirectional negotiation protocol** where local Mac and GCP Spot VMs continuously communicate about RAM capacity, current workload, and component availability. This enables intelligent workload distribution and dynamic component handoff.
 
 **Key Innovation:** Instead of one-way routing (local → cloud), both systems actively negotiate who should handle each component based on real-time RAM availability.
 
@@ -1118,18 +1118,18 @@ reverse_ws = WebSocket("ws://LOCAL_MAC_IP:8011/component-updates")
 
 ### **MCP (Model Context Protocol):**
 - **Purpose:** Share context between external tools (VS Code, browser) and LLMs
-- **For JARVIS:** **Optional, not required now**
+- **For Ironcliw:** **Optional, not required now**
 - **Reason:** You already have internal context sharing via UAE/SAI/CAI
 - **When to add:** If you want external tools to feed context to Claude Vision
 
 ### **Kubernetes:**
 - **Purpose:** Orchestrate 10s-100s of containers across many VMs
-- **For JARVIS:** **NOT recommended - overkill**
+- **For Ironcliw:** **NOT recommended - overkill**
 - **Reason:** You have 1-2 Spot VMs max, simple auto-create/destroy is better
 - **Your solution is simpler:** Single Spot VM + negotiation protocol
 - **K8s adds complexity:** Learning curve, management overhead, cost
 
-**Verdict:** Stick with your current architecture (Spot VM + WebSocket negotiation). It's simpler, cheaper, and perfectly suited for JARVIS.
+**Verdict:** Stick with your current architecture (Spot VM + WebSocket negotiation). It's simpler, cheaper, and perfectly suited for Ironcliw.
 
 ---
 
@@ -1405,7 +1405,7 @@ print(f"Intelligence: Loaded {len(status['intelligence_systems'])} systems")
 
 ### **Dual Database System**
 
-JARVIS uses a sophisticated hybrid database architecture that seamlessly switches between local and cloud databases:
+Ironcliw uses a sophisticated hybrid database architecture that seamlessly switches between local and cloud databases:
 
 #### **Local: SQLite**
 - **Purpose:** Development, offline operation, fast local queries
@@ -1434,8 +1434,8 @@ JARVIS uses a sophisticated hybrid database architecture that seamlessly switche
 #### **Seamless Switching**
 ```python
 # Set environment variable to switch
-export JARVIS_DB_TYPE=cloudsql  # Use Cloud SQL
-export JARVIS_DB_TYPE=sqlite    # Use local SQLite
+export Ironcliw_DB_TYPE=cloudsql  # Use Cloud SQL
+export Ironcliw_DB_TYPE=sqlite    # Use local SQLite
 
 # Automatic detection and connection
 from intelligence.cloud_database_adapter import get_database_adapter
@@ -1506,12 +1506,12 @@ Database configuration stored in `~/.jarvis/gcp/database_config.json`:
 ```
 
 **Environment Variables:**
-- `JARVIS_DB_TYPE` - Database type (`sqlite` or `cloudsql`)
-- `JARVIS_DB_HOST` - Database host (default: `127.0.0.1` for proxy)
-- `JARVIS_DB_PORT` - Database port (default: `5432`)
-- `JARVIS_DB_NAME` - Database name
-- `JARVIS_DB_USER` - Database user
-- `JARVIS_DB_PASSWORD` - Database password (encrypted)
+- `Ironcliw_DB_TYPE` - Database type (`sqlite` or `cloudsql`)
+- `Ironcliw_DB_HOST` - Database host (default: `127.0.0.1` for proxy)
+- `Ironcliw_DB_PORT` - Database port (default: `5432`)
+- `Ironcliw_DB_NAME` - Database name
+- `Ironcliw_DB_USER` - Database user
+- `Ironcliw_DB_PASSWORD` - Database password (encrypted)
 
 #### **Advantages**
 
@@ -1537,7 +1537,7 @@ Database configuration stored in `~/.jarvis/gcp/database_config.json`:
 
 ### **Enterprise-Grade Testing Framework**
 
-JARVIS includes a comprehensive testing framework for ensuring code quality and reliability:
+Ironcliw includes a comprehensive testing framework for ensuring code quality and reliability:
 
 #### **Testing Tools**
 
@@ -1755,11 +1755,11 @@ Tests run automatically in GitHub Actions:
 
 ### **Complete System Integration**
 
-JARVIS operates as a **fully integrated hybrid system** where Local Mac, GitHub Actions (CI/CD), and GCP Cloud work together seamlessly, sharing data, intelligence, and computational resources in real-time.
+Ironcliw operates as a **fully integrated hybrid system** where Local Mac, GitHub Actions (CI/CD), and GCP Cloud work together seamlessly, sharing data, intelligence, and computational resources in real-time.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS HYBRID ECOSYSTEM                              │
+│                    Ironcliw HYBRID ECOSYSTEM                              │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌──────────────────┐      ┌──────────────────┐      ┌──────────────┐ │
@@ -1793,7 +1793,7 @@ JARVIS operates as a **fully integrated hybrid system** where Local Mac, GitHub 
 
 **Responsibilities:**
 - **Vision System:** Screen capture, OCR, UI element detection
-- **Voice System:** Wake word detection ("Hey JARVIS"), voice commands
+- **Voice System:** Wake word detection ("Hey Ironcliw"), voice commands
 - **Voice Unlock:** Biometric authentication + screen unlock
 - **Display Management:** Multi-monitor, AirPlay, desktop spaces
 - **UAE (Local):** Real-time context capture (screen, apps, network)
@@ -1839,7 +1839,7 @@ cai_local = {
 **CI/CD Workflow:**
 ```yaml
 # GitHub Actions Pipeline
-name: JARVIS Hybrid Deploy
+name: Ironcliw Hybrid Deploy
 
 on: [push, pull_request]
 
@@ -2064,7 +2064,7 @@ cai_cloud = {
 
 #### **Intelligent Process Distribution**
 
-JARVIS continuously monitors RAM usage on both Local and GCP, routing processes based on **real-time resource availability**.
+Ironcliw continuously monitors RAM usage on both Local and GCP, routing processes based on **real-time resource availability**.
 
 **Routing Algorithm:**
 ```python
@@ -2264,7 +2264,7 @@ def resolve_conflicts(local_changes, cloud_changes):
 
 **GitHub Actions Workflow:**
 ```yaml
-name: JARVIS Hybrid Deploy & Sync
+name: Ironcliw Hybrid Deploy & Sync
 
 on:
   push:
@@ -2308,7 +2308,7 @@ jobs:
             --source . \
             --region us-central1 \
             --memory 32Gi \
-            --set-env-vars JARVIS_DB_TYPE=cloudsql
+            --set-env-vars Ironcliw_DB_TYPE=cloudsql
 
       - name: Update Cloud SQL schema
         run: |
@@ -2471,14 +2471,14 @@ class CriticalUpdatePusher:
 
 ### **9. Complete System Example**
 
-#### **End-to-End Flow: "Hey JARVIS, unlock my screen"**
+#### **End-to-End Flow: "Hey Ironcliw, unlock my screen"**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                      COMPLETE HYBRID FLOW                               │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  [1] LOCAL: Wake word detected "Hey JARVIS"                            │
+│  [1] LOCAL: Wake word detected "Hey Ironcliw"                            │
 │      • Voice system (local, 100MB RAM)                                 │
 │      • Latency: <100ms                                                 │
 │      • UAE: Captures context (screen locked, 5:30 PM, home WiFi)       │
@@ -2585,13 +2585,13 @@ class CriticalUpdatePusher:
 ---
 ## 🏗️ Deployment Architecture: Code Flow to Production
 
-JARVIS employs a **sophisticated dual-deployment strategy** that seamlessly integrates manual updates, automatic scaling, and development testing.
+Ironcliw employs a **sophisticated dual-deployment strategy** that seamlessly integrates manual updates, automatic scaling, and development testing.
 
 ### **Architecture Overview**
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                       JARVIS DEPLOYMENT ECOSYSTEM                         │
+│                       Ironcliw DEPLOYMENT ECOSYSTEM                         │
 └──────────────────────────────────────────────────────────────────────────┘
 
                          Developer Workflow
@@ -2719,7 +2719,7 @@ Production Updates    Auto-Scale VMs       Development Testing
    ↓
 5. Instance boots, metadata script runs automatically
    • Install: python3.10, git, curl, jq, postgresql-client
-   • Clone: https://github.com/drussell23/JARVIS-AI-Agent.git
+   • Clone: https://github.com/drussell23/Ironcliw-AI-Agent.git
    • Branch: multi-monitor-support
    • Setup: Python venv, install requirements-cloud.txt
    • Configure: Cloud SQL Proxy, environment variables
@@ -2828,7 +2828,7 @@ class HybridWorkloadRouter:
 
         return f"""#!/bin/bash
 set -e
-echo "🚀 JARVIS GCP Auto-Deployment Starting..."
+echo "🚀 Ironcliw GCP Auto-Deployment Starting..."
 
 # Install dependencies
 sudo apt-get update -qq
@@ -2893,7 +2893,7 @@ $ git diff scripts/gcp_startup.sh
 # (no output = already in sync!)
 ```
 
-###**Why This Architecture? (Critical for JARVIS)**
+###**Why This Architecture? (Critical for Ironcliw)**
 
 **Problem 1: Script Version Drift**
 ```
@@ -2903,7 +2903,7 @@ Traditional Approach:
 - High risk of inconsistency
 - Deployment failures due to outdated scripts
 
-JARVIS Solution:
+Ironcliw Solution:
 - 1 Python method (canonical source)
 - Auto-generated standalone file (pre-commit hook)
 - Guaranteed synchronization
@@ -2917,7 +2917,7 @@ Traditional Approach:
 - Failures discovered in production
 - Difficult to reproduce issues
 
-JARVIS Solution:
+Ironcliw Solution:
 - Pre-commit validation catches errors early
 - Health checks with automatic rollback
 - 5-backup history for emergency recovery
@@ -2933,7 +2933,7 @@ Traditional Approach:
 - Update auto-scale logic separately
 - ~1 hour per change
 
-JARVIS Solution:
+Ironcliw Solution:
 - Modify once (_generate_startup_script)
 - Pre-commit hook updates all variants
 - Test with scripts/gcp_startup.sh
@@ -2941,7 +2941,7 @@ JARVIS Solution:
 - ~5 minutes per change (12x faster!)
 ```
 
-### **Benefits for Ongoing JARVIS Development**
+### **Benefits for Ongoing Ironcliw Development**
 
 **Faster Iteration:**
 - ✅ Modify deployment logic once, works everywhere
@@ -3004,7 +3004,7 @@ def _generate_startup_script(self, gcp_config: dict) -> str:
 
 ## 🛠️ Complete Technology Stack
 
-JARVIS's hybrid cloud architecture leverages a carefully selected tech stack optimized for **scalability**, **reliability**, and **rapid development**.
+Ironcliw's hybrid cloud architecture leverages a carefully selected tech stack optimized for **scalability**, **reliability**, and **rapid development**.
 
 ### **Core Technologies**
 
@@ -3125,7 +3125,7 @@ Database Abstraction Layer
 │   └── Graceful degradation (Cloud SQL → SQLite fallback)
 │
 └── get_database_adapter() (Factory Pattern)
-    ├── Returns: PostgreSQLAdapter (if JARVIS_DB_TYPE=cloudsql)
+    ├── Returns: PostgreSQLAdapter (if Ironcliw_DB_TYPE=cloudsql)
     ├── Returns: SQLiteAdapter (if local development)
     ├── Environment-driven: Zero code changes needed
     └── Future: RedisAdapter (caching), ChromaDBAdapter (vectors)
@@ -3135,7 +3135,7 @@ Database Abstraction Layer
 - **Development Speed:** SQLite lets you iterate without cloud setup
 - **Production Reliability:** PostgreSQL ensures data integrity
 - **Cost Optimization:** Local development costs $0
-- **Flexibility:** Switch database with 1 env var (JARVIS_DB_TYPE)
+- **Flexibility:** Switch database with 1 env var (Ironcliw_DB_TYPE)
 - **Future-Proof:** Abstract layer supports any database
 
 #### **Machine Learning & Intelligence**
@@ -3237,8 +3237,8 @@ Learning Database (Persistent Memory)
 **Why This ML Stack?**
 - **SAI:** Self-improves without manual tuning (saves engineering time)
 - **UAE:** Real-time awareness enables proactive features
-- **CAI:** Intent prediction makes JARVIS feel intelligent
-- **Learning DB:** Persistent memory makes JARVIS get smarter over time
+- **CAI:** Intent prediction makes Ironcliw feel intelligent
+- **Learning DB:** Persistent memory makes Ironcliw get smarter over time
 - **Future Vector DB:** Enables semantic search, RAG, advanced AI
 
 ### **Monitoring & Observability**
@@ -3292,7 +3292,7 @@ Logging & Debugging
 
 **Why This Monitoring Stack?**
 - **psutil:** Industry standard, cross-platform, battle-tested
-- **Custom Monitor:** Tailored for JARVIS (component attribution)
+- **Custom Monitor:** Tailored for Ironcliw (component attribution)
 - **Health Endpoints:** Required for auto-recovery and GitHub Actions
 - **Structured Logs:** Enables future log analysis and alerting
 - **Backup History:** Safety net for rapid rollback
@@ -3512,7 +3512,7 @@ Result:
 #### **Problem 3: System Crashes → Predictive Auto-Scaling**
 ```
 Challenge:
-  Out-of-Memory (OOM) kills JARVIS process
+  Out-of-Memory (OOM) kills Ironcliw process
   Lost context: Conversations, learned patterns
   Manual restart required
   User frustration
@@ -3542,7 +3542,7 @@ Solution:
   • Development: SQLite (free, local, fast iteration)
   • Production: Cloud SQL PostgreSQL (ACID, reliable)
   • Automatic failover (Cloud SQL → SQLite if needed)
-  • Environment-driven (JARVIS_DB_TYPE env var)
+  • Environment-driven (Ironcliw_DB_TYPE env var)
 
 Result:
   ✅ Learning survives restarts
@@ -3572,7 +3572,7 @@ Result:
   ✅ Future-proof (easy to add new platforms)
 ```
 
-### **How This Enables Future JARVIS Development**
+### **How This Enables Future Ironcliw Development**
 
 #### **Scalability Path (Next 12 Months)**
 ```
@@ -3645,7 +3645,7 @@ Current Features:
   • Multi-monitor support
 
 Q1 2026: Collaboration
-  • Multi-user support (team JARVIS)
+  • Multi-user support (team Ironcliw)
   • Workspace sharing (screen mirroring)
   • Collaborative editing
   • Presence awareness (who's online)
@@ -3684,7 +3684,7 @@ Q1 2026: Vector Database
 
 Q2 2026: Advanced ML
   • Federated learning (multi-device)
-  • Reinforcement learning (JARVIS learns from feedback)
+  • Reinforcement learning (Ironcliw learns from feedback)
   • Transfer learning (pre-trained models)
   • A/B testing (optimize features)
 
@@ -3692,7 +3692,7 @@ Q3-Q4 2026: Personalization
   • User profiles (preferences, habits)
   • Personalized models (fine-tuned per user)
   • Privacy-preserving learning (differential privacy)
-  • Explainable AI (why did JARVIS suggest this?)
+  • Explainable AI (why did Ironcliw suggest this?)
 
 Vision (2027+):
   • Multi-modal embeddings (text + image + audio)
@@ -3708,7 +3708,7 @@ Vision (2027+):
    - **Future:** Streaming AI responses, live collaboration
 
 2. **PostgreSQL (Cloud SQL):** ACID compliance, never lose data
-   - **Why:** Learning data is JARVIS's "memory"
+   - **Why:** Learning data is Ironcliw's "memory"
    - **Future:** Multi-user support, transaction logs
 
 3. **GCP Compute:** Elastic scaling, pay-as-you-go
@@ -3731,7 +3731,7 @@ Vision (2027+):
    - **Why:** $0 development cost, production reliability
    - **Future:** Hybrid database (local cache + cloud sync)
 
-**This stack isn't over-engineered—it's NECESSARY for JARVIS to:**
+**This stack isn't over-engineered—it's NECESSARY for Ironcliw to:**
 - ✅ Scale beyond 16GB RAM limitations (run Llama 70B, Mixtral 8x7B)
 - ✅ Deploy automatically without human intervention (crash prevention)
 - ✅ Learn persistently across restarts (conversational memory)
@@ -3741,7 +3741,7 @@ Vision (2027+):
 - ✅ Maintain 99.9% uptime in production (health checks, rollback)
 
 **Without this architecture:**
-- ❌ JARVIS would crash when RAM exceeds 16GB
+- ❌ Ironcliw would crash when RAM exceeds 16GB
 - ❌ Deployment would take hours (manual scripts)
 - ❌ Learning would reset on every restart
 - ❌ No large AI models (Llama 70B impossible)
@@ -3749,7 +3749,7 @@ Vision (2027+):
 - ❌ Developer velocity would be 12x slower
 
 **With this architecture:**
-- ✅ JARVIS can evolve into a **true intelligent assistant**
+- ✅ Ironcliw can evolve into a **true intelligent assistant**
 - ✅ Scales automatically from 16GB to unlimited RAM
 - ✅ Self-improves with zero manual tuning
 - ✅ Deploys in 5 minutes with automatic rollback
@@ -3762,7 +3762,7 @@ Vision (2027+):
 
 ### **Intelligent Real-Time Workload Shifting**
 
-JARVIS includes a **sophisticated RAM monitoring system** that continuously tracks memory usage on both Local Mac (16GB) and GCP Cloud (32GB), **automatically shifting workloads** when local RAM becomes constrained.
+Ironcliw includes a **sophisticated RAM monitoring system** that continuously tracks memory usage on both Local Mac (16GB) and GCP Cloud (32GB), **automatically shifting workloads** when local RAM becomes constrained.
 
 ---
 
@@ -4053,7 +4053,7 @@ class DynamicRAMMonitor:
 
 ### **Shift Back to Local**
 
-When local RAM usage drops below 50%, JARVIS can **automatically shift processes back** for lower latency:
+When local RAM usage drops below 50%, Ironcliw can **automatically shift processes back** for lower latency:
 
 ```python
 async def consider_shift_back_to_local(self):
@@ -4112,7 +4112,7 @@ async def apply_predictive_shift():
 
 ### **Platform-Specific Feature Handling**
 
-Since **Local runs macOS** and **GCP Cloud runs Linux (Ubuntu)**, JARVIS includes a sophisticated **translation layer** that converts macOS-specific operations (Yabai, AppleScript, screen mirroring) into equivalent Linux operations or proxy-based alternatives.
+Since **Local runs macOS** and **GCP Cloud runs Linux (Ubuntu)**, Ironcliw includes a sophisticated **translation layer** that converts macOS-specific operations (Yabai, AppleScript, screen mirroring) into equivalent Linux operations or proxy-based alternatives.
 
 ---
 
@@ -4200,7 +4200,7 @@ Since **Local runs macOS** and **GCP Cloud runs Linux (Ubuntu)**, JARVIS include
 
 ### **Translation Strategies**
 
-JARVIS uses **4 different strategies** depending on the feature:
+Ironcliw uses **4 different strategies** depending on the feature:
 
 #### **Strategy 1: Remote Execution Proxy (Preferred)**
 
@@ -4604,7 +4604,7 @@ python backend/services/macos_proxy_service.py
 
 ### **Intelligent Routing with Platform Awareness**
 
-JARVIS automatically routes commands based on platform requirements:
+Ironcliw automatically routes commands based on platform requirements:
 
 ```python
 class PlatformAwareRouter:
@@ -4675,7 +4675,7 @@ class PlatformAwareRouter:
 
 ### **Fallback Chain**
 
-JARVIS uses a **fallback chain** for maximum reliability:
+Ironcliw uses a **fallback chain** for maximum reliability:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -4747,13 +4747,13 @@ async def execute_with_fallback(self, command: dict) -> dict:
 ✅ **Intelligent Routing** - Automatically chooses best execution strategy
 ✅ **Low Latency** - Remote proxy adds only ~100ms overhead
 ✅ **Reliable** - 5-level fallback chain ensures something always works
-✅ **Platform Agnostic** - Core JARVIS logic works on any platform
+✅ **Platform Agnostic** - Core Ironcliw logic works on any platform
 
 ---
 
 ## 🚀 Benefits of 32GB GCP Cloud RAM
 
-### **What You Can Now Build with JARVIS**
+### **What You Can Now Build with Ironcliw**
 
 Having **32GB GCP RAM** (2x your local Mac's 16GB) unlocks **massive capabilities** that were previously impossible or impractical.
 
@@ -4918,7 +4918,7 @@ async def batch_process_screenshots():
 
 ---
 
-### **6. Advanced JARVIS Features You Can Now Build**
+### **6. Advanced Ironcliw Features You Can Now Build**
 
 #### **🎯 Proactive Intelligence**
 ```python
@@ -4968,7 +4968,7 @@ async def understand_current_work():
         context_history
     )
 
-    return analysis  # "You're building a hybrid cloud system for JARVIS"
+    return analysis  # "You're building a hybrid cloud system for Ironcliw"
 ```
 
 #### **📊 Advanced Analytics Dashboard**
@@ -5025,7 +5025,7 @@ With 32GB GCP RAM, you can now build:
 
 ### **Enterprise-Grade DB-API 2.0 Compliant Cursor**
 
-JARVIS includes a **highly sophisticated database cursor** implementation in `backend/core/context/database_wrappers.py` that provides **full DB-API 2.0 compliance** with advanced features for both PostgreSQL (Cloud SQL) and SQLite.
+Ironcliw includes a **highly sophisticated database cursor** implementation in `backend/core/context/database_wrappers.py` that provides **full DB-API 2.0 compliance** with advanced features for both PostgreSQL (Cloud SQL) and SQLite.
 
 ---
 
@@ -5396,7 +5396,7 @@ print(str(cursor))   # DatabaseCursorWrapper(query='SELECT * FROM goals...', row
 
 ### **Comprehensive Reliability & Recovery**
 
-While JARVIS's hybrid architecture is designed for maximum reliability, it's important to understand potential edge cases and how the system handles them.
+While Ironcliw's hybrid architecture is designed for maximum reliability, it's important to understand potential edge cases and how the system handles them.
 
 ---
 
@@ -5644,7 +5644,7 @@ class ResourceExhaustionHandler:
 
         # Alert user
         await self.send_notification(
-            title="JARVIS RAM Critical",
+            title="Ironcliw RAM Critical",
             message="All heavy processes moved to cloud. Consider closing apps."
         )
 ```
@@ -5731,7 +5731,7 @@ class PlatformIssueDetector:
 
             # Alert user with instructions
             await self.send_notification(
-                title="JARVIS: Yabai Permissions Required",
+                title="Ironcliw: Yabai Permissions Required",
                 message="Please grant Accessibility permissions in System Settings"
             )
 
@@ -5953,7 +5953,7 @@ class AuthenticationFailoverHandler:
 
                 # Alert user
                 await self.alert_admin(
-                    title="JARVIS: GCP Authentication Failed",
+                    title="Ironcliw: GCP Authentication Failed",
                     message="Please update GCP service account credentials",
                     severity="HIGH"
                 )
@@ -6257,7 +6257,7 @@ reliability:
 ✅ **Comprehensive Monitoring** - Early detection of issues
 ✅ **Clear Alerting** - Admin notified of critical issues
 
-**JARVIS is designed to handle edge cases intelligently and maintain service continuity!** 🛡️
+**Ironcliw is designed to handle edge cases intelligently and maintain service continuity!** 🛡️
 
 ---
 
@@ -6265,7 +6265,7 @@ reliability:
 
 ### **Strategic Vision: From Hybrid to Fully Autonomous Intelligence**
 
-With **GCP 32GB RAM Spot VMs** and the **hybrid architecture** foundation in place, JARVIS can now evolve into a **fully autonomous, self-improving AI system** leveraging state-of-the-art ML models and multi-agent coordination.
+With **GCP 32GB RAM Spot VMs** and the **hybrid architecture** foundation in place, Ironcliw can now evolve into a **fully autonomous, self-improving AI system** leveraging state-of-the-art ML models and multi-agent coordination.
 
 ---
 
@@ -6958,7 +6958,7 @@ Benefits:
 
 **Transparency for Autonomous Decisions**
 ```python
-# Explains WHY JARVIS made a decision
+# Explains WHY Ironcliw made a decision
 
 Implementation:
 - File: backend/intelligence/causal_inference_engine.py (NEW)
@@ -7012,7 +7012,7 @@ Benefits:
 
 ### **Phase 4: Predictive & Proactive Systems (Months 6-9)**
 
-#### **Goal:** JARVIS anticipates needs and acts proactively
+#### **Goal:** Ironcliw anticipates needs and acts proactively
 
 **Priority 4.1: Predictive Precomputation Engine**
 
@@ -7181,7 +7181,7 @@ Benefits:
 
 **Priority 5.3: Multi-Device Intelligence Mesh**
 
-**Cross-Device JARVIS (iPhone ↔ MacBook ↔ iPad ↔ Apple TV)**
+**Cross-Device Ironcliw (iPhone ↔ MacBook ↔ iPad ↔ Apple TV)**
 ```python
 # Distributed agents across user's device ecosystem
 
@@ -7478,13 +7478,13 @@ models = {
    SELECT * FROM performance_metrics WHERE phase='1';
    ```
 
-**Roadmap is ready - let's build the future of JARVIS!** 🚀
+**Roadmap is ready - let's build the future of Ironcliw!** 🚀
 
 ---
 
 ## 🎉 Result
 
-**You now have a JARVIS that:**
+**You now have a Ironcliw that:**
 1. **Thinks** - UAE/CAI understand context and intent
 2. **Learns** - SAI and learning_db improve over time (with persistent Cloud SQL storage)
 3. **Heals** - SAI automatically recovers from errors
@@ -7501,7 +7501,7 @@ models = {
 
 ## 📚 Related Documentation
 
-### **JARVIS Documentation**
+### **Ironcliw Documentation**
 - [HYBRID_COST_OPTIMIZATION.md](./HYBRID_COST_OPTIMIZATION.md) - 94% cost reduction guide (Spot VMs, auto-cleanup)
 - [README.md](./README.md) - Main project documentation and quick start guide
 - [start_system.py](./start_system.py) - Hybrid system implementation code

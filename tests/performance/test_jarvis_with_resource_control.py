@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS with Resource Control
+Test Ironcliw with Resource Control
 ================================
 
-Demonstrates how JARVIS now manages memory to stay under 70% on 16GB systems.
+Demonstrates how Ironcliw now manages memory to stay under 70% on 16GB systems.
 """
 
 import asyncio
@@ -36,15 +36,15 @@ def print_memory_status(label=""):
 
 
 async def test_jarvis_startup():
-    """Test JARVIS startup with resource control"""
-    print("🤖 Testing JARVIS with Resource Control")
+    """Test Ironcliw startup with resource control"""
+    print("🤖 Testing Ironcliw with Resource Control")
     print("=" * 60)
     
     # Show initial state
-    print_memory_status("(Before JARVIS)")
+    print_memory_status("(Before Ironcliw)")
     
     # Initialize backend
-    print("\n🚀 Initializing JARVIS backend...")
+    print("\n🚀 Initializing Ironcliw backend...")
     await initialize_backend()
     
     # Get status
@@ -65,7 +65,7 @@ async def test_jarvis_startup():
         print(f"  CPU: {res.get('cpu_percent', 0):.1f}%")
         print(f"  Throttle Level: {res.get('throttle_level', 0)}")
         print(f"  Current ML Model: {res.get('current_ml_model', 'None')}")
-        print(f"  JARVIS Memory: {res.get('jarvis_memory_mb', 0):.1f}MB")
+        print(f"  Ironcliw Memory: {res.get('jarvis_memory_mb', 0):.1f}MB")
         
     # Show voice unlock status
     if 'voice_unlock' in status and isinstance(status['voice_unlock'], dict):
@@ -79,7 +79,7 @@ async def test_jarvis_startup():
             print(f"  Degraded Mode: {ml.get('degraded_mode', False)}")
     
     # Show memory after initialization
-    print_memory_status("(After JARVIS init)")
+    print_memory_status("(After Ironcliw init)")
     
     # Simulate some ML operations
     print("\n🧪 Testing ML Model Loading...")

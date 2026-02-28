@@ -1,7 +1,7 @@
-#!/usr/bin/swift
+﻿#!/usr/bin/swift
 //
 // ScreenCapture.swift
-// Native macOS screen capture for JARVIS
+// Native macOS screen capture for Ironcliw
 // Provides efficient, low-latency screen capture with minimal overhead
 //
 

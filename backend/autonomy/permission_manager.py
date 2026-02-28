@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Permission Manager for JARVIS Autonomous System.
+Permission Manager for Ironcliw Autonomous System.
 
 This module manages and learns autonomous action permissions through user feedback
 and pattern recognition. It provides intelligent permission checking, learning from

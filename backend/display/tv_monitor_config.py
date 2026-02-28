@@ -1,4 +1,4 @@
-"""
+﻿"""
 TV Monitor Configuration
 ========================
 
@@ -31,10 +31,10 @@ class TVMonitorConfig:
     
     # Voice settings
     enable_voice_prompts: bool = field(default_factory=lambda: os.getenv("TV_VOICE_PROMPTS", "true").lower() == "true")
-    # v251.5: Cascade from canonical JARVIS_VOICE_NAME to prevent female-voice fallback.
-    # Previous default was "Samantha" (female) — wrong for JARVIS identity.
+    # v251.5: Cascade from canonical Ironcliw_VOICE_NAME to prevent female-voice fallback.
+    # Previous default was "Samantha" (female) — wrong for Ironcliw identity.
     voice_name: str = field(default_factory=lambda: os.getenv(
-        "TV_VOICE_NAME", os.getenv("JARVIS_VOICE_NAME", "Daniel")
+        "TV_VOICE_NAME", os.getenv("Ironcliw_VOICE_NAME", "Daniel")
     ))  # macOS voice
     voice_rate: int = field(default_factory=lambda: int(os.getenv("TV_VOICE_RATE", "180")))  # Words per minute
     

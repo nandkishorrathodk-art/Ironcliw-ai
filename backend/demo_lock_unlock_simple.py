@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple Demo: Lock Detection and Feedback
 ========================================
@@ -17,7 +17,7 @@ class SimpleWebSocket:
     """Simple websocket for demo"""
     async def send_json(self, data):
         if data.get('type') == 'context_update':
-            print(f"\n💬 JARVIS says: {data.get('message')}")
+            print(f"\n💬 Ironcliw says: {data.get('message')}")
             if data.get('status'):
                 print(f"   (Status: {data.get('status')})")
 
@@ -103,10 +103,10 @@ async def test_feedback_only():
         message = f"I see your screen is locked. I'll unlock it now by typing in your password so I can {action}."
         
         print(f"\n📌 Command: '{cmd}'")
-        print(f"💬 JARVIS would say: '{message}'")
+        print(f"💬 Ironcliw would say: '{message}'")
 
 if __name__ == "__main__":
-    print("🚀 JARVIS Lock Detection Simple Demo")
+    print("🚀 Ironcliw Lock Detection Simple Demo")
     
     # Run feedback test
     asyncio.run(test_feedback_only())

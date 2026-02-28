@@ -1,4 +1,4 @@
-"""Tests for ProcessCleanupManager cache-clearing safety."""
+﻿"""Tests for ProcessCleanupManager cache-clearing safety."""
 
 import sys
 import time
@@ -64,10 +64,10 @@ def test_cpu_compound_relief_deferred_during_startup_grace(monkeypatch, tmp_path
     manager._last_cpu_pressure_warn = 0.0
     manager._startup_compound_pressure_first_ts = 0.0
 
-    monkeypatch.setenv("JARVIS_SUPERVISOR_LOADING", "1")
-    monkeypatch.setenv("JARVIS_CPU_PRESSURE_LOG_COOLDOWN", "0")
-    monkeypatch.setenv("JARVIS_CPU_STARTUP_COMPOUND_GRACE_SECONDS", "120")
-    monkeypatch.setenv("JARVIS_SIGNAL_DIR", str(tmp_path))
+    monkeypatch.setenv("Ironcliw_SUPERVISOR_LOADING", "1")
+    monkeypatch.setenv("Ironcliw_CPU_PRESSURE_LOG_COOLDOWN", "0")
+    monkeypatch.setenv("Ironcliw_CPU_STARTUP_COMPOUND_GRACE_SECONDS", "120")
+    monkeypatch.setenv("Ironcliw_SIGNAL_DIR", str(tmp_path))
 
     monkeypatch.setattr(
         "backend.process_cleanup_manager.psutil.virtual_memory",
@@ -98,10 +98,10 @@ def test_cpu_compound_relief_runs_after_startup_grace(monkeypatch, tmp_path):
     manager._last_cpu_pressure_warn = 0.0
     manager._startup_compound_pressure_first_ts = time.time() - 180.0
 
-    monkeypatch.setenv("JARVIS_SUPERVISOR_LOADING", "1")
-    monkeypatch.setenv("JARVIS_CPU_PRESSURE_LOG_COOLDOWN", "0")
-    monkeypatch.setenv("JARVIS_CPU_STARTUP_COMPOUND_GRACE_SECONDS", "60")
-    monkeypatch.setenv("JARVIS_SIGNAL_DIR", str(tmp_path))
+    monkeypatch.setenv("Ironcliw_SUPERVISOR_LOADING", "1")
+    monkeypatch.setenv("Ironcliw_CPU_PRESSURE_LOG_COOLDOWN", "0")
+    monkeypatch.setenv("Ironcliw_CPU_STARTUP_COMPOUND_GRACE_SECONDS", "60")
+    monkeypatch.setenv("Ironcliw_SIGNAL_DIR", str(tmp_path))
 
     monkeypatch.setattr(
         "backend.process_cleanup_manager.psutil.virtual_memory",

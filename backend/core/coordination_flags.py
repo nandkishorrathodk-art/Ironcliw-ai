@@ -1,4 +1,4 @@
-"""
+﻿"""
 Coordination Flags — Context-managed environment variable flags.
 
 Replaces manual os.environ.pop() in 7+ exception paths with a single
@@ -19,7 +19,7 @@ async def coordination_flag(name: str, value: str = "true"):
     Guaranteed cleanup via finally — no manual pop() in each exception path.
 
     Usage:
-        async with coordination_flag("JARVIS_INVINCIBLE_NODE_BOOTING"):
+        async with coordination_flag("Ironcliw_INVINCIBLE_NODE_BOOTING"):
             result = await boot_invincible_node()
         # Flag automatically cleared on success, error, timeout, or cancellation
     """

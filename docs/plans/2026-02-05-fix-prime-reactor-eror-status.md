@@ -1,10 +1,10 @@
-# Fix Prime & Reactor Core EROR Status - Implementation Plan
+﻿# Fix Prime & Reactor Core EROR Status - Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Eliminate the two root causes making JARVIS Prime and Reactor Core show EROR status: (1) blanket error propagation that marks BOTH components as error when only one fails, and (2) port mismatch where Prime binds to a fallback port but health checks target the configured port.
+**Goal:** Eliminate the two root causes making Ironcliw Prime and Reactor Core show EROR status: (1) blanket error propagation that marks BOTH components as error when only one fails, and (2) port mismatch where Prime binds to a fallback port but health checks target the configured port.
 
-**Architecture:** Three surgical fixes across the Trinity system. Fix 1 makes the unified supervisor track per-component results independently instead of blanket-marking both as error. Fix 2 adds intelligent port fallback to JARVIS Prime's `run_server.py` so it probes for a free port instead of exiting. Fix 3 ensures the cross-repo heartbeat aggregation reads actual runtime port from heartbeat files instead of relying on stale config. All fixes are to existing files — no new files created.
+**Architecture:** Three surgical fixes across the Trinity system. Fix 1 makes the unified supervisor track per-component results independently instead of blanket-marking both as error. Fix 2 adds intelligent port fallback to Ironcliw Prime's `run_server.py` so it probes for a free port instead of exiting. Fix 3 ensures the cross-repo heartbeat aggregation reads actual runtime port from heartbeat files instead of relying on stale config. All fixes are to existing files — no new files created.
 
 **Tech Stack:** Python 3.9, asyncio, aiohttp, socket, JSON file I/O, atomic file writes
 
@@ -15,7 +15,7 @@
 | # | Root Cause | Impact | Fix Location |
 |---|-----------|--------|--------------|
 | 1 | `unified_supervisor.py` lines 62112-62142: Trinity startup timeout/exception handlers mark BOTH `jarvis_prime` AND `reactor_core` as "error" regardless of which component actually failed | Reactor shows EROR even when it's healthy, because Prime's model loading stalled | `unified_supervisor.py` |
-| 2 | JARVIS Prime `run_server.py` calls `sys.exit(1)` when its configured port (8001) is occupied by Docker, instead of binding to a fallback port | Prime either crashes on startup or gets launched on a manually-specified alternate port that doesn't match what health checks expect | `JARVIS-Prime/run_server.py` |
+| 2 | Ironcliw Prime `run_server.py` calls `sys.exit(1)` when its configured port (8001) is occupied by Docker, instead of binding to a fallback port | Prime either crashes on startup or gets launched on a manually-specified alternate port that doesn't match what health checks expect | `Ironcliw-Prime/run_server.py` |
 | 3 | The cross-repo heartbeat file (`~/.jarvis/cross_repo/heartbeat.json`) shows `jarvis_prime: offline, reactor_core: offline` even while both processes are running — because the heartbeat writer uses the supervisor's `_component_status` dict (which was blanket-set to error) rather than querying actual process state | Dashboard relies on stale/wrong status from the supervisor instead of live data | `unified_supervisor.py` (heartbeat writer) |
 
 ---
@@ -238,12 +238,12 @@ actual runtime ports from heartbeat files instead of relying on config."
 
 ---
 
-## Task 2: Intelligent Port Fallback in JARVIS Prime
+## Task 2: Intelligent Port Fallback in Ironcliw Prime
 
-**Problem:** `JARVIS-Prime/run_server.py` calls `sys.exit(1)` when its configured port is occupied. Prime should find a free port and update all registries.
+**Problem:** `Ironcliw-Prime/run_server.py` calls `sys.exit(1)` when its configured port is occupied. Prime should find a free port and update all registries.
 
 **Files:**
-- Modify: `/Users/djrussell23/Documents/repos/JARVIS-Prime/run_server.py` (lines 757-858, the `_check_port_available` function and `main()` startup logic)
+- Modify: `/Users/djrussell23/Documents/repos/Ironcliw-Prime/run_server.py` (lines 757-858, the `_check_port_available` function and `main()` startup logic)
 
 **Step 1: Replace `sys.exit(1)` with intelligent port fallback**
 
@@ -329,24 +329,24 @@ After the port fallback decision, ensure the environment variable is updated so 
 
 ```python
 # v228.0: Broadcast actual port to environment for discovery
-os.environ["JARVIS_PRIME_PORT"] = str(_args.port)
-os.environ["JARVIS_PRIME_URL"] = f"http://localhost:{_args.port}"
+os.environ["Ironcliw_PRIME_PORT"] = str(_args.port)
+os.environ["Ironcliw_PRIME_URL"] = f"http://localhost:{_args.port}"
 if _args.port != original_port:
-    os.environ["JARVIS_PRIME_ORIGINAL_PORT"] = str(original_port)
-    os.environ["JARVIS_PRIME_IS_FALLBACK_PORT"] = "true"
-    logger.info(f"[Startup] Environment updated: JARVIS_PRIME_PORT={_args.port}, JARVIS_PRIME_URL=http://localhost:{_args.port}")
+    os.environ["Ironcliw_PRIME_ORIGINAL_PORT"] = str(original_port)
+    os.environ["Ironcliw_PRIME_IS_FALLBACK_PORT"] = "true"
+    logger.info(f"[Startup] Environment updated: Ironcliw_PRIME_PORT={_args.port}, Ironcliw_PRIME_URL=http://localhost:{_args.port}")
 ```
 
 **Step 4: Commit**
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-Prime
+cd /Users/djrussell23/Documents/repos/Ironcliw-Prime
 git add run_server.py
 git commit -m "fix: intelligent port fallback when configured port is occupied
 
 Instead of sys.exit(1) when the port is in use (e.g., Docker on 8001),
 Prime now searches for the next available port in range port+1 to port+10.
-The actual port is broadcast via JARVIS_PRIME_PORT and JARVIS_PRIME_URL
+The actual port is broadcast via Ironcliw_PRIME_PORT and Ironcliw_PRIME_URL
 env vars and written to heartbeat files, so health checks discover the
 real port automatically."
 ```
@@ -529,7 +529,7 @@ to prefer runtime truth over static configuration."
 ```python
 # BEFORE:
 PROBE_PORTS: List[int] = [
-    int(os.getenv("JARVIS_PRIME_PORT", "8001")),
+    int(os.getenv("Ironcliw_PRIME_PORT", "8001")),
     8001,
     8000,
     8002,
@@ -538,7 +538,7 @@ PROBE_PORTS: List[int] = [
 
 # AFTER (v228.0):
 PROBE_PORTS: List[int] = [
-    int(os.getenv("JARVIS_PRIME_PORT", "8001")),
+    int(os.getenv("Ironcliw_PRIME_PORT", "8001")),
     8001,  # Standard J-Prime port (v192.2)
     8002,  # First fallback
     8003,  # v228.0: Extended fallback range
@@ -618,7 +618,7 @@ Resolves root causes of Prime/Reactor EROR status:
 Task 1 (per-component error tracking in unified_supervisor.py)
   ├── No dependencies — can start immediately
   │
-Task 2 (port fallback in JARVIS-Prime/run_server.py)
+Task 2 (port fallback in Ironcliw-Prime/run_server.py)
   ├── No dependencies — can start immediately (separate repo)
   │
 Task 3 (heartbeat reconciliation in unified_supervisor.py)

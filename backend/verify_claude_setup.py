@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Verify Claude API Setup for JARVIS
+Verify Claude API Setup for Ironcliw
 ===================================
 
 Run this script to verify that your Claude API is properly configured
-and JARVIS can generate real AI content.
+and Ironcliw can generate real AI content.
 """
 
 import os
@@ -97,7 +97,7 @@ async def test_document_writer():
 async def main():
     """Run all verification checks"""
     print("=" * 60)
-    print("JARVIS Claude API Verification")
+    print("Ironcliw Claude API Verification")
     print("=" * 60)
 
     # Check environment files
@@ -136,19 +136,19 @@ async def main():
     print("=" * 60)
 
     if valid and writer_works:
-        print("✅ SUCCESS: JARVIS is configured to use real Claude API!")
-        print("\nYour setup is complete. JARVIS will now generate:")
+        print("✅ SUCCESS: Ironcliw is configured to use real Claude API!")
+        print("\nYour setup is complete. Ironcliw will now generate:")
         print("  • Unique, contextual AI content for each request")
         print("  • Properly formatted documents (MLA, APA, Chicago, etc.)")
         print("  • Content specifically about your requested topics")
-        print("\nTry these commands in JARVIS:")
+        print("\nTry these commands in Ironcliw:")
         print('  • "Write me an essay about climate change"')
         print('  • "Create a 500 word report on quantum computing"')
         print('  • "Draft an MLA format paper about artificial intelligence"')
     elif valid and not writer_works:
         print("⚠️ PARTIAL SUCCESS: API key works but document writer needs configuration")
         print("\nTroubleshooting:")
-        print("  1. Restart JARVIS")
+        print("  1. Restart Ironcliw")
         print("  2. Check that backend/.env has your API key")
     else:
         print("❌ SETUP INCOMPLETE: Valid API key needed")

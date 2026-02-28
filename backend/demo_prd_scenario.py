@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Demo: Exact PRD Scenario
 ========================
 
 Demonstrates the exact scenario from the PRD:
 - Mac is locked
-- User says "JARVIS, open Safari and search for dogs"
-- JARVIS follows the exact flow specified
+- User says "Ironcliw, open Safari and search for dogs"
+- Ironcliw follows the exact flow specified
 """
 
 import asyncio
@@ -43,8 +43,8 @@ class PRDWebSocket:
                     'event': 'LOCK_DETECTED',
                     'message': message
                 })
-                print(f"\n[{timestamp}] 🔒 JARVIS detected: Screen is LOCKED")
-                print(f"[{timestamp}] 💬 JARVIS: \"{message}\"")
+                print(f"\n[{timestamp}] 🔒 Ironcliw detected: Screen is LOCKED")
+                print(f"[{timestamp}] 💬 Ironcliw: \"{message}\"")
                 
             if status == 'unlocking_screen':
                 self.flow.append({
@@ -70,13 +70,13 @@ async def run_prd_scenario():
     print("="*80)
     
     print("\n📋 From PRD Section 10 - Example Scenario:")
-    print('   Case: Mac is locked, user says "JARVIS, open Safari and search for dogs."')
+    print('   Case: Mac is locked, user says "Ironcliw, open Safari and search for dogs."')
     print("\n   Expected Flow:")
-    print('   1. JARVIS detects state = Locked')
+    print('   1. Ironcliw detects state = Locked')
     print('   2. Queues request: { action: "search dogs in Safari" }')
     print('   3. Feedback: "Your screen is locked, unlocking now."')
     print('   4. Unlock Manager runs')
-    print('   5. On success: JARVIS resumes queued request')
+    print('   5. On success: Ironcliw resumes queued request')
     print('   6. Execution Layer: opens Safari, searches "dogs"')
     print('   7. Feedback: "I unlocked your screen, opened Safari, and searched for dogs."')
     
@@ -97,16 +97,16 @@ async def run_prd_scenario():
     print("\n" + "-"*60)
     print("[USER INPUT]")
     command = "open Safari and search for dogs"
-    print(f'🎤 User says: "JARVIS, {command}"')
+    print(f'🎤 User says: "Ironcliw, {command}"')
     print("-"*60)
     
-    # Step 3: Create JARVIS components
+    # Step 3: Create Ironcliw components
     processor = UnifiedCommandProcessor()
     context_handler = wrap_with_enhanced_context(processor)
     websocket = PRDWebSocket()
     
     # Step 4: Process command
-    print("\n[JARVIS PROCESSING]")
+    print("\n[Ironcliw PROCESSING]")
     start_time = time.time()
     
     try:
@@ -146,9 +146,9 @@ async def run_prd_scenario():
         # Final verdict
         print("\n" + "="*60)
         if all_passed:
-            print("🎉 SUCCESS! JARVIS followed the PRD flow perfectly!")
+            print("🎉 SUCCESS! Ironcliw followed the PRD flow perfectly!")
             print("\n✅ Just like the PRD specified:")
-            print("   - JARVIS detected the locked screen")
+            print("   - Ironcliw detected the locked screen")
             print("   - Announced its intent to unlock")
             print("   - Unlocked the screen")
             print("   - Then executed the command")
@@ -170,7 +170,7 @@ async def run_prd_scenario():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("🚀 JARVIS PRD Scenario Demo")
+    print("🚀 Ironcliw PRD Scenario Demo")
     print("This demonstrates the exact flow from the PRD documentation\n")
     
     try:
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         
         print("\n" + "="*80)
         print("📚 Key Takeaway:")
-        print("JARVIS now acts intelligently when your screen is locked,")
+        print("Ironcliw now acts intelligently when your screen is locked,")
         print("providing clear feedback and handling the unlock seamlessly!")
         print("="*80)
         

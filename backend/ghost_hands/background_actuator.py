@@ -1,8 +1,8 @@
-"""
+﻿"""
 Ghost Hands Background Actuator
 ================================
 
-The "hands" of JARVIS Ghost Hands - executes commands on background windows
+The "hands" of Ironcliw Ghost Hands - executes commands on background windows
 WITHOUT stealing focus from the user's active window.
 
 Technologies:
@@ -28,7 +28,7 @@ Architecture:
     │   └── Quartz event injection
     └── FocusGuard (focus preservation)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Ghost Hands Edition
 """
 
@@ -115,41 +115,41 @@ class ActuatorConfig:
     # Focus preservation
     preserve_focus: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_PRESERVE_FOCUS", "true"
+            "Ironcliw_ACTUATOR_PRESERVE_FOCUS", "true"
         ).lower() == "true"
     )
     focus_restore_delay_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_ACTUATOR_FOCUS_DELAY_MS", "100"))
+        default_factory=lambda: int(os.getenv("Ironcliw_ACTUATOR_FOCUS_DELAY_MS", "100"))
     )
 
     # Playwright settings
     playwright_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_PLAYWRIGHT", "true"
+            "Ironcliw_ACTUATOR_PLAYWRIGHT", "true"
         ).lower() == "true"
     )
     playwright_headless: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_PLAYWRIGHT_HEADLESS", "true"
+            "Ironcliw_ACTUATOR_PLAYWRIGHT_HEADLESS", "true"
         ).lower() == "true"
     )
 
     # AppleScript settings
     applescript_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_APPLESCRIPT", "true"
+            "Ironcliw_ACTUATOR_APPLESCRIPT", "true"
         ).lower() == "true"
     )
 
     # Timeouts
     action_timeout_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_ACTUATOR_TIMEOUT_MS", "10000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_ACTUATOR_TIMEOUT_MS", "10000"))
     )
 
     # Safety
     require_confirmation_for_dangerous: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_ACTUATOR_CONFIRM_DANGEROUS", "true"
+            "Ironcliw_ACTUATOR_CONFIRM_DANGEROUS", "true"
         ).lower() == "true"
     )
 

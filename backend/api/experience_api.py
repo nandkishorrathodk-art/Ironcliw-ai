@@ -1,5 +1,5 @@
-"""
-Experience API - REST Endpoints for JARVIS Data Flywheel
+﻿"""
+Experience API - REST Endpoints for Ironcliw Data Flywheel
 
 This module provides REST endpoints for:
 - Recording RLHF outcomes (user feedback)
@@ -10,7 +10,7 @@ Integration:
     from backend.api.experience_api import experience_router
     app.include_router(experience_router)
 
-Author: JARVIS v5.0 Data Flywheel
+Author: Ironcliw v5.0 Data Flywheel
 Version: 1.0.0
 """
 

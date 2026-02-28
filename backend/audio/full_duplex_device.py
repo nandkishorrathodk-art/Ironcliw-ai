@@ -1,4 +1,4 @@
-"""
+﻿"""
 Full-Duplex Audio Device Abstraction (Layer -1)
 =================================================
 
@@ -55,36 +55,36 @@ class DeviceConfig:
     def __post_init__(self):
         # Allow env var overrides
         self.sample_rate = int(os.getenv(
-            "JARVIS_AUDIO_SAMPLE_RATE", str(self.sample_rate)
+            "Ironcliw_AUDIO_SAMPLE_RATE", str(self.sample_rate)
         ))
         self.internal_rate = int(os.getenv(
-            "JARVIS_AUDIO_INTERNAL_RATE", str(self.internal_rate)
+            "Ironcliw_AUDIO_INTERNAL_RATE", str(self.internal_rate)
         ))
         self.frame_duration_ms = int(os.getenv(
-            "JARVIS_AUDIO_FRAME_MS", str(self.frame_duration_ms)
+            "Ironcliw_AUDIO_FRAME_MS", str(self.frame_duration_ms)
         ))
         self.playback_buffer_seconds = float(os.getenv(
-            "JARVIS_AUDIO_BUFFER_SECONDS", str(self.playback_buffer_seconds)
+            "Ironcliw_AUDIO_BUFFER_SECONDS", str(self.playback_buffer_seconds)
         ))
         self.startup_silence_ms = int(os.getenv(
-            "JARVIS_AUDIO_STARTUP_SILENCE_MS", str(self.startup_silence_ms)
+            "Ironcliw_AUDIO_STARTUP_SILENCE_MS", str(self.startup_silence_ms)
         ))
-        require_input_env = os.getenv("JARVIS_AUDIO_REQUIRE_INPUT")
+        require_input_env = os.getenv("Ironcliw_AUDIO_REQUIRE_INPUT")
         if require_input_env is not None:
             self.require_input = require_input_env.lower() in (
                 "1", "true", "yes", "on"
             )
-        allow_output_only_env = os.getenv("JARVIS_AUDIO_ALLOW_OUTPUT_ONLY")
+        allow_output_only_env = os.getenv("Ironcliw_AUDIO_ALLOW_OUTPUT_ONLY")
         if allow_output_only_env is not None:
             self.allow_output_only = allow_output_only_env.lower() in (
                 "1", "true", "yes", "on"
             )
 
-        dev_in = os.getenv("JARVIS_AUDIO_INPUT_DEVICE")
+        dev_in = os.getenv("Ironcliw_AUDIO_INPUT_DEVICE")
         if dev_in is not None:
             self.input_device = int(dev_in)
 
-        dev_out = os.getenv("JARVIS_AUDIO_OUTPUT_DEVICE")
+        dev_out = os.getenv("Ironcliw_AUDIO_OUTPUT_DEVICE")
         if dev_out is not None:
             self.output_device = int(dev_out)
 
@@ -182,7 +182,7 @@ class FullDuplexDevice:
         On failure, raises RuntimeError with details.
         """
         try:
-            if os.getenv("JARVIS_AUDIO_VALIDATE_DEVICES", "true").lower() in (
+            if os.getenv("Ironcliw_AUDIO_VALIDATE_DEVICES", "true").lower() in (
                 "1",
                 "true",
                 "yes",

@@ -1,8 +1,8 @@
-# Multi-Space Vision Memory Optimization
+﻿# Multi-Space Vision Memory Optimization
 
 ## macOS Memory Philosophy
 
-JARVIS Vision System follows macOS native memory management principles:
+Ironcliw Vision System follows macOS native memory management principles:
 
 ### Key Concepts
 
@@ -29,7 +29,7 @@ All configuration is dynamic via environment variables:
 
 ```bash
 # Enable/disable adaptive memory management
-export JARVIS_ADAPTIVE_MEMORY="true"  # default: true
+export Ironcliw_ADAPTIVE_MEMORY="true"  # default: true
 
 # Cache size limits per memory pressure level (MB)
 export CACHE_SIZE_GREEN="500"   # Normal conditions
@@ -201,7 +201,7 @@ Run comprehensive memory profiling to validate Priority 3 targets:
 
 ```bash
 # Run full benchmark suite
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 backend/vision/memory_profiler.py
 ```
 
@@ -226,8 +226,8 @@ python3 backend/vision/memory_profiler.py
 Monitor memory usage during typical workflow:
 
 ```bash
-# Terminal 1: Start JARVIS
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+# Terminal 1: Start Ironcliw
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 start_system.py
 
 # Terminal 2: Monitor memory
@@ -256,7 +256,7 @@ input('Memory pressure created. Press Enter to release...')
 "
 ```
 
-Then check JARVIS adapts its cache sizes and quality settings.
+Then check Ironcliw adapts its cache sizes and quality settings.
 
 ## macOS Integration
 

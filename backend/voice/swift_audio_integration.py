@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Swift Audio Integration for JARVIS Voice System
+Swift Audio Integration for Ironcliw Voice System
 Provides high-performance audio processing using Swift/Metal acceleration
 """
 

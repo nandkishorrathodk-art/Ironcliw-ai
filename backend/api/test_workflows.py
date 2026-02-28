@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for JARVIS Multi-Command Workflow System
+Test script for Ironcliw Multi-Command Workflow System
 Tests various workflow scenarios to ensure proper functionality
 """
 
@@ -32,7 +32,7 @@ class WorkflowTester:
         
     async def run_test_suite(self):
         """Run complete test suite"""
-        logger.info("Starting JARVIS Workflow Test Suite")
+        logger.info("Starting Ironcliw Workflow Test Suite")
         logger.info("=" * 50)
         
         # Test 1: Simple two-action workflow
@@ -65,8 +65,8 @@ class WorkflowTester:
         logger.info("-" * 40)
         
         test_commands = [
-            "Hey JARVIS, open Safari and search for Python tutorials",
-            "JARVIS, check my email and calendar",
+            "Hey Ironcliw, open Safari and search for Python tutorials",
+            "Ironcliw, check my email and calendar",
             "Open Word and create a new document"
         ]
         
@@ -79,8 +79,8 @@ class WorkflowTester:
         logger.info("-" * 40)
         
         test_commands = [
-            "Hey JARVIS, prepare for my meeting by opening Zoom, checking my calendar, and muting notifications",
-            "JARVIS, research machine learning by opening Safari, searching for ML tutorials, and creating a new document for notes",
+            "Hey Ironcliw, prepare for my meeting by opening Zoom, checking my calendar, and muting notifications",
+            "Ironcliw, research machine learning by opening Safari, searching for ML tutorials, and creating a new document for notes",
             "Help me organize my work by checking emails, opening my task list, and setting a reminder for the important ones"
         ]
         
@@ -93,7 +93,7 @@ class WorkflowTester:
         logger.info("-" * 40)
         
         test_commands = [
-            "JARVIS, unlock my screen, then open Mail and check for new messages",
+            "Ironcliw, unlock my screen, then open Mail and check for new messages",
             "Open PowerPoint, create a new presentation, and add a title slide about AI",
             "Find documents about project alpha, open them, and create a summary"
         ]
@@ -121,7 +121,7 @@ class WorkflowTester:
         logger.info("-" * 40)
         
         test_commands = [
-            "JARVIS, open Safari, Chrome, and Firefox simultaneously",
+            "Ironcliw, open Safari, Chrome, and Firefox simultaneously",
             "Check my email, calendar, and weather at the same time",
             "Open Word, Excel, and PowerPoint all at once"
         ]
@@ -151,7 +151,7 @@ class WorkflowTester:
             "Check email, calendar, weather",
             
             # Complex sentences
-            "JARVIS, I need to prepare for my presentation, so please open PowerPoint, search for design templates, and create a new slide deck"
+            "Ironcliw, I need to prepare for my presentation, so please open PowerPoint, search for design templates, and create a new slide deck"
         ]
         
         for cmd in test_commands:
@@ -165,7 +165,7 @@ class WorkflowTester:
         scenarios = [
             {
                 "name": "Morning Routine",
-                "command": "JARVIS, start my day by checking the weather, reviewing my calendar, and opening my email"
+                "command": "Ironcliw, start my day by checking the weather, reviewing my calendar, and opening my email"
             },
             {
                 "name": "Research Task",

@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Memory Agent
+﻿"""
+Ironcliw Neural Mesh - Memory Agent
 
 A production agent responsible for semantic memory operations.
 Provides intelligent memory storage, retrieval, and pattern recognition

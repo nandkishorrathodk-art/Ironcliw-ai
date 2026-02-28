@@ -1,5 +1,5 @@
-"""
-Vision Command Handler for JARVIS - Pure Intelligence Version
+﻿"""
+Vision Command Handler for Ironcliw - Pure Intelligence Version
 NO TEMPLATES. NO HARDCODING. PURE CLAUDE VISION INTELLIGENCE.
 
 Every response is generated fresh by Claude based on what it sees.
@@ -337,7 +337,7 @@ class VisionCommandHandler:
         # - ClaudeCommandInterpreter API calls
         # - ClaudeVisionChatbot creation
         # ===========================================================
-        handler_init_timeout = float(os.getenv("JARVIS_HANDLER_INIT_TIMEOUT", "5"))
+        handler_init_timeout = float(os.getenv("Ironcliw_HANDLER_INIT_TIMEOUT", "5"))
 
         try:
             logger.info(f"[VISION] Initializing IntelligentCommandHandler (timeout: {handler_init_timeout}s)...")
@@ -764,7 +764,7 @@ class VisionCommandHandler:
                     # Total cascade: ~30s max, but we add outer protection at 20s
                     # for immediate acknowledgment (watchers continue in background)
                     # ===========================================================
-                    surveillance_timeout = float(os.getenv("JARVIS_SURVEILLANCE_TIMEOUT", "20"))
+                    surveillance_timeout = float(os.getenv("Ironcliw_SURVEILLANCE_TIMEOUT", "20"))
 
                     try:
                         response_text = await asyncio.wait_for(
@@ -1419,7 +1419,7 @@ class VisionCommandHandler:
                 if "screenshot" in error_msg.lower() or "capture" in error_msg.lower() or "invalid" in error_msg.lower():
                     user_message = (
                         "I'm unable to capture screenshots of your desktop spaces at the moment. "
-                        "Please ensure screen recording permissions are enabled for JARVIS in "
+                        "Please ensure screen recording permissions are enabled for Ironcliw in "
                         "System Preferences > Security & Privacy > Privacy > Screen Recording."
                     )
                 else:
@@ -1516,7 +1516,7 @@ Respond with just "START" or "STOP".
             if monitoring_success:
                 start_prompt = f"""The user asked: "{command}"
 
-You're JARVIS. The screen monitoring is now ACTIVE with the macOS purple indicator visible.
+You're Ironcliw. The screen monitoring is now ACTIVE with the macOS purple indicator visible.
 
 Give a BRIEF confirmation (1-2 sentences max) that includes:
 1. Monitoring is now active
@@ -1530,7 +1530,7 @@ BE CONCISE. Do not explain technical details or list options.
             else:
                 start_prompt = f"""The user asked: "{command}"
 
-You're JARVIS. Screen monitoring FAILED to start due to permissions.
+You're Ironcliw. Screen monitoring FAILED to start due to permissions.
 
 Give a BRIEF response (1-2 sentences) explaining:
 1. Monitoring couldn't start
@@ -1569,7 +1569,7 @@ BE CONCISE.
             # Get natural response for stopping monitoring
             stop_prompt = f"""The user asked: "{command}"
 
-You're JARVIS. Screen monitoring has been STOPPED and the purple indicator is gone.
+You're Ironcliw. Screen monitoring has been STOPPED and the purple indicator is gone.
 
 Give a BRIEF confirmation (1 sentence) that monitoring has stopped.
 
@@ -2139,7 +2139,7 @@ Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is bei
             apps = target_space.get('applications', [])
             primary_app = target_space.get('primary_activity', 'Unknown')
             
-            enhanced_prompt = f"""You are JARVIS analyzing Space {space_id} in detail.
+            enhanced_prompt = f"""You are Ironcliw analyzing Space {space_id} in detail.
 
 SPACE CONTEXT:
 - Space ID: {space_id}
@@ -2471,7 +2471,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
         """
         SIMPLE TV MONITOR: Handle voice responses for TV connection prompts
 
-        Intercepts "yes", "no" commands when JARVIS asks about connecting to Living Room TV
+        Intercepts "yes", "no" commands when Ironcliw asks about connecting to Living Room TV
         """
         try:
             from display import get_display_monitor
@@ -2699,7 +2699,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                     )
                     
                     if proactive_message and self.jarvis_api:
-                        # Send proactive message through JARVIS voice
+                        # Send proactive message through Ironcliw voice
                         try:
                             await self.jarvis_api.speak_proactive(proactive_message)
                         except Exception as e:
@@ -2897,7 +2897,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
 An error occurred: {error_type}
 {f"Details: {details}" if details else ""}
 
-You're JARVIS. Respond naturally to explain the issue and suggest a solution.
+You're Ironcliw. Respond naturally to explain the issue and suggest a solution.
 Be helpful and specific, but keep it conversational.
 Never use generic error messages or technical jargon.
 """
@@ -2915,7 +2915,7 @@ Never use generic error messages or technical jargon.
                     error_message = (
                         "The screen capture is taking longer than expected, Sir. "
                         "This might be due to system resource constraints or screen recording permissions. "
-                        "Please ensure JARVIS has Screen Recording permissions in System Settings > Privacy & Security."
+                        "Please ensure Ironcliw has Screen Recording permissions in System Settings > Privacy & Security."
                     )
                 else:
                     error_message = "I'm having trouble accessing your screen right now, Sir. Let me check the vision system configuration."

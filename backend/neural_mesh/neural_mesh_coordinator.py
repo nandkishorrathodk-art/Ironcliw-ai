@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Neural Mesh Coordinator
+﻿"""
+Ironcliw Neural Mesh - Neural Mesh Coordinator
 
 The central coordinator that initializes and manages all Neural Mesh components.
 Provides a single entry point for the entire system with:
@@ -7,7 +7,7 @@ Provides a single entry point for the entire system with:
 - Unified initialization
 - Health monitoring
 - Graceful shutdown
-- Integration with existing JARVIS systems
+- Integration with existing Ironcliw systems
 
 Usage:
     coordinator = NeuralMeshCoordinator()
@@ -73,14 +73,14 @@ class SystemMetrics:
 
 class NeuralMeshCoordinator:
     """
-    Central coordinator for the JARVIS Neural Mesh system.
+    Central coordinator for the Ironcliw Neural Mesh system.
 
     This is the main entry point for Neural Mesh. It:
     - Creates and initializes all components
     - Manages component lifecycles
     - Provides unified access to all features
     - Monitors system health
-    - Integrates with existing JARVIS systems
+    - Integrates with existing Ironcliw systems
 
     Example:
         # Create coordinator
@@ -269,7 +269,7 @@ class NeuralMeshCoordinator:
 
         # Also set service_registry dependency to ready (since Neural Mesh is starting)
         # This is set here because if Neural Mesh is initializing, the service registry
-        # must be available (JARVIS body is running)
+        # must be available (Ironcliw body is running)
         try:
             self._registry.set_dependency_ready("service_registry", True)
             logger.debug(
@@ -674,7 +674,7 @@ class NeuralMeshCoordinator:
         """Handle command lifecycle events for knowledge graph updates.
 
         v243.0: Stores command outcomes as knowledge entries so the
-        Knowledge Graph builds semantic memory of what commands JARVIS
+        Knowledge Graph builds semantic memory of what commands Ironcliw
         has handled. Uses event.payload (TrinityEventBus convention).
         """
         try:
@@ -955,7 +955,7 @@ async def get_neural_mesh() -> NeuralMeshCoordinator:
         _coordinator = NeuralMeshCoordinator()
     if not _coordinator._initialized:
         # v253.6: Env-var guard against dual-module aliasing
-        _env_flag = "_JARVIS_NEURAL_MESH_COORD_INITIALIZED"
+        _env_flag = "_Ironcliw_NEURAL_MESH_COORD_INITIALIZED"
         if os.environ.get(_env_flag):
             logger.debug("Coordinator initialized by other module namespace — skipping")
             return _coordinator

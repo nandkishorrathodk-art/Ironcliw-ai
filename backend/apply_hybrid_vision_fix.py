@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Apply Hybrid Vision Fix - C++ + Python ML
 Completely fixes vision routing with zero hardcoding
@@ -367,7 +367,7 @@ def main():
     print("\nTest the fix:")
     print("  python test_hybrid_vision_fix.py")
     
-    print("\n🎯 Restart JARVIS to activate all enhancements!")
+    print("\n🎯 Restart Ironcliw to activate all enhancements!")
 
 if __name__ == "__main__":
     main()

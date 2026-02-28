@@ -1,14 +1,14 @@
-"""
+﻿"""
 Ouroboros UI Integration v1.0
 =============================
 
-Bridges the Native Self-Improvement Engine with JARVIS UI components:
+Bridges the Native Self-Improvement Engine with Ironcliw UI components:
 - Menu bar status indicator
 - WebSocket broadcasts
 - Event bus integration
 - Voice announcements
 
-This makes self-improvement feel like a natural part of JARVIS,
+This makes self-improvement feel like a natural part of Ironcliw,
 with progress visible in the UI without disrupting the user.
 
 Author: Trinity System
@@ -84,7 +84,7 @@ PHASE_ICONS = {
 
 class OuroborosUIController:
     """
-    Controller that bridges Ouroboros with JARVIS UI components.
+    Controller that bridges Ouroboros with Ironcliw UI components.
 
     Handles:
     - Menu bar updates
@@ -340,7 +340,7 @@ class OuroborosUIController:
 
 class OuroborosMenuSection:
     """
-    Menu section for Ouroboros in the JARVIS menu bar.
+    Menu section for Ouroboros in the Ironcliw menu bar.
 
     Adds:
     - Active improvements list
@@ -433,7 +433,7 @@ async def connect_ouroboros_ui(
     """
     Connect Ouroboros to UI components.
 
-    Call this during JARVIS startup after UI components are initialized.
+    Call this during Ironcliw startup after UI components are initialized.
     """
     controller = get_ouroboros_ui_controller()
     await controller.connect(
@@ -1010,7 +1010,7 @@ class UnifiedRealtimeBroadcaster:
         """
         Connect to all communication channels.
 
-        Call this during JARVIS startup after all components are initialized.
+        Call this during Ironcliw startup after all components are initialized.
         """
         self.logger.info("Connecting unified real-time broadcaster...")
 
@@ -1225,7 +1225,7 @@ async def connect_realtime_broadcaster(
     """
     Connect the real-time broadcaster to all communication channels.
 
-    Call this during JARVIS startup after all components are initialized.
+    Call this during Ironcliw startup after all components are initialized.
 
     Example:
         from backend.core.ouroboros.ui_integration import connect_realtime_broadcaster

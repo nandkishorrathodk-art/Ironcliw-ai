@@ -1,8 +1,8 @@
-# Enhanced Vision Detection System - Advanced Improvements
+﻿# Enhanced Vision Detection System - Advanced Improvements
 
 ## 🎯 Problem Statement
 
-JARVIS was clicking the **wrong icons** in the menu bar (keyboard brightness, WiFi, battery) instead of the **Control Center icon**. The original Claude Vision detection was too generic and confused similar-looking icons.
+Ironcliw was clicking the **wrong icons** in the menu bar (keyboard brightness, WiFi, battery) instead of the **Control Center icon**. The original Claude Vision detection was too generic and confused similar-looking icons.
 
 **User Report**: "It's still getting it wrong according to the screenshot of clicking on the keyboard brightness instead of the control center icon."
 
@@ -358,7 +358,7 @@ Layer 7: Self-Correction
 
 ## 📝 Files Modified
 
-### **`/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/display/vision_ui_navigator.py`**
+### **`/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/display/vision_ui_navigator.py`**
 
 **Changes:**
 
@@ -419,7 +419,7 @@ Multi-pass mapping allows Claude to see ALL icons at once and choose Control Cen
 
 Say **"connect to living room tv"**
 
-JARVIS will now:
+Ironcliw will now:
 1. Use enhanced prompt to avoid confusion
 2. Validate detected position makes sense
 3. Use multi-pass if position suspicious

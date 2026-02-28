@@ -1,4 +1,4 @@
-# JARVIS Voice Feedback Fix - Summary
+﻿# Ironcliw Voice Feedback Fix - Summary
 =====================================
 
 ## What Was Fixed
@@ -14,7 +14,7 @@
 - **File**: `api/simple_context_handler_enhanced.py` (lines 127-136, 153-162)
 
 ### 3. Enhanced Context Handler Integration ✅
-- **Problem**: JARVIS was using simple context handler instead of enhanced version
+- **Problem**: Ironcliw was using simple context handler instead of enhanced version
 - **Fix**: Updated imports to use `simple_context_handler_enhanced` 
 - **Files**: 
   - `api/jarvis_voice_api.py` (line 1180)
@@ -22,12 +22,12 @@
 
 ## How It Works Now
 
-When the screen is locked and you say "JARVIS, open Safari and search for dogs":
+When the screen is locked and you say "Ironcliw, open Safari and search for dogs":
 
-1. **Detection**: JARVIS detects the screen is locked via WebSocket
-2. **Feedback**: JARVIS says: "I see your screen is locked. I'll unlock it now by typing in your password so I can search for dogs."
-3. **Action**: JARVIS unlocks the screen
-4. **Progress**: JARVIS says: "Screen unlocked. Now executing your command..."
+1. **Detection**: Ironcliw detects the screen is locked via WebSocket
+2. **Feedback**: Ironcliw says: "I see your screen is locked. I'll unlock it now by typing in your password so I can search for dogs."
+3. **Action**: Ironcliw unlocks the screen
+4. **Progress**: Ironcliw says: "Screen unlocked. Now executing your command..."
 5. **Execution**: Opens Safari and searches
 
 ## Testing the Fix
@@ -39,11 +39,11 @@ cd backend
 ```
 
 ### Manual Test:
-1. Start JARVIS: `python main.py`
+1. Start Ironcliw: `python main.py`
 2. Start WebSocket server: `cd voice_unlock/objc/server && python websocket_server.py`
 3. Open React app: http://localhost:3000
 4. Lock screen (Cmd+Ctrl+Q)
-5. Click microphone and say: "JARVIS, open Safari and search for dogs"
+5. Click microphone and say: "Ironcliw, open Safari and search for dogs"
 6. Listen for the voice feedback!
 
 ## Key Files Modified
@@ -70,7 +70,7 @@ The fix ensures that:
 
 ## Result
 
-JARVIS now acts as an intelligent assistant that:
+Ironcliw now acts as an intelligent assistant that:
 - Understands when your screen is locked
 - Explains what it's about to do
 - Provides clear voice feedback throughout the process

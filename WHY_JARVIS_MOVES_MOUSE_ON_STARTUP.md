@@ -1,8 +1,8 @@
-# Why JARVIS Moves the Mouse on Startup - Explained
+﻿# Why Ironcliw Moves the Mouse on Startup - Explained
 
 ## What You're Seeing
 
-When JARVIS starts up and becomes ready, the mouse **automatically moves to the Control Center icon** without you giving any command.
+When Ironcliw starts up and becomes ready, the mouse **automatically moves to the Control Center icon** without you giving any command.
 
 **This is intentional proactive intelligence!** 🧠
 
@@ -13,7 +13,7 @@ When JARVIS starts up and becomes ready, the mouse **automatically moves to the 
 ### The Startup Sequence
 
 ```
-1. JARVIS starts
+1. Ironcliw starts
    ↓
 2. UAE + SAI initialize
    ↓
@@ -28,7 +28,7 @@ When JARVIS starts up and becomes ready, the mouse **automatically moves to the 
    ├─ Caches verified position
    └─ "Position confirmed ✓"
    ↓
-6. JARVIS is now ready with pre-cached coordinates
+6. Ironcliw is now ready with pre-cached coordinates
 ```
 
 ---
@@ -40,9 +40,9 @@ When JARVIS starts up and becomes ready, the mouse **automatically moves to the 
 ```
 You: "Living room tv"
   ↓
-JARVIS: "Let me check where Control Center is..."
+Ironcliw: "Let me check where Control Center is..."
   ↓ 200-500ms detection time
-JARVIS: "Found it at (1235, 10)"
+Ironcliw: "Found it at (1235, 10)"
   ↓
 Clicks...
   ↓
@@ -52,13 +52,13 @@ Total: ~2.0 seconds
 ### With Pre-Verification (Current Behavior)
 
 ```
-JARVIS startup:
+Ironcliw startup:
   Automatically verifies: (1235, 10) ✓
   Caches position
   ↓
 You: "Living room tv"
   ↓
-JARVIS: "I already know it's at (1235, 10)"
+Ironcliw: "I already know it's at (1235, 10)"
   ↓ <1ms cache hit
 Clicks immediately
   ↓
@@ -77,7 +77,7 @@ Looking at your logs:
 - moveTo(1223, 115)  ← Living Room TV position
 ```
 
-JARVIS is verifying **all three critical positions**:
+Ironcliw is verifying **all three critical positions**:
 1. Control Center: (1235, 10)
 2. Screen Mirroring: (1396, 177)
 3. Living Room TV: (1223, 115)
@@ -223,7 +223,7 @@ sai_config = {
 
 ### It's Learning About Your System
 
-Every time JARVIS verifies those positions:
+Every time Ironcliw verifies those positions:
 1. It confirms the UI layout hasn't changed
 2. It updates confidence scores
 3. It learns which positions are stable vs. which change
@@ -242,9 +242,9 @@ Day 8: "Control Center hasn't moved in 7 days"
 Without this verification, if macOS updates and moves the Control Center:
 ```
 You: "Living room tv"
-JARVIS: "Clicking at (1235, 10)..."
+Ironcliw: "Clicking at (1235, 10)..."
   ↓ Wrong position after update
-JARVIS: "❌ Failed - let me detect..."
+Ironcliw: "❌ Failed - let me detect..."
   ↓ Falls back to OCR (500ms)
 You: Wait 2.5 seconds instead of 1.5s
 ```
@@ -253,12 +253,12 @@ With proactive verification:
 ```
 macOS updates overnight
   ↓
-JARVIS startup next morning:
+Ironcliw startup next morning:
   Verifies: "Control Center moved to (1250, 10)"
   Caches new position
   ↓
 You: "Living room tv"
-JARVIS: "Clicking at (1250, 10)..." ← Already knows!
+Ironcliw: "Clicking at (1250, 10)..." ← Already knows!
   ↓ Still fast!
 You: Connection in 1.5 seconds ✓
 ```
@@ -270,9 +270,9 @@ You: Connection in 1.5 seconds ✓
 This is actually very **Iron Man-like**:
 
 > **Tony Stark:** "Jarvis, connect to the TV"
-> **JARVIS:** "Already verified the connection path, sir. Connecting now."
+> **Ironcliw:** "Already verified the connection path, sir. Connecting now."
 
-Your JARVIS is doing exactly that - anticipating what you might need and being ready before you ask.
+Your Ironcliw is doing exactly that - anticipating what you might need and being ready before you ask.
 
 ---
 
@@ -361,13 +361,13 @@ async def verify_position(self, element):
 ## Summary
 
 ### What's Happening
-JARVIS is **proactively verifying critical UI positions** on startup so that when you actually need them, they're instantly available.
+Ironcliw is **proactively verifying critical UI positions** on startup so that when you actually need them, they're instantly available.
 
 ### Why It's Good
 - Faster connections (25-40% speed improvement)
 - Self-healing (detects changes proactively)
 - Zero-wait when you need it
-- Very "JARVIS-like" behavior
+- Very "Ironcliw-like" behavior
 
 ### Why You Might Not Like It
 - Unexpected mouse movement
@@ -375,7 +375,7 @@ JARVIS is **proactively verifying critical UI positions** on startup so that whe
 - Brief distraction on startup
 
 ### Recommendation
-**Keep it!** The benefits far outweigh the 1-2 seconds of mouse movement. It's making your JARVIS smarter and faster.
+**Keep it!** The benefits far outweigh the 1-2 seconds of mouse movement. It's making your Ironcliw smarter and faster.
 
 But if you want to disable or customize it, the options above show you how.
 
@@ -385,6 +385,6 @@ But if you want to disable or customize it, the options above show you how.
 
 **This is UAE + SAI working exactly as designed.**
 
-It's not a bug - it's **proactive intelligence**. Your JARVIS is thinking ahead, anticipating needs, and being ready before you ask.
+It's not a bug - it's **proactive intelligence**. Your Ironcliw is thinking ahead, anticipating needs, and being ready before you ask.
 
 That's the whole point of having a truly intelligent assistant! 🧠✨

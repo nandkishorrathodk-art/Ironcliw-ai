@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 # Unified Backend Startup Script - FIXED VERSION
 # Starts Python FastAPI backend with proper port management
 
-echo "🚀 Starting JARVIS Unified Backend System..."
+echo "🚀 Starting Ironcliw Unified Backend System..."
 
 # Colors for output
 GREEN='\033[0;32m'

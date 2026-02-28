@@ -1,8 +1,8 @@
-"""
+﻿"""
 MetaCognitiveEngine v100.0 - Self-Aware Reasoning and Introspection
 ====================================================================
 
-Advanced meta-cognition system that enables JARVIS to:
+Advanced meta-cognition system that enables Ironcliw to:
 1. Introspect on its own reasoning processes
 2. Identify blind spots and biases in decision-making
 3. Self-correct erroneous assumptions
@@ -48,7 +48,7 @@ Architecture:
     │  └────────────────────────────────────────────────────────────┘ │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -1125,7 +1125,7 @@ class MetaCognitiveEngine:
     """
     Main engine for meta-cognitive capabilities.
 
-    Provides self-awareness, introspection, and self-correction for JARVIS.
+    Provides self-awareness, introspection, and self-correction for Ironcliw.
     """
 
     def __init__(self):

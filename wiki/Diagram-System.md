@@ -1,6 +1,6 @@
-# 🎨 Diagram System Documentation
+﻿# 🎨 Diagram System Documentation
 
-Complete guide to the JARVIS Auto-Diagram Generation System, including Mermaid integration, GitHub Actions automation, and best practices.
+Complete guide to the Ironcliw Auto-Diagram Generation System, including Mermaid integration, GitHub Actions automation, and best practices.
 
 ---
 
@@ -18,7 +18,7 @@ Complete guide to the JARVIS Auto-Diagram Generation System, including Mermaid i
 
 ## Overview
 
-The JARVIS Diagram System provides:
+The Ironcliw Diagram System provides:
 
 - **Native Mermaid Support** - Diagrams render automatically in GitHub markdown
 - **Auto-Generation** - Automatic PNG/SVG/PDF generation via GitHub Actions
@@ -394,7 +394,7 @@ Keep diagrams focused and readable:
 
 ### 4. Styling Consistency
 
-Use consistent colors from the JARVIS palette:
+Use consistent colors from the Ironcliw palette:
 
 ```mermaid
 flowchart TD
@@ -597,7 +597,7 @@ See [Architecture & Design](Architecture-&-Design.md#data-flow-diagrams) for dat
 
 ## Summary
 
-The JARVIS Diagram System provides:
+The Ironcliw Diagram System provides:
 
 ✅ **Zero-config Mermaid support** in all markdown files
 ✅ **Auto-generation workflow** for PNG/SVG/PDF

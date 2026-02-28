@@ -1,5 +1,5 @@
-"""
-Unified Vision-Based Weather System for JARVIS
+﻿"""
+Unified Vision-Based Weather System for Ironcliw
 Single source of truth for all weather queries using computer vision
 Zero hardcoding - completely dynamic and intelligent
 """
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class UnifiedVisionWeather:
     """
-    The ONLY weather system JARVIS needs
+    The ONLY weather system Ironcliw needs
     Uses vision to read Weather app - no GPS/API needed
     """
     

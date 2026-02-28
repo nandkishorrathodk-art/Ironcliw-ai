@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Document Writer with Real Claude API
+Test Ironcliw Document Writer with Real Claude API
 """
 
 import asyncio
@@ -28,7 +28,7 @@ async def test_document_writer():
     command = "Write me a short essay about renewable energy"
 
     print("=" * 60)
-    print("Testing JARVIS Document Writer")
+    print("Testing Ironcliw Document Writer")
     print("=" * 60)
     print(f"\nCommand: {command}")
     print("\nProcessing...")

@@ -1,4 +1,4 @@
-# Swift Video Capture Implementation ✅
+﻿# Swift Video Capture Implementation ✅
 
 ## Overview
 We've successfully implemented a Swift-based video capture module to resolve the macOS screen recording permissions issue. The system now uses Swift for better integration with macOS screen recording APIs.
@@ -56,15 +56,15 @@ The system now returns appropriate messages based on capture method:
 ✅ Swift permissions: Working correctly
 ✅ Video capture start: Successful
 ✅ Purple indicator: Should appear in menu bar
-✅ JARVIS response: Correct monitoring message
+✅ Ironcliw response: Correct monitoring message
 
 ## Usage
 
-When you say "start monitoring my screen" to JARVIS:
+When you say "start monitoring my screen" to Ironcliw:
 1. Command routes correctly to monitoring handler
 2. Swift bridge checks/requests screen recording permission
 3. Video capture starts with purple indicator
-4. JARVIS confirms with appropriate message
+4. Ironcliw confirms with appropriate message
 
 ## Files Modified/Created
 

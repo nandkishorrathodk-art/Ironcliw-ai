@@ -1,4 +1,4 @@
-# Supervisor Self-Termination Fix - JARVIS v9.5
+﻿# Supervisor Self-Termination Fix - Ironcliw v9.5
 
 ## 🎯 Critical Bug Fixed
 
@@ -302,7 +302,7 @@ All fixes follow user's explicit requirements:
 
 **Supervisor self-termination issue: RESOLVED** ✅
 
-The JARVIS supervisor can now:
+The Ironcliw supervisor can now:
 - ✅ Start and restart reliably
 - ✅ Handle port conflicts intelligently
 - ✅ Never kill itself or related processes
@@ -323,7 +323,7 @@ The JARVIS supervisor can now:
 
 ---
 
-**Author:** Claude Sonnet 4.5 (JARVIS AI Assistant)
+**Author:** Claude Sonnet 4.5 (Ironcliw AI Assistant)
 **Date:** 2025-12-27
 **Version:** v9.5 - Clinical-Grade Intelligence Edition
 **Status:** ✅ VERIFIED & PRODUCTION READY

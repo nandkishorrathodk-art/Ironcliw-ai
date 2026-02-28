@@ -1,4 +1,4 @@
-# Unified Monolith Verification Checklist (v111.1)
+﻿# Unified Monolith Verification Checklist (v111.1)
 
 ## Overview
 
@@ -14,7 +14,7 @@ The goal: `python3 run_supervisor.py` starts everything in a single process.
 - [ ] Integration tests pass (target: 28+ passed)
 
 ### 2. Environment
-- [ ] `JARVIS_IN_PROCESS_MODE` defaults to `true`
+- [ ] `Ironcliw_IN_PROCESS_MODE` defaults to `true`
 - [ ] No conflicting supervisor locks exist
 - [ ] Service registry directory exists (`~/.jarvis/registry/`)
 
@@ -28,7 +28,7 @@ python3 run_supervisor.py &
 # Wait for startup
 sleep 10
 
-# Verify single process (should show ONLY ONE Python process for JARVIS)
+# Verify single process (should show ONLY ONE Python process for Ironcliw)
 ps aux | grep -E "run_supervisor|uvicorn" | grep -v grep
 
 # Expected: ONE process with both run_supervisor and uvicorn in same PID
@@ -171,7 +171,7 @@ python3 -m pytest tests/integration/test_unified_monolith.py -q 2>/dev/null | ta
 
 # 3. Environment
 echo -n "3. In-process mode default... "
-python3 -c "import os; print('OK' if os.getenv('JARVIS_IN_PROCESS_MODE', 'true').lower() == 'true' else 'FAIL')"
+python3 -c "import os; print('OK' if os.getenv('Ironcliw_IN_PROCESS_MODE', 'true').lower() == 'true' else 'FAIL')"
 
 # 4. Registry directory
 echo -n "4. Registry directory... "

@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Automated Screen Recording Permission Helper
 # This script automates as much as possible, but you'll still need to click the checkbox
 
 echo "======================================================================"
-echo "🔓 JARVIS Screen Recording Permission Helper"
+echo "🔓 Ironcliw Screen Recording Permission Helper"
 echo "======================================================================"
 echo ""
 echo "This script will:"
@@ -126,12 +126,12 @@ EOF
     # Add to .zshrc or .bash_profile to run on startup
     if [ -f ~/.zshrc ]; then
         echo "" >> ~/.zshrc
-        echo "# JARVIS temporary startup check" >> ~/.zshrc
+        echo "# Ironcliw temporary startup check" >> ~/.zshrc
         echo "if [ -f ~/.jarvis_startup_check ]; then" >> ~/.zshrc
         echo "    bash ~/.jarvis_startup_check" >> ~/.zshrc
         echo "    rm -f ~/.jarvis_startup_check" >> ~/.zshrc
         echo "    # Remove these lines from .zshrc" >> ~/.zshrc
-        echo "    sed -i '' '/# JARVIS temporary startup check/,+6d' ~/.zshrc" >> ~/.zshrc
+        echo "    sed -i '' '/# Ironcliw temporary startup check/,+6d' ~/.zshrc" >> ~/.zshrc
         echo "fi" >> ~/.zshrc
     fi
 

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-macOS System Controller for JARVIS AI Agent with Event Integration
+macOS System Controller for Ironcliw AI Agent with Event Integration
 Provides voice-activated control of macOS environment through natural language commands
 Now with event-driven architecture for loose coupling
 """

@@ -1,4 +1,4 @@
-//! High-performance resource monitoring for JARVIS
+﻿//! High-performance resource monitoring for Ironcliw
 //! Provides CPU and memory monitoring with minimal overhead
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

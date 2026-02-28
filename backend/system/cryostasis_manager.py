@@ -1,7 +1,7 @@
-"""
+﻿"""
 v69.0 CRYOSTASIS PROTOCOL - Process Suspension for Resource Governance
 
-This module provides JARVIS with the ability to freeze entire application
+This module provides Ironcliw with the ability to freeze entire application
 process trees when they are not being actively monitored, achieving near-zero
 CPU/GPU usage for apps in the "Shadow Realm" (Ghost Display).
 
@@ -107,8 +107,8 @@ PROTECTED_PROCESSES = {
     # Input handling
     "TouchBarServer", "ControlStrip", "talagent",
 
-    # JARVIS components
-    "python", "python3", "Python", "JARVIS",
+    # Ironcliw components
+    "python", "python3", "Python", "Ironcliw",
 
     # Accessibility
     "VoiceOver", "SpeechSynthesis",
@@ -150,15 +150,15 @@ class CryostasisManager:
         self._initialized = True
 
         # Configuration
-        self.enabled = os.getenv("JARVIS_CRYOSTASIS_ENABLED", "true").lower() == "true"
+        self.enabled = os.getenv("Ironcliw_CRYOSTASIS_ENABLED", "true").lower() == "true"
         self.max_freeze_duration = timedelta(
-            seconds=int(os.getenv("JARVIS_MAX_FREEZE_SECONDS", "1800"))  # 30 min default
+            seconds=int(os.getenv("Ironcliw_MAX_FREEZE_SECONDS", "1800"))  # 30 min default
         )
         self.min_idle_before_freeze = timedelta(
-            seconds=int(os.getenv("JARVIS_MIN_IDLE_SECONDS", "60"))  # 1 min default
+            seconds=int(os.getenv("Ironcliw_MIN_IDLE_SECONDS", "60"))  # 1 min default
         )
         self.thaw_delay_seconds = float(
-            os.getenv("JARVIS_THAW_DELAY_SECONDS", "0.5")
+            os.getenv("Ironcliw_THAW_DELAY_SECONDS", "0.5")
         )
 
         # State tracking

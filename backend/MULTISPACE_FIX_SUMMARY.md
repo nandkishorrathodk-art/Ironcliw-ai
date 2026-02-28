@@ -1,7 +1,7 @@
-# Multi-Space Vision System Fix Summary
+﻿# Multi-Space Vision System Fix Summary
 
 ## Issue
-When asking "Where is Terminal?", JARVIS was returning:
+When asking "Where is Terminal?", Ironcliw was returning:
 ```
 I encountered an error analyzing your screen: ValueError. Please try again.
 ```
@@ -50,7 +50,7 @@ The multi-space vision system now:
 
 ## Expected Behavior
 
-When you ask "Where is Terminal?", JARVIS will:
+When you ask "Where is Terminal?", Ironcliw will:
 1. Detect this is a multi-space query
 2. Attempt to capture screenshots from relevant spaces
 3. Analyze them with Claude Vision

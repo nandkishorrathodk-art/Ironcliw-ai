@@ -1,4 +1,4 @@
-# JARVIS Priority Roadmap
+﻿# Ironcliw Priority Roadmap
 **Generated: 2025-10-25**
 **Current State: Hybrid Cloud Architecture Complete, Deployment Ready**
 
@@ -17,7 +17,7 @@
 - Spot VM creation logic is implemented
 - **BUT**: Never tested end-to-end with actual RAM > 85% trigger
 - Need to verify VMs actually pull from Cloud Storage correctly
-- Need to confirm cleanup works when JARVIS stops
+- Need to confirm cleanup works when Ironcliw stops
 
 #### What to Do:
 1. **Trigger RAM threshold naturally:**
@@ -37,7 +37,7 @@
    - ✅ VM pulls code from gs://jarvis-473803-deployments/
    - ✅ VM starts backend on port 8010
    - ✅ Requests route to GCP when needed
-   - ✅ VM deletes when you stop JARVIS (Ctrl+C)
+   - ✅ VM deletes when you stop Ironcliw (Ctrl+C)
    - ✅ No orphaned VMs left behind
 
 4. **Fix any issues found**
@@ -47,7 +47,7 @@
 - [ ] VM pulled latest deployment from Cloud Storage
 - [ ] Backend started and responded to health checks
 - [ ] Requests successfully routed to GCP
-- [ ] VM auto-deleted on JARVIS shutdown
+- [ ] VM auto-deleted on Ironcliw shutdown
 - [ ] No manual cleanup needed
 
 ---
@@ -387,7 +387,7 @@ Nice-to-haves that can wait until core system is solid.
 # Create the test branch
 git checkout -b test-spot-vm-deployment
 
-# Start JARVIS and monitor
+# Start Ironcliw and monitor
 python start_system.py
 
 # Open Activity Monitor

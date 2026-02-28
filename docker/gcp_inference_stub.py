@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS GCP Inference Stub Server v1.0.0
+Ironcliw GCP Inference Stub Server v1.0.0
 ========================================
 
 Ultra-fast APARS-compatible stub server for Docker-based GCP inference.
@@ -69,19 +69,19 @@ def _lazy_import_uvicorn():
 @dataclass
 class StubConfig:
     """Configuration for the stub server."""
-    port: int = field(default_factory=lambda: int(os.getenv("JARVIS_PORT", "8000")))
-    host: str = field(default_factory=lambda: os.getenv("JARVIS_HOST", "0.0.0.0"))
+    port: int = field(default_factory=lambda: int(os.getenv("Ironcliw_PORT", "8000")))
+    host: str = field(default_factory=lambda: os.getenv("Ironcliw_HOST", "0.0.0.0"))
     
     # APARS configuration
-    deps_prebaked: bool = field(default_factory=lambda: os.getenv("JARVIS_DEPS_PREBAKED", "true").lower() == "true")
+    deps_prebaked: bool = field(default_factory=lambda: os.getenv("Ironcliw_DEPS_PREBAKED", "true").lower() == "true")
     skip_phase_3: bool = field(default_factory=lambda: os.getenv("APARS_SKIP_PHASE_3", "true").lower() == "true")
     
     # Server mode
-    is_docker: bool = field(default_factory=lambda: os.getenv("JARVIS_DOCKER", "false").lower() == "true")
-    is_gcp_inference: bool = field(default_factory=lambda: os.getenv("JARVIS_GCP_INFERENCE", "false").lower() == "true")
+    is_docker: bool = field(default_factory=lambda: os.getenv("Ironcliw_DOCKER", "false").lower() == "true")
+    is_gcp_inference: bool = field(default_factory=lambda: os.getenv("Ironcliw_GCP_INFERENCE", "false").lower() == "true")
     
     # Paths
-    progress_file: Path = field(default_factory=lambda: Path(os.getenv("JARVIS_PROGRESS_FILE", "/tmp/jarvis_progress.json")))
+    progress_file: Path = field(default_factory=lambda: Path(os.getenv("Ironcliw_PROGRESS_FILE", "/tmp/jarvis_progress.json")))
     handoff_signal: Path = field(default_factory=lambda: Path("/tmp/jarvis_stub_handoff"))
 
 
@@ -293,7 +293,7 @@ def create_app() -> "FastAPI":
         shutdown_event.set()
     
     app = FastAPI(
-        title="JARVIS GCP Inference Stub",
+        title="Ironcliw GCP Inference Stub",
         description="Ultra-fast stub server for APARS progress reporting",
         version="1.0.0",
         lifespan=lifespan,
@@ -449,7 +449,7 @@ def main():
     setup_signal_handlers()
     
     logging.info("=" * 60)
-    logging.info("JARVIS GCP Inference Stub Server v1.0.0")
+    logging.info("Ironcliw GCP Inference Stub Server v1.0.0")
     logging.info("=" * 60)
     logging.info(f"  Port:          {config.port}")
     logging.info(f"  Deps Prebaked: {config.deps_prebaked}")

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Simple test to verify weather functionality"""
 
 import subprocess
@@ -27,4 +27,4 @@ end tell
 
 print("3. Weather app should now show My Location")
 print("\n✅ If the Weather app is showing your local weather, the system is working!")
-print("   JARVIS can now analyze this screen to tell you the weather.")
+print("   Ironcliw can now analyze this screen to tell you the weather.")

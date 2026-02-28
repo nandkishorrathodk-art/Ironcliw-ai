@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Trinity Organism Verification Script v4.0
 ==========================================
@@ -13,7 +13,7 @@ v4.0 Features:
     - Detailed diagnostics and troubleshooting hints
 
 Tests:
-    1. [BRAIN] JARVIS Prime (Model Serving) - Is it thinking?
+    1. [BRAIN] Ironcliw Prime (Model Serving) - Is it thinking?
     2. [NERVES] Event Bus & Neural Mesh - Are signals flowing?
     3. [IMMUNE] Ouroboros Self-Improvement - Is it ready to heal?
     4. [HEART] Trinity Integration - Is everything connected?
@@ -30,7 +30,7 @@ Usage:
     python3 scripts/verify_trinity_life.py --init --verbose
 
 Expected Output:
-    [BRAIN] Connected - JARVIS Prime responding
+    [BRAIN] Connected - Ironcliw Prime responding
     [NERVES] Pulse Detected - Events flowing
     [IMMUNE] Ready - Ouroboros standing by
     [HEART] Beating - Trinity Integration active
@@ -73,9 +73,9 @@ logger = logging.getLogger("TrinityProbe")
 # =============================================================================
 
 # Default ports for Trinity components
-JARVIS_API_PORT = int(os.getenv("JARVIS_API_PORT", "8001"))
+Ironcliw_API_PORT = int(os.getenv("Ironcliw_API_PORT", "8001"))
 # v238.0: Default 8001 to match trinity_config.py v192.2 alignment
-JARVIS_PRIME_PORT = int(os.getenv("JARVIS_PRIME_PORT", "8001"))
+Ironcliw_PRIME_PORT = int(os.getenv("Ironcliw_PRIME_PORT", "8001"))
 REACTOR_CORE_PORT = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
 
@@ -132,15 +132,15 @@ async def detect_supervisor() -> SupervisorStatus:
     """
     status = SupervisorStatus()
 
-    # Check JARVIS Backend (main indicator that supervisor is running)
-    backend_health = await check_http_health(f"http://localhost:{JARVIS_API_PORT}/health")
+    # Check Ironcliw Backend (main indicator that supervisor is running)
+    backend_health = await check_http_health(f"http://localhost:{Ironcliw_API_PORT}/health")
     if backend_health:
         status.jarvis_backend = True
         status.running = True
         status.health_data["backend"] = backend_health
 
-    # Check JARVIS Prime
-    prime_health = await check_http_health(f"http://localhost:{JARVIS_PRIME_PORT}/health")
+    # Check Ironcliw Prime
+    prime_health = await check_http_health(f"http://localhost:{Ironcliw_PRIME_PORT}/health")
     if prime_health:
         status.jarvis_prime = True
         status.health_data["prime"] = prime_health
@@ -364,7 +364,7 @@ async def shutdown_all_components() -> None:
 
 async def probe_brain() -> ComponentResult:
     """
-    [BRAIN] Probe JARVIS Prime - Model Serving Infrastructure.
+    [BRAIN] Probe Ironcliw Prime - Model Serving Infrastructure.
 
     Checks:
     - Brain Orchestrator availability (WITHOUT creating new instance)
@@ -951,8 +951,8 @@ async def run_with_supervisor_detection(verbose: bool = False, quick: bool = Fal
 
     if supervisor.running:
         print(f"  {Colors.GREEN}Supervisor detected!{Colors.RESET}")
-        print(f"    {Colors.DIM}JARVIS Backend: {'online' if supervisor.jarvis_backend else 'offline'}{Colors.RESET}")
-        print(f"    {Colors.DIM}JARVIS Prime: {'online' if supervisor.jarvis_prime else 'offline'}{Colors.RESET}")
+        print(f"    {Colors.DIM}Ironcliw Backend: {'online' if supervisor.jarvis_backend else 'offline'}{Colors.RESET}")
+        print(f"    {Colors.DIM}Ironcliw Prime: {'online' if supervisor.jarvis_prime else 'offline'}{Colors.RESET}")
         print(f"    {Colors.DIM}Reactor Core: {'online' if supervisor.reactor_core else 'offline'}{Colors.RESET}")
         print()
 
@@ -960,19 +960,19 @@ async def run_with_supervisor_detection(verbose: bool = False, quick: bool = Fal
         # Create results based on HTTP health checks
         results: List[ComponentResult] = []
 
-        # BRAIN - based on JARVIS Prime availability
+        # BRAIN - based on Ironcliw Prime availability
         if supervisor.jarvis_prime:
             results.append(ComponentResult(
                 name="BRAIN",
                 status=ComponentStatus.ALIVE,
-                message=f"Connected - JARVIS Prime responding",
+                message=f"Connected - Ironcliw Prime responding",
                 details=supervisor.health_data.get("prime"),
             ))
         else:
             results.append(ComponentResult(
                 name="BRAIN",
                 status=ComponentStatus.DEGRADED,
-                message="JARVIS Prime not responding",
+                message="Ironcliw Prime not responding",
             ))
 
         # NERVES - based on backend (which runs event bus)
@@ -1181,7 +1181,7 @@ async def run_with_wait_mode(
             ComponentResult(
                 name="BRAIN",
                 status=ComponentStatus.DEAD,
-                message="Supervisor not running - JARVIS Prime unavailable",
+                message="Supervisor not running - Ironcliw Prime unavailable",
             ),
             ComponentResult(
                 name="NERVES",

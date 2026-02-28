@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for Intervention Decision Engine
 Demonstrates user state detection, situation assessment, and intervention decisions
@@ -408,7 +408,7 @@ async def simulate_real_world_scenario():
         # Check for intervention
         opportunity = await engine.decide_intervention()
         if opportunity:
-            print(f"\n🤖 JARVIS: I should intervene!")
+            print(f"\n🤖 Ironcliw: I should intervene!")
             print(f"   Type: {opportunity.intervention_type.value}")
             print(f"   Timing: {opportunity.timing_strategy.value}")
             print(f"   Message: {opportunity.content.get('suggestion', {}).get('message', 'Help available')}")
@@ -421,7 +421,7 @@ async def simulate_real_world_scenario():
         
         opportunity = await engine.decide_intervention()
         if opportunity and opportunity.timing_strategy.value == "natural_break":
-            print("\n🤖 JARVIS: Perfect timing to offer help!")
+            print("\n🤖 Ironcliw: Perfect timing to offer help!")
             print(f"   '{opportunity.content.get('suggestion', {}).get('message', '')}'")
         
     except Exception as e:

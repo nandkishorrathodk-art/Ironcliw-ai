@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Registry Module
+﻿"""
+Ironcliw Neural Mesh - Registry Module
 
 This module provides the Agent Registry for service discovery
 and health monitoring.

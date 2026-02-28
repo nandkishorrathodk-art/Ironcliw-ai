@@ -1,10 +1,10 @@
-"""
+﻿"""
 Process Identity Verifier - Intelligent Process Ownership Detection
 ===================================================================
 
 Fixes the ROOT CAUSE of port allocation race conditions by:
 1. Identifying process by PID, name, command line, and executable path
-2. Detecting if a process is a JARVIS/Trinity component vs external process
+2. Detecting if a process is a Ironcliw/Trinity component vs external process
 3. Cross-referencing with service registry for known registrations
 4. Supporting process adoption for healthy existing instances
 5. Providing forensic-level process analysis for debugging
@@ -21,10 +21,10 @@ Architecture:
 
 Key Innovation:
 - Before falling back to a different port, we now verify if the process
-  holding the port is actually a JARVIS component (which we can adopt)
+  holding the port is actually a Ironcliw component (which we can adopt)
   vs an external process (which requires fallback)
 
-Author: JARVIS Trinity v94.0 - Process Identity Verification
+Author: Ironcliw Trinity v94.0 - Process Identity Verification
 """
 
 from __future__ import annotations
@@ -61,22 +61,22 @@ except ImportError:
 # =============================================================================
 
 class ComponentType(enum.Enum):
-    """Known Trinity/JARVIS component types."""
-    JARVIS_BODY = "jarvis_body"          # Main JARVIS agent (port 8010)
-    JARVIS_PRIME = "jarvis_prime"        # Local LLM inference (port 8000)
+    """Known Trinity/Ironcliw component types."""
+    Ironcliw_BODY = "jarvis_body"          # Main Ironcliw agent (port 8010)
+    Ironcliw_PRIME = "jarvis_prime"        # Local LLM inference (port 8000)
     REACTOR_CORE = "reactor_core"        # Training pipeline (port 8090)
     CODING_COUNCIL = "coding_council"    # Coding assistance
     NEURAL_MESH = "neural_mesh"          # Multi-agent coordination
-    UNKNOWN_JARVIS = "unknown_jarvis"    # JARVIS-related but type unknown
-    EXTERNAL = "external"                # Not a JARVIS component
+    UNKNOWN_Ironcliw = "unknown_jarvis"    # Ironcliw-related but type unknown
+    EXTERNAL = "external"                # Not a Ironcliw component
 
 
 class ProcessVerificationResult(enum.Enum):
     """Result of process identity verification."""
-    JARVIS_HEALTHY = "jarvis_healthy"           # Healthy JARVIS component (can adopt)
-    JARVIS_UNHEALTHY = "jarvis_unhealthy"       # Unhealthy JARVIS (should restart)
-    JARVIS_STARTING = "jarvis_starting"         # JARVIS still initializing
-    EXTERNAL_PROCESS = "external_process"       # Not JARVIS (use fallback)
+    Ironcliw_HEALTHY = "jarvis_healthy"           # Healthy Ironcliw component (can adopt)
+    Ironcliw_UNHEALTHY = "jarvis_unhealthy"       # Unhealthy Ironcliw (should restart)
+    Ironcliw_STARTING = "jarvis_starting"         # Ironcliw still initializing
+    EXTERNAL_PROCESS = "external_process"       # Not Ironcliw (use fallback)
     SYSTEM_PROCESS = "system_process"           # System/protected process
     RELATED_PROCESS = "related_process"         # Parent/child/sibling
     PROCESS_GONE = "process_gone"               # Process no longer exists
@@ -93,7 +93,7 @@ class ProcessFingerprint:
     Comprehensive fingerprint of a process for identity verification.
 
     Contains all information needed to determine if a process is a
-    JARVIS component vs external process.
+    Ironcliw component vs external process.
     """
     pid: int
     name: str = ""
@@ -129,7 +129,7 @@ class ProcessFingerprint:
 
     @property
     def is_jarvis_component(self) -> bool:
-        """Check if this is any JARVIS component."""
+        """Check if this is any Ironcliw component."""
         return self.component_type not in (
             ComponentType.EXTERNAL,
         )
@@ -174,7 +174,7 @@ class VerificationResult:
 
 class ComponentPatternMatcher:
     """
-    Pattern-based matching for identifying JARVIS components.
+    Pattern-based matching for identifying Ironcliw components.
 
     Uses multiple signals:
     1. Process name patterns
@@ -186,7 +186,7 @@ class ComponentPatternMatcher:
 
     # Patterns for each component type
     PATTERNS: Dict[ComponentType, Dict[str, Any]] = {
-        ComponentType.JARVIS_BODY: {
+        ComponentType.Ironcliw_BODY: {
             "name": ["python", "python3", "uvicorn"],
             "cmdline": [
                 "backend.main",
@@ -197,12 +197,12 @@ class ComponentPatternMatcher:
                 "8010",  # Default port
             ],
             "env_vars": [
-                "JARVIS_",
+                "Ironcliw_",
                 "TRINITY_",
             ],
             "ports": [8010, 8011, 8012, 8013],
         },
-        ComponentType.JARVIS_PRIME: {
+        ComponentType.Ironcliw_PRIME: {
             "name": ["python", "python3", "llama", "uvicorn"],
             "cmdline": [
                 "jarvis.prime",
@@ -216,7 +216,7 @@ class ComponentPatternMatcher:
                 "8004", "8005", "8006",  # Fallback ports
             ],
             "env_vars": [
-                "JARVIS_PRIME_",
+                "Ironcliw_PRIME_",
                 "LLAMA_",
             ],
             "ports": [8000, 8004, 8005, 8006],
@@ -303,13 +303,13 @@ class ComponentPatternMatcher:
                 best_confidence = confidence
                 best_reasons = reasons
 
-        # If we have partial JARVIS matches but couldn't identify specific type
+        # If we have partial Ironcliw matches but couldn't identify specific type
         if best_confidence > 0.2 and best_confidence < 0.6:
-            # Check for generic JARVIS indicators
+            # Check for generic Ironcliw indicators
             generic_reasons = self._check_generic_jarvis(fingerprint)
             if generic_reasons:
                 if best_confidence < 0.5:
-                    return (ComponentType.UNKNOWN_JARVIS, 0.5, generic_reasons)
+                    return (ComponentType.UNKNOWN_Ironcliw, 0.5, generic_reasons)
 
         return (best_match, best_confidence, best_reasons)
 
@@ -379,7 +379,7 @@ class ComponentPatternMatcher:
         return False
 
     def _check_generic_jarvis(self, fingerprint: ProcessFingerprint) -> List[str]:
-        """Check for generic JARVIS indicators."""
+        """Check for generic Ironcliw indicators."""
         reasons: List[str] = []
         cmdline_lower = fingerprint.cmdline.lower()
 
@@ -398,7 +398,7 @@ class ComponentPatternMatcher:
 
         # Check environment
         for key in fingerprint.env_hints.keys():
-            if "JARVIS" in key or "TRINITY" in key:
+            if "Ironcliw" in key or "TRINITY" in key:
                 reasons.append(f"env_hint:{key}")
 
         return reasons
@@ -413,7 +413,7 @@ class ProcessIdentityVerifier:
     Main class for verifying process identity on ports.
 
     This class answers the critical question:
-    "Is the process on this port a JARVIS component we can adopt,
+    "Is the process on this port a Ironcliw component we can adopt,
     or an external process requiring fallback?"
     """
 
@@ -582,7 +582,7 @@ class ProcessIdentityVerifier:
                 try:
                     env = proc.environ()
                     for key, value in env.items():
-                        if any(hint in key for hint in ["JARVIS", "TRINITY", "REACTOR", "PRIME", "NEURAL"]):
+                        if any(hint in key for hint in ["Ironcliw", "TRINITY", "REACTOR", "PRIME", "NEURAL"]):
                             fingerprint.env_hints[key] = value[:100]  # Truncate long values
                 except Exception:
                     pass
@@ -693,7 +693,7 @@ class ProcessIdentityVerifier:
     ) -> VerificationResult:
         """Determine the final verification result."""
 
-        # Not a JARVIS component - use fallback
+        # Not a Ironcliw component - use fallback
         if not fingerprint.is_jarvis_component:
             return VerificationResult(
                 result=ProcessVerificationResult.EXTERNAL_PROCESS,
@@ -715,13 +715,13 @@ class ProcessIdentityVerifier:
                 recommendation="Process is related to current process. Use fallback port.",
             )
 
-        # It's a JARVIS component - check if healthy for adoption
+        # It's a Ironcliw component - check if healthy for adoption
         health_passed = await self._probe_health(port)
 
         if health_passed:
-            # Healthy JARVIS component - can adopt
+            # Healthy Ironcliw component - can adopt
             return VerificationResult(
-                result=ProcessVerificationResult.JARVIS_HEALTHY,
+                result=ProcessVerificationResult.Ironcliw_HEALTHY,
                 fingerprint=fingerprint,
                 is_adoptable=True,
                 should_use_fallback=False,
@@ -730,7 +730,7 @@ class ProcessIdentityVerifier:
                                f"Can adopt existing instance (PID {fingerprint.pid}).",
             )
 
-        # JARVIS component but unhealthy - need to restart or fallback
+        # Ironcliw component but unhealthy - need to restart or fallback
         # Check if still starting up
         startup_indicators = [
             "initializing" in fingerprint.status.lower(),
@@ -740,7 +740,7 @@ class ProcessIdentityVerifier:
 
         if any(startup_indicators):
             return VerificationResult(
-                result=ProcessVerificationResult.JARVIS_STARTING,
+                result=ProcessVerificationResult.Ironcliw_STARTING,
                 fingerprint=fingerprint,
                 is_adoptable=False,
                 should_use_fallback=True,
@@ -750,7 +750,7 @@ class ProcessIdentityVerifier:
             )
 
         return VerificationResult(
-            result=ProcessVerificationResult.JARVIS_UNHEALTHY,
+            result=ProcessVerificationResult.Ironcliw_UNHEALTHY,
             fingerprint=fingerprint,
             is_adoptable=False,
             should_use_fallback=False,  # Try to restart it

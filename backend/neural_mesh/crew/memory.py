@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Crew Memory System
+﻿"""
+Ironcliw Neural Mesh - Crew Memory System
 
 Comprehensive memory system for multi-agent collaboration.
 

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Creative Problem Solving Module for JARVIS
+Creative Problem Solving Module for Ironcliw
 Provides innovative solution generation and workflow optimization capabilities
 """
 

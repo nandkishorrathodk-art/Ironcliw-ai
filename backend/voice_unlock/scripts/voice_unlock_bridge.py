@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Voice Unlock Python Bridge
+Ironcliw Voice Unlock Python Bridge
 =================================
 
 Provides voice processing and machine learning capabilities
@@ -390,7 +390,7 @@ class MessageHandler:
 
 def main():
     """Main entry point"""
-    logger.info('JARVIS Voice Unlock Python Bridge started')
+    logger.info('Ironcliw Voice Unlock Python Bridge started')
 
     handler = MessageHandler()
 
@@ -425,7 +425,7 @@ def main():
     if time.monotonic() - session_start >= session_timeout:
         logger.warning('Voice unlock bridge session timeout reached')
 
-    logger.info('JARVIS Voice Unlock Python Bridge stopped')
+    logger.info('Ironcliw Voice Unlock Python Bridge stopped')
 
 
 if __name__ == '__main__':

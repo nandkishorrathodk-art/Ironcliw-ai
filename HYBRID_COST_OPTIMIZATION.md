@@ -1,8 +1,8 @@
-# Hybrid Cloud Cost Optimization Guide
+﻿# Hybrid Cloud Cost Optimization Guide
 
 ## 🎯 Overview
 
-This guide documents the **94% cost reduction** achieved for JARVIS through intelligent hybrid cloud architecture using GCP Spot VMs and automatic cleanup.
+This guide documents the **94% cost reduction** achieved for Ironcliw through intelligent hybrid cloud architecture using GCP Spot VMs and automatic cleanup.
 
 **Cost Reduction: $180/month → $11-15/month**
 
@@ -12,7 +12,7 @@ This guide documents the **94% cost reduction** achieved for JARVIS through inte
 
 ### **The Problem (Before)**
 
-Running JARVIS for solo development was expensive:
+Running Ironcliw for solo development was expensive:
 
 | Resource | Type | Monthly Cost |
 |----------|------|--------------|
@@ -25,7 +25,7 @@ Running JARVIS for solo development was expensive:
 - ❌ Paying for 32GB VM running 24/7 even when not using it
 - ❌ Auto-created VMs weren't deleting (broken cleanup logic)
 - ❌ Using expensive regular VMs instead of Spot VMs
-- ❌ No automatic shutdown when stopping JARVIS
+- ❌ No automatic shutdown when stopping Ironcliw
 
 ---
 
@@ -43,7 +43,7 @@ Smart hybrid system that only uses cloud when needed:
 **Improvements:**
 - ✅ Deleted persistent dev VM (save $120/month)
 - ✅ Use Spot VMs (60-91% cheaper) instead of regular VMs
-- ✅ Auto-cleanup when stopping JARVIS (Ctrl+C)
+- ✅ Auto-cleanup when stopping Ironcliw (Ctrl+C)
 - ✅ Only pay for hours actually used
 
 **Savings: $165-175/month (94% reduction)**
@@ -62,7 +62,7 @@ Smart hybrid system that only uses cloud when needed:
 │  Normal Operation (RAM < 85%):                               │
 │  ┌──────────────────────────────────┐                        │
 │  │ python start_system.py           │                        │
-│  │ → JARVIS runs 100% locally       │                        │
+│  │ → Ironcliw runs 100% locally       │                        │
 │  │ → No GCP VMs created             │                        │
 │  │ → Cost: $0/hour ✅                │                        │
 │  └──────────────────────────────────┘                        │
@@ -98,7 +98,7 @@ Smart hybrid system that only uses cloud when needed:
             │ When you're done:
             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ You: Ctrl+C (stop JARVIS)                                    │
+│ You: Ctrl+C (stop Ironcliw)                                    │
 ├─────────────────────────────────────────────────────────────┤
 │  Shutdown Handler:                                           │
 │  1. Detects GCP VM is active                                 │
@@ -256,7 +256,7 @@ async def stop(self):
 
 **When This Runs:**
 - User presses Ctrl+C
-- JARVIS exits normally
+- Ironcliw exits normally
 - System shutdown
 - Any termination signal
 
@@ -315,7 +315,7 @@ async def _cleanup_gcp_instance(self, instance_id: str):
 ### **Normal Development Workflow**
 
 ```bash
-# 1. Start JARVIS
+# 1. Start Ironcliw
 python start_system.py
 
 # Output:
@@ -323,12 +323,12 @@ python start_system.py
 #    • ✓ RAM Monitor: 65.0% used (NORMAL)
 #    • ✓ Workload Router: Standby for automatic GCP routing
 #
-# ✅ JARVIS running locally (no GCP costs)
+# ✅ Ironcliw running locally (no GCP costs)
 
 # 2. Work on your Mac as normal
 # RAM stays below 85%, everything runs locally
 
-# 3. When done, stop JARVIS
+# 3. When done, stop Ironcliw
 # Press Ctrl+C
 
 # Output:
@@ -343,7 +343,7 @@ python start_system.py
 ### **Heavy Processing Workflow**
 
 ```bash
-# 1. Start JARVIS
+# 1. Start Ironcliw
 python start_system.py
 
 # 2. Start heavy processing (vision analysis, ML training, etc.)
@@ -362,7 +362,7 @@ python start_system.py
 # 3. Heavy work continues on GCP VM
 # Your Mac is responsive, using only 12GB RAM
 
-# 4. Processing completes, you stop JARVIS
+# 4. Processing completes, you stop Ironcliw
 # Press Ctrl+C
 
 # Output:
@@ -380,7 +380,7 @@ python start_system.py
 ```bash
 # Scenario: GCP reclaims Spot VM mid-session
 
-# JARVIS logs:
+# Ironcliw logs:
 # ⚠️  GCP health check failed: Connection timeout
 # 🔄 Attempting to recover GCP deployment...
 #
@@ -442,7 +442,7 @@ gcloud billing projects describe jarvis-473803
 
 ### **Verify Cleanup Worked**
 
-After stopping JARVIS:
+After stopping Ironcliw:
 
 ```bash
 # Check no VMs running
@@ -498,7 +498,7 @@ GCP_PROJECT_ID: jarvis-473803
 **Symptoms:**
 ```bash
 gcloud compute instances list --project=jarvis-473803
-# Shows VMs still running after stopping JARVIS
+# Shows VMs still running after stopping Ironcliw
 ```
 
 **Solution:**
@@ -529,7 +529,7 @@ gcloud billing accounts list
 - Wrong machine type (too large)
 
 **Prevention:**
-- Always Ctrl+C to stop JARVIS properly
+- Always Ctrl+C to stop Ironcliw properly
 - Check `gcloud compute instances list` weekly
 - Set up billing alerts ($20/month threshold)
 
@@ -594,7 +594,7 @@ machine_type = "e2-standard-4"  # 4 vCPU, 16GB RAM
 ```bash
 gcloud billing budgets create \
   --billing-account=YOUR_BILLING_ACCOUNT \
-  --display-name="JARVIS Monthly Budget" \
+  --display-name="Ironcliw Monthly Budget" \
   --budget-amount=20 \
   --threshold-rule=percent=50 \
   --threshold-rule=percent=90 \
@@ -632,7 +632,7 @@ gcloud billing budgets create \
 
 ## 📚 Related Documentation
 
-### **JARVIS Documentation**
+### **Ironcliw Documentation**
 - [HYBRID_ARCHITECTURE.md](./HYBRID_ARCHITECTURE.md) - Complete hybrid architecture with UAE/SAI/CAI integration
 - [README.md](./README.md) - Main project documentation and setup guide
 - [start_system.py](./start_system.py) - Implementation code for hybrid system
@@ -645,5 +645,5 @@ gcloud billing budgets create \
 ---
 
 **Last Updated:** 2025-10-24
-**System Version:** JARVIS v16.0 Hybrid Cloud Intelligence
+**System Version:** Ironcliw v16.0 Hybrid Cloud Intelligence
 **Cost Optimization:** 94% reduction achieved

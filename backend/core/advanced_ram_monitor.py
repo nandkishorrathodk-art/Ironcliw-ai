@@ -74,6 +74,7 @@ class AdvancedRAMMonitor:
 
         # State
         self.is_macos = platform.system() == "Darwin"
+        self.is_windows = platform.system() == "Windows"
         self.local_history: deque = deque(
             maxlen=int(self.decision_window / self.monitoring_interval)
         )
@@ -143,13 +144,20 @@ class AdvancedRAMMonitor:
         used_gb = mem.used / (1024**3)
         usage_percent = mem.percent
 
-        # macOS-specific memory pressure detection
+        # macOS/Windows-specific memory pressure detection
         page_outs = 0
         is_swapping = False
 
         if self.is_macos:
             page_outs = await self._get_macos_page_outs()
             is_swapping = page_outs > self.page_outs_threshold
+        elif self.is_windows:
+            try:
+                swap = psutil.swap_memory()
+                # High swap usage indicates heavy swapping on Windows
+                is_swapping = swap.percent > 85.0
+            except Exception as e:
+                logger.debug(f"Failed to get Windows swap info: {e}")
 
         # Determine memory pressure level
         memory_pressure = self._calculate_memory_pressure(usage_percent, page_outs, is_swapping)

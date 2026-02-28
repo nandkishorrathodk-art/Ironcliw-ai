@@ -1,5 +1,5 @@
-"""
-JARVIS Windows System Control Implementation
+﻿"""
+Ironcliw Windows System Control Implementation
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows implementation of system control operations using C# SystemControl DLL.
@@ -22,7 +22,7 @@ C# DLL Methods Used:
     - SystemController.SetVolume(level)
     - SystemController.ShowNotification(title, message)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations

@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Supervisor Integration v2.0
+Ironcliw Supervisor Integration v2.0
 ===================================
 
 Integration module for connecting the Self-Updating Lifecycle Manager
-with the main JARVIS system (start_system.py).
+with the main Ironcliw system (start_system.py).
 
 v2.0 CHANGE: Now uses UnifiedVoiceOrchestrator for all TTS output instead
 of spawning direct `say` processes. This prevents "multiple voices" issue.
@@ -28,7 +28,7 @@ Usage in start_system.py:
     # When user says "update yourself"
     await trigger_update()
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -59,13 +59,13 @@ EXIT_CODE_RESTART = 102
 
 
 def is_supervised() -> bool:
-    """Check if JARVIS is running under the supervisor."""
-    return os.environ.get("JARVIS_SUPERVISED") == "1"
+    """Check if Ironcliw is running under the supervisor."""
+    return os.environ.get("Ironcliw_SUPERVISED") == "1"
 
 
 def get_supervisor_pid() -> Optional[int]:
     """Get the supervisor's PID if running supervised."""
-    pid_str = os.environ.get("JARVIS_SUPERVISOR_PID")
+    pid_str = os.environ.get("Ironcliw_SUPERVISOR_PID")
     if pid_str:
         try:
             return int(pid_str)
@@ -111,7 +111,7 @@ async def trigger_update(
     The supervisor will catch this exit code and perform:
     1. git pull
     2. pip install (if requirements changed)
-    3. Restart JARVIS
+    3. Restart Ironcliw
     
     Args:
         speak: Whether to announce the update
@@ -166,7 +166,7 @@ async def trigger_rollback(speak: bool = True) -> None:
     The supervisor will catch exit code 101 and perform:
     1. git reset --hard HEAD@{1}
     2. pip install from snapshot
-    3. Restart JARVIS
+    3. Restart Ironcliw
     """
     logger.info("🔄 Rollback triggered - signaling supervisor")
 
@@ -185,7 +185,7 @@ async def trigger_restart(speak: bool = True) -> None:
     Trigger a restart without update.
 
     The supervisor will catch exit code 102 and simply
-    restart JARVIS without any git operations.
+    restart Ironcliw without any git operations.
     """
     logger.info("🔄 Restart triggered - signaling supervisor")
 
@@ -243,7 +243,7 @@ class SupervisorIntentHandler:
     """
     Handles update/rollback intents from voice commands.
     
-    Register with the JARVIS event system to handle:
+    Register with the Ironcliw event system to handle:
     - "update yourself" / "check for updates"
     - "rollback" / "revert update"
     """
@@ -268,7 +268,7 @@ class SupervisorIntentHandler:
             if status.get("available"):
                 return (
                     f"An update is available with {status.get('summary', 'new changes')}. "
-                    "To apply it, please restart JARVIS using: python3 run_supervisor.py"
+                    "To apply it, please restart Ironcliw using: python3 run_supervisor.py"
                 )
             else:
                 return "You're running the latest version. No updates available."
@@ -281,7 +281,7 @@ class SupervisorIntentHandler:
         else:
             return (
                 "Rollback requires running under the supervisor. "
-                "Please restart JARVIS using: python3 run_supervisor.py"
+                "Please restart Ironcliw using: python3 run_supervisor.py"
             )
     
     async def handle_check_updates_intent(self, context: Optional[dict] = None) -> str:
@@ -300,10 +300,10 @@ class SupervisorIntentHandler:
         event_coordinator: Any,
     ) -> bool:
         """
-        Register handlers with JARVISEventCoordinator.
+        Register handlers with IroncliwEventCoordinator.
         
         Args:
-            event_coordinator: The JARVIS event coordinator instance
+            event_coordinator: The Ironcliw event coordinator instance
             
         Returns:
             True if registration successful
@@ -353,15 +353,15 @@ async def setup_supervisor_integration(
     event_coordinator: Optional[Any] = None,
 ) -> bool:
     """
-    Setup supervisor integration with JARVIS.
+    Setup supervisor integration with Ironcliw.
     
-    Call this during JARVIS startup to:
+    Call this during Ironcliw startup to:
     1. Register update/rollback intent handlers
     2. Announce supervised mode if applicable
     3. Check for updates on startup
     
     Args:
-        event_coordinator: JARVISEventCoordinator instance (optional)
+        event_coordinator: IroncliwEventCoordinator instance (optional)
         
     Returns:
         True if running supervised
@@ -399,7 +399,7 @@ class SupervisorProgressBridge:
     """
     Coordination bridge for progress reporting when running under supervisor.
 
-    When JARVIS runs under the supervisor (python3 run_supervisor.py):
+    When Ironcliw runs under the supervisor (python3 run_supervisor.py):
     - start_system.py uses this bridge to report progress
     - The bridge updates FastAPI's app.state
     - The supervisor polls /health/startup endpoint
@@ -424,7 +424,7 @@ class SupervisorProgressBridge:
         self._components_failed: set = set()
         self._current_phase: str = "INITIALIZING"
         self._current_progress: float = 0.0
-        self._current_message: str = "Starting JARVIS..."
+        self._current_message: str = "Starting Ironcliw..."
         self._is_complete: bool = False
         self._initialized: bool = False
 
@@ -534,7 +534,7 @@ class SupervisorProgressBridge:
         self._is_complete = True
         self._current_phase = "COMPLETE" if success else "FAILED"
         self._current_progress = 100.0 if success else self._current_progress
-        self._current_message = message or ("JARVIS is online!" if success else "Startup failed")
+        self._current_message = message or ("Ironcliw is online!" if success else "Startup failed")
         self._sync_to_app()
         logger.info(f"🎉 Startup complete: {self._current_message}")
 
@@ -555,11 +555,11 @@ class SupervisorProgressBridge:
 
     def is_supervised(self) -> bool:
         """Check if running under supervisor."""
-        return os.environ.get("JARVIS_SUPERVISED") == "1"
+        return os.environ.get("Ironcliw_SUPERVISED") == "1"
 
     def supervisor_controls_loading(self) -> bool:
         """Check if supervisor is handling the loading page."""
-        return os.environ.get("JARVIS_SUPERVISOR_LOADING") == "1"
+        return os.environ.get("Ironcliw_SUPERVISOR_LOADING") == "1"
 
 
 # Singleton bridge

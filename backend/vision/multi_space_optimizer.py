@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Multi-Space Performance Optimizer for JARVIS Vision System
+Multi-Space Performance Optimizer for Ironcliw Vision System
 Implements intelligent caching, pre-fetching, and quality optimization
 According to PRD Phase 4 requirements
 """

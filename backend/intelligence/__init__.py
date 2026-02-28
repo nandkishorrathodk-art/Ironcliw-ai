@@ -1,8 +1,8 @@
-"""
-JARVIS Intelligence Layer
+﻿"""
+Ironcliw Intelligence Layer
 =========================
 
-Advanced intelligence systems for JARVIS AI Agent with LangGraph
+Advanced intelligence systems for Ironcliw AI Agent with LangGraph
 Chain-of-Thought reasoning capabilities.
 
 Modules:
@@ -80,7 +80,7 @@ _LAZY_MODULES = {
     'learning_database': (
         '.learning_database',
         [
-            'JARVISLearningDatabase', 'get_learning_database',
+            'IroncliwLearningDatabase', 'get_learning_database',
             'get_learning_database_sync'
         ]
     ),
@@ -266,7 +266,7 @@ _LAZY_MODULES = {
             # Core Classes
             'DocumentManager', 'CompletionHandler', 'DiagnosticHandler',
             'HoverHandler', 'CodeActionHandler', 'DefinitionHandler',
-            'LSPMessageHandler', 'JARVISLSPServer',
+            'LSPMessageHandler', 'IroncliwLSPServer',
             # Convenience Functions
             'get_lsp_server', 'start_lsp_server', 'register_lsp_handler',
         ]
@@ -456,7 +456,7 @@ if TYPE_CHECKING:
     
     # Learning Database
     from .learning_database import (
-        JARVISLearningDatabase,
+        IroncliwLearningDatabase,
         get_learning_database,
         get_learning_database_sync
     )
@@ -547,7 +547,7 @@ __all__ = [
     'get_unified_orchestrator',
 
     # Learning Database
-    'JARVISLearningDatabase',
+    'IroncliwLearningDatabase',
     'get_learning_database',
     'get_learning_database_sync',
 
@@ -761,7 +761,7 @@ __all__ = [
     'CodeActionHandler',
     'DefinitionHandler',
     'LSPMessageHandler',
-    'JARVISLSPServer',
+    'IroncliwLSPServer',
     'get_lsp_server',
     'start_lsp_server',
     'register_lsp_handler',

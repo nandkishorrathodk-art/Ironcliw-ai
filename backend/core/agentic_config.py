@@ -1,5 +1,5 @@
-"""
-JARVIS Agentic Configuration System
+﻿"""
+Ironcliw Agentic Configuration System
 
 Provides dynamic, environment-aware configuration for the entire agentic system.
 Eliminates hardcoding by using environment variables, config files, and runtime detection.
@@ -105,52 +105,52 @@ class ComputerUseConfig:
 
     # Model settings
     model_name: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_COMPUTER_USE_MODEL", "claude-sonnet-4-20250514"
+        "Ironcliw_COMPUTER_USE_MODEL", "claude-sonnet-4-20250514"
     ))
 
     # API settings
     api_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_API_TIMEOUT", "60.0"
+        "Ironcliw_API_TIMEOUT", "60.0"
     )))
     api_key: Optional[str] = field(default_factory=_resolve_anthropic_api_key)
 
     # Execution settings
     max_actions_per_task: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MAX_ACTIONS_PER_TASK", "20"
+        "Ironcliw_MAX_ACTIONS_PER_TASK", "20"
     )))
     action_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_ACTION_TIMEOUT", "30.0"
+        "Ironcliw_ACTION_TIMEOUT", "30.0"
     )))
 
     # Screenshot settings
     screenshot_max_dimension: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_SCREENSHOT_MAX_DIM", "1568"
+        "Ironcliw_SCREENSHOT_MAX_DIM", "1568"
     )))
     capture_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_CAPTURE_TIMEOUT", "10.0"
+        "Ironcliw_CAPTURE_TIMEOUT", "10.0"
     )))
 
     # Thread pool settings
     thread_pool_workers: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_THREAD_POOL_WORKERS", "2"
+        "Ironcliw_THREAD_POOL_WORKERS", "2"
     )))
 
     # Circuit breaker settings
     circuit_breaker_threshold: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_CIRCUIT_BREAKER_THRESHOLD", "3"
+        "Ironcliw_CIRCUIT_BREAKER_THRESHOLD", "3"
     )))
     circuit_breaker_recovery: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_CIRCUIT_BREAKER_RECOVERY", "60.0"
+        "Ironcliw_CIRCUIT_BREAKER_RECOVERY", "60.0"
     )))
 
     # Voice narration
     enable_narration: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_NARRATION", "true"
+        "Ironcliw_ENABLE_NARRATION", "true"
     ).lower() == "true")
 
     # Learning
     enable_learning: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_LEARNING", "true"
+        "Ironcliw_ENABLE_LEARNING", "true"
     ).lower() == "true")
     learned_positions_path: Path = field(default_factory=lambda: Path.home() / ".jarvis" / "learned_ui_positions.json")
 
@@ -161,31 +161,31 @@ class UAEConfig:
 
     # Monitoring settings
     monitoring_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_UAE_MONITORING_INTERVAL", "5.0"
+        "Ironcliw_UAE_MONITORING_INTERVAL", "5.0"
     )))
 
     # Context settings
     context_cache_ttl: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_CONTEXT_CACHE_TTL", "30.0"
+        "Ironcliw_CONTEXT_CACHE_TTL", "30.0"
     )))
 
     # Integration weights
     context_base_weight: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_CONTEXT_WEIGHT", "0.4"
+        "Ironcliw_CONTEXT_WEIGHT", "0.4"
     )))
     situation_base_weight: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_SITUATION_WEIGHT", "0.6"
+        "Ironcliw_SITUATION_WEIGHT", "0.6"
     )))
 
     # Thresholds
     recency_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_RECENCY_THRESHOLD", "60.0"
+        "Ironcliw_RECENCY_THRESHOLD", "60.0"
     )))
     consistency_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_CONSISTENCY_THRESHOLD", "0.8"
+        "Ironcliw_CONSISTENCY_THRESHOLD", "0.8"
     )))
     min_confidence: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_MIN_CONFIDENCE", "0.5"
+        "Ironcliw_MIN_CONFIDENCE", "0.5"
     )))
 
     # Knowledge base
@@ -198,12 +198,12 @@ class MultiSpaceVisionConfig:
 
     # Capture settings
     capture_all_spaces: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_CAPTURE_ALL_SPACES", "true"
+        "Ironcliw_CAPTURE_ALL_SPACES", "true"
     ).lower() == "true")
 
     # Yabai integration
     use_yabai: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_USE_YABAI", "true"
+        "Ironcliw_USE_YABAI", "true"
     ).lower() == "true")
     yabai_socket_path: Optional[str] = field(default_factory=lambda: os.getenv(
         "YABAI_SOCKET_PATH"
@@ -211,15 +211,15 @@ class MultiSpaceVisionConfig:
 
     # Space monitoring
     space_switch_delay: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_SPACE_SWITCH_DELAY", "0.3"
+        "Ironcliw_SPACE_SWITCH_DELAY", "0.3"
     )))
     max_spaces_to_capture: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MAX_SPACES_CAPTURE", "16"
+        "Ironcliw_MAX_SPACES_CAPTURE", "16"
     )))
 
     # Window detection
     enable_window_detection: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_WINDOW_DETECTION", "true"
+        "Ironcliw_ENABLE_WINDOW_DETECTION", "true"
     ).lower() == "true")
 
 
@@ -229,22 +229,22 @@ class NeuralMeshConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_NEURAL_MESH_ENABLED", "true"
+        "Ironcliw_NEURAL_MESH_ENABLED", "true"
     ).lower() == "true")
 
     # Communication bus
     message_queue_size: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MESSAGE_QUEUE_SIZE", "1000"
+        "Ironcliw_MESSAGE_QUEUE_SIZE", "1000"
     )))
 
     # Agent settings
     max_concurrent_agents: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MAX_CONCURRENT_AGENTS", "10"
+        "Ironcliw_MAX_CONCURRENT_AGENTS", "10"
     )))
 
     # Health monitoring
     health_check_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_HEALTH_CHECK_INTERVAL", "30.0"
+        "Ironcliw_HEALTH_CHECK_INTERVAL", "30.0"
     )))
 
 
@@ -254,51 +254,51 @@ class TwoTierSecurityConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TWO_TIER_ENABLED", "true"
+        "Ironcliw_TWO_TIER_ENABLED", "true"
     ).lower() == "true")
 
     # Tier 1 settings (safe, low-auth)
     tier1_backend: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_TIER1_BACKEND", "gemini"
+        "Ironcliw_TIER1_BACKEND", "gemini"
     ))
     tier1_vbia_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_TIER1_VBIA_THRESHOLD", "0.70"
+        "Ironcliw_TIER1_VBIA_THRESHOLD", "0.70"
     )))
     tier1_allow_bypass: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TIER1_ALLOW_BYPASS", "true"
+        "Ironcliw_TIER1_ALLOW_BYPASS", "true"
     ).lower() == "true")
 
     # Tier 2 settings (agentic, strict-auth)
     tier2_backend: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_TIER2_BACKEND", "claude"
+        "Ironcliw_TIER2_BACKEND", "claude"
     ))
     tier2_vbia_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_TIER2_VBIA_THRESHOLD", "0.85"
+        "Ironcliw_TIER2_VBIA_THRESHOLD", "0.85"
     )))
     tier2_require_liveness: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TIER2_REQUIRE_LIVENESS", "true"
+        "Ironcliw_TIER2_REQUIRE_LIVENESS", "true"
     ).lower() == "true")
 
     # Watchdog settings
     watchdog_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_WATCHDOG_ENABLED", "true"
+        "Ironcliw_WATCHDOG_ENABLED", "true"
     ).lower() == "true")
     watchdog_heartbeat_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_WATCHDOG_HEARTBEAT_INTERVAL", "5.0"
+        "Ironcliw_WATCHDOG_HEARTBEAT_INTERVAL", "5.0"
     )))
     watchdog_heartbeat_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_WATCHDOG_HEARTBEAT_TIMEOUT", "30.0"
+        "Ironcliw_WATCHDOG_HEARTBEAT_TIMEOUT", "30.0"
     )))
     watchdog_max_actions_per_minute: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_WATCHDOG_MAX_ACTIONS_PM", "30"
+        "Ironcliw_WATCHDOG_MAX_ACTIONS_PM", "30"
     )))
 
     # Router settings
     router_intent_escalation: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ROUTER_INTENT_ESCALATION", "true"
+        "Ironcliw_ROUTER_INTENT_ESCALATION", "true"
     ).lower() == "true")
     router_dangerous_command_blocking: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ROUTER_BLOCK_DANGEROUS", "true"
+        "Ironcliw_ROUTER_BLOCK_DANGEROUS", "true"
     ).lower() == "true")
 
 
@@ -308,45 +308,45 @@ class VoiceAuthConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_VOICE_AUTH_ENABLED", "true"
+        "Ironcliw_VOICE_AUTH_ENABLED", "true"
     ).lower() == "true")
     pre_execution_check: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_VOICE_AUTH_PRE_EXECUTION", "true"
+        "Ironcliw_VOICE_AUTH_PRE_EXECUTION", "true"
     ).lower() == "true")
 
     # Thresholds
     tier1_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_VOICE_AUTH_TIER1_THRESHOLD", "0.70"
+        "Ironcliw_VOICE_AUTH_TIER1_THRESHOLD", "0.70"
     )))
     tier2_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_VOICE_AUTH_TIER2_THRESHOLD", "0.85"
+        "Ironcliw_VOICE_AUTH_TIER2_THRESHOLD", "0.85"
     )))
     high_risk_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_VOICE_AUTH_HIGH_RISK_THRESHOLD", "0.90"
+        "Ironcliw_VOICE_AUTH_HIGH_RISK_THRESHOLD", "0.90"
     )))
 
     # Cache settings
     cache_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_VOICE_AUTH_CACHE", "true"
+        "Ironcliw_VOICE_AUTH_CACHE", "true"
     ).lower() == "true")
     cache_ttl: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_VOICE_AUTH_CACHE_TTL", "300.0"
+        "Ironcliw_VOICE_AUTH_CACHE_TTL", "300.0"
     )))
 
     # Anti-spoofing
     liveness_check_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_VOICE_AUTH_LIVENESS", "true"
+        "Ironcliw_VOICE_AUTH_LIVENESS", "true"
     ).lower() == "true")
     anti_spoofing_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_VOICE_AUTH_ANTI_SPOOF", "true"
+        "Ironcliw_VOICE_AUTH_ANTI_SPOOF", "true"
     ).lower() == "true")
 
     # Environmental adaptation
     environmental_adaptation: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_VOICE_AUTH_ENV_ADAPT", "true"
+        "Ironcliw_VOICE_AUTH_ENV_ADAPT", "true"
     ).lower() == "true")
     noise_threshold_db: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_VOICE_AUTH_NOISE_THRESHOLD", "-40.0"
+        "Ironcliw_VOICE_AUTH_NOISE_THRESHOLD", "-40.0"
     )))
 
 
@@ -356,50 +356,50 @@ class PhaseManagerConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_PHASE_MANAGER_ENABLED", "true"
+        "Ironcliw_PHASE_MANAGER_ENABLED", "true"
     ).lower() == "true")
 
     # Confidence thresholds
     min_analysis_confidence: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_ANALYSIS_CONFIDENCE", "0.70"
+        "Ironcliw_PHASE_ANALYSIS_CONFIDENCE", "0.70"
     )))
     min_planning_confidence: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_PLANNING_CONFIDENCE", "0.75"
+        "Ironcliw_PHASE_PLANNING_CONFIDENCE", "0.75"
     )))
     min_execution_confidence: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_EXECUTION_CONFIDENCE", "0.80"
+        "Ironcliw_PHASE_EXECUTION_CONFIDENCE", "0.80"
     )))
 
     # Timeouts
     analysis_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_ANALYSIS_TIMEOUT", "30.0"
+        "Ironcliw_PHASE_ANALYSIS_TIMEOUT", "30.0"
     )))
     planning_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_PLANNING_TIMEOUT", "60.0"
+        "Ironcliw_PHASE_PLANNING_TIMEOUT", "60.0"
     )))
     execution_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_EXECUTION_TIMEOUT", "300.0"
+        "Ironcliw_PHASE_EXECUTION_TIMEOUT", "300.0"
     )))
 
     # Checkpoints
     checkpoint_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_PHASE_CHECKPOINTS", "true"
+        "Ironcliw_PHASE_CHECKPOINTS", "true"
     ).lower() == "true")
     max_checkpoints: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_PHASE_MAX_CHECKPOINTS", "10"
+        "Ironcliw_PHASE_MAX_CHECKPOINTS", "10"
     )))
 
     # Learning
     learning_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_PHASE_LEARNING", "true"
+        "Ironcliw_PHASE_LEARNING", "true"
     ).lower() == "true")
     learning_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_PHASE_LEARNING_THRESHOLD", "0.85"
+        "Ironcliw_PHASE_LEARNING_THRESHOLD", "0.85"
     )))
 
     # Retries
     max_retries: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_PHASE_MAX_RETRIES", "3"
+        "Ironcliw_PHASE_MAX_RETRIES", "3"
     )))
 
 
@@ -409,33 +409,33 @@ class ToolRegistryConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TOOL_REGISTRY_ENABLED", "true"
+        "Ironcliw_TOOL_REGISTRY_ENABLED", "true"
     ).lower() == "true")
 
     # Discovery
     auto_discover: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TOOL_AUTO_DISCOVER", "true"
+        "Ironcliw_TOOL_AUTO_DISCOVER", "true"
     ).lower() == "true")
     discovery_paths: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_TOOL_PATHS", ""
+        "Ironcliw_TOOL_PATHS", ""
     ))
 
     # Hot reload
     hot_reload_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TOOL_HOT_RELOAD", "false"
+        "Ironcliw_TOOL_HOT_RELOAD", "false"
     ).lower() == "true")
     reload_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_TOOL_RELOAD_INTERVAL", "30.0"
+        "Ironcliw_TOOL_RELOAD_INTERVAL", "30.0"
     )))
 
     # Access control
     require_tier2_for_system: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_TIER2_SYSTEM_TOOLS", "true"
+        "Ironcliw_TIER2_SYSTEM_TOOLS", "true"
     ).lower() == "true")
 
     # Matching
     match_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_TOOL_MATCH_THRESHOLD", "0.60"
+        "Ironcliw_TOOL_MATCH_THRESHOLD", "0.60"
     )))
 
 
@@ -445,45 +445,45 @@ class MemoryManagerConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_MEMORY_ENABLED", "true"
+        "Ironcliw_MEMORY_ENABLED", "true"
     ).lower() == "true")
 
     # Memory limits
     working_memory_max: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_WORKING_MEMORY_MAX", "100"
+        "Ironcliw_WORKING_MEMORY_MAX", "100"
     )))
     episodic_memory_max: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_EPISODIC_MEMORY_MAX", "1000"
+        "Ironcliw_EPISODIC_MEMORY_MAX", "1000"
     )))
     semantic_memory_max: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_SEMANTIC_MEMORY_MAX", "500"
+        "Ironcliw_SEMANTIC_MEMORY_MAX", "500"
     )))
 
     # Persistence
     persistence_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_MEMORY_PERSIST", "true"
+        "Ironcliw_MEMORY_PERSIST", "true"
     ).lower() == "true")
     persistence_path: Path = field(default_factory=lambda: Path(os.getenv(
-        "JARVIS_MEMORY_PATH", str(Path.home() / ".jarvis" / "memory")
+        "Ironcliw_MEMORY_PATH", str(Path.home() / ".jarvis" / "memory")
     )))
     auto_save_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_MEMORY_SAVE_INTERVAL", "60.0"
+        "Ironcliw_MEMORY_SAVE_INTERVAL", "60.0"
     )))
 
     # Consolidation
     consolidation_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_MEMORY_CONSOLIDATE", "true"
+        "Ironcliw_MEMORY_CONSOLIDATE", "true"
     ).lower() == "true")
     consolidation_threshold: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_CONSOLIDATION_THRESHOLD", "10"
+        "Ironcliw_CONSOLIDATION_THRESHOLD", "10"
     )))
 
     # Experience replay
     replay_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_EXPERIENCE_REPLAY", "true"
+        "Ironcliw_EXPERIENCE_REPLAY", "true"
     ).lower() == "true")
     replay_similarity: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_REPLAY_SIMILARITY", "0.75"
+        "Ironcliw_REPLAY_SIMILARITY", "0.75"
     )))
 
 
@@ -493,40 +493,40 @@ class ErrorRecoveryConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ERROR_RECOVERY_ENABLED", "true"
+        "Ironcliw_ERROR_RECOVERY_ENABLED", "true"
     ).lower() == "true")
 
     # Retry settings
     max_retries: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_ERROR_MAX_RETRIES", "3"
+        "Ironcliw_ERROR_MAX_RETRIES", "3"
     )))
     initial_backoff: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_ERROR_INITIAL_BACKOFF", "1.0"
+        "Ironcliw_ERROR_INITIAL_BACKOFF", "1.0"
     )))
     max_backoff: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_ERROR_MAX_BACKOFF", "60.0"
+        "Ironcliw_ERROR_MAX_BACKOFF", "60.0"
     )))
     backoff_multiplier: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_ERROR_BACKOFF_MULTIPLIER", "2.0"
+        "Ironcliw_ERROR_BACKOFF_MULTIPLIER", "2.0"
     )))
 
     # Graceful degradation
     graceful_degradation: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_GRACEFUL_DEGRADATION", "true"
+        "Ironcliw_GRACEFUL_DEGRADATION", "true"
     ).lower() == "true")
     degradation_threshold: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_DEGRADATION_THRESHOLD", "5"
+        "Ironcliw_DEGRADATION_THRESHOLD", "5"
     )))
 
     # Circuit breaker
     circuit_breaker_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_CIRCUIT_BREAKER", "true"
+        "Ironcliw_CIRCUIT_BREAKER", "true"
     ).lower() == "true")
     circuit_threshold: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_CIRCUIT_THRESHOLD", "5"
+        "Ironcliw_CIRCUIT_THRESHOLD", "5"
     )))
     circuit_reset_time: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_CIRCUIT_RESET_TIME", "60.0"
+        "Ironcliw_CIRCUIT_RESET_TIME", "60.0"
     )))
 
 
@@ -536,42 +536,42 @@ class UAEContextConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_UAE_CONTEXT_ENABLED", "true"
+        "Ironcliw_UAE_CONTEXT_ENABLED", "true"
     ).lower() == "true")
 
     # Update settings
     continuous_update: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_UAE_CONTINUOUS", "true"
+        "Ironcliw_UAE_CONTINUOUS", "true"
     ).lower() == "true")
     update_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_UAE_UPDATE_INTERVAL", "2.0"
+        "Ironcliw_UAE_UPDATE_INTERVAL", "2.0"
     )))
     history_depth: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_UAE_HISTORY_DEPTH", "10"
+        "Ironcliw_UAE_HISTORY_DEPTH", "10"
     )))
 
     # Screen capture
     screen_capture_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_UAE_SCREEN_CAPTURE", "true"
+        "Ironcliw_UAE_SCREEN_CAPTURE", "true"
     ).lower() == "true")
     capture_on_change_only: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_UAE_CHANGE_ONLY", "false"
+        "Ironcliw_UAE_CHANGE_ONLY", "false"
     ).lower() == "true")
 
     # Change detection
     change_detection_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_UAE_CHANGE_DETECT", "true"
+        "Ironcliw_UAE_CHANGE_DETECT", "true"
     ).lower() == "true")
     change_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_UAE_CHANGE_THRESHOLD", "0.05"
+        "Ironcliw_UAE_CHANGE_THRESHOLD", "0.05"
     )))
 
     # Element tracking
     element_tracking_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_UAE_ELEMENT_TRACK", "true"
+        "Ironcliw_UAE_ELEMENT_TRACK", "true"
     ).lower() == "true")
     max_tracked_elements: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_UAE_MAX_ELEMENTS", "50"
+        "Ironcliw_UAE_MAX_ELEMENTS", "50"
     )))
 
 
@@ -581,36 +581,36 @@ class InterventionConfig:
 
     # Enable/disable
     enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_INTERVENTION_ENABLED", "true"
+        "Ironcliw_INTERVENTION_ENABLED", "true"
     ).lower() == "true")
 
     # Timing
     min_interval: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_INTERVENTION_MIN_INTERVAL", "10.0"
+        "Ironcliw_INTERVENTION_MIN_INTERVAL", "10.0"
     )))
     max_queue_size: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_INTERVENTION_MAX_QUEUE", "5"
+        "Ironcliw_INTERVENTION_MAX_QUEUE", "5"
     )))
 
     # Optimal timing
     optimal_timing_enabled: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_INTERVENTION_TIMING", "true"
+        "Ironcliw_INTERVENTION_TIMING", "true"
     ).lower() == "true")
     idle_detection_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_IDLE_THRESHOLD", "5.0"
+        "Ironcliw_IDLE_THRESHOLD", "5.0"
     )))
 
     # Learning
     learn_effectiveness: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_INTERVENTION_LEARN", "true"
+        "Ironcliw_INTERVENTION_LEARN", "true"
     ).lower() == "true")
     min_learning_samples: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_LEARNING_SAMPLES", "10"
+        "Ironcliw_LEARNING_SAMPLES", "10"
     )))
 
     # Priority
     urgent_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_URGENT_PRIORITY", "0.9"
+        "Ironcliw_URGENT_PRIORITY", "0.9"
     )))
 
 
@@ -620,50 +620,50 @@ class AutonomyConfig:
 
     # Mode settings
     default_mode: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_AUTONOMY_MODE", "supervised"
+        "Ironcliw_AUTONOMY_MODE", "supervised"
     ))
 
     # LLM settings
     reasoning_model: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_REASONING_MODEL", "claude-3-5-sonnet-20241022"
+        "Ironcliw_REASONING_MODEL", "claude-3-5-sonnet-20241022"
     ))
     temperature: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_LLM_TEMPERATURE", "0.7"
+        "Ironcliw_LLM_TEMPERATURE", "0.7"
     )))
     max_tokens: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_LLM_MAX_TOKENS", "4096"
+        "Ironcliw_LLM_MAX_TOKENS", "4096"
     )))
 
     # Reasoning settings
     max_reasoning_iterations: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MAX_REASONING_ITERATIONS", "10"
+        "Ironcliw_MAX_REASONING_ITERATIONS", "10"
     )))
     min_confidence_threshold: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_MIN_REASONING_CONFIDENCE", "0.4"
+        "Ironcliw_MIN_REASONING_CONFIDENCE", "0.4"
     )))
 
     # Tool settings
     max_concurrent_tools: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MAX_CONCURRENT_TOOLS", "5"
+        "Ironcliw_MAX_CONCURRENT_TOOLS", "5"
     )))
     tool_timeout: float = field(default_factory=lambda: float(os.getenv(
-        "JARVIS_TOOL_TIMEOUT", "30.0"
+        "Ironcliw_TOOL_TIMEOUT", "30.0"
     )))
 
     # Memory settings
     enable_memory: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_MEMORY", "true"
+        "Ironcliw_ENABLE_MEMORY", "true"
     ).lower() == "true")
     working_memory_size: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_WORKING_MEMORY_SIZE", "100"
+        "Ironcliw_WORKING_MEMORY_SIZE", "100"
     )))
 
     # Safety settings
     max_actions_per_session: int = field(default_factory=lambda: int(os.getenv(
-        "JARVIS_MAX_ACTIONS_SESSION", "100"
+        "Ironcliw_MAX_ACTIONS_SESSION", "100"
     )))
     require_permission_high_risk: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_REQUIRE_PERMISSION_HIGH_RISK", "true"
+        "Ironcliw_REQUIRE_PERMISSION_HIGH_RISK", "true"
     ).lower() == "true")
 
 
@@ -699,33 +699,33 @@ class AgenticConfig:
 
     # Global settings
     debug_mode: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_DEBUG", "false"
+        "Ironcliw_DEBUG", "false"
     ).lower() == "true")
     log_level: str = field(default_factory=lambda: os.getenv(
-        "JARVIS_LOG_LEVEL", "INFO"
+        "Ironcliw_LOG_LEVEL", "INFO"
     ))
     data_dir: Path = field(default_factory=lambda: Path(os.getenv(
-        "JARVIS_DATA_DIR", str(Path.home() / ".jarvis")
+        "Ironcliw_DATA_DIR", str(Path.home() / ".jarvis")
     )))
 
     # Feature flags
     enable_computer_use: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_COMPUTER_USE", "true"
+        "Ironcliw_ENABLE_COMPUTER_USE", "true"
     ).lower() == "true")
     enable_multi_space: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_MULTI_SPACE", "true"
+        "Ironcliw_ENABLE_MULTI_SPACE", "true"
     ).lower() == "true")
     enable_voice: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_VOICE", "true"
+        "Ironcliw_ENABLE_VOICE", "true"
     ).lower() == "true")
     enable_two_tier_security: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_ENABLE_TWO_TIER", "true"
+        "Ironcliw_ENABLE_TWO_TIER", "true"
     ).lower() == "true")
     enable_neural_mesh_deep: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_NEURAL_MESH_DEEP", "true"
+        "Ironcliw_NEURAL_MESH_DEEP", "true"
     ).lower() == "true")
     enable_agi_os_events: bool = field(default_factory=lambda: os.getenv(
-        "JARVIS_AGI_OS_EVENTS", "true"
+        "Ironcliw_AGI_OS_EVENTS", "true"
     ).lower() == "true")
 
     def __post_init__(self):

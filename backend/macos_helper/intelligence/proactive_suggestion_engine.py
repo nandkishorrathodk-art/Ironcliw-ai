@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Proactive Suggestion Engine
+﻿"""
+Ironcliw macOS Helper - Proactive Suggestion Engine
 
 ML-powered suggestion system that learns user patterns and provides
 contextually relevant, timely suggestions without being intrusive.

@@ -1,9 +1,9 @@
-"""
+﻿"""
 Voice Unlock System Integration
 ==============================
 
 Integrates the optimized ML system with the existing voice unlock components,
-providing a unified interface for JARVIS.
+providing a unified interface for Ironcliw.
 
 Enhanced Features (v2.5 - Physics-Aware Authentication):
 - LangGraph adaptive authentication reasoning
@@ -192,8 +192,8 @@ try:
 except ImportError:
     MEMORY_SYSTEM_AVAILABLE = False
 
-WISDOM_ENABLED = os.getenv("JARVIS_WISDOM_PATTERNS_ENABLED", "true").lower() == "true"
-MEMORY_ARCHIVAL_ENABLED = os.getenv("JARVIS_MEMORY_ARCHIVAL_ENABLED", "true").lower() == "true"
+WISDOM_ENABLED = os.getenv("Ironcliw_WISDOM_PATTERNS_ENABLED", "true").lower() == "true"
+MEMORY_ARCHIVAL_ENABLED = os.getenv("Ironcliw_MEMORY_ARCHIVAL_ENABLED", "true").lower() == "true"
 
 # =============================================================================
 # ML ENGINE REGISTRY - Ensures models are loaded before processing
@@ -2097,7 +2097,7 @@ class VoiceUnlockSystem:
                         if result['authenticated']:
                             await self._handle_successful_auth(user_id, result)
                             
-                        # Generate JARVIS response
+                        # Generate Ironcliw response
                         response = self.command_processor.jarvis_handler.generate_response(
                             command, result
                         )
@@ -2766,7 +2766,7 @@ class VoiceUnlockSystem:
         if self.config.system.integration_mode in ['screensaver', 'both']:
             await self._unlock_screen()
             
-        # JARVIS response
+        # Ironcliw response
         if self.config.system.jarvis_responses:
             response = self.config.system.custom_responses.get(
                 'success', 
@@ -2785,7 +2785,7 @@ class VoiceUnlockSystem:
         # For now, just log
         
     async def _speak_response(self, text: str):
-        """Speak response using JARVIS voice"""
+        """Speak response using Ironcliw voice"""
         loop = asyncio.get_event_loop()
         
         # Use TTS in thread pool
@@ -2797,8 +2797,8 @@ class VoiceUnlockSystem:
         
     def _speak_tts(self, text: str):
         """Text-to-speech implementation"""
-        # This would use the JARVIS TTS system
-        logger.info(f"JARVIS: {text}")
+        # This would use the Ironcliw TTS system
+        logger.info(f"Ironcliw: {text}")
         
     async def enroll_user(self, user_id: str, audio_samples: List[np.ndarray]) -> Dict[str, Any]:
         """Enroll a new user with voice samples"""

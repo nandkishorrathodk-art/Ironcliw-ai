@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Security Engine v1.0
 ============================
 
-Enterprise-grade security for the JARVIS Trinity ecosystem.
-Provides comprehensive security across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade security for the Ironcliw Trinity ecosystem.
+Provides comprehensive security across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 5 critical security patterns:
@@ -155,8 +155,8 @@ class Role(Enum):
 
 class ComponentIdentity(Enum):
     """Component identities for cross-repo auth."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     SUPERVISOR = "supervisor"
     EXTERNAL = "external"

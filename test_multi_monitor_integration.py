@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Multi-Monitor Integration Test
 
@@ -157,7 +157,7 @@ async def test_error_handling():
 
 async def main():
     """Main test runner"""
-    print("🚀 JARVIS Multi-Monitor Integration Test")
+    print("🚀 Ironcliw Multi-Monitor Integration Test")
     print("=" * 60)
     
     if not MACOS_AVAILABLE:

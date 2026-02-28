@@ -1,4 +1,4 @@
-"""
+﻿"""
 Windows Platform-Specific Tests
 ================================
 
@@ -230,7 +230,7 @@ class TestWindowsClipboard:
             import pyperclip
             
             # Test write and read
-            test_text = "JARVIS Windows Test"
+            test_text = "Ironcliw Windows Test"
             
             pyperclip.copy(test_text)
             result = pyperclip.paste()

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Display Monitor Service
 =======================
 
@@ -393,13 +393,13 @@ class DisplayMonitorService:
 
 They responded: "{response}"
 
-Generate a brief, natural JARVIS-style acknowledgment that:
+Generate a brief, natural Ironcliw-style acknowledgment that:
 1. Confirms you understood they don't want to connect
 2. Is brief and conversational (1-2 sentences max)
 3. Uses "sir" appropriately
 4. Shows understanding without being verbose
 
-Respond ONLY with JARVIS's exact words, no quotes or formatting."""
+Respond ONLY with Ironcliw's exact words, no quotes or formatting."""
 
                         claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
                             None, prompt
@@ -481,13 +481,13 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                     if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
                         prompt = f"""The user asked you to connect to {display_name}. You successfully connected.
 
-Generate a brief, natural JARVIS-style confirmation that:
+Generate a brief, natural Ironcliw-style confirmation that:
 1. Confirms the connection is complete
 2. Is brief and conversational (1 sentence)
 3. Uses "sir" appropriately
 4. Sounds confident and efficient
 
-Respond ONLY with JARVIS's exact words, no quotes or formatting."""
+Respond ONLY with Ironcliw's exact words, no quotes or formatting."""
 
                         claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
                             None, prompt

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Setup script for ARM64 NEON SIMD extension.
 
 This module provides a setuptools configuration for compiling C extensions with
@@ -138,7 +138,7 @@ arm64_simd_ext = Extension(
 setup(
     name='arm64_simd',
     version='1.0.0',
-    description='ARM64 NEON SIMD optimizations for JARVIS ML with pure assembly',
+    description='ARM64 NEON SIMD optimizations for Ironcliw ML with pure assembly',
     long_description=__doc__,
     long_description_content_type='text/plain',
     ext_modules=[arm64_simd_ext],
@@ -162,7 +162,7 @@ setup(
         'Operating System :: MacOS :: MacOS X',
     ],
     keywords='arm64 neon simd optimization machine-learning apple-silicon m1',
-    author='JARVIS Development Team',
-    maintainer='JARVIS Development Team',
+    author='Ironcliw Development Team',
+    maintainer='Ironcliw Development Team',
     platforms=['macOS'],
 )

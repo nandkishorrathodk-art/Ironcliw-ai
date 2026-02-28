@@ -1,8 +1,8 @@
-# Dynamic Follow-Up Query Feature Demo
+﻿# Dynamic Follow-Up Query Feature Demo
 
 ## Overview
 
-This feature enables JARVIS to have **conversational follow-up interactions** where users can ask for detailed explanations after an initial query. All responses are **100% dynamically generated** from actual terminal/app context - **no hardcoded responses**.
+This feature enables Ironcliw to have **conversational follow-up interactions** where users can ask for detailed explanations after an initial query. All responses are **100% dynamically generated** from actual terminal/app context - **no hardcoded responses**.
 
 ## Example Conversation Flow
 
@@ -10,7 +10,7 @@ This feature enables JARVIS to have **conversational follow-up interactions** wh
 
 **User:** "can you see my terminal in the other window?"
 
-**JARVIS:**
+**Ironcliw:**
 ```
 Yes, I can see Terminal in Space 2.
 
@@ -22,10 +22,10 @@ Would you like me to explain what's happening in detail?
 
 **User:** "explain what's happening in detail"
 
-**JARVIS:**
+**Ironcliw:**
 ```
 **Terminal (Space 2)**
-Working directory: `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent`
+Working directory: `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent`
 
 Recent commands:
   • `cd backend`
@@ -75,7 +75,7 @@ All information is extracted from actual context:
 - Recent edits
 
 ### 3. Multi-App Analysis
-When multiple apps are discussed, JARVIS:
+When multiple apps are discussed, Ironcliw:
 - Explains each app's context
 - Finds cross-space relationships
 - Provides unified understanding
@@ -89,7 +89,7 @@ Uses existing TerminalCommandIntelligence to:
 
 ## Supported Follow-Up Phrases
 
-JARVIS recognizes these natural follow-up queries:
+Ironcliw recognizes these natural follow-up queries:
 - "explain in detail"
 - "more detail"
 - "tell me more"
@@ -140,7 +140,7 @@ _handle_detail_followup()
 **backend/core/context/context_integration_bridge.py**
 - Added conversational state tracking:
   - `_last_query`: Last user query
-  - `_last_response`: Last JARVIS response
+  - `_last_response`: Last Ironcliw response
   - `_last_context`: Apps/spaces discussed
   - `_conversation_timestamp`: When conversation started
 
@@ -206,29 +206,29 @@ test_followup_timeout():
 ```python
 # User sees terminal error but isn't at their desk
 User: "can you see my terminal in the other window?"
-JARVIS: "Yes... I notice there's an error... Would you like me to explain?"
+Ironcliw: "Yes... I notice there's an error... Would you like me to explain?"
 User: "yes, what's happening?"
-JARVIS: [Full dynamic explanation with fix suggestion]
+Ironcliw: [Full dynamic explanation with fix suggestion]
 ```
 
 ### Example 2: Multi-App Workflow
 ```python
 # User working across multiple spaces
 User: "can you see what I'm working on?"
-JARVIS: "Yes, I can see 3 windows:
+Ironcliw: "Yes, I can see 3 windows:
          • Terminal (Space 1)
          • Chrome (Space 2)
          • VS Code (Space 3)"
 User: "explain what's happening in detail"
-JARVIS: [Explains all 3 apps + finds relationships between them]
+Ironcliw: [Explains all 3 apps + finds relationships between them]
 ```
 
 ### Example 3: Browser Research
 ```python
 User: "can you see my browser?"
-JARVIS: "Yes, I can see Chrome in Space 2..."
+Ironcliw: "Yes, I can see Chrome in Space 2..."
 User: "tell me more"
-JARVIS: [Explains current page, search queries, research topic]
+Ironcliw: [Explains current page, search queries, research topic]
 ```
 
 ## Benefits

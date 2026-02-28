@@ -1,6 +1,6 @@
-"""
+﻿"""
 Windows-Specific End-to-End System Tests
-Phase 10: Comprehensive testing for JARVIS on Windows
+Phase 10: Comprehensive testing for Ironcliw on Windows
 
 Tests:
 1. Full system startup and shutdown
@@ -243,7 +243,7 @@ class TestWindowsFullSystem:
 
 @pytest.mark.skipif(not is_windows(), reason="Windows-only test")
 class TestWindowsCoreFeatures:
-    """Test core JARVIS features on Windows"""
+    """Test core Ironcliw features on Windows"""
     
     def test_supervisor_help(self):
         """Test supervisor --help command"""

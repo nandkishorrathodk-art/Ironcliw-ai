@@ -1,5 +1,5 @@
-"""
-Claude Computer Use API Connector for JARVIS
+﻿"""
+Claude Computer Use API Connector for Ironcliw
 
 This module provides a robust, async, and dynamic integration with Claude's
 Computer Use API for vision-based UI automation. It replaces hardcoded
@@ -19,7 +19,7 @@ Architecture:
          |______________________________________________________________________|
                               (Loop until goal achieved or max attempts)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -1921,7 +1921,7 @@ class ClaudeComputerUseConnector:
     COMPUTER_USE_MODEL = os.getenv("COMPUTER_USE_MODEL", "claude-sonnet-4-20250514")
 
     # System prompt for computer use - Enhanced with Open Interpreter patterns
-    SYSTEM_PROMPT = """You are JARVIS, an AI assistant helping to control a macOS computer.
+    SYSTEM_PROMPT = """You are Ironcliw, an AI assistant helping to control a macOS computer.
 You can see the screen through screenshots and execute actions to help the user.
 
 *** ACTION CHAINING OPTIMIZATION (Clinical-Grade Speed) ***
@@ -2084,7 +2084,7 @@ Always provide your reasoning before taking action, including grid position esti
             raise ValueError(
                 "ANTHROPIC_API_KEY required. Configure via: "
                 "1) GCP Secret Manager (anthropic-api-key) "
-                "2) macOS Keychain (JARVIS/ANTHROPIC_API_KEY) "
+                "2) macOS Keychain (Ironcliw/ANTHROPIC_API_KEY) "
                 "3) Environment variable (ANTHROPIC_API_KEY)"
             )
 
@@ -2176,7 +2176,7 @@ Always provide your reasoning before taking action, including grid position esti
 
         Resolution order (highest to lowest priority):
         1. GCP Secret Manager (anthropic-api-key) - Production
-        2. macOS Keychain (JARVIS/ANTHROPIC_API_KEY) - Local dev
+        2. macOS Keychain (Ironcliw/ANTHROPIC_API_KEY) - Local dev
         3. Environment variable (ANTHROPIC_API_KEY) - CI/CD fallback
         4. .env file loading as last resort
 
@@ -2287,7 +2287,7 @@ Always provide your reasoning before taking action, including grid position esti
         Execute Python code safely using the SafeCodeExecutor.
 
         This is the Open Interpreter "Safe Execute" pattern that prevents
-        JARVIS from accidentally running `rm -rf /`.
+        Ironcliw from accidentally running `rm -rf /`.
 
         Args:
             code: Python code to execute

@@ -1,13 +1,13 @@
-# CPU Optimization Journey - Technical Deep Dive
+﻿# CPU Optimization Journey - Technical Deep Dive
 
 ## The Problem
 
-JARVIS was experiencing severe performance issues that prevented it from starting properly:
+Ironcliw was experiencing severe performance issues that prevented it from starting properly:
 
 1. **Autonomous Orchestrator CPU Consumption**: 80-100% constant CPU usage
 2. **Memory Bloat**: Over 1.5GB for simple service discovery
 3. **Import Errors**: Python relative imports failing in autonomous_service_api.py
-4. **Frontend Stuck**: JARVIS couldn't activate due to config timing issues
+4. **Frontend Stuck**: Ironcliw couldn't activate due to config timing issues
 
 ## What We Tried (And What Worked/Didn't)
 

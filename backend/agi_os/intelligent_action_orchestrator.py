@@ -1,9 +1,9 @@
-"""
-JARVIS AGI OS - Intelligent Action Orchestrator
+﻿"""
+Ironcliw AGI OS - Intelligent Action Orchestrator
 
 The central orchestrator that connects all AGI OS components into
 a cohesive autonomous system. This is the "nervous system" that enables
-JARVIS to act intelligently on its own.
+Ironcliw to act intelligently on its own.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────┐
@@ -42,7 +42,7 @@ Usage:
     orchestrator = await get_action_orchestrator()
     await orchestrator.start()
 
-    # Now JARVIS will:
+    # Now Ironcliw will:
     # - Detect issues on screen
     # - Decide what to do
     # - Ask for approval when needed
@@ -195,56 +195,56 @@ class IntelligentActionOrchestrator:
         # Configuration (dynamically adjustable, env-var overridable)
         self._config = {
             'auto_execute_threshold': _orch_env_float(
-                'JARVIS_ORCH_AUTO_EXECUTE_THRESHOLD', 0.90),
+                'Ironcliw_ORCH_AUTO_EXECUTE_THRESHOLD', 0.90),
             'ask_approval_threshold': _orch_env_float(
-                'JARVIS_ORCH_ASK_APPROVAL_THRESHOLD', 0.70),
+                'Ironcliw_ORCH_ASK_APPROVAL_THRESHOLD', 0.70),
             'suggest_only_threshold': _orch_env_float(
-                'JARVIS_ORCH_SUGGEST_ONLY_THRESHOLD', 0.50),
+                'Ironcliw_ORCH_SUGGEST_ONLY_THRESHOLD', 0.50),
             'batch_delay_ms': _orch_env_int(
-                'JARVIS_ORCH_BATCH_DELAY_MS', 500),
+                'Ironcliw_ORCH_BATCH_DELAY_MS', 500),
             'max_concurrent_actions': _orch_env_int(
-                'JARVIS_ORCH_MAX_CONCURRENT_ACTIONS', 3),
+                'Ironcliw_ORCH_MAX_CONCURRENT_ACTIONS', 3),
             'narrate_all_detections': os.getenv(
-                'JARVIS_ORCH_NARRATE_ALL', '').lower() in ('1', 'true', 'yes'),
+                'Ironcliw_ORCH_NARRATE_ALL', '').lower() in ('1', 'true', 'yes'),
             'narrate_high_confidence': os.getenv(
-                'JARVIS_ORCH_NARRATE_HIGH', '1').lower() not in ('0', 'false', 'no'),
+                'Ironcliw_ORCH_NARRATE_HIGH', '1').lower() not in ('0', 'false', 'no'),
             'enable_proactive_loop': _orch_env_bool(
-                'JARVIS_ORCH_PROACTIVE_ENABLED', True),
+                'Ironcliw_ORCH_PROACTIVE_ENABLED', True),
             'proactive_interval_seconds': max(
-                5.0, _orch_env_float('JARVIS_ORCH_PROACTIVE_INTERVAL_SECONDS', 30.0)),
+                5.0, _orch_env_float('Ironcliw_ORCH_PROACTIVE_INTERVAL_SECONDS', 30.0)),
             'proactive_goal_timeout_seconds': max(
-                1.0, _orch_env_float('JARVIS_ORCH_PROACTIVE_GOAL_TIMEOUT_SECONDS', 6.0)),
+                1.0, _orch_env_float('Ironcliw_ORCH_PROACTIVE_GOAL_TIMEOUT_SECONDS', 6.0)),
             'proactive_situation_cooldown_seconds': max(
                 5.0,
                 _orch_env_float(
-                    'JARVIS_ORCH_PROACTIVE_SITUATION_COOLDOWN_SECONDS', 180.0
+                    'Ironcliw_ORCH_PROACTIVE_SITUATION_COOLDOWN_SECONDS', 180.0
                 )
             ),
             'proactive_fingerprint_window_seconds': max(
                 5.0,
                 _orch_env_float(
-                    'JARVIS_ORCH_PROACTIVE_FINGERPRINT_WINDOW_SECONDS', 300.0
+                    'Ironcliw_ORCH_PROACTIVE_FINGERPRINT_WINDOW_SECONDS', 300.0
                 )
             ),
             'proactive_context_window_minutes': max(
-                1, _orch_env_int('JARVIS_ORCH_PROACTIVE_CONTEXT_WINDOW_MINUTES', 5)
+                1, _orch_env_int('Ironcliw_ORCH_PROACTIVE_CONTEXT_WINDOW_MINUTES', 5)
             ),
             'allow_proactive_auto_execute': _orch_env_bool(
-                'JARVIS_ORCH_PROACTIVE_AUTO_EXECUTE', False),
+                'Ironcliw_ORCH_PROACTIVE_AUTO_EXECUTE', False),
             # v264.0: Dynamic startup budgets for core getter dependencies.
-            # `JARVIS_AGI_GETTER_TIMEOUT` remains backward-compatible as baseline.
+            # `Ironcliw_AGI_GETTER_TIMEOUT` remains backward-compatible as baseline.
             'init_budget_seconds': max(
-                5.0, _orch_env_float('JARVIS_ORCH_INIT_BUDGET_SECONDS', 25.0)),
+                5.0, _orch_env_float('Ironcliw_ORCH_INIT_BUDGET_SECONDS', 25.0)),
             'getter_timeout_seconds': max(
-                2.0, _orch_env_float('JARVIS_AGI_GETTER_TIMEOUT', 15.0)),
+                2.0, _orch_env_float('Ironcliw_AGI_GETTER_TIMEOUT', 15.0)),
             'getter_timeout_min_seconds': max(
-                1.0, _orch_env_float('JARVIS_ORCH_GETTER_TIMEOUT_MIN_SECONDS', 4.0)),
+                1.0, _orch_env_float('Ironcliw_ORCH_GETTER_TIMEOUT_MIN_SECONDS', 4.0)),
             'getter_timeout_headroom_seconds': max(
-                0.5, _orch_env_float('JARVIS_ORCH_GETTER_TIMEOUT_HEADROOM_SECONDS', 1.5)),
+                0.5, _orch_env_float('Ironcliw_ORCH_GETTER_TIMEOUT_HEADROOM_SECONDS', 1.5)),
             'getter_timeout_multiplier': max(
-                1.0, _orch_env_float('JARVIS_ORCH_GETTER_TIMEOUT_MULTIPLIER', 1.6)),
+                1.0, _orch_env_float('Ironcliw_ORCH_GETTER_TIMEOUT_MULTIPLIER', 1.6)),
             'getter_history_size': max(
-                3, _orch_env_int('JARVIS_ORCH_GETTER_HISTORY_SIZE', 12)),
+                3, _orch_env_int('Ironcliw_ORCH_GETTER_HISTORY_SIZE', 12)),
         }
 
         # v264.0: Retain recent successful getter latencies so subsequent starts
@@ -328,16 +328,16 @@ class IntelligentActionOrchestrator:
                 self._state = OrchestratorState.STOPPED
                 raise
 
-        # Announce startup with dynamic JARVIS online message
+        # Announce startup with dynamic Ironcliw online message
         if self._voice:
             try:
                 import random
                 startup_messages = [
-                    "JARVIS online. Ready to assist you, sir.",
-                    "JARVIS is now online. How can I help you today?",
-                    "All systems operational. JARVIS at your service.",
-                    "JARVIS online and awaiting your command.",
-                    "Good to see you. JARVIS is ready.",
+                    "Ironcliw online. Ready to assist you, sir.",
+                    "Ironcliw is now online. How can I help you today?",
+                    "All systems operational. Ironcliw at your service.",
+                    "Ironcliw online and awaiting your command.",
+                    "Good to see you. Ironcliw is ready.",
                 ]
                 await self._voice.speak(
                     random.choice(startup_messages),
@@ -356,14 +356,14 @@ class IntelligentActionOrchestrator:
 
             self._state = OrchestratorState.STOPPING
 
-            # Announce shutdown with dynamic JARVIS offline message
+            # Announce shutdown with dynamic Ironcliw offline message
             if self._voice:
                 try:
                     import random
                     shutdown_messages = [
-                        "JARVIS going offline. Goodbye, sir.",
+                        "Ironcliw going offline. Goodbye, sir.",
                         "Shutting down. See you soon.",
-                        "JARVIS offline. Take care, sir.",
+                        "Ironcliw offline. Take care, sir.",
                         "Systems shutting down. Until next time.",
                     ]
                     await self._voice.speak(
@@ -495,7 +495,7 @@ class IntelligentActionOrchestrator:
         self._approval_manager = core_map.get("approval_manager")
         self._voice = core_map.get("voice_communicator")
 
-        # Existing JARVIS components (lazy load to avoid circular imports)
+        # Existing Ironcliw components (lazy load to avoid circular imports)
         try:
             from autonomy.autonomous_decision_engine import AutonomousDecisionEngine
             self._decision_engine = AutonomousDecisionEngine()
@@ -1396,7 +1396,7 @@ class IntelligentActionOrchestrator:
         propagates.  Called via ``asyncio.create_task()`` so it never
         blocks the action pipeline.
         """
-        if not os.environ.get("JARVIS_ORCH_RECORD_EXPERIENCES", "1") in ("1", "true", "yes"):
+        if not os.environ.get("Ironcliw_ORCH_RECORD_EXPERIENCES", "1") in ("1", "true", "yes"):
             return
         try:
             from backend.intelligence.cross_repo_experience_forwarder import (

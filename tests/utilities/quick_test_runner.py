@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Quick test runner for debugging"""
 
 import asyncio
@@ -15,7 +15,7 @@ from test_utils import generate_test_report, print_test_summary
 
 async def run_quick_tests():
     """Run a quick subset of tests"""
-    print("\n🚀 JARVIS QUICK TEST RUNNER")
+    print("\n🚀 Ironcliw QUICK TEST RUNNER")
     print("="*60)
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     

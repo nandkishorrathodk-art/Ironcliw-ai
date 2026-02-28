@@ -1,11 +1,11 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-# Build script for JARVIS Vision Intelligence System
+# Build script for Ironcliw Vision Intelligence System
 # Compiles Rust, Swift, and sets up Python components
 
 set -e
 
-echo "🚀 Building JARVIS Vision Intelligence System..."
+echo "🚀 Building Ironcliw Vision Intelligence System..."
 
 # Get the directory of this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -87,7 +87,7 @@ echo "🐍 Setting up Python components..."
 if [ ! -f "__init__.py" ]; then
     cat > __init__.py << EOF
 """
-JARVIS Vision Intelligence System
+Ironcliw Vision Intelligence System
 Multi-language vision understanding without hardcoding
 """
 
@@ -123,7 +123,7 @@ try:
 except ImportError:
     rust_vi = None
 
-print("✨ JARVIS Vision Intelligence System initialized")
+print("✨ Ironcliw Vision Intelligence System initialized")
 EOF
 fi
 

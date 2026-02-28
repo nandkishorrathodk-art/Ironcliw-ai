@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enterprise Process Manager v108.0 - Robust Process Lifecycle Management
 =========================================================================
 
@@ -17,7 +17,7 @@ Key Fixes:
 - Socket state (LISTEN vs TIME_WAIT) properly handled
 - PID validation ensures we're talking to the right process
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 108.0.0 (January 2026)
 """
 
@@ -716,7 +716,7 @@ class EnterpriseProcessManager:
 
             # Layer 3: Process name sanity check
             # v109.3: CRITICAL FIX - Only protect SYSTEM processes and the SUPERVISOR
-            # NOT jarvis-prime or other JARVIS services (which can be safely killed if stale)
+            # NOT jarvis-prime or other Ironcliw services (which can be safely killed if stale)
             process_name = validation.process_name
             if not process_name:
                 process_name = await self._get_process_name(pid_to_kill)
@@ -729,7 +729,7 @@ class EnterpriseProcessManager:
                 )
                 return False
 
-            # v109.3: For Python processes, only protect the SUPERVISOR, not other JARVIS services
+            # v109.3: For Python processes, only protect the SUPERVISOR, not other Ironcliw services
             if process_name and process_name.lower() in ("python3", "python"):
                 cmdline = await self._get_process_cmdline(pid_to_kill)
                 if cmdline:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test to find the exact import error"""
 
 import sys
@@ -10,7 +10,7 @@ backend_path = os.path.join(os.path.dirname(__file__), "backend")
 sys.path.insert(0, backend_path)
 
 # Set minimal environment
-os.environ["JARVIS_MEMORY_LEVEL"] = "critical"
+os.environ["Ironcliw_MEMORY_LEVEL"] = "critical"
 os.environ["DYLD_LIBRARY_PATH"] = os.path.join(backend_path, "swift_bridge/.build/release")
 
 print("Testing imports to find the error...")

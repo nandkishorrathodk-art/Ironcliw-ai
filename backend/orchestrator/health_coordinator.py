@@ -1,5 +1,5 @@
-"""
-JARVIS Health Coordinator v1.0.0
+﻿"""
+Ironcliw Health Coordinator v1.0.0
 =================================
 
 Cross-service health monitoring and coordination for the Trinity ecosystem.
@@ -15,11 +15,11 @@ Health Model:
     The coordinator uses a hierarchical health model:
     
     System Health (aggregate)
-    ├── JARVIS Body Health
+    ├── Ironcliw Body Health
     │   ├── Backend API (required)
     │   ├── Vision System (optional)
     │   └── Voice Pipeline (optional)
-    ├── JARVIS Prime Health
+    ├── Ironcliw Prime Health
     │   ├── Inference API (required if Prime enabled)
     │   └── Model Status (degraded OK)
     └── Reactor Core Health
@@ -32,7 +32,7 @@ Health States:
     UNHEALTHY   - Required components failing
     UNKNOWN     - Cannot determine health state
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

@@ -1,4 +1,4 @@
-# ECAPA Cloud Services - Local Development Docker Compose
+﻿# ECAPA Cloud Services - Local Development Docker Compose
 # ========================================================
 #
 # This docker-compose file runs the ECAPA cloud service locally for development.
@@ -24,9 +24,9 @@ services:
     image: ecapa-local:latest
     container_name: jarvis-ecapa-cloud
     ports:
-      # v18.4.0: Remap host port to 8015 to avoid conflict with JARVIS backend on 8010.
+      # v18.4.0: Remap host port to 8015 to avoid conflict with Ironcliw backend on 8010.
       # Container-internal port stays 8010 (ECAPA service listens there inside Docker).
-      - "${JARVIS_ECAPA_PORT:-8015}:8010"
+      - "${Ironcliw_ECAPA_PORT:-8015}:8010"
     environment:
       # Model configuration
       - ECAPA_MODEL_PATH=speechbrain/spkrec-ecapa-voxceleb

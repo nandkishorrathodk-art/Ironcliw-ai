@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Audio Format Converter v2.0
 =====================================
@@ -19,7 +19,7 @@ CRITICAL: This module handles the conversion of compressed audio formats
 (WebM, MP3, OGG) that browsers send to raw PCM suitable for speaker verification.
 Failure to properly convert results in 0% confidence during voice unlock.
 
-Author: JARVIS AI Agent Team
+Author: Ironcliw AI Agent Team
 Version: 2.0.0
 """
 

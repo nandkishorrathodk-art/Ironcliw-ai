@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ghost Hands Windows Automation Layer
 ═════════════════════════════════════
 
@@ -23,7 +23,7 @@ Features:
     - Keyboard/mouse input to specific windows
     - No focus stealing (background automation)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 8)
 """
 from __future__ import annotations
@@ -73,28 +73,28 @@ class WindowsAutomationConfig:
     
     # Focus preservation
     preserve_focus: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_WIN_PRESERVE_FOCUS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_WIN_PRESERVE_FOCUS", "true").lower() == "true"
     )
     focus_restore_delay_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_WIN_FOCUS_DELAY_MS", "100"))
+        default_factory=lambda: int(os.getenv("Ironcliw_WIN_FOCUS_DELAY_MS", "100"))
     )
     
     # Multi-monitor support
     multi_monitor_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_WIN_MULTIMON", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_WIN_MULTIMON", "true").lower() == "true"
     )
     
     # Automation backend preference
     prefer_pyautogui: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_WIN_PREFER_PYAUTOGUI", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_WIN_PREFER_PYAUTOGUI", "true").lower() == "true"
     )
     
     # Timing
     action_delay_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_WIN_ACTION_DELAY_MS", "50"))
+        default_factory=lambda: int(os.getenv("Ironcliw_WIN_ACTION_DELAY_MS", "50"))
     )
     animation_wait_ms: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_WIN_ANIMATION_MS", "300"))
+        default_factory=lambda: int(os.getenv("Ironcliw_WIN_ANIMATION_MS", "300"))
     )
     
     # C# DLL path

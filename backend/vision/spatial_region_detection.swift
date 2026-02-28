@@ -1,6 +1,6 @@
-//
+﻿//
 //  SpatialRegionDetection.swift
-//  JARVIS Vision Spatial Intelligence
+//  Ironcliw Vision Spatial Intelligence
 //
 //  Purpose: Native macOS region detection and UI element recognition
 //  Integrates with Quadtree system for intelligent spatial analysis

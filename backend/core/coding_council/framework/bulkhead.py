@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Bulkhead Isolation - Gap #13
 ====================================
 
@@ -9,7 +9,7 @@ Bulkhead pattern for fault isolation:
 - Timeout per bulkhead
 - Resource isolation
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

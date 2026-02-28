@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-SAI Integration Example for JARVIS
+SAI Integration Example for Ironcliw
 ===================================
 
 Complete example showing how to integrate Situational Awareness Intelligence
-with JARVIS automation workflows.
+with Ironcliw automation workflows.
 
 This demonstrates:
-1. Initializing SAI with JARVIS vision analyzer
+1. Initializing SAI with Ironcliw vision analyzer
 2. Using SAI-enhanced Control Center clicker
 3. Monitoring environment changes
 4. Handling UI drift automatically
@@ -231,7 +231,7 @@ async def example_health_monitoring():
 async def main():
     """Run all examples"""
     print("\n" + "=" * 80)
-    print("SAI Integration Examples for JARVIS")
+    print("SAI Integration Examples for Ironcliw")
     print("=" * 80)
     print("\nThis will run 5 examples demonstrating SAI capabilities:")
     print("1. Basic monitoring")
@@ -272,7 +272,7 @@ async def main():
     print("\nNext steps:")
     print("1. Read documentation: backend/vision/situational_awareness/README.md")
     print("2. Run tests: pytest backend/vision/situational_awareness/tests/ -v")
-    print("3. Integrate SAI into your JARVIS workflows")
+    print("3. Integrate SAI into your Ironcliw workflows")
     print("=" * 80)
 
 

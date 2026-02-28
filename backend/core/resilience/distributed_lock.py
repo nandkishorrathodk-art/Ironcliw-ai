@@ -1,4 +1,4 @@
-"""
+﻿"""
 Redis-Backed Distributed Lock with Fencing Tokens
 =================================================
 
@@ -12,7 +12,7 @@ Features:
     - Graceful degradation to local lock when Redis unavailable
     - Comprehensive metrics and telemetry
 
-Author: JARVIS Cross-Repo Resilience
+Author: Ironcliw Cross-Repo Resilience
 """
 
 from __future__ import annotations

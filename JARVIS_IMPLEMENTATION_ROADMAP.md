@@ -1,4 +1,4 @@
-# JARVIS Neural Mesh Implementation Roadmap
+﻿# Ironcliw Neural Mesh Implementation Roadmap
 
 **Author:** Derek J. Russell
 **Date:** October 25, 2025
@@ -21,11 +21,11 @@
 
 ## Executive Summary
 
-This roadmap outlines the transformation of JARVIS from its current state of 60+ isolated agents into a **unified multi-agent neural mesh** powered by advanced AI/ML models, with seamless hybrid local/cloud execution.
+This roadmap outlines the transformation of Ironcliw from its current state of 60+ isolated agents into a **unified multi-agent neural mesh** powered by advanced AI/ML models, with seamless hybrid local/cloud execution.
 
 ### Vision
 
-**By Q2 2026:** JARVIS becomes a self-evolving AI organism with:
+**By Q2 2026:** Ironcliw becomes a self-evolving AI organism with:
 - ✅ 95%+ agent activation (vs. current 53%)
 - ✅ Real-time multi-agent collaboration
 - ✅ Advanced Transformer-based intelligence
@@ -196,7 +196,7 @@ logger = logging.getLogger(__name__)
 
 class BaseAgent(ABC):
     """
-    Base class for all JARVIS agents
+    Base class for all Ironcliw agents
 
     Provides:
     - Automatic registration with Neural Mesh
@@ -575,7 +575,7 @@ logger = logging.getLogger(__name__)
 
 class TransformerManager:
     """
-    Manages Transformer models for JARVIS
+    Manages Transformer models for Ironcliw
 
     Features:
     - Lazy model loading
@@ -720,12 +720,12 @@ async def get_transformer_manager() -> TransformerManager:
 
 #### Week 11-12: Intent Enhancement + Fine-Tuning
 
-**Goal:** Fine-tune models on JARVIS-specific data
+**Goal:** Fine-tune models on Ironcliw-specific data
 
 **Deliverables:**
 1. `backend/ml/fine_tuner.py` - Model fine-tuning utilities
-2. Custom intent classifier trained on JARVIS commands
-3. Custom embeddings for JARVIS domain
+2. Custom intent classifier trained on Ironcliw commands
+3. Custom embeddings for Ironcliw domain
 
 **Training Data Sources:**
 - Learning Database (historical commands)
@@ -736,7 +736,7 @@ async def get_transformer_manager() -> TransformerManager:
 **Tasks:**
 - [ ] Export training data from Learning Database
 - [ ] Create train/validation/test splits
-- [ ] Fine-tune intent classifier on JARVIS commands
+- [ ] Fine-tune intent classifier on Ironcliw commands
 - [ ] Train custom embeddings for domain terms
 - [ ] Evaluate and compare with base models
 - [ ] Deploy fine-tuned models
@@ -776,7 +776,7 @@ logger = logging.getLogger(__name__)
 
 class CloudAgentLauncher:
     """
-    Launch JARVIS agents on GCP Spot VMs
+    Launch Ironcliw agents on GCP Spot VMs
 
     Features:
     - Deploy specific agents to cloud
@@ -920,7 +920,7 @@ async def route_agent_execution(
 
 ### Phase 5: Production Hardening (Weeks 17-24)
 
-**Goal:** Make JARVIS production-ready and self-improving
+**Goal:** Make Ironcliw production-ready and self-improving
 
 #### Week 17-18: Monitoring & Observability
 
@@ -1001,7 +1001,7 @@ async def route_agent_execution(
 
 **Models to Integrate:**
 - GPT-4 (or similar) for complex reasoning (cloud)
-- Custom LLM fine-tuned on JARVIS domain
+- Custom LLM fine-tuned on Ironcliw domain
 - Multimodal models (vision + language)
 
 **Use Cases:**
@@ -1016,7 +1016,7 @@ async def route_agent_execution(
 **Architecture:**
 ```
 ┌──────────────────────────────────────────────────────────┐
-│         JARVIS CROSS-DEVICE NEURAL MESH                  │
+│         Ironcliw CROSS-DEVICE NEURAL MESH                  │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
 │  ┌────────────┐   ┌────────────┐   ┌────────────┐      │
@@ -1198,7 +1198,7 @@ async def route_agent_execution(
 
 ## Conclusion
 
-This roadmap transforms JARVIS from a collection of isolated agents into a **unified AI organism** capable of:
+This roadmap transforms Ironcliw from a collection of isolated agents into a **unified AI organism** capable of:
 
 ✅ **Self-coordination:** Agents automatically collaborate
 ✅ **Self-learning:** Continuous improvement through knowledge sharing

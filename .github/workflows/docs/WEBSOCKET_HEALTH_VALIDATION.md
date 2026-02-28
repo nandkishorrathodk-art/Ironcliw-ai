@@ -1,4 +1,4 @@
-# WebSocket Self-Healing Validation System
+﻿# WebSocket Self-Healing Validation System
 
 ## Overview
 
@@ -536,4 +536,4 @@ For issues or questions:
 
 ## License
 
-Part of JARVIS-AI-Agent project - see main LICENSE file.
+Part of Ironcliw-AI-Agent project - see main LICENSE file.

@@ -1,7 +1,7 @@
-# 🎯 JARVIS Iron Man Interface
+﻿# 🎯 Ironcliw Iron Man Interface
 
 ## Overview
-The JARVIS interface is a React-based frontend that provides an Iron Man-inspired UI for interacting with your AI assistant. It features a futuristic, holographic design with cyan/blue color schemes, glass-morphism effects, and HUD-style elements.
+The Ironcliw interface is a React-based frontend that provides an Iron Man-inspired UI for interacting with your AI assistant. It features a futuristic, holographic design with cyan/blue color schemes, glass-morphism effects, and HUD-style elements.
 
 ## Features
 - **Iron Man-inspired Design**: Futuristic UI with holographic effects
@@ -19,7 +19,7 @@ python3 start_system.py
 
 The script will:
 1. Start the backend API (with Claude integration)
-2. Start the JARVIS React interface on port 3000
+2. Start the Ironcliw React interface on port 3000
 3. Automatically open the interface in your browser
 
 ### Method 2: Manual Start
@@ -34,7 +34,7 @@ npm start
 ```
 
 ## Accessing the Interface
-- **JARVIS Interface**: http://localhost:3000/ (Iron Man UI)
+- **Ironcliw Interface**: http://localhost:3000/ (Iron Man UI)
 - **API Documentation**: http://localhost:8000/docs
 - **Basic Chat**: http://localhost:8000/
 

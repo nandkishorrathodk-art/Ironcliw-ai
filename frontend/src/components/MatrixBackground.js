@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MatrixBackground.js - Advanced Matrix Rain Animation
  * =====================================================
  *
@@ -10,7 +10,7 @@
  * - requestAnimationFrame for smooth 60fps rendering
  * - Canvas-based for optimal performance
  *
- * @author JARVIS System
+ * @author Ironcliw System
  * @version 2.0.0
  */
 

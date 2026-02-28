@@ -1,14 +1,14 @@
-"""
+﻿"""
 Docker Cross-Repo Coordinator v1.0
 
-Coordinates Docker state across JARVIS Trinity ecosystem:
-- JARVIS-AI-Agent (Body) - Main supervisor
-- JARVIS-Prime (Mind) - Inference routing
+Coordinates Docker state across Ironcliw Trinity ecosystem:
+- Ironcliw-AI-Agent (Body) - Main supervisor
+- Ironcliw-Prime (Mind) - Inference routing
 - Reactor-Core (Nerves) - Training orchestration
 
 Uses Trinity Protocol for file-based IPC with atomic operations.
 
-Author: JARVIS AGI System
+Author: Ironcliw AGI System
 Version: 1.0.0
 """
 
@@ -113,8 +113,8 @@ class DockerEventType(Enum):
 
 class ComponentType(Enum):
     """Trinity component types"""
-    JARVIS_AGENT = "jarvis_agent"      # Body
-    JARVIS_PRIME = "jarvis_prime"      # Mind
+    Ironcliw_AGENT = "jarvis_agent"      # Body
+    Ironcliw_PRIME = "jarvis_prime"      # Mind
     REACTOR_CORE = "reactor_core"      # Nerves
 
 
@@ -206,7 +206,7 @@ class DockerState:
 
 class DockerCrossRepoCoordinator:
     """
-    Coordinates Docker state across JARVIS Trinity ecosystem.
+    Coordinates Docker state across Ironcliw Trinity ecosystem.
 
     Responsibilities:
     - Publish Docker state changes via file-based IPC
@@ -217,7 +217,7 @@ class DockerCrossRepoCoordinator:
 
     def __init__(
         self,
-        component: ComponentType = ComponentType.JARVIS_AGENT,
+        component: ComponentType = ComponentType.Ironcliw_AGENT,
         config: Optional[CrossRepoConfig] = None
     ):
         self.component = component
@@ -264,8 +264,8 @@ class DockerCrossRepoCoordinator:
             name="docker_heartbeat"
         )
 
-        # Start request watcher (only for JARVIS_AGENT which owns Docker)
-        if self.component == ComponentType.JARVIS_AGENT:
+        # Start request watcher (only for Ironcliw_AGENT which owns Docker)
+        if self.component == ComponentType.Ironcliw_AGENT:
             self._request_watcher_task = asyncio.create_task(
                 self._watch_requests(),
                 name="docker_request_watcher"
@@ -432,9 +432,9 @@ class DockerCrossRepoCoordinator:
         timeout: float = 30.0
     ) -> Optional[Dict[str, Any]]:
         """
-        Send request to Docker owner (JARVIS_AGENT) and wait for response.
+        Send request to Docker owner (Ironcliw_AGENT) and wait for response.
 
-        Used by JARVIS_PRIME and REACTOR_CORE to request Docker operations.
+        Used by Ironcliw_PRIME and REACTOR_CORE to request Docker operations.
         """
         if not self.config.enabled:
             return None
@@ -481,7 +481,7 @@ class DockerCrossRepoCoordinator:
                 pass
 
     async def _watch_requests(self):
-        """Watch for incoming requests (runs on JARVIS_AGENT only)"""
+        """Watch for incoming requests (runs on Ironcliw_AGENT only)"""
         while self._running:
             try:
                 # Check for request files
@@ -630,7 +630,7 @@ class DockerCrossRepoCoordinator:
 
 class JarvisPrimeDockerClient:
     """
-    Docker client for JARVIS-Prime.
+    Docker client for Ironcliw-Prime.
 
     Provides simplified interface for checking Docker status
     and requesting Docker operations.
@@ -638,7 +638,7 @@ class JarvisPrimeDockerClient:
 
     def __init__(self, config: Optional[CrossRepoConfig] = None):
         self.coordinator = DockerCrossRepoCoordinator(
-            component=ComponentType.JARVIS_PRIME,
+            component=ComponentType.Ironcliw_PRIME,
             config=config
         )
 
@@ -755,7 +755,7 @@ _coordinator_instance: Optional[DockerCrossRepoCoordinator] = None
 
 
 def get_docker_coordinator(
-    component: ComponentType = ComponentType.JARVIS_AGENT
+    component: ComponentType = ComponentType.Ironcliw_AGENT
 ) -> DockerCrossRepoCoordinator:
     """Get or create the Docker cross-repo coordinator singleton"""
     global _coordinator_instance
@@ -767,7 +767,7 @@ def get_docker_coordinator(
 
 
 async def initialize_docker_coordinator(
-    component: ComponentType = ComponentType.JARVIS_AGENT
+    component: ComponentType = ComponentType.Ironcliw_AGENT
 ) -> DockerCrossRepoCoordinator:
     """Initialize and start the Docker coordinator"""
     coordinator = get_docker_coordinator(component)

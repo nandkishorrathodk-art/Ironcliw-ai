@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Alternative approach: Reset and re-grant Screen Recording permission
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
@@ -101,7 +101,7 @@ echo ""
 echo "1. Make sure Terminal is checked in Screen Recording"
 echo "2. Restart your Mac"
 echo "3. After restart, open Terminal"
-echo "4. cd to JARVIS folder"
+echo "4. cd to Ironcliw folder"
 echo "5. Run: python3 check_screen_recording_permission.py"
 echo ""
 

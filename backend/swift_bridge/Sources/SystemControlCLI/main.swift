@@ -1,8 +1,8 @@
-import Foundation
+﻿import Foundation
 import SystemControl
 import CommandClassifier
 
-/// JARVIS System Control CLI
+/// Ironcliw System Control CLI
 /// Provides command-line interface for system control operations
 @main
 struct SystemControlCLI {
@@ -46,7 +46,7 @@ struct SystemControlCLI {
     }
     
     static func handleInteractiveMode() async {
-        print("JARVIS System Control v1.0")
+        print("Ironcliw System Control v1.0")
         print("Type 'help' for available commands or 'exit' to quit")
         print("")
         
@@ -416,7 +416,7 @@ struct SystemControlCLI {
     static func printHelp() {
         print("""
         
-        JARVIS System Control Commands:
+        Ironcliw System Control Commands:
         
         App Control:
           open <app>         - Launch an application

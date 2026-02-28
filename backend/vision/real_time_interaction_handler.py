@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enhanced Real-Time Interaction Handler for JARVIS Screen Monitoring
+Enhanced Real-Time Interaction Handler for Ironcliw Screen Monitoring
 Fully dynamic with Claude Vision API integration - no hardcoded responses
 """
 
@@ -126,15 +126,15 @@ class RealTimeInteractionHandler:
         base_interval = 30.0 if memory_gb >= 16 else 45.0
         
         return {
-            'interaction_interval': float(os.getenv('JARVIS_INTERACTION_INTERVAL', str(base_interval))),
-            'context_aware_notifications': os.getenv('JARVIS_CONTEXT_AWARE', 'true').lower() == 'true',
-            'proactive_assistance': os.getenv('JARVIS_PROACTIVE', 'true').lower() == 'true',
-            'notification_cooldown': float(os.getenv('JARVIS_NOTIFICATION_COOLDOWN', str(base_interval * 2))),
-            'max_notifications_per_hour': int(os.getenv('JARVIS_MAX_NOTIFICATIONS', str(int(60 / base_interval * 2)))),
-            'analysis_queue_size': int(os.getenv('JARVIS_ANALYSIS_QUEUE', str(cpu_count * 2))),
-            'cache_ttl_seconds': float(os.getenv('JARVIS_CACHE_TTL', str(base_interval))),
-            'enable_learning': os.getenv('JARVIS_ENABLE_LEARNING', 'true').lower() == 'true',
-            'min_confidence_threshold': float(os.getenv('JARVIS_MIN_CONFIDENCE', '0.7'))
+            'interaction_interval': float(os.getenv('Ironcliw_INTERACTION_INTERVAL', str(base_interval))),
+            'context_aware_notifications': os.getenv('Ironcliw_CONTEXT_AWARE', 'true').lower() == 'true',
+            'proactive_assistance': os.getenv('Ironcliw_PROACTIVE', 'true').lower() == 'true',
+            'notification_cooldown': float(os.getenv('Ironcliw_NOTIFICATION_COOLDOWN', str(base_interval * 2))),
+            'max_notifications_per_hour': int(os.getenv('Ironcliw_MAX_NOTIFICATIONS', str(int(60 / base_interval * 2)))),
+            'analysis_queue_size': int(os.getenv('Ironcliw_ANALYSIS_QUEUE', str(cpu_count * 2))),
+            'cache_ttl_seconds': float(os.getenv('Ironcliw_CACHE_TTL', str(base_interval))),
+            'enable_learning': os.getenv('Ironcliw_ENABLE_LEARNING', 'true').lower() == 'true',
+            'min_confidence_threshold': float(os.getenv('Ironcliw_MIN_CONFIDENCE', '0.7'))
         }
         
     def _register_analyzer_callbacks(self):
@@ -280,7 +280,7 @@ class RealTimeInteractionHandler:
             
         # Generate proactive greeting
         prompt = (
-            "You are JARVIS, a proactive AI assistant. The user just activated intelligent monitoring mode. "
+            "You are Ironcliw, a proactive AI assistant. The user just activated intelligent monitoring mode. "
             "Look at their current screen and provide a welcoming message that: "
             "1) Acknowledges what they're currently working on "
             "2) Explains you'll be actively watching and will offer help when you notice opportunities "
@@ -347,7 +347,7 @@ class RealTimeInteractionHandler:
         history_summary = self._summarize_screen_history()
         
         prompt = (
-            f"You are JARVIS. The user is stopping screen monitoring after {self._format_duration(monitoring_duration)}. "
+            f"You are Ironcliw. The user is stopping screen monitoring after {self._format_duration(monitoring_duration)}. "
             f"During this session, you observed: {history_summary}. "
             "Look at their current screen and provide a personalized farewell that: "
             "1) Acknowledges what they accomplished during the session "
@@ -444,7 +444,7 @@ class RealTimeInteractionHandler:
     def _build_event_analysis_prompt(self, event_type: str, event_data: Dict[str, Any]) -> str:
         """Build a dynamic prompt for event analysis"""
         base_prompt = (
-            "You are JARVIS, monitoring the user's screen. "
+            "You are Ironcliw, monitoring the user's screen. "
             f"A '{event_type}' event just occurred. "
         )
         
@@ -583,7 +583,7 @@ class RealTimeInteractionHandler:
             
         # Specialized prompt for debugging assistance
         prompt = (
-            "You are JARVIS, helping with debugging. Analyze the screen for:\n"
+            "You are Ironcliw, helping with debugging. Analyze the screen for:\n"
             "1) Error messages with specific line numbers and error types\n"
             "2) Variable name mismatches (camelCase vs snake_case, typos)\n"
             "3) Undefined variables or functions being used\n"
@@ -626,7 +626,7 @@ class RealTimeInteractionHandler:
         tab_count = context.get('browser_tab_count', 0)
         
         prompt = (
-            "You are JARVIS, helping with research. Analyze the screen for:\n"
+            "You are Ironcliw, helping with research. Analyze the screen for:\n"
             "1) Multiple browser tabs open on similar topics\n"
             "2) Rapid switching between documentation pages\n"
             "3) Search queries being repeated or refined\n"
@@ -666,7 +666,7 @@ class RealTimeInteractionHandler:
             return None
             
         prompt = (
-            "You are JARVIS, looking for workflow optimization opportunities. Analyze for:\n"
+            "You are Ironcliw, looking for workflow optimization opportunities. Analyze for:\n"
             "1) Copy-paste of similar code blocks\n"
             "2) Repetitive manual actions that could be automated\n"
             "3) Code duplication patterns\n"
@@ -740,7 +740,7 @@ class RealTimeInteractionHandler:
                 
         # General assistance detection as fallback
         general_prompt = (
-            "You are JARVIS, proactively monitoring. "
+            "You are Ironcliw, proactively monitoring. "
             f"Context: {json.dumps(context, default=str)}\n"
             "Look for any other assistance opportunities not covered by specific detectors:\n"
             "- Potential issues before they become problems\n"
@@ -812,7 +812,7 @@ class RealTimeInteractionHandler:
         recent_screens = list(self.interaction_state['screen_history'])[-5:]
         
         prompt = (
-            "You are JARVIS, analyzing user workflows. "
+            "You are Ironcliw, analyzing user workflows. "
             "Based on the current screen and recent activity, identify the user's workflow:\n"
             f"Known workflows: {list(self._workflow_detectors.keys())}\n"
             "Analyze and return JSON with:\n"
@@ -891,7 +891,7 @@ class RealTimeInteractionHandler:
         blockers = workflow.get('potential_blockers', [])
         
         prompt = (
-            f"You are JARVIS. The user is in a {workflow_type} workflow. "
+            f"You are Ironcliw. The user is in a {workflow_type} workflow. "
             f"Current phase: {workflow.get('current_phase')}. "
             f"Potential issues: {', '.join(blockers) if blockers else 'none detected'}. "
             "Provide natural, conversational assistance that:\n"
@@ -919,7 +919,7 @@ class RealTimeInteractionHandler:
         screenshot = await self._capture_current_screen()
         
         prompt = (
-            f"You are JARVIS. You've detected the user is doing {workflow.get('workflow_type')} work. "
+            f"You are Ironcliw. You've detected the user is doing {workflow.get('workflow_type')} work. "
             "Provide a brief, natural acknowledgment that:\n"
             "1) Shows you understand what they're doing\n"
             "2) Offers to help if needed\n"
@@ -937,7 +937,7 @@ class RealTimeInteractionHandler:
             
         # Quick check for sensitive patterns
         prompt = (
-            "You are JARVIS, checking for sensitive content. "
+            "You are Ironcliw, checking for sensitive content. "
             "Look for: passwords being typed, banking/financial sites, private messages, "
             "personal health information, or any content that seems private. "
             "Return JSON with: {is_sensitive: true/false, reason: why if true}"
@@ -1184,7 +1184,7 @@ class RealTimeInteractionHandler:
     async def _generate_analysis_prompt(self, context: Dict[str, Any]) -> str:
         """Generate dynamic analysis prompt based on context"""
         prompt_parts = [
-            "You are JARVIS, proactively monitoring the user's screen to provide timely assistance.",
+            "You are Ironcliw, proactively monitoring the user's screen to provide timely assistance.",
             f"You've been monitoring for {self._format_duration(context['monitoring_duration'])}."
         ]
         
@@ -1286,7 +1286,7 @@ class RealTimeInteractionHandler:
             except Exception as e:
                 logger.error(f"Error sending notification: {e}")
         else:
-            logger.info(f"JARVIS: {styled_message}")
+            logger.info(f"Ironcliw: {styled_message}")
             
     def _apply_communication_style(self, message: str, data: Optional[Dict[str, Any]]) -> str:
         """Apply appropriate communication style based on context (FR-6.3)"""
@@ -1441,7 +1441,7 @@ class RealTimeInteractionHandler:
         history_summary = self._summarize_screen_history()
         
         prompt = (
-            "You are JARVIS. The user asked for a summary of their screen activity. "
+            "You are Ironcliw. The user asked for a summary of their screen activity. "
             f"You've observed: {history_summary}. "
             "Looking at the current screen, provide a concise summary of: "
             "1) What the user is currently doing "

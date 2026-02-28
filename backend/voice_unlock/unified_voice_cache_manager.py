@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Voice Cache Manager
 ===========================
 
@@ -1715,7 +1715,7 @@ class UnifiedVoiceCacheManager:
             True if models are ready (local or cloud)
         """
         self._state = CacheState.LOADING_MODELS
-        max_retries = int(os.getenv("JARVIS_ECAPA_LOAD_RETRIES", "2"))
+        max_retries = int(os.getenv("Ironcliw_ECAPA_LOAD_RETRIES", "2"))
 
         # Track failure reasons for diagnostics
         failure_reasons = []
@@ -1737,7 +1737,7 @@ class UnifiedVoiceCacheManager:
             # - Timeout handling
             logger.info("🔍 Using ensure_ecapa_available() for ECAPA initialization...")
 
-            ecapa_timeout = float(os.getenv("JARVIS_ECAPA_ENSURE_TIMEOUT", "45.0"))
+            ecapa_timeout = float(os.getenv("Ironcliw_ECAPA_ENSURE_TIMEOUT", "45.0"))
             success, message, encoder = await ensure_ecapa_available(
                 timeout=ecapa_timeout,
                 allow_cloud=True,
@@ -1836,7 +1836,7 @@ class UnifiedVoiceCacheManager:
                     result = await self._model_loader.load_model(
                         model_name="ecapa_encoder",
                         load_func=self._create_ecapa_loader(),
-                        timeout=float(os.getenv("JARVIS_ECAPA_LOCAL_TIMEOUT", "60.0")),
+                        timeout=float(os.getenv("Ironcliw_ECAPA_LOCAL_TIMEOUT", "60.0")),
                         use_cache=True,
                     )
                     if result.success:
@@ -2118,7 +2118,7 @@ class UnifiedVoiceCacheManager:
 
         # Get timeout from env or default
         if timeout is None:
-            timeout = float(os.getenv("JARVIS_ECAPA_ENSURE_TIMEOUT", "45.0"))
+            timeout = float(os.getenv("Ironcliw_ECAPA_ENSURE_TIMEOUT", "45.0"))
 
         start_time = time_module.time()
 
@@ -3032,7 +3032,7 @@ class UnifiedVoiceCacheManager:
         Record voice sample to database for continuous learning.
 
         This is called by VoiceBiometricCache for ALL authentication
-        attempts, enabling JARVIS to continuously improve recognition.
+        attempts, enabling Ironcliw to continuously improve recognition.
 
         Args:
             speaker_name: Identified speaker

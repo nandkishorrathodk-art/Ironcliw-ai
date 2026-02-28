@@ -1,46 +1,46 @@
-# Voice Unlock - JARVIS Integration
+﻿# Voice Unlock - Ironcliw Integration
 
 ## Overview
 
-The Voice Unlock system is now fully integrated into JARVIS's main startup process. When you start JARVIS, the Voice Unlock WebSocket server automatically starts if you have configured your password.
+The Voice Unlock system is now fully integrated into Ironcliw's main startup process. When you start Ironcliw, the Voice Unlock WebSocket server automatically starts if you have configured your password.
 
-## What Happens During JARVIS Startup
+## What Happens During Ironcliw Startup
 
-1. **Automatic Check**: JARVIS checks if you've stored your password (via `enable_screen_unlock.sh`)
+1. **Automatic Check**: Ironcliw checks if you've stored your password (via `enable_screen_unlock.sh`)
 2. **WebSocket Server**: If password is configured, the Voice Unlock WebSocket server starts automatically on port 8765
 3. **Ready to Use**: You can immediately use voice commands like "unlock my mac"
 4. **No Manual Steps**: No need to run `start_voice_unlock_system.sh` separately anymore
 
 ## How It Works Now
 
-### Starting JARVIS
+### Starting Ironcliw
 ```bash
 # From the root of the project
 python start_system.py
 ```
 
 This automatically:
-- ✅ Starts all JARVIS components
+- ✅ Starts all Ironcliw components
 - ✅ Starts Voice Unlock WebSocket server
 - ✅ Initializes voice unlock integration
 - ✅ Makes "unlock my mac" commands work immediately
 
 ### Using Voice Unlock
 
-1. **Direct Commands** (when talking to JARVIS):
-   - "Hey JARVIS, unlock my mac"
-   - "Hey JARVIS, unlock my screen"
-   - "Hey JARVIS, unlock the mac"
+1. **Direct Commands** (when talking to Ironcliw):
+   - "Hey Ironcliw, unlock my mac"
+   - "Hey Ironcliw, unlock my screen"
+   - "Hey Ironcliw, unlock the mac"
 
 2. **What Happens**:
-   - JARVIS receives your command
+   - Ironcliw receives your command
    - Sends unlock request to Voice Unlock system
    - Retrieves password from Keychain
    - Types password and unlocks screen
 
 3. **No More Instructions**: 
-   - Previously: JARVIS would tell you to say another phrase
-   - Now: JARVIS directly unlocks your screen
+   - Previously: Ironcliw would tell you to say another phrase
+   - Now: Ironcliw directly unlocks your screen
 
 ## Configuration Required
 
@@ -73,7 +73,7 @@ This stores your password securely in macOS Keychain.
 
 ### Architecture
 ```
-User Voice → JARVIS → voice_unlock_integration → WebSocket → Screen Unlock
+User Voice → Ironcliw → voice_unlock_integration → WebSocket → Screen Unlock
 ```
 
 ## Troubleshooting
@@ -91,7 +91,7 @@ User Voice → JARVIS → voice_unlock_integration → WebSocket → Screen Unlo
    ```
 
 3. **Check logs**:
-   - JARVIS startup log shows Voice Unlock status
+   - Ironcliw startup log shows Voice Unlock status
    - Look for "🔐 Voice Unlock system started"
 
 ### Common Issues
@@ -102,8 +102,8 @@ User Voice → JARVIS → voice_unlock_integration → WebSocket → Screen Unlo
 
 ## Benefits of Integration
 
-1. **Seamless Experience**: Voice Unlock is part of JARVIS, not a separate system
+1. **Seamless Experience**: Voice Unlock is part of Ironcliw, not a separate system
 2. **Automatic Startup**: No manual steps required
 3. **Direct Commands**: Say "unlock my mac" and it happens
-4. **Clean Shutdown**: Properly stops when JARVIS stops
-5. **Status in Logs**: See Voice Unlock status in JARVIS startup logs
+4. **Clean Shutdown**: Properly stops when Ironcliw stops
+5. **Status in Logs**: See Voice Unlock status in Ironcliw startup logs

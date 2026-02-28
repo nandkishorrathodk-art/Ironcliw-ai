@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive test for Yabai Multi-Space Intelligence System
 Tests all components: YabaiSpaceDetector, WorkspaceAnalyzer, SpaceResponseGenerator
@@ -262,7 +262,7 @@ async def test_integration():
         response = generator.generate_overview_response(analysis, include_details=True)
 
         print("\n" + "=" * 80)
-        print("FINAL JARVIS RESPONSE:")
+        print("FINAL Ironcliw RESPONSE:")
         print("=" * 80)
         print(response)
         print("=" * 80)
@@ -320,7 +320,7 @@ async def main():
     print("✅ ALL TESTS COMPLETED SUCCESSFULLY")
     print("=" * 80)
     print("\nThe Yabai multi-space intelligence system is fully operational!")
-    print("You can now ask JARVIS: 'What's happening across my desktop spaces?'")
+    print("You can now ask Ironcliw: 'What's happening across my desktop spaces?'")
     print()
 
 

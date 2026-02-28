@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 echo "🎤 Installing Wake Word Dependencies..."
 echo "======================================"
@@ -79,9 +79,9 @@ echo ""
 echo "✅ Wake word dependencies installed successfully!"
 echo ""
 echo "🎯 Next steps:"
-echo "1. Start JARVIS: python start_system.py"
+echo "1. Start Ironcliw: python start_system.py"
 echo "2. Wake word detection will start automatically"
-echo "3. Say 'Hey JARVIS' to activate!"
+echo "3. Say 'Hey Ironcliw' to activate!"
 echo ""
 echo "🔧 Configuration:"
 echo "- Wake words can be customized via environment variables"

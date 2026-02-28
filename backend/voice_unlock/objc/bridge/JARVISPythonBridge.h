@@ -1,6 +1,6 @@
-/**
- * JARVISPythonBridge.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwPythonBridge.h
+ * Ironcliw Voice Unlock System
  *
  * Bridge for direct Python integration using Python C API
  * and subprocess communication.
@@ -11,15 +11,15 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // Python bridge state
-typedef NS_ENUM(NSInteger, JARVISPythonBridgeState) {
-    JARVISPythonBridgeStateInactive = 0,
-    JARVISPythonBridgeStateInitializing,
-    JARVISPythonBridgeStateActive,
-    JARVISPythonBridgeStateError
+typedef NS_ENUM(NSInteger, IroncliwPythonBridgeState) {
+    IroncliwPythonBridgeStateInactive = 0,
+    IroncliwPythonBridgeStateInitializing,
+    IroncliwPythonBridgeStateActive,
+    IroncliwPythonBridgeStateError
 };
 
 // Python function result
-@interface JARVISPythonResult : NSObject
+@interface IroncliwPythonResult : NSObject
 @property (nonatomic, readonly) BOOL success;
 @property (nonatomic, readonly, nullable) id result;
 @property (nonatomic, readonly, nullable) NSError *error;
@@ -27,7 +27,7 @@ typedef NS_ENUM(NSInteger, JARVISPythonBridgeState) {
 @end
 
 // Python bridge delegate
-@protocol JARVISPythonBridgeDelegate <NSObject>
+@protocol IroncliwPythonBridgeDelegate <NSObject>
 @optional
 - (void)pythonBridgeDidInitialize;
 - (void)pythonBridgeDidFailWithError:(NSError *)error;
@@ -35,10 +35,10 @@ typedef NS_ENUM(NSInteger, JARVISPythonBridgeState) {
 @end
 
 // Main Python bridge interface
-@interface JARVISPythonBridge : NSObject
+@interface IroncliwPythonBridge : NSObject
 
-@property (nonatomic, weak, nullable) id<JARVISPythonBridgeDelegate> delegate;
-@property (nonatomic, readonly) JARVISPythonBridgeState state;
+@property (nonatomic, weak, nullable) id<IroncliwPythonBridgeDelegate> delegate;
+@property (nonatomic, readonly) IroncliwPythonBridgeState state;
 @property (nonatomic, readonly) BOOL isActive;
 
 // Configuration
@@ -54,12 +54,12 @@ typedef NS_ENUM(NSInteger, JARVISPythonBridgeState) {
 
 // Message passing
 - (BOOL)sendMessage:(NSDictionary *)message;
-- (JARVISPythonResult *)sendMessageAndWait:(NSDictionary *)message timeout:(NSTimeInterval)timeout;
+- (IroncliwPythonResult *)sendMessageAndWait:(NSDictionary *)message timeout:(NSTimeInterval)timeout;
 
 // Function calls
 - (void)callPythonFunction:(NSString *)functionName
                 arguments:(nullable NSArray *)arguments
-               completion:(void (^)(JARVISPythonResult *result))completion;
+               completion:(void (^)(IroncliwPythonResult *result))completion;
 
 - (id)callPythonFunctionSync:(NSString *)functionName
                    arguments:(nullable NSArray *)arguments
@@ -79,7 +79,7 @@ typedef NS_ENUM(NSInteger, JARVISPythonBridgeState) {
 @end
 
 // Voice processing extension
-@interface JARVISPythonBridge (VoiceProcessing)
+@interface IroncliwPythonBridge (VoiceProcessing)
 
 // Wake phrase detection
 - (void)detectWakePhrase:(NSData *)audioData

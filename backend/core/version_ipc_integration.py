@@ -1,4 +1,4 @@
-"""
+﻿"""
 Version-Aware IPC Integration v1.0
 ===================================
 
@@ -22,7 +22,7 @@ Usage:
 
     # Initialize during component startup
     manager = await initialize_version_aware_ipc(
-        component_type=ComponentType.JARVIS_BODY,
+        component_type=ComponentType.Ironcliw_BODY,
         component_version="13.4.0",
     )
 
@@ -32,7 +32,7 @@ Usage:
     # Send version-aware messages
     await manager.send_command(target, action, payload)
 
-Author: JARVIS Trinity v96.0 - Version-Aware IPC Integration
+Author: Ironcliw Trinity v96.0 - Version-Aware IPC Integration
 """
 
 from __future__ import annotations
@@ -486,7 +486,7 @@ class VersionAwareIPCManager:
 
             event = eb["TrinityEvent"](
                 topic=event_type,
-                source=eb["RepoType"].JARVIS,
+                source=eb["RepoType"].Ironcliw,
                 target=eb["RepoType"].BROADCAST,
                 priority=eb["EventPriority"].NORMAL,
                 payload=payload,

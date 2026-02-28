@@ -1,8 +1,8 @@
-# ✅ JARVIS Loading System - COMPLETE IMPLEMENTATION
+﻿# ✅ Ironcliw Loading System - COMPLETE IMPLEMENTATION
 
 ## 🎯 What You Asked For
 
-> "I want to see the loading when JARVIS is loading from the backend and the percentage of it loading. The percentage bar should be an accurate reflection of JARVIS loading in the backend. We want the percentage of the frontend to be accurate as far as what is going on in the backend. And we want to beef it up and make it dynamic, but keep the frontend simple."
+> "I want to see the loading when Ironcliw is loading from the backend and the percentage of it loading. The percentage bar should be an accurate reflection of Ironcliw loading in the backend. We want the percentage of the frontend to be accurate as far as what is going on in the backend. And we want to beef it up and make it dynamic, but keep the frontend simple."
 
 ## ✅ What We Built
 
@@ -14,7 +14,7 @@
 
 ### 2. **Real-Time Progress Tracking**
 ```
- 5% 🔍 Detecting - Scanning for existing JARVIS processes
+ 5% 🔍 Detecting - Scanning for existing Ironcliw processes
 15% ⚔️ Terminating - Killing 3 old instances  
 30% 🧹 Cleanup - Resources freed
 50% 🚀 Starting - Launching services
@@ -92,7 +92,7 @@ python start_system.py --restart
 ✅ Run restart → Loading page opens INSTANTLY
 ✅ See real-time progress: "Detecting processes... 5%"
 ✅ Watch each stage: Database → Voice → Vision → API
-✅ 100% → Beautiful transition → JARVIS ready!
+✅ 100% → Beautiful transition → Ironcliw ready!
 ```
 
 ## 📊 Technical Details
@@ -157,7 +157,7 @@ window.location.href = 'http://localhost:3000'
 - **5%**: Process detection complete
 - **15%**: Old instances terminated
 - **30%**: Resources cleaned up
-- **50%**: Fresh JARVIS starting
+- **50%**: Fresh Ironcliw starting
 - **60%**: Database connected
 - **70%**: Voice models loaded
 - **80%**: Vision system ready
@@ -178,15 +178,15 @@ NOT fake progress bars! Each percentage = real milestone.
 // Override backend port
 localStorage.setItem('jarvis_backend_port', '8010')
 
-// Custom JARVIS config
-window.JARVIS_CONFIG = { backendPort: 8010 }
+// Custom Ironcliw config
+window.Ironcliw_CONFIG = { backendPort: 8010 }
 ```
 
 ## 🎬 Next Run
 
 **Try it now:**
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python start_system.py --restart
 ```
 

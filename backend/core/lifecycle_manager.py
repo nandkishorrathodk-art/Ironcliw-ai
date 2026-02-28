@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Lifecycle Manager
+Ironcliw Lifecycle Manager
 ========================
 
-Centralized lifecycle management for JARVIS initialization and shutdown.
+Centralized lifecycle management for Ironcliw initialization and shutdown.
 Handles:
 - Singleton CloudSQL connection manager initialization
 - Signal handlers for graceful shutdown
@@ -11,7 +11,7 @@ Handles:
 - Connection leak prevention
 - Process cleanup coordination
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class LifecycleManager:
     """
-    Centralized lifecycle management for JARVIS.
+    Centralized lifecycle management for Ironcliw.
 
     Features:
     - Initialize all database connections (singleton pattern)
@@ -213,7 +213,7 @@ class LifecycleManager:
         if not self.shutdown_initiated:
             self.shutdown_initiated = True
 
-        logger.info("🛑 Starting JARVIS graceful shutdown...")
+        logger.info("🛑 Starting Ironcliw graceful shutdown...")
 
         try:
             # Step 1: Shutdown hybrid sync (flushes pending writes)
@@ -255,7 +255,7 @@ class LifecycleManager:
             except Exception as e:
                 logger.warning(f"⚠️  Process cleanup failed: {e}")
 
-            logger.info("✅ JARVIS graceful shutdown complete")
+            logger.info("✅ Ironcliw graceful shutdown complete")
 
         except Exception as e:
             logger.error(f"❌ Error during shutdown: {e}")
@@ -289,7 +289,7 @@ def get_lifecycle_manager() -> LifecycleManager:
 
 async def initialize_jarvis_lifecycle():
     """
-    Initialize JARVIS lifecycle management.
+    Initialize Ironcliw lifecycle management.
     Call this at the start of main() before any other initialization.
     """
     manager = get_lifecycle_manager()
@@ -305,7 +305,7 @@ async def initialize_jarvis_lifecycle():
 
 async def shutdown_jarvis_lifecycle():
     """
-    Shutdown JARVIS lifecycle management.
+    Shutdown Ironcliw lifecycle management.
     Call this at the end of main() or in exception handlers.
     """
     manager = get_lifecycle_manager()

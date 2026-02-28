@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Agent Initializer
+﻿"""
+Ironcliw Neural Mesh - Agent Initializer
 
 Handles automatic registration and initialization of all production agents
 with the Neural Mesh coordinator. Provides a single entry point for

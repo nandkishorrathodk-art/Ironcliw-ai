@@ -1,16 +1,16 @@
-[Unit]
-Description=JARVIS Voice Unlock Service
+﻿[Unit]
+Description=Ironcliw Voice Unlock Service
 After=network.target sound.target
 
 [Service]
 Type=simple
 User=%i
-WorkingDirectory=/Users/%i/Documents/repos/JARVIS-AI-Agent
+WorkingDirectory=/Users/%i/Documents/repos/Ironcliw-AI-Agent
 Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-Environment="PYTHONPATH=/Users/%i/Documents/repos/JARVIS-AI-Agent"
+Environment="PYTHONPATH=/Users/%i/Documents/repos/Ironcliw-AI-Agent"
 Environment="VOICE_UNLOCK_MAX_MEMORY=400"
 Environment="VOICE_UNLOCK_CACHE_SIZE=150"
-ExecStart=/usr/bin/python3 /Users/%i/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/jarvis_voice_unlock.py start
+ExecStart=/usr/bin/python3 /Users/%i/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock/jarvis_voice_unlock.py start
 Restart=on-failure
 RestartSec=10
 

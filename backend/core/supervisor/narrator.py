@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Supervisor Voice Narrator v4.0 - Intelligent Speech Edition
+Ironcliw Supervisor Voice Narrator v4.0 - Intelligent Speech Edition
 ===================================================================
 
 Intelligent, context-aware TTS narrator for the supervisor to provide engaging
@@ -28,7 +28,7 @@ v2.0 CHANGE: Now delegates to UnifiedVoiceOrchestrator instead of spawning
 its own `say` processes. This prevents the "multiple voices" issue where
 concurrent narrator systems would speak simultaneously.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 4.0.0
 """
 
@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 class NarratorVoice(str, Enum):
     """Available voices for narration."""
-    DANIEL = "Daniel"  # British English (default JARVIS voice)
+    DANIEL = "Daniel"  # British English (default Ironcliw voice)
     ALEX = "Alex"      # American English
     SAMANTHA = "Samantha"  # American English female
     KAREN = "Karen"    # Australian English
@@ -68,7 +68,7 @@ class NarratorEvent(str, Enum):
     """Supervisor events that trigger narration."""
     # Lifecycle events
     SUPERVISOR_START = "supervisor_start"
-    JARVIS_ONLINE = "jarvis_online"
+    Ironcliw_ONLINE = "jarvis_online"
     RESTART_STARTING = "restart_starting"
     CRASH_DETECTED = "crash_detected"
     
@@ -157,8 +157,8 @@ class NarratorEvent(str, Enum):
     RESOURCE_LIMIT_EXCEEDED = "resource_limit_exceeded"
     
     # Busy State Events
-    JARVIS_BUSY_DETECTED = "jarvis_busy_detected"
-    JARVIS_IDLE_DETECTED = "jarvis_idle_detected"
+    Ironcliw_BUSY_DETECTED = "jarvis_busy_detected"
+    Ironcliw_IDLE_DETECTED = "jarvis_idle_detected"
     UPDATE_DEFERRED = "update_deferred"
 
 
@@ -166,11 +166,11 @@ class NarratorEvent(str, Enum):
 NARRATION_TEMPLATES: dict[NarratorEvent, list[str]] = {
     # Lifecycle events
     NarratorEvent.SUPERVISOR_START: [
-        "Lifecycle supervisor online. Initializing JARVIS core systems.",
-        "Supervisor active. Bringing JARVIS systems online.",
+        "Lifecycle supervisor online. Initializing Ironcliw core systems.",
+        "Supervisor active. Bringing Ironcliw systems online.",
     ],
-    NarratorEvent.JARVIS_ONLINE: [
-        "JARVIS online. All systems operational.",
+    NarratorEvent.Ironcliw_ONLINE: [
+        "Ironcliw online. All systems operational.",
         "Good to be back, Sir. How may I assist you?",
         "Systems restored. Ready when you are.",
     ],
@@ -250,7 +250,7 @@ NARRATION_TEMPLATES: dict[NarratorEvent, list[str]] = {
         "Preparing a fresh workspace.",
     ],
     NarratorEvent.STARTUP_SPAWNING: [
-        "Spawning JARVIS core process.",
+        "Spawning Ironcliw core process.",
         "Launching main system.",
     ],
     NarratorEvent.STARTUP_BACKEND: [
@@ -492,12 +492,12 @@ NARRATION_TEMPLATES: dict[NarratorEvent, list[str]] = {
     ],
     
     # Busy State Events
-    NarratorEvent.JARVIS_BUSY_DETECTED: [
+    NarratorEvent.Ironcliw_BUSY_DETECTED: [
         "I'm currently processing tasks. Update will wait.",
         "Active tasks detected. Deferring update.",
         "I'm busy at the moment. Will update when idle.",
     ],
-    NarratorEvent.JARVIS_IDLE_DETECTED: [
+    NarratorEvent.Ironcliw_IDLE_DETECTED: [
         "System is idle. Ready for maintenance.",
         "No active tasks. Update window available.",
     ],
@@ -1057,10 +1057,10 @@ class SupervisorNarrator:
         wait: bool = False,
     ) -> None:
         """
-        Narrate JARVIS busy state for update decisions.
+        Narrate Ironcliw busy state for update decisions.
         
         Args:
-            is_busy: Whether JARVIS is currently busy
+            is_busy: Whether Ironcliw is currently busy
             active_tasks: Number of active tasks
             wait: Wait for narration to complete
         """
@@ -1069,11 +1069,11 @@ class SupervisorNarrator:
             if self._should_skip_event("busy_detected"):
                 return
             
-            await self.narrate(NarratorEvent.JARVIS_BUSY_DETECTED, wait=wait)
+            await self.narrate(NarratorEvent.Ironcliw_BUSY_DETECTED, wait=wait)
         else:
             # Only announce idle if we were previously busy
             if "busy_detected" in self._context.recent_events:
-                await self.narrate(NarratorEvent.JARVIS_IDLE_DETECTED, wait=wait)
+                await self.narrate(NarratorEvent.Ironcliw_IDLE_DETECTED, wait=wait)
     
     # =========================================================================
     # v3.0: Helper Methods

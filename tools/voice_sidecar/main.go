@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bufio"
@@ -210,24 +210,24 @@ func expandHomePath(path string) string {
 }
 
 func applyEnvOverrides(cfg *Config) {
-	overrideString(&cfg.Listen.Network, "JARVIS_VOICE_SIDECAR_NETWORK")
-	overrideString(&cfg.Listen.Address, "JARVIS_VOICE_SIDECAR_ADDRESS")
-	overrideInt(&cfg.Poll.IntervalMs, "JARVIS_VOICE_SIDECAR_POLL_INTERVAL_MS")
-	overrideInt(&cfg.Poll.RequestTimeoutMs, "JARVIS_VOICE_SIDECAR_REQUEST_TIMEOUT_MS")
-	overrideString(&cfg.Python.Transport, "JARVIS_VOICE_SIDECAR_PYTHON_TRANSPORT")
-	overrideString(&cfg.Python.StatusURL, "JARVIS_VOICE_SIDECAR_STATUS_URL")
-	overrideString(&cfg.Python.HealthURL, "JARVIS_VOICE_SIDECAR_HEALTH_URL")
-	overrideString(&cfg.Python.UnixSocketPath, "JARVIS_VOICE_SIDECAR_SOCKET")
-	overrideBool(&cfg.Pressure.FailClosed, "JARVIS_VOICE_SIDECAR_FAIL_CLOSED")
-	overrideUint64(&cfg.Pressure.MinAvailableMemoryMB, "JARVIS_VOICE_SIDECAR_MIN_MEM_MB")
-	overrideFloat64(&cfg.Pressure.MaxMemoryPercent, "JARVIS_VOICE_SIDECAR_MAX_MEM_PERCENT")
-	overrideFloat64(&cfg.Pressure.MaxCPUPercent, "JARVIS_VOICE_SIDECAR_MAX_CPU_PERCENT")
-	overrideInt(&cfg.Advisory.RecoveryStuckSeconds, "JARVIS_VOICE_SIDECAR_RECOVERY_STUCK_SECONDS")
-	overrideInt(&cfg.Advisory.ModeOscillationWindowSec, "JARVIS_VOICE_SIDECAR_MODE_OSCILLATION_WINDOW_SEC")
-	overrideInt(&cfg.Advisory.ModeOscillationLimit, "JARVIS_VOICE_SIDECAR_MODE_OSCILLATION_LIMIT")
-	overrideInt(&cfg.Backoff.InitialMs, "JARVIS_VOICE_SIDECAR_BACKOFF_INITIAL_MS")
-	overrideInt(&cfg.Backoff.MaxMs, "JARVIS_VOICE_SIDECAR_BACKOFF_MAX_MS")
-	overrideFloat64(&cfg.Backoff.Multiplier, "JARVIS_VOICE_SIDECAR_BACKOFF_MULTIPLIER")
+	overrideString(&cfg.Listen.Network, "Ironcliw_VOICE_SIDECAR_NETWORK")
+	overrideString(&cfg.Listen.Address, "Ironcliw_VOICE_SIDECAR_ADDRESS")
+	overrideInt(&cfg.Poll.IntervalMs, "Ironcliw_VOICE_SIDECAR_POLL_INTERVAL_MS")
+	overrideInt(&cfg.Poll.RequestTimeoutMs, "Ironcliw_VOICE_SIDECAR_REQUEST_TIMEOUT_MS")
+	overrideString(&cfg.Python.Transport, "Ironcliw_VOICE_SIDECAR_PYTHON_TRANSPORT")
+	overrideString(&cfg.Python.StatusURL, "Ironcliw_VOICE_SIDECAR_STATUS_URL")
+	overrideString(&cfg.Python.HealthURL, "Ironcliw_VOICE_SIDECAR_HEALTH_URL")
+	overrideString(&cfg.Python.UnixSocketPath, "Ironcliw_VOICE_SIDECAR_SOCKET")
+	overrideBool(&cfg.Pressure.FailClosed, "Ironcliw_VOICE_SIDECAR_FAIL_CLOSED")
+	overrideUint64(&cfg.Pressure.MinAvailableMemoryMB, "Ironcliw_VOICE_SIDECAR_MIN_MEM_MB")
+	overrideFloat64(&cfg.Pressure.MaxMemoryPercent, "Ironcliw_VOICE_SIDECAR_MAX_MEM_PERCENT")
+	overrideFloat64(&cfg.Pressure.MaxCPUPercent, "Ironcliw_VOICE_SIDECAR_MAX_CPU_PERCENT")
+	overrideInt(&cfg.Advisory.RecoveryStuckSeconds, "Ironcliw_VOICE_SIDECAR_RECOVERY_STUCK_SECONDS")
+	overrideInt(&cfg.Advisory.ModeOscillationWindowSec, "Ironcliw_VOICE_SIDECAR_MODE_OSCILLATION_WINDOW_SEC")
+	overrideInt(&cfg.Advisory.ModeOscillationLimit, "Ironcliw_VOICE_SIDECAR_MODE_OSCILLATION_LIMIT")
+	overrideInt(&cfg.Backoff.InitialMs, "Ironcliw_VOICE_SIDECAR_BACKOFF_INITIAL_MS")
+	overrideInt(&cfg.Backoff.MaxMs, "Ironcliw_VOICE_SIDECAR_BACKOFF_MAX_MS")
+	overrideFloat64(&cfg.Backoff.Multiplier, "Ironcliw_VOICE_SIDECAR_BACKOFF_MULTIPLIER")
 }
 
 func validateConfig(cfg Config) error {

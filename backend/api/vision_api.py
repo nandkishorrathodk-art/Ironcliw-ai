@@ -1,5 +1,5 @@
-"""
-Vision API endpoints for JARVIS screen comprehension
+﻿"""
+Vision API endpoints for Ironcliw screen comprehension
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
@@ -23,7 +23,7 @@ except ImportError:
             return func
         return decorator
 
-from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
+from vision.screen_vision import ScreenVisionSystem, IroncliwVisionIntegration
 from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 from vision.workspace_analyzer import WorkspaceAnalyzer
 from vision.window_detector import WindowDetector
@@ -51,7 +51,7 @@ anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 if anthropic_key:
     claude_analyzer = ClaudeVisionAnalyzer(anthropic_key)
 
-jarvis_vision = JARVISVisionIntegration(vision_system)
+jarvis_vision = IroncliwVisionIntegration(vision_system)
 
 # Initialize vision decision pipeline
 vision_pipeline = VisionDecisionPipeline()
@@ -329,7 +329,7 @@ async def get_vision_status() -> Dict[str, Any]:
 async def process_vision_command(request: VisionCommand) -> Dict[str, Any]:
     """Process a vision-related voice command"""
     try:
-        # First try JARVIS integration
+        # First try Ironcliw integration
         response = await jarvis_vision.handle_vision_command(request.command)
         
         # If Claude is requested and available, enhance the response
@@ -487,10 +487,10 @@ async def monitor_updates_task():
                 ]
                 monitoring_config["last_check"] = datetime.now().isoformat()
                 
-                # Here you would trigger JARVIS to speak about critical updates
+                # Here you would trigger Ironcliw to speak about critical updates
                 critical = [u for u in updates if u.urgency == "critical"]
                 if critical:
-                    print(f"JARVIS: Sir, {len(critical)} critical updates require your attention.")
+                    print(f"Ironcliw: Sir, {len(critical)} critical updates require your attention.")
             
         except Exception as e:
             print(f"Error in update monitoring: {e}")

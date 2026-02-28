@@ -1,4 +1,4 @@
-# JARVIS ML Model Cleanup Configuration
+﻿# Ironcliw ML Model Cleanup Configuration
 # This file defines which models to keep and which to remove
 
 models_to_keep:

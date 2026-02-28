@@ -1,8 +1,8 @@
-# Temporal Context Engine Guide
+﻿# Temporal Context Engine Guide
 
 ## Overview
 
-The Temporal Context Engine provides JARVIS with the ability to understand events across time, detecting patterns, predicting future events, and building causal relationships. It maintains context across four temporal layers.
+The Temporal Context Engine provides Ironcliw with the ability to understand events across time, detecting patterns, predicting future events, and building causal relationships. It maintains context across four temporal layers.
 
 ## Architecture
 
@@ -219,4 +219,4 @@ python test_temporal_context.py
 3. **Performance**: Background tasks run every 30 seconds
 4. **Persistence**: Learned patterns are saved between sessions
 
-The Temporal Context Engine transforms JARVIS from understanding "what is happening now" to understanding "what happened before, what's happening now, and what's likely to happen next".
+The Temporal Context Engine transforms Ironcliw from understanding "what is happening now" to understanding "what happened before, what's happening now, and what's likely to happen next".

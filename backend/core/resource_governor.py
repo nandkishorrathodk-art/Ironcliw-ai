@@ -1,5 +1,5 @@
-"""
-Adaptive Resource Governor for JARVIS Memory-Constrained Environments
+﻿"""
+Adaptive Resource Governor for Ironcliw Memory-Constrained Environments
 =====================================================================
 
 v1.0: Defcon-Level Resource Management for 16GB M1 Macs
@@ -95,28 +95,28 @@ class DefconThresholds:
     """
     # Transition UP thresholds (memory usage percent)
     green_to_yellow: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DEFCON_GREEN_TO_YELLOW", "70"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DEFCON_GREEN_TO_YELLOW", "70"))
     )
     yellow_to_red: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DEFCON_YELLOW_TO_RED", "85"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DEFCON_YELLOW_TO_RED", "85"))
     )
 
     # Transition DOWN thresholds (with hysteresis buffer)
     red_to_yellow: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DEFCON_RED_TO_YELLOW", "80"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DEFCON_RED_TO_YELLOW", "80"))
     )
     yellow_to_green: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DEFCON_YELLOW_TO_GREEN", "65"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DEFCON_YELLOW_TO_GREEN", "65"))
     )
 
     # macOS-specific: Page outs threshold (heavy swapping indicator)
     page_outs_critical: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PAGE_OUTS_CRITICAL", "10000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PAGE_OUTS_CRITICAL", "10000"))
     )
 
     # Time windows
     stabilization_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_DEFCON_STABILIZATION", "3.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_DEFCON_STABILIZATION", "3.0"))
     )
 
 
@@ -487,7 +487,7 @@ class AdaptiveResourceGovernor:
     ) -> None:
         """Announce level change via TTS (if available)."""
         try:
-            # Try to use JARVIS TTS
+            # Try to use Ironcliw TTS
             from backend.voice.tts_router import get_tts_router
             tts = get_tts_router()
 

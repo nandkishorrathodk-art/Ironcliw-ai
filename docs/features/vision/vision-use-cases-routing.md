@@ -1,7 +1,7 @@
-# JARVIS Vision System Use Cases & Intelligent Routing
+﻿# Ironcliw Vision System Use Cases & Intelligent Routing
 
 ## 🎯 Overview
-This document defines comprehensive use cases for JARVIS's vision system and details the intelligent routing mechanisms to ensure queries are processed by the correct subsystem.
+This document defines comprehensive use cases for Ironcliw's vision system and details the intelligent routing mechanisms to ensure queries are processed by the correct subsystem.
 
 ---
 
@@ -476,4 +476,4 @@ class RoutingFallbackHandler:
 
 ---
 
-*This comprehensive guide ensures JARVIS routes every query intelligently and handles a wide variety of use cases effectively.*
+*This comprehensive guide ensures Ironcliw routes every query intelligently and handles a wide variety of use cases effectively.*

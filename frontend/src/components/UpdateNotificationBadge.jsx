@@ -1,4 +1,4 @@
-/**
+﻿/**
  * UpdateNotificationBadge Component v3.0 - Zero-Touch Edition
  * =============================================================
  *
@@ -488,10 +488,10 @@ const UpdateNotificationBadge = () => {
                             <p className="voice-hint">
                                 💬 You can also say: "{
                                     isZeroTouchUpdate 
-                                        ? 'JARVIS, show update status'
+                                        ? 'Ironcliw, show update status'
                                         : isLocalChange 
-                                            ? 'JARVIS, restart now' 
-                                            : 'JARVIS, update to the latest version'
+                                            ? 'Ironcliw, restart now' 
+                                            : 'Ironcliw, update to the latest version'
                                 }"
                             </p>
                             

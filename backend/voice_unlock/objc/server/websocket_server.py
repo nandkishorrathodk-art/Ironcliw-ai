@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-WebSocket Server Bridge for JARVIS Voice Unlock Daemon
+WebSocket Server Bridge for Ironcliw Voice Unlock Daemon
 ======================================================
 
 Provides WebSocket API for the Objective-C daemon with:
@@ -93,7 +93,7 @@ class VoiceUnlockWebSocketServer:
                     "type": "handshake",
                     "success": True,
                     "version": "1.0",
-                    "daemon": "JARVIS Voice Unlock",
+                    "daemon": "Ironcliw Voice Unlock",
                 }
 
             elif command == "get_status":
@@ -150,8 +150,8 @@ class VoiceUnlockWebSocketServer:
                 }
 
             elif command == "unlock_screen":
-                # Direct unlock command from JARVIS
-                logger.info("Received unlock_screen command from JARVIS")
+                # Direct unlock command from Ironcliw
+                logger.info("Received unlock_screen command from Ironcliw")
 
                 # Check if this includes voice authentication data
                 audio_data = parameters.get("audio_data")
@@ -211,8 +211,8 @@ class VoiceUnlockWebSocketServer:
                 return {"type": "command_response", "command": command, **result}
 
             elif command == "lock_screen":
-                # Lock screen command from JARVIS
-                logger.info("Received lock_screen command from JARVIS")
+                # Lock screen command from Ironcliw
+                logger.info("Received lock_screen command from Ironcliw")
                 
                 audio_data = parameters.get("audio_data")
                 context_data = parameters.get("context") or {}
@@ -301,7 +301,7 @@ class VoiceUnlockWebSocketServer:
     def check_daemon_running(self) -> bool:
         """Check if the Voice Unlock daemon is running"""
         try:
-            result = subprocess.run(["pgrep", "-f", "JARVISVoiceUnlockDaemon"], capture_output=True)
+            result = subprocess.run(["pgrep", "-f", "IroncliwVoiceUnlockDaemon"], capture_output=True)
             return result.returncode == 0
         except Exception:
             return False
@@ -322,7 +322,7 @@ class VoiceUnlockWebSocketServer:
         try:
             daemon_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "bin/JARVISVoiceUnlockDaemon",
+                "bin/IroncliwVoiceUnlockDaemon",
             )
 
             if not os.path.exists(daemon_path):
@@ -351,7 +351,7 @@ class VoiceUnlockWebSocketServer:
     def stop_daemon(self) -> bool:
         """Stop the Voice Unlock daemon"""
         try:
-            subprocess.run(["pkill", "-f", "JARVISVoiceUnlockDaemon"])
+            subprocess.run(["pkill", "-f", "IroncliwVoiceUnlockDaemon"])
             return True
         except Exception:
             return False

@@ -1,7 +1,7 @@
-/**
+﻿/**
  * JarvisConnectionService v3.0 - Unified Connection Management
  * =============================================================
- * Single source of truth for JARVIS backend connectivity with:
+ * Single source of truth for Ironcliw backend connectivity with:
  * - Non-blocking async connection management
  * - Coordinated service discovery via DynamicConfigService
  * - Intelligent WebSocket management with health monitoring
@@ -59,7 +59,7 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 5000) => {
 };
 
 // ============================================================================
-// JARVIS CONNECTION SERVICE
+// Ironcliw CONNECTION SERVICE
 // ============================================================================
 
 class JarvisConnectionService {
@@ -408,7 +408,7 @@ class JarvisConnectionService {
 
     pushPort(typeof process !== 'undefined' ? process.env?.REACT_APP_LOADING_SERVER_PORT : null);
     pushRangeSpec(typeof process !== 'undefined' ? process.env?.REACT_APP_LOADING_SERVER_PORT_RANGE : null);
-    pushPort(typeof window !== 'undefined' ? window.JARVIS_LOADING_SERVER_PORT : null);
+    pushPort(typeof window !== 'undefined' ? window.Ironcliw_LOADING_SERVER_PORT : null);
     try {
       pushPort(localStorage.getItem('jarvis_loading_server_port'));
     } catch {
@@ -967,7 +967,7 @@ class JarvisConnectionService {
   }
 
   /**
-   * Send a command to JARVIS with intelligent routing.
+   * Send a command to Ironcliw with intelligent routing.
    * 
    * Routing priority:
    *   1. WebSocket (real-time, bidirectional) — preferred
@@ -1064,7 +1064,7 @@ class JarvisConnectionService {
       route: 'none',
       recovering: false,
       recovery,
-      error: 'No connection to JARVIS backend'
+      error: 'No connection to Ironcliw backend'
     };
   }
 

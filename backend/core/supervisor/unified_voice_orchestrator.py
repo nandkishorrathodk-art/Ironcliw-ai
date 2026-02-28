@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Unified Voice Orchestrator v2.0 - Intelligent Speech Edition
+Ironcliw Unified Voice Orchestrator v2.0 - Intelligent Speech Edition
 ====================================================================
 
 Production-grade voice coordination system that ensures ONLY ONE VOICE
-speaks at a time across the entire JARVIS system.
+speaks at a time across the entire Ironcliw system.
 
 ROOT CAUSE ADDRESSED:
     Multiple narrator systems (SupervisorNarrator, IntelligentStartupNarrator,
@@ -72,7 +72,7 @@ Features:
 - Comprehensive logging and metrics
 - Dynamic configuration via environment variables
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -103,9 +103,9 @@ def _env_flag(name: str, default: str = "false") -> bool:
 
 def _canonical_voice_name() -> str:
     """Canonical voice identity for supervisor-controlled speech."""
-    if _env_flag("JARVIS_FORCE_DANIEL_VOICE", "true"):
+    if _env_flag("Ironcliw_FORCE_DANIEL_VOICE", "true"):
         return "Daniel"
-    value = os.getenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel").strip()
+    value = os.getenv("Ironcliw_CANONICAL_VOICE_NAME", "Daniel").strip()
     return value or "Daniel"
 
 
@@ -116,13 +116,13 @@ def _resolve_voice_name(requested: Optional[str] = None) -> str:
     By default we enforce canonical voice to avoid drift across subsystems.
     """
     canonical = _canonical_voice_name()
-    if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+    if _env_flag("Ironcliw_ENFORCE_CANONICAL_VOICE", "true"):
         return canonical
 
     if requested and requested.strip():
         return requested.strip()
 
-    env_voice = os.getenv("JARVIS_VOICE_NAME", "").strip()
+    env_voice = os.getenv("Ironcliw_VOICE_NAME", "").strip()
     return env_voice or canonical
 
 
@@ -163,7 +163,7 @@ class VoiceSource(str, Enum):
     FLYWHEEL = "flywheel"              # Self-improving data flywheel
     TRAINING = "training"              # Model training/fine-tuning
     LEARNING = "learning"              # Learning goals and discovery
-    JARVIS_PRIME = "jarvis_prime"      # JARVIS-Prime tier-0 brain
+    Ironcliw_PRIME = "jarvis_prime"      # Ironcliw-Prime tier-0 brain
     # v79.0: Coding Council Evolution System
     CODING_COUNCIL = "coding_council"  # Coding Council self-evolution
     EVOLUTION = "evolution"            # Code evolution operations
@@ -188,7 +188,7 @@ class SpeechTopic(str, Enum):
     LEARNING = "learning"              # Learning goals and discovery
     SCRAPING = "scraping"              # Web scraping progress
     MODEL_DEPLOY = "model_deploy"      # Model deployment announcements
-    INTELLIGENCE = "intelligence"      # JARVIS-Prime intelligent responses
+    INTELLIGENCE = "intelligence"      # Ironcliw-Prime intelligent responses
     # v79.0: Coding Council Evolution System
     EVOLUTION = "evolution"            # Code evolution progress/completion
     CODING_COUNCIL = "coding_council"  # Coding Council operations
@@ -200,7 +200,7 @@ class VoiceConfig:
 
     # Enable/disable voice
     enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_ENABLED", "true").lower() == "true"
     )
 
     # TTS settings
@@ -208,28 +208,28 @@ class VoiceConfig:
         default_factory=lambda: _resolve_voice_name()
     )
     rate: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_VOICE_RATE", "180"))
+        default_factory=lambda: int(os.getenv("Ironcliw_VOICE_RATE", "180"))
     )
 
     # Rate limiting
     min_interval_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_MIN_INTERVAL", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_MIN_INTERVAL", "2.0"))
     )
 
     # Deduplication
     dedup_window_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_DEDUP_WINDOW", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_DEDUP_WINDOW", "30.0"))
     )
     dedup_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_DEDUP", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_DEDUP", "true").lower() == "true"
     )
 
     # Queue limits
     max_queue_size: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_VOICE_QUEUE_SIZE", "50"))
+        default_factory=lambda: int(os.getenv("Ironcliw_VOICE_QUEUE_SIZE", "50"))
     )
     queue_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_QUEUE_TIMEOUT", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_QUEUE_TIMEOUT", "60.0"))
     )
 
     # Priority settings
@@ -238,22 +238,22 @@ class VoiceConfig:
     
     # v2.0: Intelligent Speech Settings
     topic_cooldown_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_TOPIC_COOLDOWN", "15.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_TOPIC_COOLDOWN", "15.0"))
     )
     natural_pause_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_NATURAL_PAUSE", "0.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_NATURAL_PAUSE", "0.5"))
     )
     coalesce_window_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_COALESCE_WINDOW", "3.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_COALESCE_WINDOW", "3.0"))
     )
     max_coalesced_messages: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_VOICE_MAX_COALESCE", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_VOICE_MAX_COALESCE", "5"))
     )
     semantic_dedup_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_SEMANTIC_DEDUP", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_SEMANTIC_DEDUP", "true").lower() == "true"
     )
     semantic_similarity_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_SIMILARITY_THRESHOLD", "0.7"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_SIMILARITY_THRESHOLD", "0.7"))
     )
 
 
@@ -420,9 +420,9 @@ class UnifiedVoiceOrchestrator:
         self.config.voice = _resolve_voice_name(self.config.voice)
 
         # Keep env aliases in sync so downstream engines (Trinity/TTS) agree.
-        if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
-            os.environ["JARVIS_VOICE_NAME"] = self.config.voice
-            os.environ["JARVIS_VOICE_FALLBACK_ORDER"] = self.config.voice
+        if _env_flag("Ironcliw_ENFORCE_CANONICAL_VOICE", "true"):
+            os.environ["Ironcliw_VOICE_NAME"] = self.config.voice
+            os.environ["Ironcliw_VOICE_FALLBACK_ORDER"] = self.config.voice
 
         self._is_macos = platform.system() == "Darwin"
 
@@ -903,7 +903,7 @@ class UnifiedVoiceOrchestrator:
         - If device is free on macOS, use direct ``say`` with canonical voice.
           This avoids multi-engine fallback drift during startup.
         - Optional Trinity fallback is disabled by default to keep startup audio
-          deterministic. Enable with ``JARVIS_VOICE_ENABLE_TRINITY_FALLBACK``.
+          deterministic. Enable with ``Ironcliw_VOICE_ENABLE_TRINITY_FALLBACK``.
 
         This removes non-deterministic startup fallback paths that can reintroduce
         static/crackle through mixed audio stacks.
@@ -917,9 +917,9 @@ class UnifiedVoiceOrchestrator:
         except ImportError:
             pass
 
-        prefer_unified_tts = _env_flag("JARVIS_VOICE_PREFER_UNIFIED_TTS", "true")
+        prefer_unified_tts = _env_flag("Ironcliw_VOICE_PREFER_UNIFIED_TTS", "true")
         allow_direct_say_fallback = _env_flag(
-            "JARVIS_VOICE_ALLOW_DIRECT_SAY_FALLBACK", "false"
+            "Ironcliw_VOICE_ALLOW_DIRECT_SAY_FALLBACK", "false"
         )
 
         # v266.0: Prefer UnifiedTTSEngine for both held and free device states.
@@ -978,7 +978,7 @@ class UnifiedVoiceOrchestrator:
                 self._current_process = None
 
         # Optional Trinity fallback for non-macOS or direct say failures.
-        if _env_flag("JARVIS_VOICE_ENABLE_TRINITY_FALLBACK", "false"):
+        if _env_flag("Ironcliw_VOICE_ENABLE_TRINITY_FALLBACK", "false"):
             try:
                 from backend.core.trinity_voice_coordinator import (
                     get_voice_coordinator,
@@ -1103,7 +1103,7 @@ def get_voice_orchestrator(config: Optional[VoiceConfig] = None) -> UnifiedVoice
     """
     Get the singleton voice orchestrator instance.
 
-    This is THE single source of truth for all voice output in JARVIS.
+    This is THE single source of truth for all voice output in Ironcliw.
     All components should use this to speak, not create their own TTS processes.
     """
     global _voice_orchestrator
@@ -1122,7 +1122,7 @@ async def speak(
     """
     Convenience function to speak through the unified orchestrator.
 
-    This should be the PRIMARY way to trigger voice output in JARVIS.
+    This should be the PRIMARY way to trigger voice output in Ironcliw.
     """
     orchestrator = get_voice_orchestrator()
     if not orchestrator._running:
@@ -1200,8 +1200,8 @@ async def speak_jarvis_prime(
     priority: VoicePriority = VoicePriority.MEDIUM,
     wait: bool = False,
 ) -> bool:
-    """Speak JARVIS-Prime intelligent responses."""
-    return await speak(text, priority, VoiceSource.JARVIS_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
+    """Speak Ironcliw-Prime intelligent responses."""
+    return await speak(text, priority, VoiceSource.Ironcliw_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
 
 
 async def speak_intelligent(
@@ -1212,12 +1212,12 @@ async def speak_intelligent(
     wait: bool = False,
 ) -> bool:
     """
-    v3.0: Generate and speak an intelligent, context-aware message using JARVIS-Prime.
+    v3.0: Generate and speak an intelligent, context-aware message using Ironcliw-Prime.
 
     Args:
         context: Rich context about the current situation
         event_type: Type of event (startup, flywheel, training, etc.)
-        fallback_message: Message to use if JARVIS-Prime is unavailable
+        fallback_message: Message to use if Ironcliw-Prime is unavailable
         priority: Voice priority level
         wait: Whether to wait for speech completion
 
@@ -1227,13 +1227,13 @@ async def speak_intelligent(
     message = fallback_message
 
     try:
-        # Try to generate intelligent message with JARVIS-Prime
+        # Try to generate intelligent message with Ironcliw-Prime
         from backend.core.jarvis_prime_client import get_jarvis_prime_client
 
         prime_client = get_jarvis_prime_client()
 
         # Build prompt for intelligent narration
-        prompt = f"""You are JARVIS, an advanced AI assistant. Generate a single, natural sentence (8-15 words) for voice narration.
+        prompt = f"""You are Ironcliw, an advanced AI assistant. Generate a single, natural sentence (8-15 words) for voice narration.
 
 Event: {event_type}
 Context: {context}
@@ -1245,7 +1245,7 @@ Guidelines:
 - Match urgency to the event type
 - Be informative but concise
 
-Generate ONE natural sentence JARVIS would speak:"""
+Generate ONE natural sentence Ironcliw would speak:"""
 
         response = await prime_client.complete(
             prompt=prompt,
@@ -1258,14 +1258,14 @@ Generate ONE natural sentence JARVIS would speak:"""
             generated = response.content.strip().strip('"\'')
             if generated and len(generated) > 5:
                 message = generated
-                logger.debug(f"🧠 JARVIS-Prime generated: {message}")
+                logger.debug(f"🧠 Ironcliw-Prime generated: {message}")
 
     except ImportError:
-        logger.debug("JARVIS-Prime client not available, using fallback")
+        logger.debug("Ironcliw-Prime client not available, using fallback")
     except Exception as e:
-        logger.debug(f"JARVIS-Prime generation failed: {e}, using fallback")
+        logger.debug(f"Ironcliw-Prime generation failed: {e}, using fallback")
 
-    return await speak(message, priority, VoiceSource.JARVIS_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
+    return await speak(message, priority, VoiceSource.Ironcliw_PRIME, wait, topic=SpeechTopic.INTELLIGENCE)
 
 
 # =============================================================================

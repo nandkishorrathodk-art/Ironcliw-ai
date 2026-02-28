@@ -1,9 +1,9 @@
-"""
+﻿"""
 Agent Runtime Data Models — Goal, GoalStep, WorkingMemory, Checkpoint,
 EscalationLevel, ScreenLease, GoalDataBus.
 
 Part of the Unified Agent Runtime that provides persistent outer-loop
-goal pursuit for JARVIS autonomous agent behavior.
+goal pursuit for Ironcliw autonomous agent behavior.
 """
 
 import asyncio
@@ -32,7 +32,7 @@ logger = logging.getLogger("jarvis.agent_runtime.models")
 
 
 # ─────────────────────────────────────────────────────────────
-# Env-var helpers (consistent with JARVIS patterns)
+# Env-var helpers (consistent with Ironcliw patterns)
 # ─────────────────────────────────────────────────────────────
 
 def _env_int(key: str, default: int) -> int:

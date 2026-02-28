@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Context Intelligence Feedback
 ==================================
 
-Tests that JARVIS properly provides feedback when screen is locked.
+Tests that Ironcliw properly provides feedback when screen is locked.
 """
 
 import asyncio
@@ -42,11 +42,11 @@ async def test_lock_and_command():
             result = await response.json()
             response_text = result.get('response', 'No response')
             
-            print(f"\n[{time.strftime('%H:%M:%S')}] JARVIS Response: '{response_text}'")
+            print(f"\n[{time.strftime('%H:%M:%S')}] Ironcliw Response: '{response_text}'")
             
             # Check if we got the proper feedback
             if "locked" in response_text.lower() and "unlocking" in response_text.lower():
-                print(f"\n✅ SUCCESS: JARVIS provided proper feedback!")
+                print(f"\n✅ SUCCESS: Ironcliw provided proper feedback!")
                 print("   - Detected screen was locked")
                 print("   - Informed user about unlocking")
                 print("   - Response matches PRD requirements")
@@ -61,8 +61,8 @@ async def test_lock_and_command():
         
         print("\n" + "="*70)
         print("Test complete. Check if:")
-        print("1. JARVIS detected screen was locked")
-        print("2. JARVIS provided feedback: 'Your screen is locked, unlocking now.'")  
+        print("1. Ironcliw detected screen was locked")
+        print("2. Ironcliw provided feedback: 'Your screen is locked, unlocking now.'")  
         print("3. Screen was unlocked automatically")
         print("4. Safari opened and searched for dogs")
         print("="*70)

@@ -1,16 +1,16 @@
-# Enterprise Dependency Injection Container Design
+﻿# Enterprise Dependency Injection Container Design
 
 **Date:** 2026-01-22
 **Status:** Approved
-**Author:** JARVIS Intelligence System
+**Author:** Ironcliw Intelligence System
 
 ## Executive Summary
 
-This document describes the design for an enterprise-grade dependency injection (DI) container that will replace the manual service instantiation in JARVIS. The container provides:
+This document describes the design for an enterprise-grade dependency injection (DI) container that will replace the manual service instantiation in Ironcliw. The container provides:
 
 - **Automatic dependency resolution** with topological sorting
 - **Async-native lifecycle management** with health monitoring
-- **Cross-repo coordination** across JARVIS, JARVIS-Prime, and Reactor-Core
+- **Cross-repo coordination** across Ironcliw, Ironcliw-Prime, and Reactor-Core
 - **Graceful degradation** with configurable recovery strategies
 - **Full observability** with structured logging and metrics
 
@@ -35,7 +35,7 @@ The coordinators expect `config: Optional[Config]` but receive engine instances 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    JARVIS Service Container v1.0                            │
+│                    Ironcliw Service Container v1.0                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐       │
@@ -188,7 +188,7 @@ Priority (highest to lowest):
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  JARVIS Body    │    │  JARVIS Prime   │    │  Reactor Core   │
+│  Ironcliw Body    │    │  Ironcliw Prime   │    │  Reactor Core   │
 │  (Port 8010)    │    │  (Port 8000)    │    │  (Port 8090)    │
 ├─────────────────┤    ├─────────────────┤    ├─────────────────┤
 │ ServiceContainer│    │ ServiceContainer│    │ ServiceContainer│

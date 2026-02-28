@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Event Types
+﻿"""
+Ironcliw macOS Helper - Event Types
 
 Defines all event types for the macOS helper layer.
 These events are emitted by various monitors and consumed by the AGI OS coordinator.

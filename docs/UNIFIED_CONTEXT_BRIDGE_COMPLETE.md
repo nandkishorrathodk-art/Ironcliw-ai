@@ -1,4 +1,4 @@
-# Unified Context Bridge - Complete Integration Summary
+﻿# Unified Context Bridge - Complete Integration Summary
 
 **Date:** October 9th, 2025
 **Status:** ✅ **FULLY INTEGRATED**
@@ -370,14 +370,14 @@ test_followup_e2e.py::TestContextStoreBackends::test_memory_backend PASSED
 **User Flow:**
 ```
 1. User opens Terminal with Python error
-2. JARVIS detects it via vision monitoring
-3. JARVIS: "I can see your Terminal. Would you like me to describe what's displayed?"
+2. Ironcliw detects it via vision monitoring
+3. Ironcliw: "I can see your Terminal. Would you like me to describe what's displayed?"
    ↳ Vision intelligence tracks pending question
 4. User: "yes"
    ↳ AsyncPipeline detects follow-up intent
    ↳ Retrieves pending context from shared store
    ↳ Routes to terminal follow-up handler
-5. JARVIS: "I see this error in your Terminal: 'ModuleNotFoundError: No module named requests'.
+5. Ironcliw: "I see this error in your Terminal: 'ModuleNotFoundError: No module named requests'.
     Try: `pip install requests` to fix this."
 ```
 
@@ -412,11 +412,11 @@ context_id = await vision_intelligence.track_pending_question(
 **User Flow:**
 ```
 1. User has documentation page open
-2. JARVIS: "I see a documentation page. Want me to summarize it?"
+2. Ironcliw: "I see a documentation page. Want me to summarize it?"
    ↳ Tracks pending question
 3. User: "tell me more"
    ↳ Follow-up intent detected (inquiry type)
-4. JARVIS: "**Browser: Python requests library**
+4. Ironcliw: "**Browser: Python requests library**
 
    This page covers the requests library for making HTTP requests...
 
@@ -429,7 +429,7 @@ context_id = await vision_intelligence.track_pending_question(
 
 **User Flow:**
 ```
-1. JARVIS: "I see errors in your code. Want me to analyze?"
+1. Ironcliw: "I see errors in your code. Want me to analyze?"
    ↳ TTL = 120 seconds
 2. [User waits 3 minutes]
 3. Auto-cleanup runs (every 60s)
@@ -438,7 +438,7 @@ context_id = await vision_intelligence.track_pending_question(
 4. User: "yes"
    ↳ Follow-up intent detected
    ↳ No pending context found
-5. JARVIS: "I don't have any pending context to follow up on. What would you like me to look at?"
+5. Ironcliw: "I don't have any pending context to follow up on. What would you like me to look at?"
    ↳ Telemetry: follow_up.no_pending_context
 ```
 
@@ -552,9 +552,9 @@ MAX_PENDING_CONTEXTS=100
 - Backend switching
 
 ### Manual Testing
-1. Start JARVIS
+1. Start Ironcliw
 2. Open Terminal with error
-3. Wait for JARVIS to offer help
+3. Wait for Ironcliw to offer help
 4. Say "yes"
 5. Verify error analysis provided
 6. Check logs for telemetry events
@@ -639,7 +639,7 @@ MAX_PENDING_CONTEXTS=100
 
 **Next Steps:**
 1. Run E2E tests: `pytest backend/tests/integration/test_followup_e2e.py -v`
-2. Start JARVIS: `cd backend && python main.py`
+2. Start Ironcliw: `cd backend && python main.py`
 3. Test manually with real commands
 4. Monitor telemetry events in logs
 5. Deploy to production

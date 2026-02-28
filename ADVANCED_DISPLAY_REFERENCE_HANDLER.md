@@ -1,4 +1,4 @@
-# Advanced Display Reference Handler v2.0 ✅
+﻿# Advanced Display Reference Handler v2.0 ✅
 
 ## Overview
 
@@ -534,5 +534,5 @@ self.mode_keywords[ModeType.EXTENDED] = {"extend", "extended"}  # Seed
 
 *Generated: 2025-10-19*
 *Author: Derek Russell*
-*System: JARVIS AI Assistant v14.1.0*
+*System: Ironcliw AI Assistant v14.1.0*
 *Version: 2.0 (Advanced)*

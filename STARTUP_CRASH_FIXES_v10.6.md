@@ -1,9 +1,9 @@
-# Startup Crash Fixes v10.6 - JARVIS AI System
+﻿# Startup Crash Fixes v10.6 - Ironcliw AI System
 **"Super Robust, Advanced, Async, Intelligent & Dynamic Edition"**
 
 ## 🎯 Issues Fixed
 
-This document covers **2 critical startup issues** that were preventing JARVIS from starting:
+This document covers **2 critical startup issues** that were preventing Ironcliw from starting:
 
 1. **`NameError: name 'Enum' is not defined`** - Missing imports in start_system.py
 2. **Port 8002 conflict during supervisor restart** - Intelligent process reuse
@@ -17,7 +17,7 @@ This document covers **2 critical startup issues** that were preventing JARVIS f
 **Error:**
 ```
 Traceback (most recent call last):
-  File "/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/start_system.py", line 15355, in <module>
+  File "/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/start_system.py", line 15355, in <module>
     class DaemonStatus(Enum):
 NameError: name 'Enum' is not defined
 ```
@@ -74,7 +74,7 @@ class DockerConfig:
                                    This indicates a restart scenario - cannot kill ourselves!
 2025-12-27 19:47:27,396 | WARNING | Timeout waiting for port 8002 to free (still in use by PID 86351 after 20.0s)
 2025-12-27 19:47:27,486 | ERROR | Port 8002 is still in use by PID 86351 after 21.5s of cleanup attempts.
-                                 Cannot start JARVIS Prime - port is not available.
+                                 Cannot start Ironcliw Prime - port is not available.
                                  Manual intervention required: kill PID 86351 or use different port.
 ```
 
@@ -82,7 +82,7 @@ class DockerConfig:
 During supervisor restart scenarios:
 
 1. **Supervisor process** (PID 86351) has port 8002 bound from previous startup attempt
-2. **JARVIS Prime orchestrator** tries to start a new instance on port 8002
+2. **Ironcliw Prime orchestrator** tries to start a new instance on port 8002
 3. **Port cleanup code** detects port is in use by **current process** (itself!)
 4. **Safety check** prevents killing own process (correct behavior)
 5. **Waits 20 seconds** hoping port will free (never does)
@@ -106,7 +106,7 @@ if pid == current_pid:
         f"This is a restart scenario - checking for existing Prime subprocess..."
     )
 
-    # Check if we have an existing JARVIS Prime subprocess we can reuse
+    # Check if we have an existing Ironcliw Prime subprocess we can reuse
     if PSUTIL_AVAILABLE:
         try:
             current_process = psutil.Process(current_pid)
@@ -114,7 +114,7 @@ if pid == current_pid:
 
             for child in children:
                 try:
-                    # Look for python processes with "backend/main.py" (JARVIS Prime signature)
+                    # Look for python processes with "backend/main.py" (Ironcliw Prime signature)
                     cmdline = child.cmdline()
                     if any('backend/main.py' in arg for arg in cmdline):
                         logger.info(
@@ -161,7 +161,7 @@ for child in children:
         self._status = "running"
         return  # Reuse existing Prime!
 ```
-- **Scans all child processes** to find existing JARVIS Prime instance
+- **Scans all child processes** to find existing Ironcliw Prime instance
 - **Signature detection**: Looks for `backend/main.py` in command line
 - **Reuses subprocess** instead of starting duplicate
 - **Updates orchestrator state** to track existing process
@@ -284,7 +284,7 @@ FIX: Add imports at line 15356:
 ```
 Supervisor Restart
     ↓
-JARVIS Prime tries to start on port 8002
+Ironcliw Prime tries to start on port 8002
     ↓
 Port already in use by current process (PID 86351)
     ↓
@@ -312,7 +312,7 @@ Manual kill required          Reuse it  Allow startup
 - Intelligent port handling eliminates deadlocks
 
 ### 2. **Graceful Restarts**
-- Detects existing JARVIS Prime subprocesses
+- Detects existing Ironcliw Prime subprocesses
 - Reuses instead of duplicating
 - Handles stale bindings from crashes
 
@@ -346,7 +346,7 @@ python3 run_supervisor.py
 # Start supervisor
 python3 run_supervisor.py
 
-# Crash JARVIS (simulating failure)
+# Crash Ironcliw (simulating failure)
 kill -9 <jarvis_pid>
 
 # Restart supervisor (port 8002 still bound to supervisor)
@@ -385,12 +385,12 @@ python3 run_supervisor.py
 
 4. **Cross-Repo Coordination**
    - Share subprocess information with Reactor-Core
-   - Coordinate restarts across JARVIS, Prime, and Reactor
+   - Coordinate restarts across Ironcliw, Prime, and Reactor
    - Unified process lifecycle management
 
 ---
 
-**Author:** Claude Sonnet 4.5 (JARVIS AI Assistant)
+**Author:** Claude Sonnet 4.5 (Ironcliw AI Assistant)
 **Date:** 2025-12-27
 **Version:** v10.6 - "Super Robust Startup Edition"
 **Status:** ✅ VERIFIED & PRODUCTION READY

@@ -1,4 +1,4 @@
-# backend/core/startup_summary.py
+﻿# backend/core/startup_summary.py
 """
 StartupSummary - Human-readable startup completion reporting.
 
@@ -166,7 +166,7 @@ class StartupSummary:
 
         Args:
             registry: ComponentRegistry with component states
-            version: JARVIS version string for display
+            version: Ironcliw version string for display
         """
         self.registry = registry
         self.version = version
@@ -245,7 +245,7 @@ class StartupSummary:
 
         # Header
         lines.append(separator)
-        lines.append(f"JARVIS Startup Summary (v{self.version})")
+        lines.append(f"Ironcliw Startup Summary (v{self.version})")
         lines.append(separator)
         lines.append("")
 

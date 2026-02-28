@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Dynamic CORS and Auto-Configuration System
 """
@@ -109,10 +109,10 @@ def test_dynamic_cors():
     print("\nFrontend Integration:")
     print("1. Include auto-config script:")
     print('   <script src="http://localhost:8000/static/jarvis-auto-config.js"></script>')
-    print("\n2. Or use JARVIS_API object:")
-    print("   await JARVIS_API.discoverBackend();")
-    print("   const data = await JARVIS_API.fetch('/audio/ml/config');")
-    print("   const ws = JARVIS_API.createWebSocket('/ws');")
+    print("\n2. Or use Ironcliw_API object:")
+    print("   await Ironcliw_API.discoverBackend();")
+    print("   const data = await Ironcliw_API.fetch('/audio/ml/config');")
+    print("   const ws = Ironcliw_API.createWebSocket('/ws');")
 
 if __name__ == "__main__":
     test_dynamic_cors()

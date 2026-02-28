@@ -1,8 +1,8 @@
-"""
+﻿"""
 Trinity Cross-Repo Integration Module v2.0
 ==========================================
 
-Provides advanced coordination between JARVIS, JARVIS Prime, and Reactor Core.
+Provides advanced coordination between Ironcliw, Ironcliw Prime, and Reactor Core.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
@@ -26,7 +26,7 @@ Architecture:
     │           ┌────────────────────┼────────────────────┐                    │
     │           ▼                    ▼                    ▼                    │
     │    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐             │
-    │    │    JARVIS    │    │  JARVIS-Prime│    │ Reactor-Core │             │
+    │    │    Ironcliw    │    │  Ironcliw-Prime│    │ Reactor-Core │             │
     │    │   (Body)     │    │   (Mind)     │    │  (Nerves)    │             │
     │    └──────────────┘    └──────────────┘    └──────────────┘             │
     │                                                                          │

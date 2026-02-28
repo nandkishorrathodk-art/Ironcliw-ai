@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick check for macOS Screen Recording permission.
-This must be granted for JARVIS to watch your screen.
+This must be granted for Ironcliw to watch your screen.
 """
 
 import sys

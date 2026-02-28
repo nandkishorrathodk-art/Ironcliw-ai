@@ -1,5 +1,5 @@
-"""
-Cross-Repo Intelligence Hub for JARVIS
+﻿"""
+Cross-Repo Intelligence Hub for Ironcliw
 =======================================
 
 Unified intelligence hub that connects all integrated systems from:
@@ -17,7 +17,7 @@ This hub provides:
 - LangGraph reasoning integration
 - Async parallel processing
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -66,13 +66,13 @@ class CrossRepoHubConfig:
     # Connected repositories
     jarvis_repo: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_REPO_PATH",
-            "~/Documents/repos/JARVIS-AI-Agent"
+            "Ironcliw_REPO_PATH",
+            "~/Documents/repos/Ironcliw-AI-Agent"
         )
     )
     jarvis_prime_repo: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_PRIME_REPO_PATH",
+            "Ironcliw_PRIME_REPO_PATH",
             "~/Documents/repos/jarvis-prime"
         )
     )
@@ -85,35 +85,35 @@ class CrossRepoHubConfig:
 
     # System toggles
     enable_repository_intelligence: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_ENABLE_REPO_INTEL", True)
+        default_factory=lambda: get_env_bool("Ironcliw_ENABLE_REPO_INTEL", True)
     )
     enable_computer_use: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_ENABLE_COMPUTER_USE", True)
+        default_factory=lambda: get_env_bool("Ironcliw_ENABLE_COMPUTER_USE", True)
     )
     enable_sop_enforcement: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_ENABLE_SOP", True)
+        default_factory=lambda: get_env_bool("Ironcliw_ENABLE_SOP", True)
     )
     enable_memory_system: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_ENABLE_MEMORY", True)
+        default_factory=lambda: get_env_bool("Ironcliw_ENABLE_MEMORY", True)
     )
     enable_wisdom_patterns: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_ENABLE_WISDOM", True)
+        default_factory=lambda: get_env_bool("Ironcliw_ENABLE_WISDOM", True)
     )
 
     # Processing settings
     parallel_processing: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_PARALLEL_PROCESSING", True)
+        default_factory=lambda: get_env_bool("Ironcliw_PARALLEL_PROCESSING", True)
     )
     max_concurrent_tasks: int = field(
-        default_factory=lambda: get_env_int("JARVIS_MAX_CONCURRENT", 5)
+        default_factory=lambda: get_env_int("Ironcliw_MAX_CONCURRENT", 5)
     )
 
     # State persistence
     persist_state: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_PERSIST_STATE", True)
+        default_factory=lambda: get_env_bool("Ironcliw_PERSIST_STATE", True)
     )
     state_dir: Path = field(
-        default_factory=lambda: _get_env_path("JARVIS_STATE_DIR", "~/.jarvis/hub_state")
+        default_factory=lambda: _get_env_path("Ironcliw_STATE_DIR", "~/.jarvis/hub_state")
     )
 
 
@@ -520,7 +520,7 @@ class ReactorCoreAdapter:
     """
     Adapter for Reactor Core integration.
 
-    Reactor Core is JARVIS's training and learning pipeline:
+    Reactor Core is Ironcliw's training and learning pipeline:
     - Collects experiences from task execution
     - Triggers training runs based on experience thresholds
     - Manages learning goals and Safe Scout scraping
@@ -616,11 +616,11 @@ class ReactorCoreAdapter:
         return self._initialized
 
 
-class JARVISPrimeAdapter:
+class IroncliwPrimeAdapter:
     """
-    Adapter for JARVIS Prime integration.
+    Adapter for Ironcliw Prime integration.
 
-    JARVIS Prime is the orchestration layer for complex multi-step tasks:
+    Ironcliw Prime is the orchestration layer for complex multi-step tasks:
     - Hierarchical task decomposition
     - Parallel agent coordination
     - Cross-system workflow management
@@ -639,30 +639,30 @@ class JARVISPrimeAdapter:
 
         # Try orchestrator first (local integration)
         try:
-            from backend.prime.jarvis_prime_orchestrator import JARVISPrimeOrchestrator
-            self._orchestrator = JARVISPrimeOrchestrator()
+            from backend.prime.jarvis_prime_orchestrator import IroncliwPrimeOrchestrator
+            self._orchestrator = IroncliwPrimeOrchestrator()
             await self._orchestrator.initialize()
             self._is_online = True
             self._initialized = True
-            logger.info("JARVISPrimeAdapter initialized (orchestrator mode)")
+            logger.info("IroncliwPrimeAdapter initialized (orchestrator mode)")
             return
         except ImportError:
             pass
         except Exception as e:
-            logger.debug(f"JARVIS Prime orchestrator init failed: {e}")
+            logger.debug(f"Ironcliw Prime orchestrator init failed: {e}")
 
         # Try HTTP client (remote integration)
         try:
             import aiohttp
-            prime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
+            prime_url = os.getenv("Ironcliw_PRIME_URL", "http://localhost:8000")  # v89.0: Fixed to 8000
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{prime_url}/health", timeout=aiohttp.ClientTimeout(total=2.0)) as resp:
                     if resp.status == 200:
                         self._client = {"url": prime_url}
                         self._is_online = True
-                        logger.info(f"JARVISPrimeAdapter initialized (client mode: {prime_url})")
+                        logger.info(f"IroncliwPrimeAdapter initialized (client mode: {prime_url})")
         except Exception as e:
-            logger.debug(f"JARVIS Prime client connection failed: {e}")
+            logger.debug(f"Ironcliw Prime client connection failed: {e}")
 
         self._initialized = True
 
@@ -672,7 +672,7 @@ class JARVISPrimeAdapter:
         context: Dict[str, Any],
         timeout_sec: float = 300.0,
     ) -> Dict[str, Any]:
-        """Execute a workflow via JARVIS Prime."""
+        """Execute a workflow via Ironcliw Prime."""
         if not self._initialized:
             await self.initialize()
 
@@ -703,7 +703,7 @@ class JARVISPrimeAdapter:
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        return {"success": False, "error": "JARVIS Prime not available"}
+        return {"success": False, "error": "Ironcliw Prime not available"}
 
     async def decompose_task(
         self,
@@ -740,7 +740,7 @@ class SpatialAwarenessAdapter:
     Adapter for 3D OS Awareness (Proprioception).
 
     v6.2 Grand Unification: Provides spatial context and smart app switching
-    via Yabai integration for the entire JARVIS ecosystem.
+    via Yabai integration for the entire Ironcliw ecosystem.
 
     Capabilities:
     - Get current spatial context (Space, Window, App)
@@ -1166,7 +1166,7 @@ class CrossRepoIntelligenceHub:
         # v6.0: New adapters for enhanced integration
         self._safe_code_adapter = SafeCodeAdapter()
         self._reactor_core_adapter = ReactorCoreAdapter(config)
-        self._jarvis_prime_adapter = JARVISPrimeAdapter(config)
+        self._jarvis_prime_adapter = IroncliwPrimeAdapter(config)
 
         # v6.2: Grand Unification - Spatial Awareness (Proprioception)
         self._spatial_adapter = SpatialAwarenessAdapter(config)
@@ -1372,7 +1372,7 @@ class CrossRepoIntelligenceHub:
         """Execute on a specific system."""
         if system == IntelligenceSystem.REPOSITORY:
             return await self._repo_adapter.get_repo_map(
-                repository=input_data.get("repository", "JARVIS-AI-Agent"),
+                repository=input_data.get("repository", "Ironcliw-AI-Agent"),
                 max_tokens=input_data.get("max_tokens", 4000),
             )
 
@@ -1419,7 +1419,7 @@ class CrossRepoIntelligenceHub:
     async def enrich_context(
         self,
         task: str,
-        repository: str = "JARVIS-AI-Agent",
+        repository: str = "Ironcliw-AI-Agent",
         include_repo_map: bool = True,
         include_memory: bool = True,
         enhance_with_wisdom: bool = True,
@@ -1754,7 +1754,7 @@ async def get_intelligence_hub() -> CrossRepoIntelligenceHub:
 
 async def enrich_task_context(
     task: str,
-    repository: str = "JARVIS-AI-Agent",
+    repository: str = "Ironcliw-AI-Agent",
 ) -> Dict[str, Any]:
     """Convenience function to enrich task context."""
     hub = await get_intelligence_hub()
@@ -1798,7 +1798,7 @@ __all__ = [
     # v6.0: New adapters
     "SafeCodeAdapter",
     "ReactorCoreAdapter",
-    "JARVISPrimeAdapter",
+    "IroncliwPrimeAdapter",
 
     # v6.2: Grand Unification
     "SpatialAwarenessAdapter",

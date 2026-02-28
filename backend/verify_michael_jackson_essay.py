@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Verify JARVIS generates correct content for Michael Jackson essay
+Verify Ironcliw generates correct content for Michael Jackson essay
 """
 
 import asyncio
@@ -16,13 +16,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 async def test_essay_generation():
-    """Test that JARVIS generates content about the requested topic"""
+    """Test that Ironcliw generates content about the requested topic"""
 
     from api.unified_command_processor import UnifiedCommandProcessor
     from context_intelligence.automation.claude_streamer import get_claude_streamer
 
     print("=" * 60)
-    print("JARVIS Essay Generation Test")
+    print("Ironcliw Essay Generation Test")
     print("=" * 60)
 
     # Check API key
@@ -56,14 +56,14 @@ async def test_essay_generation():
     print("=" * 60)
 
     if "dogs" not in content.lower() and ("michael" in content.lower() or "jackson" in content.lower()):
-        print("✅ SUCCESS: JARVIS is now generating real AI content!")
-        print("\nThe fix is working. When you restart JARVIS and ask it to")
+        print("✅ SUCCESS: Ironcliw is now generating real AI content!")
+        print("\nThe fix is working. When you restart Ironcliw and ask it to")
         print("'write me an essay about Michael Jackson', it will generate")
         print("real content about Michael Jackson, not the Dogs essay.")
     else:
-        print("⚠️ Issue detected - please restart JARVIS for changes to take effect")
+        print("⚠️ Issue detected - please restart Ironcliw for changes to take effect")
 
-    print("\nIMPORTANT: Restart JARVIS for the changes to take effect!")
+    print("\nIMPORTANT: Restart Ironcliw for the changes to take effect!")
     print("=" * 60)
 
 

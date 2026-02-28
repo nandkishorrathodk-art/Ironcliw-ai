@@ -1,4 +1,4 @@
-"""
+﻿"""
 Race Condition Prevention System v1.0 - Production-Grade Atomic Operations
 ===========================================================================
 
@@ -64,7 +64,7 @@ Architecture:
     |  - Automatic dependent restart on failure                              |
     +------------------------------------------------------------------------+
 
-Author: JARVIS Trinity v1.0 - Race Condition Prevention
+Author: Ironcliw Trinity v1.0 - Race Condition Prevention
 """
 
 from __future__ import annotations

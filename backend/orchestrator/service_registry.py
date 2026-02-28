@@ -1,5 +1,5 @@
-"""
-JARVIS Service Registry v1.0.0
+﻿"""
+Ironcliw Service Registry v1.0.0
 ===============================
 
 Dynamic service discovery and registration for the Trinity ecosystem.
@@ -24,7 +24,7 @@ Service Discovery Methods:
     3. Heartbeat file discovery (~/.jarvis/heartbeats/)
     4. HTTP health endpoint probing
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -62,8 +62,8 @@ class ServiceStatus(Enum):
 
 class ServiceType(Enum):
     """Trinity service types."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     LOADING_SERVER = "loading_server"
     FRONTEND = "frontend"
@@ -148,13 +148,13 @@ class ServiceInfo:
 
 DEFAULT_SERVICES: Dict[str, Dict[str, Any]] = {
     "jarvis-body": {
-        "type": ServiceType.JARVIS_BODY,
+        "type": ServiceType.Ironcliw_BODY,
         "port": 8010,
         "health_path": "/health",
         "required": True,
     },
     "jarvis-prime": {
-        "type": ServiceType.JARVIS_PRIME,
+        "type": ServiceType.Ironcliw_PRIME,
         "port": 8001,
         "health_path": "/health",
         "required": False,
@@ -194,7 +194,7 @@ class ServiceRegistry:
         registry = ServiceRegistry()
         
         # Register a service
-        registry.register("jarvis-body", ServiceType.JARVIS_BODY, port=8010)
+        registry.register("jarvis-body", ServiceType.Ironcliw_BODY, port=8010)
         
         # Get service info
         info = registry.get("jarvis-body")
@@ -548,7 +548,7 @@ class ServiceRegistry:
                 service.consecutive_failures = 0
                 service.last_health_check = None
             
-            # 3. Check for port conflicts (ports that are in use by non-JARVIS processes)
+            # 3. Check for port conflicts (ports that are in use by non-Ironcliw processes)
             ports_in_use = set()
             for name, service in self._services.items():
                 if service.port > 0:
@@ -559,7 +559,7 @@ class ServiceRegistry:
                         sock.close()
                         
                         if result == 0:
-                            # Port is in use - check if it's a JARVIS process
+                            # Port is in use - check if it's a Ironcliw process
                             ports_in_use.add(service.port)
                     except Exception:
                         pass

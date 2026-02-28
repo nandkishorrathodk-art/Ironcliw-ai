@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './MicrophonePermissionHelper.css';
 import microphonePermissionManager from '../services/MicrophonePermissionManager';
 
@@ -377,7 +377,7 @@ const MicrophonePermissionHelper = ({ onPermissionGranted }) => {
           <div className="status-prompt">
             <div className="icon">🎤</div>
             <h3>Microphone Permission Required</h3>
-            <p>JARVIS needs microphone access for voice commands.</p>
+            <p>Ironcliw needs microphone access for voice commands.</p>
             <button
               onClick={requestMicrophoneAccess}
               className="permission-button primary"

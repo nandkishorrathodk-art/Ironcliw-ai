@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Training Engine Entrypoint
+Ironcliw Training Engine Entrypoint
 ==================================
 
-Main entrypoint for the JARVIS training container that orchestrates:
-- Experience collection from JARVIS interactions
+Main entrypoint for the Ironcliw training container that orchestrates:
+- Experience collection from Ironcliw interactions
 - Continuous web scraping via Safe Scout
 - Scheduled model training via reactor-core
 - GGUF export and deployment
@@ -16,12 +16,12 @@ Usage:
     python3 training_entrypoint.py --mode export      # Export current model
 
 Environment Variables:
-    JARVIS_TRAINING_DB: Path to SQLite training database
-    JARVIS_TRAINING_SCHEDULE: Training schedule (HH:MM format)
+    Ironcliw_TRAINING_DB: Path to SQLite training database
+    Ironcliw_TRAINING_SCHEDULE: Training schedule (HH:MM format)
     CONTINUOUS_SCRAPING_ENABLED: Enable background scraping
     CONTINUOUS_SCRAPING_INTERVAL_HOURS: Scraping interval
 
-Author: JARVIS AI Agent Team
+Author: Ironcliw AI Agent Team
 Version: 1.0.0
 """
 
@@ -44,10 +44,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(os.environ.get("JARVIS_LOGS_DIR", "/app/logs") + "/training.log")
+        logging.FileHandler(os.environ.get("Ironcliw_LOGS_DIR", "/app/logs") + "/training.log")
     ]
 )
-logger = logging.getLogger("JARVISTraining")
+logger = logging.getLogger("IroncliwTraining")
 
 
 # =============================================================================
@@ -59,13 +59,13 @@ class TrainingConfig:
     """Training engine configuration."""
 
     # Database
-    db_path: Path = field(default_factory=lambda: Path(os.getenv("JARVIS_TRAINING_DB", "/app/data/training_db/jarvis_training.db")))
+    db_path: Path = field(default_factory=lambda: Path(os.getenv("Ironcliw_TRAINING_DB", "/app/data/training_db/jarvis_training.db")))
 
     # Training
-    training_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_TRAINING_ENABLED", "true").lower() == "true")
-    training_schedule: str = field(default_factory=lambda: os.getenv("JARVIS_TRAINING_SCHEDULE", "03:00"))
-    min_experiences: int = field(default_factory=lambda: int(os.getenv("JARVIS_TRAINING_MIN_EXPERIENCES", "100")))
-    cooldown_hours: float = field(default_factory=lambda: float(os.getenv("JARVIS_TRAINING_COOLDOWN_HOURS", "24")))
+    training_enabled: bool = field(default_factory=lambda: os.getenv("Ironcliw_TRAINING_ENABLED", "true").lower() == "true")
+    training_schedule: str = field(default_factory=lambda: os.getenv("Ironcliw_TRAINING_SCHEDULE", "03:00"))
+    min_experiences: int = field(default_factory=lambda: int(os.getenv("Ironcliw_TRAINING_MIN_EXPERIENCES", "100")))
+    cooldown_hours: float = field(default_factory=lambda: float(os.getenv("Ironcliw_TRAINING_COOLDOWN_HOURS", "24")))
 
     # Scraping
     scraping_enabled: bool = field(default_factory=lambda: os.getenv("CONTINUOUS_SCRAPING_ENABLED", "true").lower() == "true")
@@ -73,7 +73,7 @@ class TrainingConfig:
     scraping_max_pages: int = field(default_factory=lambda: int(os.getenv("CONTINUOUS_SCRAPING_MAX_PAGES", "50")))
 
     # Models
-    models_dir: Path = field(default_factory=lambda: Path(os.getenv("JARVIS_MODELS_DIR", "/app/models")))
+    models_dir: Path = field(default_factory=lambda: Path(os.getenv("Ironcliw_MODELS_DIR", "/app/models")))
     gguf_enabled: bool = field(default_factory=lambda: os.getenv("GGUF_EXPORT_ENABLED", "true").lower() == "true")
     gguf_quantization: str = field(default_factory=lambda: os.getenv("GGUF_QUANTIZATION", "q4_k_m"))
 
@@ -129,7 +129,7 @@ class TrainingDatabase:
 
         # Create tables if they don't exist
         cursor.executescript("""
-            -- Experiences table: Records of JARVIS interactions
+            -- Experiences table: Records of Ironcliw interactions
             CREATE TABLE IF NOT EXISTS experiences (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -414,7 +414,7 @@ class TrainingDatabase:
 # =============================================================================
 
 class TrainingEngine:
-    """JARVIS Training Engine - Orchestrates the full training pipeline."""
+    """Ironcliw Training Engine - Orchestrates the full training pipeline."""
 
     def __init__(self, config: TrainingConfig):
         self.config = config
@@ -426,7 +426,7 @@ class TrainingEngine:
 
     async def start(self, mode: str = "continuous") -> None:
         """Start the training engine."""
-        logger.info(f"Starting JARVIS Training Engine (mode: {mode})")
+        logger.info(f"Starting Ironcliw Training Engine (mode: {mode})")
         logger.info(f"Database: {self.config.db_path}")
         logger.info(f"Models: {self.config.models_dir}")
 
@@ -449,7 +449,7 @@ class TrainingEngine:
 
     async def stop(self) -> None:
         """Stop the training engine."""
-        logger.info("Stopping JARVIS Training Engine...")
+        logger.info("Stopping Ironcliw Training Engine...")
         self._running = False
 
         if self._scraping_task:
@@ -651,7 +651,7 @@ class TrainingEngine:
 
 async def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="JARVIS Training Engine")
+    parser = argparse.ArgumentParser(description="Ironcliw Training Engine")
     parser.add_argument("--mode", choices=["continuous", "train", "scrape", "export"],
                         default="continuous", help="Operation mode")
     parser.add_argument("--db", type=str, help="Override database path")

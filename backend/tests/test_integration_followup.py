@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration test for complete follow-up flow.
 Tests end-to-end: intent detection → context retrieval → routing → response.
 """
@@ -119,7 +119,7 @@ class TestFollowUpIntegration:
         router, handler = router_with_handler
         telemetry_manager, event_sink = telemetry
 
-        # 1. Create pending vision context (simulating JARVIS asking a question)
+        # 1. Create pending vision context (simulating Ironcliw asking a question)
         metadata = ContextMetadata(
             category=ContextCategory.VISION,
             priority=ContextPriority.HIGH,

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix voice unlock by adjusting thresholds and ensuring proper profile usage
 """
@@ -80,7 +80,7 @@ async def main():
     print("=" * 80)
     print("\nNEXT STEPS:")
     print("1. The backend will pick up these changes within 30 seconds (auto-reload)")
-    print("2. Or restart JARVIS: python start_system.py --restart")
+    print("2. Or restart Ironcliw: python start_system.py --restart")
     print("3. Test voice unlock: Say 'unlock my screen'")
     print("\nWith the threshold at 25%, your 30.11% confidence should now pass!\n")
 

@@ -1,4 +1,4 @@
-//! High-Performance Bloom Filter Network for JARVIS Vision System
+﻿//! High-Performance Bloom Filter Network for Ironcliw Vision System
 //! Hierarchical bloom filter system optimized for duplicate detection with SIMD acceleration
 
 use std::sync::Arc;

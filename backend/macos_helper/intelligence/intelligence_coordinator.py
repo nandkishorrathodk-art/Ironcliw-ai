@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Intelligence Coordinator
+﻿"""
+Ironcliw macOS Helper - Intelligence Coordinator
 
 Central orchestrator that coordinates all Phase 2 intelligence components,
 managing data flow, cross-component communication, and unified APIs.

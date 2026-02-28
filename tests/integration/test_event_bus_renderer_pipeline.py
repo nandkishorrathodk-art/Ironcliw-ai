@@ -1,4 +1,4 @@
-"""
+﻿"""
 Integration tests for the SupervisorEventBus -> CliRenderer pipeline.
 
 Validates end-to-end event flow: events emitted through the bus arrive at
@@ -401,8 +401,8 @@ class TestEventBusRendererPipeline:
 
     async def test_bus_stop_delivers_remaining(self, monkeypatch):
         """Emit events, call stop(), verify queued events still delivered."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "50")
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "50")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
         try:
             import unified_supervisor
@@ -447,8 +447,8 @@ class TestEventBusRendererPipeline:
 
     async def test_full_lifecycle(self, monkeypatch):
         """start bus -> subscribe renderer -> emit events -> stop bus -> verify all received."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "50")
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "50")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
         try:
             import unified_supervisor

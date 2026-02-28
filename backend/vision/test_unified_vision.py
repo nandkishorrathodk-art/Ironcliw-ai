@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test the unified Claude Vision Analyzer with all features integrated"""
 
 import asyncio
@@ -66,8 +66,8 @@ async def test_unified():
     except Exception as e:
         print(f"❌ Clean method error: {e}")
     
-    # Test 3: JARVIS methods
-    print("\n📊 Test 3: JARVIS integration methods")
+    # Test 3: Ironcliw methods
+    print("\n📊 Test 3: Ironcliw integration methods")
     try:
         # Get screen context
         context = await jarvis.get_screen_context()
@@ -89,7 +89,7 @@ async def test_unified():
             print(f"✅ stop_jarvis_vision works")
         
     except Exception as e:
-        print(f"❌ JARVIS methods error: {e}")
+        print(f"❌ Ironcliw methods error: {e}")
     
     # Test 4: Real-time features
     print("\n📊 Test 4: Real-time monitoring features")
@@ -110,7 +110,7 @@ async def test_unified():
     print("\nThe unified file contains:")
     print("- Original vision analyzer functionality")
     print("- Clean interface methods (wrapper compatibility)")
-    print("- JARVIS integration methods")
+    print("- Ironcliw integration methods")
     print("- Real-time monitoring capabilities")
     print("- Autonomous behavior detection")
     

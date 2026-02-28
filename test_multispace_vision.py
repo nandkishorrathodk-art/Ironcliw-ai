@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test multi-space vision response to verify it uses Claude API instead of templates
 """
@@ -55,14 +55,14 @@ async def test_multispace_vision():
     mock_screenshot = np.zeros((100, 100, 3), dtype=np.uint8)  # Black image
 
     # Test the response
-    print("🤖 Getting response from JARVIS...")
+    print("🤖 Getting response from Ironcliw...")
     response = await vision.understand_and_respond(mock_screenshot, test_query)
 
     print("\n📊 Response Analysis:")
     print("-" * 50)
     print(f"Response Length: {len(response)} characters")
     print(f"Response Type: {'Template-based' if 'workspace appears well-organized' in response.lower() else 'Claude API-based'}")
-    print("\n💬 JARVIS Response:")
+    print("\n💬 Ironcliw Response:")
     print("-" * 50)
     print(response)
     print("\n" + "="*70)

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test voice verification with actual JARVIS setup."""
+﻿#!/usr/bin/env python3
+"""Test voice verification with actual Ironcliw setup."""
 
 import asyncio
 import sys
@@ -10,13 +10,13 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 async def test_verification():
-    """Test the actual verification as JARVIS would do it."""
+    """Test the actual verification as Ironcliw would do it."""
 
     print("\n" + "="*80)
     print("TESTING LIVE VOICE VERIFICATION")
     print("="*80)
 
-    # Initialize the speaker verification service exactly as JARVIS does
+    # Initialize the speaker verification service exactly as Ironcliw does
     from backend.voice.speaker_verification_service import SpeakerVerificationService
 
     print("\n1️⃣  INITIALIZING SERVICE:")
@@ -74,7 +74,7 @@ async def test_verification():
 
     # Create test audio (16kHz, 1 second)
     test_audio = np.random.randn(16000).astype(np.float32)
-    # Convert to bytes as JARVIS would
+    # Convert to bytes as Ironcliw would
     test_audio_bytes = test_audio.tobytes()
 
     print("\n Testing verification...")

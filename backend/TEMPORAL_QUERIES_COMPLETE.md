@@ -1,4 +1,4 @@
-# 1.4 Temporal Queries - Complete Implementation
+﻿# 1.4 Temporal Queries - Complete Implementation
 
 **Status:** ✅ IMPLEMENTED (v2.0)
 **Date:** 2025-10-18
@@ -8,7 +8,7 @@
 
 ## Overview
 
-The Temporal Query system enables JARVIS to answer time-based questions about screen changes, errors, and state evolution.
+The Temporal Query system enables Ironcliw to answer time-based questions about screen changes, errors, and state evolution.
 
 ### Supported Queries
 

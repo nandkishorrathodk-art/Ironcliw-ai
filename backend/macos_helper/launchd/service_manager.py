@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - LaunchAgent Service Manager
+﻿"""
+Ironcliw macOS Helper - LaunchAgent Service Manager
 
 Manages the LaunchAgent configuration for running the macOS helper
 as a persistent background service.
@@ -139,7 +139,7 @@ def generate_plist(
         "EnvironmentVariables": {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin",
             "PYTHONUNBUFFERED": "1",
-            "JARVIS_SERVICE_MODE": "1",
+            "Ironcliw_SERVICE_MODE": "1",
         },
         # Nice priority (lower = higher priority)
         "Nice": 5,
@@ -180,7 +180,7 @@ def save_plist(plist: Dict[str, Any], path: Optional[Path] = None) -> Path:
 
 class LaunchAgentManager:
     """
-    Manages the JARVIS macOS helper LaunchAgent.
+    Manages the Ironcliw macOS helper LaunchAgent.
 
     Provides methods to install, uninstall, start, stop, and monitor
     the background service.
@@ -520,7 +520,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="JARVIS macOS Helper Service Manager"
+        description="Ironcliw macOS Helper Service Manager"
     )
     subparsers = parser.add_subparsers(dest="command", help="Command")
 

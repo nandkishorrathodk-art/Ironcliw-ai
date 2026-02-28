@@ -1,8 +1,8 @@
-"""
+﻿"""
 v77.3: Coding Council Startup Integration (Full IDE + Anthropic)
 ================================================================
 
-Integrates the Unified Coding Council with JARVIS startup sequence,
+Integrates the Unified Coding Council with Ironcliw startup sequence,
 including the complete IDE bridge and Trinity cross-repo sync.
 
 v77.3 Features:
@@ -31,13 +31,13 @@ Usage in run_supervisor.py:
         get_coding_council_health,
     )
 
-    # During JARVIS startup phase
+    # During Ironcliw startup phase
     await initialize_coding_council_startup()
 
-    # During JARVIS shutdown
+    # During Ironcliw shutdown
     await shutdown_coding_council_startup()
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 Version: 3.0.0
 """
 
@@ -135,7 +135,7 @@ def _calculate_dynamic_startup_timeout() -> float:
     base = 30.0  # Core council + orchestrator init
 
     ide_enabled = _is_ide_bridge_enabled()
-    jprime_enabled = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+    jprime_enabled = os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
     voice_enabled = os.getenv("CODING_COUNCIL_VOICE_ANNOUNCE", "true").lower() == "true"
     ai_available = _can_use_ai()
 
@@ -197,7 +197,7 @@ _retry_manager: Optional[Any] = None
 # v85.0: J-Prime Local LLM Integration
 _jprime_engine: Optional[Any] = None
 _jprime_fallback_chain: Optional[Any] = None
-JPRIME_ENABLED = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+JPRIME_ENABLED = os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
 
 # IDE Configuration
 IDE_BRIDGE_ENABLED = os.getenv("IDE_BRIDGE_ENABLED", "true").lower() == "true"
@@ -210,7 +210,7 @@ IDE_WEBSOCKET_PORT = int(os.getenv("IDE_WEBSOCKET_PORT", "9258"))
 # =============================================================================
 
 def _get_reserved_ports() -> Set[int]:
-    """Get ports reserved by JARVIS components to avoid cross-service collisions.
+    """Get ports reserved by Ironcliw components to avoid cross-service collisions.
 
     Reads from environment variables so that any runtime overrides are respected.
     """
@@ -218,8 +218,8 @@ def _get_reserved_ports() -> Set[int]:
     for env_var, default in [
         ("LSP_SERVER_PORT", "9257"),
         ("IDE_WEBSOCKET_PORT", "9258"),
-        ("JARVIS_PORT", "8010"),
-        ("JARVIS_PRIME_PORT", "8000"),
+        ("Ironcliw_PORT", "8010"),
+        ("Ironcliw_PRIME_PORT", "8000"),
         ("REACTOR_CORE_PORT", "8090"),
     ]:
         try:
@@ -251,7 +251,7 @@ def _find_free_port(
     """Find the next available port starting from preferred+1, skipping reserved ports.
 
     Scans preferred+1 through preferred+max_range, returning the first
-    port that is both available and not reserved by another JARVIS component.
+    port that is both available and not reserved by another Ironcliw component.
     """
     for offset in range(1, max_range + 1):
         candidate = preferred + offset
@@ -290,7 +290,7 @@ async def _get_port_owner_pid(port: int) -> Optional[int]:
 
 
 async def _is_jarvis_process(pid: int) -> bool:
-    """Check if a PID belongs to a JARVIS-related process (safe to terminate)."""
+    """Check if a PID belongs to a Ironcliw-related process (safe to terminate)."""
     proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -320,9 +320,9 @@ async def _is_jarvis_process(pid: int) -> bool:
 
 
 async def _reclaim_stale_port(port: int) -> bool:
-    """Try to reclaim a port held by a stale JARVIS process.
+    """Try to reclaim a port held by a stale Ironcliw process.
 
-    Only terminates processes identifiable as JARVIS components.
+    Only terminates processes identifiable as Ironcliw components.
     Returns True if the port was successfully reclaimed.
     """
     pid = await _get_port_owner_pid(port)
@@ -331,13 +331,13 @@ async def _reclaim_stale_port(port: int) -> bool:
 
     if not await _is_jarvis_process(pid):
         logger.info(
-            f"[CodingCouncilStartup] Port {port} held by non-JARVIS process "
+            f"[CodingCouncilStartup] Port {port} held by non-Ironcliw process "
             f"(PID {pid}), will find alternative port"
         )
         return False
 
     logger.info(
-        f"[CodingCouncilStartup] Reclaiming port {port} from stale JARVIS "
+        f"[CodingCouncilStartup] Reclaiming port {port} from stale Ironcliw "
         f"process (PID {pid})"
     )
     try:
@@ -374,7 +374,7 @@ async def _resolve_port(preferred: int, name: str) -> Optional[int]:
 
     v226.2: Dynamic port resolution strategy:
     1. Try the preferred port (from env var or default)
-    2. If in use by a stale JARVIS process, reclaim it
+    2. If in use by a stale Ironcliw process, reclaim it
     3. If still unavailable, find the next free port (skipping reserved ports)
 
     Args:
@@ -397,7 +397,7 @@ async def _resolve_port(preferred: int, name: str) -> Optional[int]:
         f"attempting recovery..."
     )
 
-    # Strategy 2: Reclaim from stale JARVIS process
+    # Strategy 2: Reclaim from stale Ironcliw process
     if await _reclaim_stale_port(preferred):
         return preferred
 
@@ -536,7 +536,7 @@ async def _recover_port_conflict(check, log) -> bool:
     """
     v226.2: Recover from port conflicts using dynamic resolution.
 
-    Uses stale JARVIS process reclamation and dynamic free-port discovery
+    Uses stale Ironcliw process reclamation and dynamic free-port discovery
     instead of the naive port+1 fallback that could collide with reserved
     ports (e.g. IDE_WEBSOCKET_PORT on 9258).
     """
@@ -622,10 +622,10 @@ async def initialize_coding_council_startup(
     logger_instance=None,
 ) -> bool:
     """
-    Initialize Coding Council during JARVIS startup.
+    Initialize Coding Council during Ironcliw startup.
 
     This should be called from run_supervisor.py during the
-    SUPERVISOR_INIT or JARVIS_START phase.
+    SUPERVISOR_INIT or Ironcliw_START phase.
 
     Args:
         narrator: Optional narrator for voice announcements
@@ -654,7 +654,7 @@ async def initialize_coding_council_startup(
 
         # Run pre-flight diagnostics
         # v253.7: Added timeout to prevent preflight from stalling startup
-        _preflight_timeout = float(os.getenv("JARVIS_CC_PREFLIGHT_TIMEOUT", "30"))
+        _preflight_timeout = float(os.getenv("Ironcliw_CC_PREFLIGHT_TIMEOUT", "30"))
         try:
             preflight_passed = await asyncio.wait_for(
                 _run_preflight_checks(log), timeout=_preflight_timeout
@@ -1266,7 +1266,7 @@ async def _start_lsp_server() -> None:
     Instead of blindly binding to the configured port and failing with a
     "try port+1" message, this:
     1. Checks if the preferred port is available
-    2. Reclaims stale JARVIS LSP processes if found on that port
+    2. Reclaims stale Ironcliw LSP processes if found on that port
     3. Finds a free port dynamically if needed (avoiding reserved ports)
     4. Updates the module-level global and env var so health/status endpoints
        report the actual port
@@ -1378,7 +1378,7 @@ async def verify_critical_connections() -> Dict[str, bool]:
 
 async def shutdown_coding_council_startup() -> None:
     """
-    Shutdown Coding Council during JARVIS shutdown.
+    Shutdown Coding Council during Ironcliw shutdown.
 
     This should be called from run_supervisor.py during shutdown.
     """

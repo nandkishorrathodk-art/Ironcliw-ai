@@ -1,9 +1,9 @@
-# CacheStatisticsTracker - Async-Safe Statistics with Self-Healing
+﻿# CacheStatisticsTracker - Async-Safe Statistics with Self-Healing
 
 > **Version:** 1.0.0
 > **Added in:** v17.9.7
 > **Location:** `start_system.py:3477-3840`
-> **Author:** JARVIS Development Team
+> **Author:** Ironcliw Development Team
 
 ## Overview
 

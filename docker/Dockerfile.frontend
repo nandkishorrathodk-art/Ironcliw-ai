@@ -1,7 +1,7 @@
-# JARVIS AI Agent Frontend - Production Container
+﻿# Ironcliw AI Agent Frontend - Production Container
 # ================================================
 #
-# Multi-stage build for the JARVIS React frontend with:
+# Multi-stage build for the Ironcliw React frontend with:
 # - Node.js 20 LTS with npm
 # - Production-optimized build
 # - nginx for serving static files
@@ -18,8 +18,8 @@
 # =============================================================================
 FROM node:20-alpine AS builder
 
-LABEL maintainer="JARVIS AI Agent Team"
-LABEL description="JARVIS AI Agent Frontend Build Stage"
+LABEL maintainer="Ironcliw AI Agent Team"
+LABEL description="Ironcliw AI Agent Frontend Build Stage"
 
 WORKDIR /app
 
@@ -46,8 +46,8 @@ RUN npm run build
 # =============================================================================
 FROM nginx:alpine AS production
 
-LABEL maintainer="JARVIS AI Agent Team"
-LABEL description="JARVIS AI Agent Frontend Server"
+LABEL maintainer="Ironcliw AI Agent Team"
+LABEL description="Ironcliw AI Agent Frontend Server"
 LABEL version="9.4.0"
 
 # Install curl for health checks

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS Real-time Screen Vision When Monitoring Active"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw Real-time Screen Vision When Monitoring Active"""
 
 import asyncio
 import websockets
@@ -25,13 +25,13 @@ RESET = '\033[0m'
 BOLD = '\033[1m'
 
 async def test_real_time_vision():
-    """Test that JARVIS can see actual screen content when monitoring is active"""
-    print(f"\n{BOLD}🧪 Testing JARVIS Real-time Vision When Monitoring Active{RESET}")
+    """Test that Ironcliw can see actual screen content when monitoring is active"""
+    print(f"\n{BOLD}🧪 Testing Ironcliw Real-time Vision When Monitoring Active{RESET}")
     print("=" * 80)
     
     try:
         async with websockets.connect(BACKEND_URL) as websocket:
-            print(f"{GREEN}✓ Connected to JARVIS backend{RESET}")
+            print(f"{GREEN}✓ Connected to Ironcliw backend{RESET}")
             
             # Wait for welcome message
             welcome = await websocket.recv()
@@ -83,7 +83,7 @@ async def test_real_time_vision():
                 data = json.loads(response)
                 response_text = data.get('text', 'No response')
                 
-                print(f"JARVIS: {response_text[:200]}...")
+                print(f"Ironcliw: {response_text[:200]}...")
                 
                 # Check if response is generic or real
                 generic_responses = [
@@ -122,7 +122,7 @@ async def test_real_time_vision():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print(f"{BOLD}JARVIS Real-time Vision Test{RESET}")
+    print(f"{BOLD}Ironcliw Real-time Vision Test{RESET}")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Backend URL: {BACKEND_URL}")
     print("-" * 80)

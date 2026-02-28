@@ -1,24 +1,24 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test the EXACT method JARVIS uses for clicking
+Test the EXACT method Ironcliw uses for clicking
 This bypasses everything and directly uses the AdaptiveControlCenterClicker
 """
 
 import asyncio
 import sys
-sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+sys.path.insert(0, '/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
 
 async def test_exact_jarvis_method():
-    """Test using the exact same method as JARVIS"""
+    """Test using the exact same method as Ironcliw"""
 
     print("\n" + "="*60)
-    print("🎯 Testing EXACT JARVIS Method")
+    print("🎯 Testing EXACT Ironcliw Method")
     print("="*60)
 
-    # Import exactly as JARVIS does
+    # Import exactly as Ironcliw does
     from backend.display.control_center_clicker_factory import get_best_clicker
 
-    print("\n📍 Getting best clicker (same as JARVIS)...")
+    print("\n📍 Getting best clicker (same as Ironcliw)...")
     cc_clicker = get_best_clicker(
         vision_analyzer=None,  # No vision for this test
         enable_verification=True,
@@ -28,14 +28,14 @@ async def test_exact_jarvis_method():
     print(f"✅ Using clicker: {cc_clicker.__class__.__name__}")
 
     print("\n🚀 Calling connect_to_device('Living Room TV')...")
-    print("   This is the EXACT method JARVIS calls")
+    print("   This is the EXACT method Ironcliw calls")
     print("   Expected sequence:")
     print("   1. Control Center (1236, 12)")
     print("   2. Screen Mirroring (1396, 177)")
     print("   3. Living Room TV (1223, 115)")
     print()
 
-    # This is EXACTLY what JARVIS calls
+    # This is EXACTLY what Ironcliw calls
     result = await cc_clicker.connect_to_device("Living Room TV")
 
     print("\n" + "="*60)

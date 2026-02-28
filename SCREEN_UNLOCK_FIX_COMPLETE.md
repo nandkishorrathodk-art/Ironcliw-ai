@@ -1,7 +1,7 @@
-# Screen Unlock Fix - Complete ✅
+﻿# Screen Unlock Fix - Complete ✅
 
 ## Problem Resolved
-JARVIS was responding "Of course, Sir. Unlocking for you." but not actually typing the password to unlock the screen.
+Ironcliw was responding "Of course, Sir. Unlocking for you." but not actually typing the password to unlock the screen.
 
 ## Root Cause
 The `secure_password_typer.py` module was missing 4 critical methods that were being called:
@@ -92,7 +92,7 @@ async def _press_return_secure(self, config: TypingConfig):
 python3 diagnose_unlock.py
 ```
 
-### Use with JARVIS:
+### Use with Ironcliw:
 ```
 "Jarvis, unlock my screen"
 ```
@@ -124,7 +124,7 @@ python3 diagnose_unlock.py
 
 ### If unlock fails:
 1. Check accessibility permissions: System Preferences → Security & Privacy → Accessibility
-2. Verify password in keychain: `security find-generic-password -s "JARVIS_Screen_Unlock" -w`
+2. Verify password in keychain: `security find-generic-password -s "Ironcliw_Screen_Unlock" -w`
 3. Run diagnostic: `python3 diagnose_unlock.py`
 
 ### Common Issues:

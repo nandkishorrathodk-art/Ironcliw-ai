@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Unified Startup Voice Coordinator v1.0.0
+Ironcliw Unified Startup Voice Coordinator v1.0.0
 ================================================
 
 This module coordinates the two startup voice systems:
@@ -54,7 +54,7 @@ WHEN TO USE WHICH SYSTEM:
 - Narrator: Phase changes, milestones, warnings, errors (brief, informational)
 - Announcer: Completion, greetings, personalized messages (rich, context-aware)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -382,7 +382,7 @@ class UnifiedStartupVoiceCoordinator:
         if not self._context.greeting_made and self._narrator:
             await self._narrator.announce_phase(
                 self._narrator._current_phase or "starting",
-                "JARVIS starting up",
+                "Ironcliw starting up",
                 0,
                 context="start"
             )
@@ -650,7 +650,7 @@ class UnifiedStartupVoiceCoordinator:
         target: str = "backend",
     ) -> None:
         """
-        Announce that JARVIS is restarting due to code changes.
+        Announce that Ironcliw is restarting due to code changes.
         Uses ANNOUNCER for personality-driven message.
         
         Args:

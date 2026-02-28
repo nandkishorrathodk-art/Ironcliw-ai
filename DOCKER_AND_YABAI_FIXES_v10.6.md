@@ -1,8 +1,8 @@
-# ✅ Docker Daemon & Yabai Spatial Intelligence Fixes (v10.6)
+﻿# ✅ Docker Daemon & Yabai Spatial Intelligence Fixes (v10.6)
 
 ## Overview
 
-Fixed two critical issues causing errors and fallback modes during JARVIS startup:
+Fixed two critical issues causing errors and fallback modes during Ironcliw startup:
 
 1. **Docker Daemon Startup Failure** - Enhanced with parallel health checks and intelligent retry
 2. **Yabai Spatial Intelligence JSON Parsing** - Fixed truncated/malformed JSON responses

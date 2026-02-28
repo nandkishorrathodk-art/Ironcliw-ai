@@ -1,9 +1,9 @@
-"""
+﻿"""
 UnifiedModelServing v100.0 - Prime + Claude Fallback Model Layer
 =================================================================
 
 Advanced model serving layer that provides:
-1. JARVIS Prime local model inference (primary)
+1. Ironcliw Prime local model inference (primary)
 2. Claude API fallback (when Prime unavailable)
 3. Automatic model selection based on task type
 4. Model versioning and hot-swap capability
@@ -39,7 +39,7 @@ Architecture:
     │  └────────────────────────────────────────────────────────────┘ │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -102,20 +102,20 @@ MODEL_SERVING_DATA_DIR = Path(os.getenv(
 ))
 
 # Prime configuration
-PRIME_ENABLED = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() == "true"
+PRIME_ENABLED = os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() == "true"
 # v17.0: J-Prime API configuration (connects to jarvis-prime repo server)
-PRIME_API_ENABLED = os.getenv("JARVIS_PRIME_API_ENABLED", "true").lower() == "true"
-PRIME_API_URL = os.getenv("JARVIS_PRIME_API_URL", "http://localhost:8000")
-PRIME_API_TIMEOUT = float(os.getenv("JARVIS_PRIME_API_TIMEOUT", "30.0"))
-PRIME_API_WAIT_TIMEOUT = float(os.getenv("JARVIS_PRIME_API_WAIT_TIMEOUT", "15.0"))
+PRIME_API_ENABLED = os.getenv("Ironcliw_PRIME_API_ENABLED", "true").lower() == "true"
+PRIME_API_URL = os.getenv("Ironcliw_PRIME_API_URL", "http://localhost:8000")
+PRIME_API_TIMEOUT = float(os.getenv("Ironcliw_PRIME_API_TIMEOUT", "30.0"))
+PRIME_API_WAIT_TIMEOUT = float(os.getenv("Ironcliw_PRIME_API_WAIT_TIMEOUT", "15.0"))
 # Local GGUF model configuration (fallback if J-Prime API unavailable)
-PRIME_LOCAL_ENABLED = os.getenv("JARVIS_PRIME_LOCAL_ENABLED", "true").lower() == "true"
-PRIME_CLOUD_RUN_ENABLED = os.getenv("JARVIS_PRIME_CLOUD_RUN_ENABLED", "false").lower() == "true"
-PRIME_CLOUD_RUN_URL = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL", "")
-PRIME_MODELS_DIR = Path(os.getenv("JARVIS_PRIME_MODELS_DIR", str(Path.home() / "models")))
-PRIME_DEFAULT_MODEL = os.getenv("JARVIS_PRIME_DEFAULT_MODEL", "prime-7b-chat-v1.Q4_K_M.gguf")
-PRIME_CONTEXT_LENGTH = int(os.getenv("JARVIS_PRIME_CONTEXT_LENGTH", "4096"))
-PRIME_TIMEOUT_SECONDS = float(os.getenv("JARVIS_PRIME_TIMEOUT_SECONDS", "60.0"))
+PRIME_LOCAL_ENABLED = os.getenv("Ironcliw_PRIME_LOCAL_ENABLED", "true").lower() == "true"
+PRIME_CLOUD_RUN_ENABLED = os.getenv("Ironcliw_PRIME_CLOUD_RUN_ENABLED", "false").lower() == "true"
+PRIME_CLOUD_RUN_URL = os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL", "")
+PRIME_MODELS_DIR = Path(os.getenv("Ironcliw_PRIME_MODELS_DIR", str(Path.home() / "models")))
+PRIME_DEFAULT_MODEL = os.getenv("Ironcliw_PRIME_DEFAULT_MODEL", "prime-7b-chat-v1.Q4_K_M.gguf")
+PRIME_CONTEXT_LENGTH = int(os.getenv("Ironcliw_PRIME_CONTEXT_LENGTH", "4096"))
+PRIME_TIMEOUT_SECONDS = float(os.getenv("Ironcliw_PRIME_TIMEOUT_SECONDS", "60.0"))
 
 # Fireworks configuration
 FIREWORKS_ENABLED = os.getenv("FIREWORKS_ENABLED", "true").lower() == "true"
@@ -289,7 +289,7 @@ class ModelClient(ABC):
 
 class PrimeLocalClient(ModelClient):
     """
-    Client for local JARVIS Prime model inference.
+    Client for local Ironcliw Prime model inference.
 
     Features:
     - Intelligent model discovery across multiple directories
@@ -443,7 +443,7 @@ class PrimeLocalClient(ModelClient):
             search_paths.append(PRIME_MODELS_DIR)
 
         # Add environment-configured additional paths
-        extra_paths = os.getenv("JARVIS_MODEL_SEARCH_PATHS", "")
+        extra_paths = os.getenv("Ironcliw_MODEL_SEARCH_PATHS", "")
         if extra_paths:
             for p in extra_paths.split(":"):
                 path = Path(p)
@@ -502,7 +502,7 @@ class PrimeLocalClient(ModelClient):
             Path to downloaded model, or None if download failed/disabled
         """
         # v266.3: Three-state policy (auto/true/false) replaces binary flag
-        _policy = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
+        _policy = os.getenv("Ironcliw_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
         if _policy == "false":
             return None
         # "auto" and "true" both proceed — "auto" is the new default
@@ -575,7 +575,7 @@ class PrimeLocalClient(ModelClient):
         """
         # v234.3: mmap reduces physical RAM requirements
         _use_mmap = os.getenv(
-            "JARVIS_USE_MMAP", "true"
+            "Ironcliw_USE_MMAP", "true"
         ).lower() in ("true", "1", "yes")
         _mmap_factor = 0.65 if _use_mmap else 1.0  # v235.1: 0.6→0.65 (less aggressive)
 
@@ -698,21 +698,21 @@ class PrimeLocalClient(ModelClient):
                     if not PrimeLocalClient._warned_missing_model:
                         PrimeLocalClient._warned_missing_model = True
                         _policy = os.getenv(
-                            "JARVIS_PRIME_AUTO_DOWNLOAD", "auto"
+                            "Ironcliw_PRIME_AUTO_DOWNLOAD", "auto"
                         ).lower().strip()
                         self.logger.warning(
                             f"No suitable GGUF model found. "
                             f"Available RAM: {available_gb or 'unknown'}GB. "
                             f"Auto-download policy: {_policy}. "
                             f"Place a model in {PRIME_MODELS_DIR} or "
-                            f"set JARVIS_PRIME_AUTO_DOWNLOAD=auto"
+                            f"set Ironcliw_PRIME_AUTO_DOWNLOAD=auto"
                         )
                     return False
 
                 # Step 3: Final RAM check (actual file size + headroom)
                 # v234.3: mmap reduces physical RAM to ~50% of file size
                 _use_mmap = os.getenv(
-                    "JARVIS_USE_MMAP", "true"
+                    "Ironcliw_USE_MMAP", "true"
                 ).lower() in ("true", "1", "yes")
                 _model_size_gb = model_path.stat().st_size / (1024 ** 3)
                 _effective_size_gb = (
@@ -730,17 +730,17 @@ class PrimeLocalClient(ModelClient):
                     except (ValueError, TypeError):
                         return default
 
-                _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_NORMAL", 2.0)
+                _headroom_gb = _headroom_env("Ironcliw_MODEL_HEADROOM_NORMAL", 2.0)
                 _tier = None
                 try:
                     from backend.core.memory_quantizer import MemoryTier
                     _tier = _metrics.tier if '_metrics' in dir() and _metrics else None
                     if _tier in (MemoryTier.ABUNDANT, MemoryTier.OPTIMAL):
-                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_RELAXED", 1.5)
+                        _headroom_gb = _headroom_env("Ironcliw_MODEL_HEADROOM_RELAXED", 1.5)
                     elif _tier == MemoryTier.ELEVATED:
-                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_NORMAL", 2.0)
+                        _headroom_gb = _headroom_env("Ironcliw_MODEL_HEADROOM_NORMAL", 2.0)
                     elif _tier == MemoryTier.CONSTRAINED:
-                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_TIGHT", 2.5)
+                        _headroom_gb = _headroom_env("Ironcliw_MODEL_HEADROOM_TIGHT", 2.5)
                     elif _tier in (MemoryTier.CRITICAL, MemoryTier.EMERGENCY):
                         self.logger.warning(
                             f"[v235.1] Memory tier {_tier.value} — refusing to load model "
@@ -753,7 +753,7 @@ class PrimeLocalClient(ModelClient):
                 # Step 4: Load via llama-cpp-python
                 from llama_cpp import Llama
 
-                _n_gpu = int(os.getenv("JARVIS_N_GPU_LAYERS", "-1"))
+                _n_gpu = int(os.getenv("Ironcliw_N_GPU_LAYERS", "-1"))
                 import platform
                 if platform.machine() != "arm64":
                     _n_gpu = 0
@@ -1008,10 +1008,10 @@ class PrimeLocalClient(ModelClient):
 
             # v239.0: Adaptive per-chunk timeout
             _first_chunk_timeout = float(os.environ.get(
-                "JARVIS_STREAM_FIRST_CHUNK_TIMEOUT", "90"
+                "Ironcliw_STREAM_FIRST_CHUNK_TIMEOUT", "90"
             ))
             _chunk_timeout = float(os.environ.get(
-                "JARVIS_STREAM_CHUNK_TIMEOUT", "30"
+                "Ironcliw_STREAM_CHUNK_TIMEOUT", "30"
             ))
             _current_timeout = _first_chunk_timeout
 
@@ -1086,7 +1086,7 @@ class PrimeLocalClient(ModelClient):
         Returns:
             True if a model was successfully provisioned
         """
-        _policy = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
+        _policy = os.getenv("Ironcliw_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
         if _policy == "false":
             return False
 
@@ -1108,7 +1108,7 @@ class PrimeLocalClient(ModelClient):
 
             # Step 2: Find best downloadable model that fits RAM
             _use_mmap = os.getenv(
-                "JARVIS_USE_MMAP", "true"
+                "Ironcliw_USE_MMAP", "true"
             ).lower() in ("true", "1", "yes")
             _mmap_factor = 0.65 if _use_mmap else 1.0
 
@@ -1185,7 +1185,7 @@ class PrimeLocalClient(ModelClient):
 
 class PrimeAPIClient(ModelClient):
     """
-    v17.0: Client for JARVIS Prime API server (jarvis-prime repo).
+    v17.0: Client for Ironcliw Prime API server (jarvis-prime repo).
 
     Connects to the J-Prime server running on localhost:8000 (configurable).
     This is the primary model serving pathway - uses the J-Prime server
@@ -1522,7 +1522,7 @@ class PrimeAPIClient(ModelClient):
 
 
 class PrimeCloudRunClient(ModelClient):
-    """Client for JARVIS Prime on Cloud Run."""
+    """Client for Ironcliw Prime on Cloud Run."""
 
     def __init__(self, url: str = PRIME_CLOUD_RUN_URL):
         self.logger = logging.getLogger("PrimeCloudRunClient")
@@ -2159,7 +2159,7 @@ class ModelRouter:
             recency_score = max(0.0, 1.0 - (age_seconds / 3600.0))
 
         # v239.0: Cost-aware scoring with protected success floor
-        _cost_weight = max(0.0, min(0.50, float(os.environ.get("JARVIS_ROUTING_COST_WEIGHT", "0.10"))))
+        _cost_weight = max(0.0, min(0.50, float(os.environ.get("Ironcliw_ROUTING_COST_WEIGHT", "0.10"))))
         _success_weight = max(0.50, 0.6 * (1.0 - _cost_weight))
         _remaining = 1.0 - _success_weight - _cost_weight
         _latency_weight = _remaining * 0.5
@@ -2195,7 +2195,7 @@ class ModelRouter:
         # v239.0: When GCP boot is in progress and PRIME_LOCAL has no model loaded,
         # promote CLAUDE ahead of PRIME_LOCAL to avoid triggering an expensive
         # local model load that'll be unloaded seconds later when GCP arrives.
-        if os.environ.get("JARVIS_INVINCIBLE_NODE_BOOTING") == "true":
+        if os.environ.get("Ironcliw_INVINCIBLE_NODE_BOOTING") == "true":
             _local_client = None
             if _model_serving is not None:
                 _local_client = _model_serving._clients.get(ModelProvider.PRIME_LOCAL)
@@ -2364,7 +2364,7 @@ class UnifiedModelServing:
         # v261.0: Quick probe with dedicated client — don't block startup for 15s
         if PRIME_API_ENABLED:
             self.logger.info("  🔄 Checking J-Prime API availability...")
-            _quick_timeout = float(os.getenv("JARVIS_PRIME_API_QUICK_TIMEOUT", "2.0"))
+            _quick_timeout = float(os.getenv("Ironcliw_PRIME_API_QUICK_TIMEOUT", "2.0"))
             probe_client = PrimeAPIClient(wait_timeout=_quick_timeout)
             if await probe_client.wait_for_ready():
                 # J-Prime already available — register immediately
@@ -2581,7 +2581,7 @@ class UnifiedModelServing:
             self.logger.warning("[v266.4] Local smoke test failed: health_check returned false")
             return False
 
-        max_tokens = max(1, int(os.getenv("JARVIS_LOCAL_RECOVERY_SMOKE_MAX_TOKENS", "4")))
+        max_tokens = max(1, int(os.getenv("Ironcliw_LOCAL_RECOVERY_SMOKE_MAX_TOKENS", "4")))
         smoke_req = ModelRequest(
             messages=[{"role": "user", "content": "Respond with OK."}],
             max_tokens=max_tokens,
@@ -3527,7 +3527,7 @@ async def notify_jprime_api_ready(url: str) -> bool:
     # Validate endpoint before registering
     test_client = PrimeAPIClient(
         base_url=url,
-        wait_timeout=float(os.getenv("JARVIS_JPRIME_VALIDATION_TIMEOUT", "10.0")),
+        wait_timeout=float(os.getenv("Ironcliw_JPRIME_VALIDATION_TIMEOUT", "10.0")),
     )
     if not await test_client.wait_for_ready():
         logger.warning(f"[v261.0] J-Prime endpoint validation failed ({url})")

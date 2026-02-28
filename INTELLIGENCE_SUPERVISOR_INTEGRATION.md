@@ -1,4 +1,4 @@
-# Intelligence Supervisor Integration Summary
+﻿# Intelligence Supervisor Integration Summary
 
 **Version:** 5.0.0
 **Date:** 2024-12-22
@@ -8,7 +8,7 @@
 
 ## Overview
 
-This document details the complete integration of the Intelligence Component Manager into the JARVIS Supervisor system, enabling robust, async, parallel, and intelligent voice authentication with zero hardcoding.
+This document details the complete integration of the Intelligence Component Manager into the Ironcliw Supervisor system, enabling robust, async, parallel, and intelligent voice authentication with zero hardcoding.
 
 ---
 
@@ -140,7 +140,7 @@ Learning Coordinator → Fusion Engine → Device Monitor → Pattern Tracker �
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     JARVIS Supervisor Boot                      │
+│                     Ironcliw Supervisor Boot                      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -198,7 +198,7 @@ Learning Coordinator → Fusion Engine → Device Monitor → Pattern Tracker �
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   JARVIS Process Running                        │
+│                   Ironcliw Process Running                        │
 │  • Voice authentication uses intelligence components            │
 │  • Multi-factor fusion for borderline cases                     │
 │  • RAG retrieves similar authentication contexts                │
@@ -545,7 +545,7 @@ chmod 755 ~/.jarvis
 chmod 755 ~/.jarvis/intelligence
 
 # Or change data directory
-export JARVIS_DATA_DIR=/tmp/jarvis
+export Ironcliw_DATA_DIR=/tmp/jarvis
 ```
 
 ---
@@ -625,7 +625,7 @@ curl -X POST http://localhost:8010/api/intelligence/restart
    # They will be recreated with new schemas
    ```
 
-3. **Restart JARVIS**
+3. **Restart Ironcliw**
    ```bash
    python3 run_supervisor.py
    ```
@@ -641,7 +641,7 @@ curl -X POST http://localhost:8010/api/intelligence/restart
 ## Security Considerations
 
 ### Data Storage
-- All intelligence databases stored in `$JARVIS_DATA_DIR/intelligence/`
+- All intelligence databases stored in `$Ironcliw_DATA_DIR/intelligence/`
 - **Recommendation:** Use encrypted volume for sensitive data
 - SQLite databases contain: network SSIDs, unlock times, device states
 
@@ -763,7 +763,7 @@ The Intelligence Component Manager provides a **robust, async, parallel, intelli
 
 - **Issues:** GitHub Issues
 - **Documentation:** See `INTEGRATION_SUMMARY_V5.md`, `RAG_RLHF_LEARNING_GUIDE.md`, `INTELLIGENCE_CONFIGURATION.md`
-- **Logs:** `$JARVIS_DATA_DIR/logs/intelligence.log`
+- **Logs:** `$Ironcliw_DATA_DIR/logs/intelligence.log`
 
 ---
 

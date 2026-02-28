@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Demo script for JARVIS Intelligent Command Routing
+Demo script for Ironcliw Intelligent Command Routing
 Shows how the system routes commands without hardcoding
 """
 
@@ -20,7 +20,7 @@ class Colors:
 
 async def demo():
     """Demonstrate intelligent routing"""
-    print(f"{Colors.BOLD}🤖 JARVIS Intelligent Command Routing Demo{Colors.ENDC}")
+    print(f"{Colors.BOLD}🤖 Ironcliw Intelligent Command Routing Demo{Colors.ENDC}")
     print("=" * 50)
     
     if SWIFT_AVAILABLE:

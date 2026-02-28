@@ -1,5 +1,5 @@
-"""
-JARVIS Coding Council Voice Announcer (v79.1 Super-Beefed)
+﻿"""
+Ironcliw Coding Council Voice Announcer (v79.1 Super-Beefed)
 ===========================================================
 
 Intelligent, dynamic, async, parallel voice announcer for code evolution operations.
@@ -13,7 +13,7 @@ v79.1 Advanced Features:
 - AGI OS Voice Integration (VoiceApprovalManager, RealTimeVoiceCommunicator)
 - Voice approval prompts for high-risk evolutions
 - Bounded async queue with priority scheduling
-- Cross-repo coordination (JARVIS, J-Prime, Reactor Core)
+- Cross-repo coordination (Ironcliw, J-Prime, Reactor Core)
 - Exponential backoff with jitter
 - Heartbeat-aware Trinity integration
 - Comprehensive error recovery
@@ -835,7 +835,7 @@ class RiskLevel(Enum):
 
 class TrinityRepo(Enum):
     """Trinity repository identifiers."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     J_PRIME = "j_prime"
     REACTOR_CORE = "reactor_core"
 
@@ -1188,13 +1188,13 @@ class EvolutionContext:
 class AnnouncementConfig:
     """Configuration for the voice announcer."""
     enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_EVOLUTION_VOICE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_EVOLUTION_VOICE", "true").lower() == "true"
     )
     progress_cooldown: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_EVOLUTION_PROGRESS_COOLDOWN", "15.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_EVOLUTION_PROGRESS_COOLDOWN", "15.0"))
     )
     start_cooldown: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_EVOLUTION_START_COOLDOWN", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_EVOLUTION_START_COOLDOWN", "5.0"))
     )
     progress_milestones: List[float] = field(
         default_factory=lambda: [0.25, 0.50, 0.75, 1.0]
@@ -1205,22 +1205,22 @@ class AnnouncementConfig:
     max_history_size: int = 100
     # v79.1: Enhanced config
     voice_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_VOICE_TIMEOUT", "15.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_VOICE_TIMEOUT", "15.0"))
     )
     max_concurrent_announcements: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_MAX_VOICE_CONCURRENT", "5"))
+        default_factory=lambda: int(os.getenv("Ironcliw_MAX_VOICE_CONCURRENT", "5"))
     )
     enable_trinity_voice: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_TRINITY_VOICE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_TRINITY_VOICE", "true").lower() == "true"
     )
     enable_agi_os_voice: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_AGI_OS_VOICE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_AGI_OS_VOICE", "true").lower() == "true"
     )
     enable_voice_approval: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_APPROVAL", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_VOICE_APPROVAL", "true").lower() == "true"
     )
     approval_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_APPROVAL_TIMEOUT", "60.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_APPROVAL_TIMEOUT", "60.0"))
     )
 
 
@@ -1439,7 +1439,7 @@ class MessageComposer:
     ) -> str:
         """v79.1: Compose Trinity cross-repo announcement."""
         repo_names = {
-            TrinityRepo.JARVIS: "JARVIS Body",
+            TrinityRepo.Ironcliw: "Ironcliw Body",
             TrinityRepo.J_PRIME: "J-Prime Mind",
             TrinityRepo.REACTOR_CORE: "Reactor Core Nerves",
         }
@@ -1509,7 +1509,7 @@ class TrinityVoiceBridge:
     """
     Voice bridge for cross-repo announcements via Trinity protocol.
 
-    Coordinates voice announcements across JARVIS, J-Prime, and Reactor Core
+    Coordinates voice announcements across Ironcliw, J-Prime, and Reactor Core
     ensuring consistent feedback for cross-repository operations.
     """
 

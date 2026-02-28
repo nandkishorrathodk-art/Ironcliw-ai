@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS monitoring through the API"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw monitoring through the API"""
 
 import asyncio
 import os
@@ -7,14 +7,14 @@ import httpx
 import json
 
 async def test_jarvis_monitoring():
-    """Test JARVIS monitoring through the API"""
+    """Test Ironcliw monitoring through the API"""
     
-    # First check JARVIS status
+    # First check Ironcliw status
     async with httpx.AsyncClient() as client:
-        print("🔍 Checking JARVIS status...")
+        print("🔍 Checking Ironcliw status...")
         response = await client.get("http://localhost:8000/voice/jarvis/status")
         status = response.json()
-        print(f"✅ JARVIS Status: {json.dumps(status, indent=2)}")
+        print(f"✅ Ironcliw Status: {json.dumps(status, indent=2)}")
         
         # Process monitoring command
         print("\n🎙️ Sending monitoring command...")

@@ -1,22 +1,22 @@
-"""
-JARVIS Neural Mesh Bridge
+﻿"""
+Ironcliw Neural Mesh Bridge
 
-Central integration module that connects all JARVIS systems to the Neural Mesh.
+Central integration module that connects all Ironcliw systems to the Neural Mesh.
 This is the main entry point for enabling multi-agent collaboration across the
-entire JARVIS ecosystem.
+entire Ironcliw ecosystem.
 
 The bridge provides:
-- Auto-discovery of existing JARVIS agents
+- Auto-discovery of existing Ironcliw agents
 - Automatic adapter creation and registration
 - System-wide event coordination
 - Health monitoring across all agents
 - Graceful startup and shutdown
 
 Usage:
-    from neural_mesh.jarvis_bridge import JARVISNeuralMeshBridge
+    from neural_mesh.jarvis_bridge import IroncliwNeuralMeshBridge
 
     # Create and start the bridge
-    bridge = JARVISNeuralMeshBridge()
+    bridge = IroncliwNeuralMeshBridge()
     await bridge.initialize()
     await bridge.start()
 
@@ -109,7 +109,7 @@ logger = logging.getLogger(__name__)
 
 
 class SystemCategory(str, Enum):
-    """Categories of JARVIS systems."""
+    """Categories of Ironcliw systems."""
     INTELLIGENCE = "intelligence"
     AUTONOMY = "autonomy"
     VOICE = "voice"
@@ -165,18 +165,18 @@ class BridgeMetrics:
     errors: int = 0
 
 
-class JARVISNeuralMeshBridge:
+class IroncliwNeuralMeshBridge:
     """
-    Central bridge connecting all JARVIS systems to Neural Mesh.
+    Central bridge connecting all Ironcliw systems to Neural Mesh.
 
     This class provides a unified interface for:
-    - Discovering and adapting existing JARVIS agents
+    - Discovering and adapting existing Ironcliw agents
     - Starting the Neural Mesh ecosystem
     - Coordinating multi-agent workflows
     - Monitoring system health
 
     Example - Full ecosystem startup:
-        bridge = JARVISNeuralMeshBridge()
+        bridge = IroncliwNeuralMeshBridge()
         await bridge.initialize()
         await bridge.start()
 
@@ -188,7 +188,7 @@ class JARVISNeuralMeshBridge:
         )
 
     Example - Custom agent registration:
-        bridge = JARVISNeuralMeshBridge()
+        bridge = IroncliwNeuralMeshBridge()
 
         # Add custom agent before starting
         my_agent = MyCustomAgent()
@@ -245,7 +245,7 @@ class JARVISNeuralMeshBridge:
         if self._initialized:
             return True
 
-        logger.info("Initializing JARVIS Neural Mesh Bridge...")
+        logger.info("Initializing Ironcliw Neural Mesh Bridge...")
 
         try:
             # Get or create coordinator
@@ -256,7 +256,7 @@ class JARVISNeuralMeshBridge:
             await self._coordinator.initialize()
 
             self._initialized = True
-            logger.info("JARVIS Neural Mesh Bridge initialized")
+            logger.info("Ironcliw Neural Mesh Bridge initialized")
             return True
 
         except Exception as e:
@@ -280,7 +280,7 @@ class JARVISNeuralMeshBridge:
             if self._running:
                 return True
 
-            logger.info("Starting JARVIS Neural Mesh Bridge...")
+            logger.info("Starting Ironcliw Neural Mesh Bridge...")
             self._metrics.started_at = datetime.utcnow()
 
             try:
@@ -303,7 +303,7 @@ class JARVISNeuralMeshBridge:
                 })
 
                 logger.info(
-                    "JARVIS Neural Mesh Bridge started: %d agents registered, %d failed",
+                    "Ironcliw Neural Mesh Bridge started: %d agents registered, %d failed",
                     len(self._adapters),
                     len(self._failed_agents),
                 )
@@ -321,7 +321,7 @@ class JARVISNeuralMeshBridge:
         if not self._running and not has_pending_startup and self._coordinator is None:
             return
 
-        logger.info("Stopping JARVIS Neural Mesh Bridge...")
+        logger.info("Stopping Ironcliw Neural Mesh Bridge...")
 
         try:
             # Cancel any pending startup tasks
@@ -337,14 +337,14 @@ class JARVISNeuralMeshBridge:
                 await self._coordinator.stop()
 
             self._running = False
-            logger.info("JARVIS Neural Mesh Bridge stopped")
+            logger.info("Ironcliw Neural Mesh Bridge stopped")
 
         except Exception as e:
             logger.error("Error stopping bridge: %s", e)
 
     async def _discover_and_register_agents(self) -> None:
         """Discover and register all available agents."""
-        logger.info("Discovering JARVIS agents...")
+        logger.info("Discovering Ironcliw agents...")
 
         discovery_tasks = []
 
@@ -522,7 +522,7 @@ class JARVISNeuralMeshBridge:
             Registered adapter or None on failure
 
         v251.3: Added per-agent timeout so one slow agent can't burn the entire
-        bridge budget.  Default 10s per agent (env: JARVIS_BRIDGE_AGENT_TIMEOUT).
+        bridge budget.  Default 10s per agent (env: Ironcliw_BRIDGE_AGENT_TIMEOUT).
         """
         # v250.2: Skip if already registered (idempotent discovery).
         # Prevents log spam when multiple init paths converge.
@@ -531,7 +531,7 @@ class JARVISNeuralMeshBridge:
             return self._adapters[name]
 
         # v251.3: Per-agent timeout — prevents one slow factory from starving others
-        agent_timeout = float(os.environ.get("JARVIS_BRIDGE_AGENT_TIMEOUT", "10.0"))
+        agent_timeout = float(os.environ.get("Ironcliw_BRIDGE_AGENT_TIMEOUT", "10.0"))
 
         retries = 0
         while retries <= self._config.max_retries:
@@ -897,11 +897,11 @@ class JARVISNeuralMeshBridge:
 # Global Bridge Instance
 # =============================================================================
 
-_global_bridge: Optional[JARVISNeuralMeshBridge] = None
+_global_bridge: Optional[IroncliwNeuralMeshBridge] = None
 
 
-async def get_jarvis_bridge() -> JARVISNeuralMeshBridge:
-    """Get or create the global JARVIS Neural Mesh Bridge.
+async def get_jarvis_bridge() -> IroncliwNeuralMeshBridge:
+    """Get or create the global Ironcliw Neural Mesh Bridge.
 
     Returns:
         The global bridge instance
@@ -909,13 +909,13 @@ async def get_jarvis_bridge() -> JARVISNeuralMeshBridge:
     global _global_bridge
 
     if _global_bridge is None:
-        _global_bridge = JARVISNeuralMeshBridge()
+        _global_bridge = IroncliwNeuralMeshBridge()
 
     return _global_bridge
 
 
-async def start_jarvis_neural_mesh() -> JARVISNeuralMeshBridge:
-    """Start the global JARVIS Neural Mesh Bridge.
+async def start_jarvis_neural_mesh() -> IroncliwNeuralMeshBridge:
+    """Start the global Ironcliw Neural Mesh Bridge.
 
     Returns:
         The started bridge instance
@@ -927,7 +927,7 @@ async def start_jarvis_neural_mesh() -> JARVISNeuralMeshBridge:
 
 
 async def stop_jarvis_neural_mesh() -> None:
-    """Stop the global JARVIS Neural Mesh Bridge."""
+    """Stop the global Ironcliw Neural Mesh Bridge."""
     global _global_bridge
 
     if _global_bridge:

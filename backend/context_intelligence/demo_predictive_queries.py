@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Demo Script for JARVIS Predictive Analytics Engine
+Demo Script for Ironcliw Predictive Analytics Engine
 ==================================================
 
 This demonstrates the predictive/analytical query system with various examples.
@@ -197,7 +197,7 @@ async def demo_with_vision():
 async def interactive_mode():
     """Run in interactive mode"""
     print("\n" + "=" * 80)
-    print("JARVIS Predictive Analytics - Interactive Mode")
+    print("Ironcliw Predictive Analytics - Interactive Mode")
     print("=" * 80)
     print("\nType your queries below (or 'quit' to exit)")
     print("Examples:")
@@ -278,7 +278,7 @@ def get_predictive_handler() -> PredictiveQueryHandler:
 
 async def main():
     """Main demo function"""
-    parser = argparse.ArgumentParser(description="Demo JARVIS Predictive Analytics")
+    parser = argparse.ArgumentParser(description="Demo Ironcliw Predictive Analytics")
     parser.add_argument(
         "--scenario",
         choices=["progress", "next_steps", "bugs", "workflow", "custom", "vision", "interactive", "all"],
@@ -297,7 +297,7 @@ async def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     print("=" * 80)
-    print("JARVIS Predictive Analytics Engine - Demo")
+    print("Ironcliw Predictive Analytics Engine - Demo")
     print("=" * 80)
     print("\nInitializing system...")
 

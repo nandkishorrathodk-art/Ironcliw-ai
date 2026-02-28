@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligent GCP VM Cost Optimizer
 Prevents unnecessary VM creation through advanced multi-factor analysis
 
@@ -604,7 +604,7 @@ class IntelligentGCPOptimizer:
     def _acquire_vm_creation_lock(self) -> bool:
         """
         Acquire exclusive lock for VM creation.
-        Prevents multiple JARVIS instances from creating VMs simultaneously.
+        Prevents multiple Ironcliw instances from creating VMs simultaneously.
 
         Returns: True if lock acquired, False otherwise
         """
@@ -636,7 +636,7 @@ class IntelligentGCPOptimizer:
 
         except BlockingIOError:
             # Another instance holds the lock
-            logger.warning(f"⚠️  VM creation lock held by another JARVIS instance")
+            logger.warning(f"⚠️  VM creation lock held by another Ironcliw instance")
             if self.lock_fd is not None:
                 try:
                     os.close(self.lock_fd)
@@ -685,12 +685,12 @@ class IntelligentGCPOptimizer:
             # Try to acquire lock before recommending VM creation
             if not self._acquire_vm_creation_lock():
                 logger.warning(
-                    "⚠️  Another JARVIS instance is creating a VM - skipping to prevent duplicate VMs"
+                    "⚠️  Another Ironcliw instance is creating a VM - skipping to prevent duplicate VMs"
                 )
                 score.gcp_recommended = False
                 score.gcp_urgent = False
                 score.reasoning = (
-                    "❌ VM creation blocked: Another JARVIS instance is already creating a VM. "
+                    "❌ VM creation blocked: Another Ironcliw instance is already creating a VM. "
                     "Only one VM creation at a time is allowed to prevent duplicate VMs and cost waste."
                 )
                 return False, score.reasoning, score

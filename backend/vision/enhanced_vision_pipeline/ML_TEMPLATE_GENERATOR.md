@@ -1,4 +1,4 @@
-# ML-Powered Template Generator
+﻿# ML-Powered Template Generator
 
 Advanced hybrid template generation system combining traditional Computer Vision with lightweight Deep Learning.
 
@@ -269,6 +269,6 @@ numpy>=1.24.0
 
 ## 📝 License
 
-Part of JARVIS AI Agent System
+Part of Ironcliw AI Agent System
 Author: Derek J. Russell
 Date: October 2025

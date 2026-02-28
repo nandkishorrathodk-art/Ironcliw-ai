@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced ML Engine Registry & Parallel Model Loader
 ====================================================
@@ -91,25 +91,31 @@ class MLConfig:
     """
 
     # Timeout configurations
-    PREWARM_TIMEOUT = float(os.getenv("JARVIS_ML_PREWARM_TIMEOUT", "180"))  # 3 minutes total
-    MODEL_LOAD_TIMEOUT = float(os.getenv("JARVIS_ML_MODEL_TIMEOUT", "120"))  # Per-model timeout
-    HEALTH_CHECK_INTERVAL = float(os.getenv("JARVIS_ML_HEALTH_INTERVAL", "30"))
+    PREWARM_TIMEOUT = float(os.getenv("Ironcliw_ML_PREWARM_TIMEOUT", "180"))  # 3 minutes total
+    MODEL_LOAD_TIMEOUT = float(os.getenv("Ironcliw_ML_MODEL_TIMEOUT", "120"))  # Per-model timeout
+    HEALTH_CHECK_INTERVAL = float(os.getenv("Ironcliw_ML_HEALTH_INTERVAL", "30"))
 
     # Parallel loading
-    MAX_PARALLEL_LOADS = int(os.getenv("JARVIS_ML_MAX_PARALLEL", "4"))
-    THREAD_POOL_SIZE = int(os.getenv("JARVIS_ML_THREAD_POOL", "4"))
+    MAX_PARALLEL_LOADS = int(os.getenv("Ironcliw_ML_MAX_PARALLEL", "4"))
+    THREAD_POOL_SIZE = int(os.getenv("Ironcliw_ML_THREAD_POOL", "4"))
 
     # Feature flags
-    ENABLE_WHISPER = os.getenv("JARVIS_ML_ENABLE_WHISPER", "true").lower() == "true"
-    ENABLE_ECAPA = os.getenv("JARVIS_ML_ENABLE_ECAPA", "true").lower() == "true"
-    ENABLE_VOSK = os.getenv("JARVIS_ML_ENABLE_VOSK", "false").lower() == "true"
-    ENABLE_SPEECHBRAIN_STT = os.getenv("JARVIS_ML_ENABLE_SPEECHBRAIN_STT", "true").lower() == "true"
+    # Auto-disable ECAPA and SpeechBrain STT when Ironcliw_AUTH_MODE=none (saves ~700MB RAM).
+    # These models are only needed for voice biometric authentication.
+    # Whisper is kept enabled — it handles voice command recognition.
+    _auth_mode_is_bypass = os.getenv("Ironcliw_AUTH_MODE", "none").strip().lower() in ("none", "")
+    ENABLE_WHISPER = os.getenv("Ironcliw_ML_ENABLE_WHISPER", "true").lower() == "true"
+    ENABLE_ECAPA = os.getenv("Ironcliw_ML_ENABLE_ECAPA",
+                             "false" if _auth_mode_is_bypass else "true").lower() == "true"
+    ENABLE_VOSK = os.getenv("Ironcliw_ML_ENABLE_VOSK", "false").lower() == "true"
+    ENABLE_SPEECHBRAIN_STT = os.getenv("Ironcliw_ML_ENABLE_SPEECHBRAIN_STT",
+                                       "false" if _auth_mode_is_bypass else "true").lower() == "true"
 
     # Skip prewarm (for fast dev restarts)
-    SKIP_PREWARM = os.getenv("JARVIS_SKIP_MODEL_PREWARM", "false").lower() == "true"
+    SKIP_PREWARM = os.getenv("Ironcliw_SKIP_MODEL_PREWARM", "false").lower() == "true"
 
     # Cache settings
-    CACHE_DIR = Path(os.getenv("JARVIS_ML_CACHE_DIR", str(Path.home() / ".cache" / "jarvis")))
+    CACHE_DIR = Path(os.getenv("Ironcliw_ML_CACHE_DIR", str(Path.home() / ".cache" / "jarvis")))
 
     # HuggingFace settings
     HF_OFFLINE_MODE = os.getenv("HF_HUB_OFFLINE", "0") == "1"
@@ -119,37 +125,37 @@ class MLConfig:
     # HYBRID CLOUD CONFIGURATION
     # Integrates with MemoryAwareStartup for automatic cloud routing
     # ==========================================================================
-    CLOUD_FIRST_MODE = os.getenv("JARVIS_CLOUD_FIRST_ML", "false").lower() == "true"
-    CLOUD_FALLBACK_ENABLED = os.getenv("JARVIS_CLOUD_FALLBACK", "true").lower() == "true"
+    CLOUD_FIRST_MODE = os.getenv("Ironcliw_CLOUD_FIRST_ML", "false").lower() == "true"
+    CLOUD_FALLBACK_ENABLED = os.getenv("Ironcliw_CLOUD_FALLBACK", "true").lower() == "true"
     CLOUD_API_FAILURE_BACKOFF_BASE = float(
-        os.getenv("JARVIS_CLOUD_API_FAILURE_BACKOFF_BASE", "20.0")
+        os.getenv("Ironcliw_CLOUD_API_FAILURE_BACKOFF_BASE", "20.0")
     )
     CLOUD_API_FAILURE_BACKOFF_MAX = float(
-        os.getenv("JARVIS_CLOUD_API_FAILURE_BACKOFF_MAX", "600.0")
+        os.getenv("Ironcliw_CLOUD_API_FAILURE_BACKOFF_MAX", "600.0")
     )
     CLOUD_API_FAILURE_STREAK_RESET = float(
-        os.getenv("JARVIS_CLOUD_API_FAILURE_STREAK_RESET", "300.0")
+        os.getenv("Ironcliw_CLOUD_API_FAILURE_STREAK_RESET", "300.0")
     )
     CLOUD_COOLDOWN_LOG_INTERVAL = float(
-        os.getenv("JARVIS_CLOUD_COOLDOWN_LOG_INTERVAL", "30.0")
+        os.getenv("Ironcliw_CLOUD_COOLDOWN_LOG_INTERVAL", "30.0")
     )
     CLOUD_ENDPOINT_FAILOVER_ENABLED = os.getenv(
-        "JARVIS_CLOUD_ENDPOINT_FAILOVER_ENABLED", "true"
+        "Ironcliw_CLOUD_ENDPOINT_FAILOVER_ENABLED", "true"
     ).lower() == "true"
     CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE = float(
-        os.getenv("JARVIS_CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE", "30.0")
+        os.getenv("Ironcliw_CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE", "30.0")
     )
     CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX = float(
-        os.getenv("JARVIS_CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX", "900.0")
+        os.getenv("Ironcliw_CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX", "900.0")
     )
 
     # RAM thresholds for automatic cloud routing (in GB)
-    RAM_THRESHOLD_LOCAL = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "6.0"))
-    RAM_THRESHOLD_CLOUD = float(os.getenv("JARVIS_RAM_THRESHOLD_CLOUD", "4.0"))
-    RAM_THRESHOLD_CRITICAL = float(os.getenv("JARVIS_RAM_THRESHOLD_CRITICAL", "2.0"))
+    RAM_THRESHOLD_LOCAL = float(os.getenv("Ironcliw_RAM_THRESHOLD_LOCAL", "6.0"))
+    RAM_THRESHOLD_CLOUD = float(os.getenv("Ironcliw_RAM_THRESHOLD_CLOUD", "4.0"))
+    RAM_THRESHOLD_CRITICAL = float(os.getenv("Ironcliw_RAM_THRESHOLD_CRITICAL", "2.0"))
 
     # Memory pressure threshold (0-100%)
-    MEMORY_PRESSURE_THRESHOLD = float(os.getenv("JARVIS_MEMORY_PRESSURE_THRESHOLD", "75.0"))
+    MEMORY_PRESSURE_THRESHOLD = float(os.getenv("Ironcliw_MEMORY_PRESSURE_THRESHOLD", "75.0"))
 
     @classmethod
     def to_dict(cls) -> Dict[str, Any]:
@@ -189,122 +195,49 @@ class MLConfig:
         Returns:
             (use_cloud, available_ram_gb, reason)
         """
+        import gc
+        import sys
+
         try:
-            import subprocess
-            import gc
-
-            # Get available RAM using macOS vm_stat
-            result = subprocess.run(
-                ["vm_stat"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-
-            if result.returncode == 0:
-                output = result.stdout
-                page_size = 16384  # macOS page size
-
-                # Parse vm_stat output
-                free_pages = 0
-                inactive_pages = 0
-                speculative_pages = 0
-
-                for line in output.split('\n'):
-                    if 'Pages free:' in line:
-                        free_pages = int(line.split(':')[1].strip().rstrip('.'))
-                    elif 'Pages inactive:' in line:
-                        inactive_pages = int(line.split(':')[1].strip().rstrip('.'))
-                    elif 'Pages speculative:' in line:
-                        speculative_pages = int(line.split(':')[1].strip().rstrip('.'))
-
-                # Calculate available RAM (free + inactive + speculative)
-                available_bytes = (free_pages + inactive_pages + speculative_pages) * page_size
-                available_gb = available_bytes / (1024 ** 3)
-                initial_available_gb = available_gb
-
-                # v95.0: Attempt memory relief if close to threshold
-                if attempt_relief and available_gb < cls.RAM_THRESHOLD_LOCAL and available_gb >= cls.RAM_THRESHOLD_CRITICAL * 0.8:
-                    logger.debug(f"[MLConfig] Attempting memory relief (have {available_gb:.1f}GB, need {cls.RAM_THRESHOLD_LOCAL:.1f}GB)")
-
-                    # Try garbage collection first
-                    gc.collect()
-
-                    # Try LocalMemoryFallback if available
-                    try:
-                        from backend.core.gcp_vm_manager import get_local_memory_fallback
-                        import asyncio
-
-                        fallback = get_local_memory_fallback()
-
-                        # Run async relief in sync context
-                        try:
-                            loop = asyncio.get_running_loop()
-                            # We're already in async context - can't run another event loop
-                            # Just trigger GC which was already done above
-                        except RuntimeError:
-                            # Not in async context - can run relief
-                            loop = asyncio.new_event_loop()
-                            try:
-                                loop.run_until_complete(
-                                    fallback.attempt_local_relief(target_free_mb=cls.RAM_THRESHOLD_LOCAL * 1024)
-                                )
-                            finally:
-                                loop.close()
-
-                    except Exception as relief_error:
-                        logger.debug(f"[MLConfig] Memory relief failed: {relief_error}")
-
-                    # Re-check memory after relief
-                    result2 = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
-                    if result2.returncode == 0:
-                        for line in result2.stdout.split('\n'):
-                            if 'Pages free:' in line:
-                                free_pages = int(line.split(':')[1].strip().rstrip('.'))
-                            elif 'Pages inactive:' in line:
-                                inactive_pages = int(line.split(':')[1].strip().rstrip('.'))
-                            elif 'Pages speculative:' in line:
-                                speculative_pages = int(line.split(':')[1].strip().rstrip('.'))
-
-                        available_bytes = (free_pages + inactive_pages + speculative_pages) * page_size
-                        available_gb = available_bytes / (1024 ** 3)
-
-                        if available_gb > initial_available_gb:
-                            logger.info(f"[MLConfig] Memory relief freed {(available_gb - initial_available_gb):.2f}GB")
-
-                # v95.0: Adaptive thresholds based on system total RAM
-                try:
-                    import psutil
-                    total_gb = psutil.virtual_memory().total / (1024 ** 3)
-
-                    # Scale thresholds for smaller systems
-                    if total_gb < 8:
-                        effective_local_threshold = max(cls.RAM_THRESHOLD_LOCAL * 0.5, 1.5)
-                        effective_critical_threshold = max(cls.RAM_THRESHOLD_CRITICAL * 0.5, 0.8)
-                    elif total_gb < 16:
-                        effective_local_threshold = max(cls.RAM_THRESHOLD_LOCAL * 0.75, 2.0)
-                        effective_critical_threshold = max(cls.RAM_THRESHOLD_CRITICAL * 0.75, 1.2)
-                    else:
-                        effective_local_threshold = cls.RAM_THRESHOLD_LOCAL
-                        effective_critical_threshold = cls.RAM_THRESHOLD_CRITICAL
-                except Exception:
-                    effective_local_threshold = cls.RAM_THRESHOLD_LOCAL
-                    effective_critical_threshold = cls.RAM_THRESHOLD_CRITICAL
-
-                # Decision logic with adaptive thresholds
-                if available_gb < effective_critical_threshold:
-                    return (True, available_gb, f"Critical RAM: {available_gb:.1f}GB < {effective_critical_threshold:.1f}GB")
-                elif available_gb < effective_local_threshold:
-                    return (True, available_gb, f"Low RAM: {available_gb:.1f}GB < {effective_local_threshold:.1f}GB")
-                else:
-                    return (False, available_gb, f"Sufficient RAM: {available_gb:.1f}GB >= {effective_local_threshold:.1f}GB")
-
+            import psutil
+            mem = psutil.virtual_memory()
+            available_gb = mem.available / (1024 ** 3)
+            total_gb = mem.total / (1024 ** 3)
         except Exception as e:
-            logger.warning(f"Failed to check memory pressure: {e}")
-            # Default to local if we can't check
+            logger.warning(f"[MLConfig] psutil memory check failed: {e}")
             return (False, 0.0, f"Memory check failed: {e}")
 
-        return (False, 0.0, "Unknown")
+        initial_available_gb = available_gb
+
+        # Attempt GC relief when close to threshold
+        if attempt_relief and available_gb < cls.RAM_THRESHOLD_LOCAL and available_gb >= cls.RAM_THRESHOLD_CRITICAL * 0.8:
+            logger.debug(f"[MLConfig] Attempting memory relief (have {available_gb:.1f}GB, need {cls.RAM_THRESHOLD_LOCAL:.1f}GB)")
+            gc.collect()
+            try:
+                mem2 = psutil.virtual_memory()
+                available_gb = mem2.available / (1024 ** 3)
+                if available_gb > initial_available_gb:
+                    logger.info(f"[MLConfig] GC freed {(available_gb - initial_available_gb):.2f}GB")
+            except Exception:
+                pass
+
+        # Scale thresholds for smaller systems
+        if total_gb < 8:
+            effective_local_threshold = max(cls.RAM_THRESHOLD_LOCAL * 0.5, 1.5)
+            effective_critical_threshold = max(cls.RAM_THRESHOLD_CRITICAL * 0.5, 0.8)
+        elif total_gb < 16:
+            effective_local_threshold = max(cls.RAM_THRESHOLD_LOCAL * 0.75, 2.0)
+            effective_critical_threshold = max(cls.RAM_THRESHOLD_CRITICAL * 0.75, 1.2)
+        else:
+            effective_local_threshold = cls.RAM_THRESHOLD_LOCAL
+            effective_critical_threshold = cls.RAM_THRESHOLD_CRITICAL
+
+        if available_gb < effective_critical_threshold:
+            return (True, available_gb, f"Critical RAM: {available_gb:.1f}GB < {effective_critical_threshold:.1f}GB")
+        elif available_gb < effective_local_threshold:
+            return (True, available_gb, f"Low RAM: {available_gb:.1f}GB < {effective_local_threshold:.1f}GB")
+        else:
+            return (False, available_gb, f"Sufficient RAM: {available_gb:.1f}GB >= {effective_local_threshold:.1f}GB")
 
 
 # =============================================================================
@@ -443,16 +376,16 @@ class CloudEmbeddingCircuitBreaker:
     Configuration driven by environment variables - no hardcoding.
     """
     failure_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_CLOUD_CB_FAILURES", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_CLOUD_CB_FAILURES", "3"))
     )
     recovery_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_CLOUD_CB_RECOVERY", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_CLOUD_CB_RECOVERY", "30.0"))
     )
     success_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_CLOUD_CB_SUCCESS", "2"))
+        default_factory=lambda: int(os.getenv("Ironcliw_CLOUD_CB_SUCCESS", "2"))
     )
     max_recovery_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_CLOUD_CB_MAX_RECOVERY", "600.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_CLOUD_CB_MAX_RECOVERY", "600.0"))
     )
 
     state: str = "CLOSED"
@@ -1087,7 +1020,7 @@ class WhisperWrapper(MLEngineWrapper):
 
     def __init__(self):
         super().__init__("whisper")
-        self._model_name = os.getenv("JARVIS_WHISPER_MODEL", "base.en")
+        self._model_name = os.getenv("Ironcliw_WHISPER_MODEL", "base.en")
 
     async def _load_impl(self) -> Any:
         """Load Whisper model."""
@@ -1233,11 +1166,11 @@ class MLEngineRegistry:
         self._cloud_endpoint_last_error: Dict[str, str] = {}
         self._cloud_failover_lock = LazyAsyncLock()
         self._cloud_embedding_route = self._normalize_cloud_route(
-            os.getenv("JARVIS_CLOUD_EMBEDDING_ROUTE", "/api/ml/speaker_embedding"),
+            os.getenv("Ironcliw_CLOUD_EMBEDDING_ROUTE", "/api/ml/speaker_embedding"),
             default="/api/ml/speaker_embedding",
         )
         self._cloud_verify_route = self._normalize_cloud_route(
-            os.getenv("JARVIS_CLOUD_VERIFY_ROUTE", "/api/ml/speaker_verify"),
+            os.getenv("Ironcliw_CLOUD_VERIFY_ROUTE", "/api/ml/speaker_verify"),
             default="/api/ml/speaker_verify",
         )
 
@@ -1275,7 +1208,7 @@ class MLEngineRegistry:
             )
             fallback = self._normalize_cloud_route(
                 os.getenv(
-                    "JARVIS_CLOUD_EMBEDDING_ROUTE_FALLBACK", "/speaker_embedding"
+                    "Ironcliw_CLOUD_EMBEDDING_ROUTE_FALLBACK", "/speaker_embedding"
                 ),
                 default="/speaker_embedding",
             )
@@ -1286,7 +1219,7 @@ class MLEngineRegistry:
             )
             fallback = self._normalize_cloud_route(
                 os.getenv(
-                    "JARVIS_CLOUD_VERIFY_ROUTE_FALLBACK", "/speaker_verify"
+                    "Ironcliw_CLOUD_VERIFY_ROUTE_FALLBACK", "/speaker_verify"
                 ),
                 default="/speaker_verify",
             )
@@ -1433,7 +1366,7 @@ class MLEngineRegistry:
             RegistryStatus with loading results
         """
         if MLConfig.SKIP_PREWARM:
-            logger.info("⏭️ Skipping ML prewarm (JARVIS_SKIP_MODEL_PREWARM=true)")
+            logger.info("⏭️ Skipping ML prewarm (Ironcliw_SKIP_MODEL_PREWARM=true)")
             self._status.prewarm_completed = True
             return self._status
 
@@ -1478,7 +1411,7 @@ class MLEngineRegistry:
                 else:
                     # Cloud failed - attempt local fallback
                     logger.warning(f"⚠️ Cloud backend not available: {cloud_reason}")
-                    fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
+                    fallback_enabled = os.getenv("Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
 
                     if fallback_enabled:
                         fallback_success = await self._fallback_to_local_ecapa(cloud_reason)
@@ -1534,7 +1467,7 @@ class MLEngineRegistry:
             else:
                 # Cloud failed - attempt local fallback despite memory pressure
                 logger.warning(f"⚠️ Cloud backend not available: {cloud_reason}")
-                fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
+                fallback_enabled = os.getenv("Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
 
                 if fallback_enabled:
                     logger.warning("⚠️ Attempting local ECAPA despite memory pressure...")
@@ -2047,7 +1980,7 @@ class MLEngineRegistry:
             elif self._startup_decision:
                 result = await startup_manager.activate_cloud_ml_backend()
                 if result.get("success") and result.get("ip"):
-                    _ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                    _ecapa_port = int(os.getenv("Ironcliw_ECAPA_PORT", "8015"))
                     candidates.append(
                         (
                             f"http://{result.get('ip')}:{_ecapa_port}",
@@ -2060,7 +1993,7 @@ class MLEngineRegistry:
             logger.debug(f"MemoryAwareStartup endpoint discovery failed: {e}")
 
         # 2) Endpoint list env overrides (highest explicit operator control).
-        for env_key in ("JARVIS_CLOUD_ECAPA_ENDPOINTS", "JARVIS_ML_CLOUD_ENDPOINTS"):
+        for env_key in ("Ironcliw_CLOUD_ECAPA_ENDPOINTS", "Ironcliw_ML_CLOUD_ENDPOINTS"):
             raw = os.getenv(env_key, "")
             if not raw:
                 continue
@@ -2072,15 +2005,15 @@ class MLEngineRegistry:
         # 3) Single endpoint env vars (operator-configured only; no hardcoded URL).
         for env_key, source in (
             ("ECAPA_CLOUD_RUN_URL", "cloud_run_env"),
-            ("JARVIS_CLOUD_ML_ENDPOINT", "jarvis_cloud_ml_endpoint"),
-            ("JARVIS_CLOUD_ECAPA_ENDPOINT", "jarvis_cloud_ecapa_endpoint"),
-            ("JARVIS_ML_CLOUD_ENDPOINT", "jarvis_ml_cloud_endpoint"),
+            ("Ironcliw_CLOUD_ML_ENDPOINT", "jarvis_cloud_ml_endpoint"),
+            ("Ironcliw_CLOUD_ECAPA_ENDPOINT", "jarvis_cloud_ecapa_endpoint"),
+            ("Ironcliw_ML_CLOUD_ENDPOINT", "jarvis_ml_cloud_endpoint"),
         ):
             endpoint = os.getenv(env_key, "").strip()
             if endpoint:
                 candidates.append((endpoint, source))
 
-        # 3.5) Cross-repo endpoint sharing (JARVIS Prime / Reactor Core).
+        # 3.5) Cross-repo endpoint sharing (Ironcliw Prime / Reactor Core).
         try:
             shared_state = await self._read_cross_repo_ecapa_state()
             if shared_state:
@@ -2093,7 +2026,7 @@ class MLEngineRegistry:
 
         # 4) Optional localhost fallbacks, but only if explicitly allowed.
         allow_local_fallback = os.getenv(
-            "JARVIS_CLOUD_ALLOW_LOCAL_ENDPOINTS", "false"
+            "Ironcliw_CLOUD_ALLOW_LOCAL_ENDPOINTS", "false"
         ).lower() in ("1", "true", "yes")
         if allow_local_fallback:
             try:
@@ -2145,7 +2078,7 @@ class MLEngineRegistry:
         prev_ts = self._cloud_endpoint_last_failure_at.get(normalized, 0.0)
         reset_window = max(
             MLConfig.CLOUD_API_FAILURE_STREAK_RESET,
-            float(os.getenv("JARVIS_CLOUD_ENDPOINT_FAILURE_RESET_SECONDS", "300.0")),
+            float(os.getenv("Ironcliw_CLOUD_ENDPOINT_FAILURE_RESET_SECONDS", "300.0")),
         )
         if prev_ts and (now - prev_ts) > reset_window:
             self._cloud_endpoint_failure_streak[normalized] = 0
@@ -2205,7 +2138,7 @@ class MLEngineRegistry:
 
             candidates = await self._discover_cloud_endpoint_candidates()
             probe_timeout = max(
-                1.0, float(os.getenv("JARVIS_CLOUD_FAILOVER_CONTRACT_TIMEOUT", "3.0"))
+                1.0, float(os.getenv("Ironcliw_CLOUD_FAILOVER_CONTRACT_TIMEOUT", "3.0"))
             )
             for endpoint, source in candidates:
                 normalized = endpoint.strip().rstrip("/")
@@ -2260,7 +2193,7 @@ class MLEngineRegistry:
         if not target:
             return False, "Cloud endpoint not configured"
 
-        ttl = max(5.0, float(os.getenv("JARVIS_CLOUD_CONTRACT_VERIFY_TTL", "180.0")))
+        ttl = max(5.0, float(os.getenv("Ironcliw_CLOUD_CONTRACT_VERIFY_TTL", "180.0")))
         now = time.time()
         if (
             not force
@@ -2271,7 +2204,7 @@ class MLEngineRegistry:
         ):
             return True, "Contract verification cached"
 
-        req_timeout = max(1.0, float(timeout or os.getenv("JARVIS_CLOUD_CONTRACT_TIMEOUT", "4.0")))
+        req_timeout = max(1.0, float(timeout or os.getenv("Ironcliw_CLOUD_CONTRACT_TIMEOUT", "4.0")))
         # v265.3: Extend timeout under CPU pressure. At 99.8% CPU, the
         # event loop barely gets time slices to process HTTP responses.
         # A 4s timeout measured under normal CPU is too aggressive when
@@ -2284,18 +2217,18 @@ class MLEngineRegistry:
                 req_timeout *= _cpu_factor
         except Exception:
             pass
-        probe_attempts = max(1, int(os.getenv("JARVIS_CLOUD_CONTRACT_ATTEMPTS", "2")))
-        probe_backoff = max(0.1, float(os.getenv("JARVIS_CLOUD_CONTRACT_BACKOFF_SECONDS", "0.35")))
+        probe_attempts = max(1, int(os.getenv("Ironcliw_CLOUD_CONTRACT_ATTEMPTS", "2")))
+        probe_backoff = max(0.1, float(os.getenv("Ironcliw_CLOUD_CONTRACT_BACKOFF_SECONDS", "0.35")))
         connect_timeout = max(
             0.5,
             min(
                 req_timeout,
-                float(os.getenv("JARVIS_CLOUD_CONTRACT_CONNECT_TIMEOUT", "2.0")),
+                float(os.getenv("Ironcliw_CLOUD_CONTRACT_CONNECT_TIMEOUT", "2.0")),
             ),
         )
         read_timeout = max(
             0.5,
-            float(os.getenv("JARVIS_CLOUD_CONTRACT_READ_TIMEOUT", str(req_timeout))),
+            float(os.getenv("Ironcliw_CLOUD_CONTRACT_READ_TIMEOUT", str(req_timeout))),
         )
         health_url = f"{target}/api/ml/health"
         embed_paths = self._cloud_route_candidates("embedding")
@@ -2424,7 +2357,7 @@ class MLEngineRegistry:
         try:
             candidates = await self._discover_cloud_endpoint_candidates()
             contract_timeout = max(
-                1.0, float(os.getenv("JARVIS_CLOUD_CONTRACT_TIMEOUT", "4.0"))
+                1.0, float(os.getenv("Ironcliw_CLOUD_CONTRACT_TIMEOUT", "4.0"))
             )
             for endpoint, source in candidates:
                 if not self._cloud_endpoint_probe_allowed(endpoint):
@@ -2495,8 +2428,8 @@ class MLEngineRegistry:
         3. Test extraction (optional) - verify ECAPA actually works
 
         Args:
-            timeout: Request timeout in seconds (default from env JARVIS_ECAPA_CLOUD_TIMEOUT)
-            retry_count: Number of retry attempts (default from env JARVIS_ECAPA_CLOUD_RETRIES)
+            timeout: Request timeout in seconds (default from env Ironcliw_ECAPA_CLOUD_TIMEOUT)
+            retry_count: Number of retry attempts (default from env Ironcliw_ECAPA_CLOUD_RETRIES)
             test_extraction: Actually test embedding extraction (default from env)
             wait_for_ecapa: Wait for ECAPA to become ready (default from env)
             ecapa_wait_timeout: Max time to wait for ECAPA ready (default from env)
@@ -2507,25 +2440,25 @@ class MLEngineRegistry:
         import aiohttp
 
         # v115.0: Configuration with intelligent defaults for Cloud Run cold start
-        timeout = timeout or float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "30.0"))
-        retry_count = retry_count or int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3"))
-        fallback_enabled = os.getenv("JARVIS_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
-        test_extraction = test_extraction if test_extraction is not None else os.getenv("JARVIS_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
+        timeout = timeout or float(os.getenv("Ironcliw_ECAPA_CLOUD_TIMEOUT", "30.0"))
+        retry_count = retry_count or int(os.getenv("Ironcliw_ECAPA_CLOUD_RETRIES", "3"))
+        fallback_enabled = os.getenv("Ironcliw_ECAPA_CLOUD_FALLBACK_ENABLED", "true").lower() == "true"
+        test_extraction = test_extraction if test_extraction is not None else os.getenv("Ironcliw_ECAPA_CLOUD_TEST_EXTRACTION", "true").lower() == "true"
 
         # v115.0: Wait for ECAPA with adaptive timeouts
-        wait_for_ecapa = wait_for_ecapa if wait_for_ecapa is not None else os.getenv("JARVIS_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
-        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("JARVIS_ECAPA_WAIT_TIMEOUT", "90.0"))  # Reduced from 120s - faster feedback
+        wait_for_ecapa = wait_for_ecapa if wait_for_ecapa is not None else os.getenv("Ironcliw_ECAPA_WAIT_FOR_READY", "true").lower() == "true"
+        ecapa_wait_timeout = ecapa_wait_timeout or float(os.getenv("Ironcliw_ECAPA_WAIT_TIMEOUT", "90.0"))  # Reduced from 120s - faster feedback
 
         # v115.0: Adaptive polling intervals
-        poll_interval_initial = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL_INITIAL", "2.0"))  # Fast initially
-        poll_interval_max = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL_MAX", "10.0"))  # Slow down over time
-        poll_interval_growth = float(os.getenv("JARVIS_ECAPA_POLL_INTERVAL_GROWTH", "1.5"))  # Growth factor
+        poll_interval_initial = float(os.getenv("Ironcliw_ECAPA_POLL_INTERVAL_INITIAL", "2.0"))  # Fast initially
+        poll_interval_max = float(os.getenv("Ironcliw_ECAPA_POLL_INTERVAL_MAX", "10.0"))  # Slow down over time
+        poll_interval_growth = float(os.getenv("Ironcliw_ECAPA_POLL_INTERVAL_GROWTH", "1.5"))  # Growth factor
 
         if not self._cloud_endpoint:
             return False, "Cloud endpoint not configured"
 
         base_url = self._cloud_endpoint.rstrip('/')
-        strict_contract = os.getenv("JARVIS_CLOUD_STRICT_CONTRACT", "true").lower() in (
+        strict_contract = os.getenv("Ironcliw_CLOUD_STRICT_CONTRACT", "true").lower() in (
             "1",
             "true",
             "yes",
@@ -2534,7 +2467,7 @@ class MLEngineRegistry:
         # =====================================================================
         # v115.0: CHECK CROSS-REPO STATE FIRST (Trinity Coordination)
         # =====================================================================
-        # If another repo (JARVIS Prime, Reactor Core) has recently verified
+        # If another repo (Ironcliw Prime, Reactor Core) has recently verified
         # Cloud ECAPA, we can skip our own verification and use their result.
         # This significantly speeds up Trinity startup when multiple repos
         # start simultaneously.
@@ -2563,7 +2496,7 @@ class MLEngineRegistry:
                 # Continue with our own verification - the other repo might have timed out
 
         contract_ok, contract_reason = await self._verify_cloud_endpoint_contract(
-            timeout=min(timeout, float(os.getenv("JARVIS_CLOUD_CONTRACT_TIMEOUT", "4.0"))),
+            timeout=min(timeout, float(os.getenv("Ironcliw_CLOUD_CONTRACT_TIMEOUT", "4.0"))),
             force=True,
         )
         if not contract_ok:
@@ -2585,8 +2518,8 @@ class MLEngineRegistry:
             "/health",                  # Standard health (fastest)
             "/api/ml/health",           # ML-specific health (has ecapa_ready)
             "/healthz",                 # Kubernetes/Cloud Run standard
-            "/api/voice-unlock/status", # JARVIS Voice Unlock API
-            "/v1/models",               # JARVIS-Prime/OpenAI compatible
+            "/api/voice-unlock/status", # Ironcliw Voice Unlock API
+            "/v1/models",               # Ironcliw-Prime/OpenAI compatible
         ]
 
         # Prevent self-deadlock if checking localhost during startup
@@ -2873,7 +2806,7 @@ class MLEngineRegistry:
         """
         v115.0: Write Cloud ECAPA health state for cross-repo coordination.
 
-        This allows JARVIS, JARVIS Prime, and Reactor Core to share the
+        This allows Ironcliw, Ironcliw Prime, and Reactor Core to share the
         Cloud ECAPA verification result, avoiding redundant verification
         attempts and improving startup time.
 
@@ -2922,7 +2855,7 @@ class MLEngineRegistry:
         """
         v115.0: Read Cloud ECAPA health state from cross-repo coordination file.
 
-        If another repo (JARVIS Prime, Reactor Core) has recently verified
+        If another repo (Ironcliw Prime, Reactor Core) has recently verified
         Cloud ECAPA, we can skip verification and use their result.
 
         Returns:
@@ -2941,7 +2874,7 @@ class MLEngineRegistry:
 
             # Check if state is recent (< 60 seconds old)
             state_age = time.time() - state.get("timestamp", 0)
-            max_age = float(os.getenv("JARVIS_ECAPA_STATE_MAX_AGE", "60.0"))
+            max_age = float(os.getenv("Ironcliw_ECAPA_STATE_MAX_AGE", "60.0"))
 
             if state_age > max_age:
                 logger.debug(f"[v115.0] Cross-repo ECAPA state too old ({state_age:.1f}s > {max_age}s)")
@@ -2984,7 +2917,7 @@ class MLEngineRegistry:
 
         # Attempt to load ECAPA locally
         try:
-            timeout = float(os.getenv("JARVIS_ECAPA_LOCAL_TIMEOUT", "60.0"))
+            timeout = float(os.getenv("Ironcliw_ECAPA_LOCAL_TIMEOUT", "60.0"))
             success = await ecapa_engine.load(timeout=timeout)
 
             if success:
@@ -3022,8 +2955,8 @@ class MLEngineRegistry:
         endpoint_candidate = self._cloud_endpoint
         if not endpoint_candidate:
             endpoint_candidate = os.getenv(
-                "JARVIS_CLOUD_ECAPA_ENDPOINT",
-                os.getenv("JARVIS_ML_CLOUD_ENDPOINT", None),
+                "Ironcliw_CLOUD_ECAPA_ENDPOINT",
+                os.getenv("Ironcliw_ML_CLOUD_ENDPOINT", None),
             )
 
         if not endpoint_candidate:
@@ -3048,7 +2981,7 @@ class MLEngineRegistry:
 
         if not self._cloud_endpoint:
             logger.error("❌ No cloud endpoint available for fallback")
-            logger.error("   Set JARVIS_CLOUD_ECAPA_ENDPOINT environment variable")
+            logger.error("   Set Ironcliw_CLOUD_ECAPA_ENDPOINT environment variable")
             return False
 
         logger.info(f"   Cloud endpoint: {self._cloud_endpoint}")
@@ -3060,8 +2993,8 @@ class MLEngineRegistry:
         # Verify the cloud backend is actually ready
         try:
             cloud_ready, verify_msg = await self._verify_cloud_backend_ready(
-                timeout=float(os.getenv("JARVIS_ECAPA_CLOUD_TIMEOUT", "15.0")),
-                retry_count=int(os.getenv("JARVIS_ECAPA_CLOUD_RETRIES", "3")),
+                timeout=float(os.getenv("Ironcliw_ECAPA_CLOUD_TIMEOUT", "15.0")),
+                retry_count=int(os.getenv("Ironcliw_ECAPA_CLOUD_RETRIES", "3")),
                 test_extraction=True  # Always test extraction for fallback
             )
 
@@ -3263,7 +3196,7 @@ class MLEngineRegistry:
 
         cloud_verified = self._cloud_verified
         cloud_last_verified = self._cloud_last_verified
-        verify_ttl = float(os.getenv("JARVIS_CLOUD_VERIFY_TTL", "300"))
+        verify_ttl = float(os.getenv("Ironcliw_CLOUD_VERIFY_TTL", "300"))
         verification_stale = (
             (time.time() - cloud_last_verified) > verify_ttl
             if cloud_last_verified else True
@@ -3279,7 +3212,7 @@ class MLEngineRegistry:
                 return False
 
             contract_ok, contract_reason = await self._verify_cloud_endpoint_contract(
-                timeout=float(os.getenv("JARVIS_CLOUD_CONTRACT_TIMEOUT", "4.0")),
+                timeout=float(os.getenv("Ironcliw_CLOUD_CONTRACT_TIMEOUT", "4.0")),
                 force=False,
             )
             if not contract_ok:
@@ -3297,7 +3230,7 @@ class MLEngineRegistry:
                 return True
 
             # Quick single-shot health check (not the full polling verifier)
-            quick_timeout = float(os.getenv("JARVIS_CLOUD_QUICK_HEALTH_TIMEOUT", "3.0"))
+            quick_timeout = float(os.getenv("Ironcliw_CLOUD_QUICK_HEALTH_TIMEOUT", "3.0"))
             try:
                 import aiohttp
                 health_url = f"{self._cloud_endpoint.rstrip('/')}/api/ml/health"
@@ -3323,7 +3256,7 @@ class MLEngineRegistry:
                             )
                             if retry_after <= 0:
                                 retry_after = float(
-                                    os.getenv("JARVIS_CLOUD_NOT_READY_COOLDOWN_SECONDS", "5.0")
+                                    os.getenv("Ironcliw_CLOUD_NOT_READY_COOLDOWN_SECONDS", "5.0")
                                 )
                             self._apply_cloud_retry_after(
                                 retry_after,
@@ -3349,7 +3282,7 @@ class MLEngineRegistry:
                         )
                         if retry_after <= 0 and response.status in (408, 425, 429):
                             retry_after = float(
-                                os.getenv("JARVIS_CLOUD_NOT_READY_COOLDOWN_SECONDS", "5.0")
+                                os.getenv("Ironcliw_CLOUD_NOT_READY_COOLDOWN_SECONDS", "5.0")
                             )
                         self._apply_cloud_retry_after(
                             retry_after,
@@ -3401,7 +3334,7 @@ class MLEngineRegistry:
             import aiohttp
             import base64
             import numpy as np
-            strict_contract = os.getenv("JARVIS_CLOUD_STRICT_CONTRACT", "true").lower() in (
+            strict_contract = os.getenv("Ironcliw_CLOUD_STRICT_CONTRACT", "true").lower() in (
                 "1",
                 "true",
                 "yes",
@@ -3700,7 +3633,7 @@ class MLEngineRegistry:
             import aiohttp
             import base64
             import numpy as np
-            strict_contract = os.getenv("JARVIS_CLOUD_STRICT_CONTRACT", "true").lower() in (
+            strict_contract = os.getenv("Ironcliw_CLOUD_STRICT_CONTRACT", "true").lower() in (
                 "1",
                 "true",
                 "yes",
@@ -4210,6 +4143,11 @@ async def ensure_ecapa_available(
     """
     global _registry
 
+    # Fast-exit: ECAPA disabled (AUTH_MODE=none or explicit env flag)
+    if not MLConfig.ENABLE_ECAPA:
+        logger.info("⚡ [ENSURE_ECAPA] ECAPA disabled (AUTH_MODE bypass) — skipping load")
+        return True, "ECAPA disabled — auth bypass mode", None
+
     start_time = time.time()
     logger.info("🔍 [ENSURE_ECAPA] Starting ECAPA availability check...")
 
@@ -4226,14 +4164,14 @@ async def ensure_ecapa_available(
             return True, "Cloud ECAPA available", None
         else:
             # v236.1: Only attempt verification if an endpoint is actually configured.
-            # _activate_cloud_routing() should guarantee this, but guard defensively
-            # to prevent spurious "Cloud endpoint not configured" warnings.
+            # Reduced initial timeout to 4.0s for faster startup — the polling loop
+            # will continue verification in the background if it's just slow.
             _has_endpoint = bool(getattr(registry, '_cloud_endpoint', None))
             if _has_endpoint and hasattr(registry, '_verify_cloud_backend_ready'):
                 # Cloud mode but not verified - try to verify
-                logger.info("🔄 [ENSURE_ECAPA] Cloud mode active but not verified, checking...")
+                logger.info("🔄 [ENSURE_ECAPA] Cloud mode active but not verified, checking (4s max)...")
                 verified, verify_msg = await registry._verify_cloud_backend_ready(
-                    timeout=min(10.0, timeout / 2),
+                    timeout=min(4.0, timeout / 2),
                     test_extraction=True,
                 )
                 if verified:
@@ -4257,18 +4195,29 @@ async def ensure_ecapa_available(
         return True, "Local ECAPA available", ecapa_wrapper.get_engine()
 
     # Step 4: Need to load ECAPA - trigger prewarm if not already running
-    logger.info("🔄 [ENSURE_ECAPA] ECAPA not loaded, triggering load...")
+    # Move this BEFORE the loop to ensure background tasks start immediately.
+    logger.info("🔄 [ENSURE_ECAPA] Local ECAPA check/load sequence started...")
+
+    # Fast-check for missing speechbrain on Windows to avoid queuing a failing task
+    if sys.platform == "win32":
+        try:
+            import speechbrain  # noqa: F401
+        except ImportError:
+            logger.warning("⚡ [ENSURE_ECAPA] speechbrain missing on Windows — FAST-FAIL local path")
+            # If cloud also failed/unverified, we can fail the whole function in Step 5 loop
+            if ecapa_wrapper:
+                ecapa_wrapper.metrics.state = EngineState.ERROR
+                ecapa_wrapper.metrics.last_error = "speechbrain not installed"
 
     # Check if prewarm is already running
     if registry.is_warming_up:
         logger.info("   Prewarm already in progress, waiting...")
     else:
         # Trigger ECAPA load specifically
-        if ecapa_wrapper:
+        if ecapa_wrapper and not ecapa_wrapper.is_loaded:
             try:
                 # Load ECAPA engine directly
-                load_task = asyncio.create_task(ecapa_wrapper.load())
-                # Don't await here, we'll wait in the loop below
+                asyncio.create_task(ecapa_wrapper.load())
             except Exception as e:
                 logger.warning(f"   Failed to trigger ECAPA load: {e}")
 

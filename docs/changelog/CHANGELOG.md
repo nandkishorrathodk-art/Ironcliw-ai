@@ -1,10 +1,10 @@
-# JARVIS AI Agent Changelog
+﻿# Ironcliw AI Agent Changelog
 
 ## v3.8.0 - Async Vision & Timeout Protection (2025-11-26)
 
 ### 🛡️ Major Stability Improvements
 
-This release fixes critical blocking issues that could cause JARVIS to hang indefinitely when processing vision queries like "can you see my screen?" or "what's happening across my workspaces?"
+This release fixes critical blocking issues that could cause Ironcliw to hang indefinitely when processing vision queries like "can you see my screen?" or "what's happening across my workspaces?"
 
 #### ✅ Bug Fixes
 - **Fixed**: "Can you see my screen?" queries no longer hang indefinitely

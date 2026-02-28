@@ -1,8 +1,8 @@
-# Screen Sharing Integration with Claude Vision
+﻿# Screen Sharing Integration with Claude Vision
 
 ## Overview
 
-JARVIS now supports continuous screen monitoring using macOS native capabilities combined with Claude Vision. This allows JARVIS to:
+Ironcliw now supports continuous screen monitoring using macOS native capabilities combined with Claude Vision. This allows Ironcliw to:
 - Always see what's on your screen
 - Provide proactive assistance
 - Handle window switching gracefully
@@ -34,7 +34,7 @@ JARVIS now supports continuous screen monitoring using macOS native capabilities
 
 ### Continuous Monitoring
 ```python
-# JARVIS continuously monitors your screen
+# Ironcliw continuously monitors your screen
 analyzer = ContinuousScreenAnalyzer(vision_handler)
 await analyzer.start_monitoring()
 
@@ -80,7 +80,7 @@ analyzer.register_callback('error_detected', on_error_detected)
 
 ### Enable Screen Sharing
 ```python
-# In your JARVIS configuration
+# In your Ironcliw configuration
 ENABLE_SCREEN_SHARING = True
 SCREEN_UPDATE_INTERVAL = 2.0  # seconds
 ```
@@ -164,4 +164,4 @@ swift build -c release
 
 ## Conclusion
 
-Screen sharing with Claude Vision makes JARVIS truly aware of your digital environment, enabling natural interactions regardless of window focus or application switching.
+Screen sharing with Claude Vision makes Ironcliw truly aware of your digital environment, enabling natural interactions regardless of window focus or application switching.

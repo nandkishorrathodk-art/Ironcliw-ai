@@ -1,7 +1,7 @@
-# Port 8010 Update Summary
+﻿# Port 8010 Update Summary
 
 ## What Changed
-We've updated JARVIS backend to use port 8010 as the default (previously 8000) to match the frontend WebSocket expectations.
+We've updated Ironcliw backend to use port 8010 as the default (previously 8000) to match the frontend WebSocket expectations.
 
 ## Files Updated
 
@@ -22,7 +22,7 @@ We've updated JARVIS backend to use port 8010 as the default (previously 8000) t
    - Updated to use port 8010
    - Shows WebSocket URL
 
-## How to Start JARVIS
+## How to Start Ironcliw
 
 ### Option 1: Simple Start (Recommended)
 ```bash
@@ -48,7 +48,7 @@ python main.py --port 8010
 1. Start the backend using any method above
 2. You should see:
    ```
-   🚀 Starting JARVIS Backend
+   🚀 Starting Ironcliw Backend
       HTTP:      http://localhost:8010
       WebSocket: ws://localhost:8010/ws
       API Docs:  http://localhost:8010/docs

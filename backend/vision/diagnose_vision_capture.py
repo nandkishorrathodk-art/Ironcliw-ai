@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Diagnostic script to test vision capture and analysis in real-time
-Tests if JARVIS can actually see and understand the screen
+Tests if Ironcliw can actually see and understand the screen
 """
 
 import asyncio
@@ -178,7 +178,7 @@ async def test_swift_integration():
 async def diagnose_vision_system():
     """Full diagnostic of the vision system"""
     print("="*60)
-    print("🏥 JARVIS Vision System Diagnostic")
+    print("🏥 Ironcliw Vision System Diagnostic")
     print("="*60)
     
     # Check environment
@@ -221,7 +221,7 @@ async def diagnose_vision_system():
     
     if all_ok:
         print("✅ Vision system is working properly!")
-        print("\nYour JARVIS should be able to see and analyze the screen.")
+        print("\nYour Ironcliw should be able to see and analyze the screen.")
     else:
         print("❌ Vision system has issues:")
         if not api_key:
@@ -238,7 +238,7 @@ async def diagnose_vision_system():
         print("  1. Fix the issues listed above")
         print("  2. Run this diagnostic again")
     print("  3. Test with: python test_enhanced_vision_integration.py")
-    print("  4. Check logs in your JARVIS interface")
+    print("  4. Check logs in your Ironcliw interface")
 
 if __name__ == "__main__":
     asyncio.run(diagnose_vision_system())

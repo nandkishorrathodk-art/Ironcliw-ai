@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Multi-Space Capture Engine for JARVIS Vision System
+Multi-Space Capture Engine for Ironcliw Vision System
 Implements comprehensive multi-space screenshot capture with intelligent caching and performance optimization
 According to PRD requirements FR-1 and NFR-1
 """
@@ -837,7 +837,7 @@ class MultiSpaceCaptureEngine:
                         "Screencapture failed with code 1 (no stderr). This usually "
                         "means Screen Recording permission is not granted. Grant it "
                         "in System Settings → Privacy & Security → Screen Recording, "
-                        "then restart JARVIS."
+                        "then restart Ironcliw."
                     )
                 else:
                     logger.error(

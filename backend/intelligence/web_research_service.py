@@ -1,4 +1,4 @@
-"""
+﻿"""
 Structured Web Research Service
 ===============================
 
@@ -76,25 +76,25 @@ def _env_list(name: str) -> List[str]:
 class WebResearchConfig:
     """Configuration for web research service behavior."""
 
-    max_results_per_query: int = _env_int("JARVIS_WEBSEARCH_MAX_RESULTS", 8, minimum=1)
-    max_sources_per_report: int = _env_int("JARVIS_WEBSEARCH_MAX_SOURCES", 5, minimum=1)
-    max_parallel_reads: int = _env_int("JARVIS_WEBSEARCH_MAX_PARALLEL_READS", 4, minimum=1)
-    max_page_chars: int = _env_int("JARVIS_WEBSEARCH_MAX_PAGE_CHARS", 12000, minimum=500)
-    max_summary_points: int = _env_int("JARVIS_WEBSEARCH_MAX_SUMMARY_POINTS", 8, minimum=1)
-    request_timeout_seconds: float = _env_float("JARVIS_WEBSEARCH_REQUEST_TIMEOUT", 20.0, minimum=1.0)
-    connect_timeout_seconds: float = _env_float("JARVIS_WEBSEARCH_CONNECT_TIMEOUT", 6.0, minimum=0.5)
-    use_ouroboros_backend: bool = _env_bool("JARVIS_WEBSEARCH_USE_OUROBOROS_BACKEND", True)
-    allow_private_networks: bool = _env_bool("JARVIS_WEBSEARCH_ALLOW_PRIVATE_NETWORKS", False)
-    dns_rebind_protection: bool = _env_bool("JARVIS_WEBSEARCH_DNS_REBIND_PROTECTION", True)
+    max_results_per_query: int = _env_int("Ironcliw_WEBSEARCH_MAX_RESULTS", 8, minimum=1)
+    max_sources_per_report: int = _env_int("Ironcliw_WEBSEARCH_MAX_SOURCES", 5, minimum=1)
+    max_parallel_reads: int = _env_int("Ironcliw_WEBSEARCH_MAX_PARALLEL_READS", 4, minimum=1)
+    max_page_chars: int = _env_int("Ironcliw_WEBSEARCH_MAX_PAGE_CHARS", 12000, minimum=500)
+    max_summary_points: int = _env_int("Ironcliw_WEBSEARCH_MAX_SUMMARY_POINTS", 8, minimum=1)
+    request_timeout_seconds: float = _env_float("Ironcliw_WEBSEARCH_REQUEST_TIMEOUT", 20.0, minimum=1.0)
+    connect_timeout_seconds: float = _env_float("Ironcliw_WEBSEARCH_CONNECT_TIMEOUT", 6.0, minimum=0.5)
+    use_ouroboros_backend: bool = _env_bool("Ironcliw_WEBSEARCH_USE_OUROBOROS_BACKEND", True)
+    allow_private_networks: bool = _env_bool("Ironcliw_WEBSEARCH_ALLOW_PRIVATE_NETWORKS", False)
+    dns_rebind_protection: bool = _env_bool("Ironcliw_WEBSEARCH_DNS_REBIND_PROTECTION", True)
     user_agent: str = os.getenv(
-        "JARVIS_WEBSEARCH_USER_AGENT",
-        "JARVIS-WebResearch/1.0 (+https://jarvis.local)",
+        "Ironcliw_WEBSEARCH_USER_AGENT",
+        "Ironcliw-WebResearch/1.0 (+https://jarvis.local)",
     )
     allowed_domains: List[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.allowed_domains is None:
-            self.allowed_domains = [domain.lower() for domain in _env_list("JARVIS_WEBSEARCH_ALLOWED_DOMAINS")]
+            self.allowed_domains = [domain.lower() for domain in _env_list("Ironcliw_WEBSEARCH_ALLOWED_DOMAINS")]
 
 
 class WebResearchService:

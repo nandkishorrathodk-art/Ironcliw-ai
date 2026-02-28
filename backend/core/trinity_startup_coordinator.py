@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Startup Coordinator v81.0 - Dependency-Based Component Startup
 ======================================================================
 
 Coordinates startup of Trinity components with proper dependency resolution:
-- JARVIS Body must be ready before launching J-Prime and Reactor-Core
+- Ironcliw Body must be ready before launching J-Prime and Reactor-Core
 - Health monitor must start before system is marked ready
 - Each component's readiness is verified via heartbeat + PID
 
@@ -16,9 +16,9 @@ FEATURES:
 
 STARTUP PHASES:
     1. INFRASTRUCTURE - IPC bus, directories, locks
-    2. JARVIS_BODY    - Main JARVIS (must be first)
-    3. CORE_SERVICES  - Internal JARVIS services
-    4. JARVIS_PRIME   - J-Prime Mind (depends on Body)
+    2. Ironcliw_BODY    - Main Ironcliw (must be first)
+    3. CORE_SERVICES  - Internal Ironcliw services
+    4. Ironcliw_PRIME   - J-Prime Mind (depends on Body)
     5. REACTOR_CORE   - Reactor-Core Nerves (depends on Body)
     6. HEALTH_MONITOR - Health monitoring (after all components)
     7. READY          - System fully ready
@@ -29,7 +29,7 @@ ZERO HARDCODING - All configuration via environment variables:
     TRINITY_STARTUP_PHASE_TIMEOUT       - Per-phase timeout (default: 120s)
     TRINITY_READINESS_POLL_INTERVAL     - Polling interval (default: 0.5s)
 
-Author: JARVIS v81.0
+Author: Ironcliw v81.0
 """
 
 from __future__ import annotations
@@ -102,9 +102,9 @@ def _env_bool(key: str, default: bool) -> bool:
 class StartupPhase(IntEnum):
     """Phases of Trinity startup in order."""
     INFRASTRUCTURE = 1
-    JARVIS_BODY = 2
+    Ironcliw_BODY = 2
     CORE_SERVICES = 3
-    JARVIS_PRIME = 4
+    Ironcliw_PRIME = 4
     REACTOR_CORE = 5
     HEALTH_MONITOR = 6
     READY = 7
@@ -162,8 +162,8 @@ class StartupConfig:
     def get_timeout(self, component: ComponentType) -> float:
         """Get timeout for a component."""
         timeouts = {
-            ComponentType.JARVIS_BODY: self.body_timeout,
-            ComponentType.JARVIS_PRIME: self.jprime_timeout,
+            ComponentType.Ironcliw_BODY: self.body_timeout,
+            ComponentType.Ironcliw_PRIME: self.jprime_timeout,
             ComponentType.REACTOR_CORE: self.reactor_timeout,
             ComponentType.CODING_COUNCIL: 30.0,
         }
@@ -192,21 +192,21 @@ class ComponentDependency:
 # Default startup order with dependencies
 DEFAULT_STARTUP_ORDER: List[ComponentDependency] = [
     ComponentDependency(
-        component=ComponentType.JARVIS_BODY,
-        phase=StartupPhase.JARVIS_BODY,
+        component=ComponentType.Ironcliw_BODY,
+        phase=StartupPhase.Ironcliw_BODY,
         dependencies=[],
         required=True,
     ),
     ComponentDependency(
-        component=ComponentType.JARVIS_PRIME,
-        phase=StartupPhase.JARVIS_PRIME,
-        dependencies=[ComponentType.JARVIS_BODY],
+        component=ComponentType.Ironcliw_PRIME,
+        phase=StartupPhase.Ironcliw_PRIME,
+        dependencies=[ComponentType.Ironcliw_BODY],
         required=False,  # Optional - system works without Mind
     ),
     ComponentDependency(
         component=ComponentType.REACTOR_CORE,
         phase=StartupPhase.REACTOR_CORE,
-        dependencies=[ComponentType.JARVIS_BODY],
+        dependencies=[ComponentType.Ironcliw_BODY],
         required=False,  # Optional - system works without Nerves
     ),
 ]
@@ -280,7 +280,7 @@ class TrinityStartupCoordinator:
     Coordinates Trinity component startup with dependency resolution.
 
     Ensures:
-    1. JARVIS Body is ready before launching J-Prime/Reactor-Core
+    1. Ironcliw Body is ready before launching J-Prime/Reactor-Core
     2. Each component's readiness is verified via heartbeat + PID
     3. Health monitor starts AFTER all components are launched
     4. System ready event is emitted only after health monitor is running
@@ -290,7 +290,7 @@ class TrinityStartupCoordinator:
 
         # Define launchers for each component
         launchers = {
-            ComponentType.JARVIS_PRIME: launch_jprime_async,
+            ComponentType.Ironcliw_PRIME: launch_jprime_async,
             ComponentType.REACTOR_CORE: launch_reactor_async,
         }
 
@@ -357,25 +357,25 @@ class TrinityStartupCoordinator:
                 await on_phase_complete(self._current_phase)
             result.phase_reached = self._current_phase
 
-            # Phase 2: JARVIS Body (verify it's ready)
-            self._current_phase = StartupPhase.JARVIS_BODY
-            logger.info("[StartupCoordinator] Phase 2: Verifying JARVIS Body")
+            # Phase 2: Ironcliw Body (verify it's ready)
+            self._current_phase = StartupPhase.Ironcliw_BODY
+            logger.info("[StartupCoordinator] Phase 2: Verifying Ironcliw Body")
 
             # Start heartbeat publishing for Body
-            await start_heartbeat_publishing(ComponentType.JARVIS_BODY)
+            await start_heartbeat_publishing(ComponentType.Ironcliw_BODY)
 
             # Wait for Body to be ready (internal check)
             body_result = await self._wait_for_body_ready()
-            result.components[ComponentType.JARVIS_BODY] = body_result
+            result.components[ComponentType.Ironcliw_BODY] = body_result
 
             if not body_result.success:
-                result.errors.append("JARVIS Body failed to become ready")
+                result.errors.append("Ironcliw Body failed to become ready")
                 return result
 
             if on_phase_complete:
                 await on_phase_complete(self._current_phase)
             if on_component_ready:
-                await on_component_ready(ComponentType.JARVIS_BODY)
+                await on_component_ready(ComponentType.Ironcliw_BODY)
             result.phase_reached = self._current_phase
 
             # Phase 3: Core Services (placeholder for internal services)
@@ -423,25 +423,25 @@ class TrinityStartupCoordinator:
         return result
 
     async def _wait_for_body_ready(self) -> ComponentStartResult:
-        """Wait for JARVIS Body to be ready."""
+        """Wait for Ironcliw Body to be ready."""
         result = ComponentStartResult(
-            component=ComponentType.JARVIS_BODY,
+            component=ComponentType.Ironcliw_BODY,
             success=False,
             start_time=time.time(),
         )
 
-        # JARVIS Body is "us" - mark as ready after warmup
+        # Ironcliw Body is "us" - mark as ready after warmup
         await asyncio.sleep(2.0)  # Brief warmup
 
         result.success = True
         result.ready_time = time.time()
         result.pid = os.getpid()
 
-        self._component_status[ComponentType.JARVIS_BODY] = ComponentStatus.READY
-        self._component_pids[ComponentType.JARVIS_BODY] = os.getpid()
+        self._component_status[ComponentType.Ironcliw_BODY] = ComponentStatus.READY
+        self._component_pids[ComponentType.Ironcliw_BODY] = os.getpid()
 
         logger.info(
-            f"[StartupCoordinator] JARVIS Body ready "
+            f"[StartupCoordinator] Ironcliw Body ready "
             f"(PID {os.getpid()}, {result.startup_duration:.1f}s)"
         )
 
@@ -456,7 +456,7 @@ class TrinityStartupCoordinator:
     ) -> None:
         """Launch optional components (J-Prime and Reactor-Core)."""
         optional_components = [
-            (ComponentType.JARVIS_PRIME, StartupPhase.JARVIS_PRIME),
+            (ComponentType.Ironcliw_PRIME, StartupPhase.Ironcliw_PRIME),
             (ComponentType.REACTOR_CORE, StartupPhase.REACTOR_CORE),
         ]
 

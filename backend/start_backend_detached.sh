@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Start backend in detached mode
 
 cd "$(dirname "$0")"
@@ -8,7 +8,7 @@ pkill -f "uvicorn main:app" || true
 pkill -f "python.*start_backend" || true
 
 # Start backend in background
-echo "Starting JARVIS backend..."
+echo "Starting Ironcliw backend..."
 nohup python start_backend.py > backend.log 2>&1 &
 BACKEND_PID=$!
 

@@ -1,8 +1,8 @@
-# JARVIS Adaptive Clicker Capabilities - Complete Guide
+﻿# Ironcliw Adaptive Clicker Capabilities - Complete Guide
 
 ## Executive Summary
 
-JARVIS uses an **intelligent clicker hierarchy** that can **automatically adapt** when UI elements move or the environment changes. Currently using **SAI-Enhanced Clicker** which provides real-time adaptation without manual intervention.
+Ironcliw uses an **intelligent clicker hierarchy** that can **automatically adapt** when UI elements move or the environment changes. Currently using **SAI-Enhanced Clicker** which provides real-time adaptation without manual intervention.
 
 ---
 
@@ -31,7 +31,7 @@ JARVIS uses an **intelligent clicker hierarchy** that can **automatically adapt*
 ### 1. UAE-Enhanced Clicker (Tier 1 - NOT ACTIVE)
 
 **What It Would Add:**
-- **Cross-System Context**: Knows what you're doing across all JARVIS systems
+- **Cross-System Context**: Knows what you're doing across all Ironcliw systems
 - **Predictive Positioning**: Predicts where UI will be based on usage patterns
 - **Multi-Agent Coordination**: Shares learned coordinates with other UAE components
 - **Global State Awareness**: Understands display connections in broader context
@@ -45,7 +45,7 @@ uae = get_uae()
 ```
 
 **How to Enable:**
-- Would need to initialize UAE at JARVIS startup
+- Would need to initialize UAE at Ironcliw startup
 - Currently UAE exists but isn't being used for display connections
 
 ---
@@ -551,4 +551,4 @@ Then the factory would select UAE-Enhanced instead of SAI-Enhanced.
 
 ### Bottom Line
 
-Your JARVIS display connection is **highly adaptive** and **self-healing**. If UI elements move or the environment changes, it automatically detects and adjusts within seconds. The hardcoded coordinates are just the **fastest fallback** in a sophisticated detection system.
+Your Ironcliw display connection is **highly adaptive** and **self-healing**. If UI elements move or the environment changes, it automatically detects and adjusts within seconds. The hardcoded coordinates are just the **fastest fallback** in a sophisticated detection system.

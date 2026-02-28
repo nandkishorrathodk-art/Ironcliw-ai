@@ -1,4 +1,4 @@
-# Voice Unlock Enrollment UI Design Specification
+﻿# Voice Unlock Enrollment UI Design Specification
 
 ## Overview
 SwiftUI-based enrollment interface with real-time audio visualization, dynamic feedback, and progressive enhancement. Zero hardcoding - all text, colors, and behaviors configurable.
@@ -30,7 +30,7 @@ SwiftUI-based enrollment interface with real-time audio visualization, dynamic f
 ```
 +----------------------------------+
 |                                  |
-|      🎙️ JARVIS Voice Unlock      |
+|      🎙️ Ironcliw Voice Unlock      |
 |                                  |
 |   "Secure your Mac with your    |
 |    unique voice biometrics"      |
@@ -51,7 +51,7 @@ SwiftUI-based enrollment interface with real-time audio visualization, dynamic f
 +----------------------------------+
 |  Microphone Access Required      |
 |                                  |
-|  🎤 JARVIS needs access to your  |
+|  🎤 Ironcliw needs access to your  |
 |     microphone to recognize      |
 |     your voice                   |
 |                                  |
@@ -96,7 +96,7 @@ SwiftUI-based enrollment interface with real-time audio visualization, dynamic f
 |  Sample 1 of 3                🔊 |
 |                                  |
 |  Please say:                     |
-|  "Hello JARVIS, this is Alex"    |
+|  "Hello Ironcliw, this is Alex"    |
 |                                  |
 |  ╭─────────────────────────╮    |
 |  │ ▁▃▅▇▅▃▁ ▂▄▆▄▂ ▁▃▅▇▅▃ │    |
@@ -315,8 +315,8 @@ ConfettiView()
 ### Light Mode
 ```swift
 extension Color {
-    static let jPrimary = Color("JARVISPrimary") // Dynamic
-    static let jSecondary = Color("JARVISSecondary")
+    static let jPrimary = Color("IroncliwPrimary") // Dynamic
+    static let jSecondary = Color("IroncliwSecondary")
     static let jSuccess = Color.green
     static let jWarning = Color.orange
     static let jError = Color.red
@@ -327,7 +327,7 @@ extension Color {
 - Automatic adjustments
 - Increased contrast
 - Subtle gradients
-- Neon accents for JARVIS theme
+- Neon accents for Ironcliw theme
 
 ## Accessibility Features
 
@@ -489,4 +489,4 @@ class EnrollmentViewModel: ObservableObject {
 - Computed properties
 - Lazy loading of resources
 
-This design provides a professional, accessible, and highly configurable enrollment experience that aligns with the JARVIS brand while maintaining security and usability.
+This design provides a professional, accessible, and highly configurable enrollment experience that aligns with the Ironcliw brand while maintaining security and usability.

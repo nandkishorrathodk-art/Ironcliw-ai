@@ -1,5 +1,5 @@
-"""
-JARVIS Task Lifecycle Manager v1.0.0
+﻿"""
+Ironcliw Task Lifecycle Manager v1.0.0
 ====================================
 
 Robust, async-safe task lifecycle management for preventing SIGKILL crashes.

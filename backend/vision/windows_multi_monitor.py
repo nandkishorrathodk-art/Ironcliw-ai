@@ -1,5 +1,5 @@
-"""
-Windows Multi-Monitor Support for JARVIS Vision Intelligence
+﻿"""
+Windows Multi-Monitor Support for Ironcliw Vision Intelligence
 ═══════════════════════════════════════════════════════════════════════════════
 
 Comprehensive multi-monitor detection and management for Windows 10/11 systems.
@@ -19,7 +19,7 @@ Windows APIs Used:
     - Windows.Forms.Screen (managed API alternative)
     - GetSystemMetrics (DPI and scaling)
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 7)
 """
 from __future__ import annotations

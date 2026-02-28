@@ -1,15 +1,15 @@
-"""
+﻿"""
 Supervisor Lifecycle Integration v1.0 - Connect Lifecycle Orchestrator to Supervisor
 =====================================================================================
 
 This module integrates the LifecycleEventOrchestrator with the existing
-JARVISSupervisor system, enabling:
+IroncliwSupervisor system, enabling:
 
 1. Automatic lifecycle event publishing during startup/shutdown
 2. Dependency-aware service startup ordering
 3. Resilient health checking with proper backoff
 
-Usage in JARVISSupervisor:
+Usage in IroncliwSupervisor:
     from backend.core.supervisor_lifecycle_integration import (
         SupervisorLifecycleIntegration,
     )
@@ -26,7 +26,7 @@ Usage in JARVISSupervisor:
         start_func=self._start_jarvis_body,
     )
 
-Author: JARVIS Trinity v95.0 - Supervisor Lifecycle Integration
+Author: Ironcliw Trinity v95.0 - Supervisor Lifecycle Integration
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ TRINITY_COMPONENTS: List[ComponentDefinition] = [
         startup_timeout_ms=10000,
     ),
 
-    # JARVIS-Prime (Mind) - Local LLM
+    # Ironcliw-Prime (Mind) - Local LLM
     ComponentDefinition(
         name="jarvis-prime",
         dependencies=["service-registry"],
@@ -108,7 +108,7 @@ TRINITY_COMPONENTS: List[ComponentDefinition] = [
         startup_timeout_ms=120000,  # 2 minutes - model loading takes time
     ),
 
-    # JARVIS-Body (Main Backend)
+    # Ironcliw-Body (Main Backend)
     ComponentDefinition(
         name="jarvis-body",
         dependencies=["service-registry", "event-bus"],
@@ -173,7 +173,7 @@ class StartupResult:
 
 class SupervisorLifecycleIntegration:
     """
-    Integrates LifecycleEventOrchestrator with JARVISSupervisor.
+    Integrates LifecycleEventOrchestrator with IroncliwSupervisor.
 
     Provides:
     - Automatic lifecycle event publishing
@@ -184,7 +184,7 @@ class SupervisorLifecycleIntegration:
 
     def __init__(
         self,
-        supervisor: Any,  # JARVISSupervisor instance
+        supervisor: Any,  # IroncliwSupervisor instance
         config: Optional[IntegrationConfig] = None,
     ):
         self._supervisor = supervisor

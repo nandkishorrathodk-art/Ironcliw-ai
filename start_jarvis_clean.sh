@@ -1,10 +1,10 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-# JARVIS Clean Start Script
+# Ironcliw Clean Start Script
 # Ensures all processes are cleaned up before starting
 
 echo "================================================"
-echo "🚀 JARVIS Clean Start"
+echo "🚀 Ironcliw Clean Start"
 echo "================================================"
 
 # Step 1: Perform cleanup
@@ -17,12 +17,12 @@ echo ""
 echo "2️⃣ Waiting for cleanup to complete..."
 sleep 2
 
-# Step 3: Start JARVIS normally
+# Step 3: Start Ironcliw normally
 echo ""
-echo "3️⃣ Starting JARVIS..."
+echo "3️⃣ Starting Ironcliw..."
 cd .. && ./jarvis.sh
 
 echo ""
 echo "================================================"
-echo "✅ JARVIS startup sequence complete!"
+echo "✅ Ironcliw startup sequence complete!"
 echo "================================================"

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Intelligent Multi-Space Orchestration System
 ============================================
@@ -1543,7 +1543,7 @@ class IntelligentOrchestrator:
         
         # Build comprehensive prompt
         if target_space:
-            prompt = f"""You are JARVIS, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
+            prompt = f"""You are Ironcliw, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
 
 ═══════════════════════════════════════════════════════════════
 USER REQUEST: "{query}"
@@ -1557,7 +1557,7 @@ Workspace context: {snapshot.total_spaces} desktop spaces total, current space: 
 
 📍 SPACE BREAKDOWN:"""
         else:
-            prompt = f"""You are JARVIS, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
+            prompt = f"""You are Ironcliw, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
 
 ═══════════════════════════════════════════════════════════════
 USER REQUEST: "{query}"

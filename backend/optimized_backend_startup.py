@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Optimized Backend Startup with Parallel Initialization
 Reduces startup time from 107+ seconds to ~30 seconds
@@ -179,7 +179,7 @@ class OptimizedBackendStartup:
         from fastapi.middleware.cors import CORSMiddleware
         
         app = FastAPI(
-            title="JARVIS Backend",
+            title="Ironcliw Backend",
             version="12.8",
             docs_url="/api/docs"
         )

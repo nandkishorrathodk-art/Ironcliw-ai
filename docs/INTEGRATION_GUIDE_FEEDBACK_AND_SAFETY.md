@@ -1,6 +1,6 @@
-# Integration Guide: Feedback Learning & Command Safety
+﻿# Integration Guide: Feedback Learning & Command Safety
 
-**Quick Start:** How to integrate the new feedback learning and command safety systems into existing JARVIS components.
+**Quick Start:** How to integrate the new feedback learning and command safety systems into existing Ironcliw components.
 
 ---
 
@@ -24,7 +24,7 @@
 # Around line 50-100 (during component initialization)
 
 async def initialize_jarvis():
-    """Initialize JARVIS with all components."""
+    """Initialize Ironcliw with all components."""
 
     # ... existing initialization ...
 
@@ -344,17 +344,17 @@ class UnifiedContextBridge:
 
 ```bash
 # Feedback Learning Configuration
-JARVIS_LEARNING_STORAGE_PATH="${HOME}/.jarvis/learning/feedback.json"
-JARVIS_MAX_FEEDBACK_HISTORY=1000
-JARVIS_MIN_PATTERN_CONFIDENCE=0.75
-JARVIS_TIMING_LEARNING_ENABLED=true
-JARVIS_FEEDBACK_LOOP_ENABLED=true
+Ironcliw_LEARNING_STORAGE_PATH="${HOME}/.jarvis/learning/feedback.json"
+Ironcliw_MAX_FEEDBACK_HISTORY=1000
+Ironcliw_MIN_PATTERN_CONFIDENCE=0.75
+Ironcliw_TIMING_LEARNING_ENABLED=true
+Ironcliw_FEEDBACK_LOOP_ENABLED=true
 
 # Command Safety Configuration
-JARVIS_COMMAND_SAFETY_ENABLED=true
-JARVIS_AUTO_EXECUTE_GREEN_COMMANDS=true
-JARVIS_REQUIRE_CONFIRMATION_YELLOW=true
-JARVIS_BLOCK_RED_COMMANDS=false  # Set to true for strict safety
+Ironcliw_COMMAND_SAFETY_ENABLED=true
+Ironcliw_AUTO_EXECUTE_GREEN_COMMANDS=true
+Ironcliw_REQUIRE_CONFIRMATION_YELLOW=true
+Ironcliw_BLOCK_RED_COMMANDS=false  # Set to true for strict safety
 ```
 
 ---
@@ -415,7 +415,7 @@ async def test_end_to_end_feedback_flow():
 # Run the demo
 python -m backend.examples.demo_feedback_and_safety
 
-# Start JARVIS with feedback learning
+# Start Ironcliw with feedback learning
 python backend/main.py --enable-feedback-learning
 
 # Trigger a terminal error notification
@@ -550,7 +550,7 @@ async def safe_execute(command: str, require_confirmation: bool = True):
 
 ## Migration Checklist
 
-If you're adding this to an existing JARVIS installation:
+If you're adding this to an existing Ironcliw installation:
 
 - [ ] **Backup** existing notification data
 - [ ] **Test** in development environment first
@@ -604,13 +604,13 @@ else:
 
 ## FAQ
 
-**Q: Will feedback learning slow down JARVIS?**
+**Q: Will feedback learning slow down Ironcliw?**
 A: No. All operations are async and take <1ms. Disk writes are non-blocking.
 
 **Q: What if user wants to reset learning?**
 A: Provide UI option that calls `await loop.reset_learning()` or deletes the JSON file.
 
-**Q: Can multiple JARVIS instances share learning?**
+**Q: Can multiple Ironcliw instances share learning?**
 A: Yes, if they point to the same storage path. Use file locking if concurrent access.
 
 **Q: How to add new notification patterns?**

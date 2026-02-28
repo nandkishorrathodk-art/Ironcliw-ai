@@ -1,4 +1,4 @@
-# 🎙️ Voice Biometric Testing - Implementation Summary
+﻿# 🎙️ Voice Biometric Testing - Implementation Summary
 
 ## ✅ What Was Completed
 
@@ -41,7 +41,7 @@
 ```
 You: "unlock my screen"
       ↓
-JARVIS:
+Ironcliw:
   1. Captures your voice (✅ tested)
   2. Extracts biometric embedding - ECAPA-TDNN 192D (✅ tested)
   3. Compares to database - 59 samples of Derek (✅ tested)

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-OCR Processing Module for JARVIS Vision System
+OCR Processing Module for Ironcliw Vision System
 Extracts and structures text from screenshots using OCR
 """
 
@@ -92,22 +92,22 @@ class OCRProcessor:
             self.executor = ThreadPoolExecutor(max_workers=2)
 
         # v243.0 (#9): PSM configurable by source context
-        self._default_psm = int(os.getenv('JARVIS_OCR_PSM', '11'))
+        self._default_psm = int(os.getenv('Ironcliw_OCR_PSM', '11'))
         self.custom_config = f'--oem 3 --psm {self._default_psm}'
 
         # v243.0 (#6): Image downsampling for faster OCR
-        self._max_dimension = int(os.getenv('JARVIS_OCR_MAX_DIMENSION', '1280'))
+        self._max_dimension = int(os.getenv('Ironcliw_OCR_MAX_DIMENSION', '1280'))
 
         # v243.0 (#6): Adaptive OCR interval tracking
         self._last_ocr_duration: float = 0.0
 
         # v243.0 (#8): Ghost display dark background detection
-        self._dark_threshold = int(os.getenv('JARVIS_OCR_DARK_THRESHOLD', '80'))
+        self._dark_threshold = int(os.getenv('Ironcliw_OCR_DARK_THRESHOLD', '80'))
 
         # v243.0 (#7): Apple Vision Framework via existing SwiftVisionProcessor
         # Reuses backend/swift_bridge/performance_bridge.py — no duplication
         self._vision_processor = None
-        self._use_vision = os.getenv('JARVIS_OCR_USE_VISION', 'true').lower() == 'true'
+        self._use_vision = os.getenv('Ironcliw_OCR_USE_VISION', 'true').lower() == 'true'
         if self._use_vision:
             try:
                 from backend.swift_bridge.performance_bridge import SwiftVisionProcessor

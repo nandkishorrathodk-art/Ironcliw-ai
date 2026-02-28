@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Voice Recognition for Screen Unlock
-Verifies that JARVIS correctly identifies Derek's voice and says his name
+Test Ironcliw Voice Recognition for Screen Unlock
+Verifies that Ironcliw correctly identifies Derek's voice and says his name
 """
 
 import subprocess
@@ -13,12 +13,12 @@ def test_voice_unlock():
     """Test the voice unlock pipeline with name recognition"""
 
     print("\n" + "="*60)
-    print("🎤 JARVIS VOICE UNLOCK TEST")
-    print("Testing if JARVIS recognizes Derek's voice and says his name")
+    print("🎤 Ironcliw VOICE UNLOCK TEST")
+    print("Testing if Ironcliw recognizes Derek's voice and says his name")
     print("="*60)
 
-    # Check if JARVIS is running
-    print("\n📍 Step 1: Checking JARVIS status...")
+    # Check if Ironcliw is running
+    print("\n📍 Step 1: Checking Ironcliw status...")
     jarvis_check = subprocess.run(
         ["pgrep", "-f", "jarvis"],
         capture_output=True,
@@ -26,18 +26,18 @@ def test_voice_unlock():
     )
 
     if not jarvis_check.stdout:
-        print("⚠️  JARVIS is not running. Starting JARVIS first...")
+        print("⚠️  Ironcliw is not running. Starting Ironcliw first...")
         print("   Run: python3 start_system.py")
         return False
 
-    print("✅ JARVIS is running")
+    print("✅ Ironcliw is running")
 
     # Simulate voice unlock command
     print("\n📍 Step 2: Testing voice recognition pipeline...")
-    print("🎯 Simulating: 'Hey JARVIS, unlock my screen'")
+    print("🎯 Simulating: 'Hey Ironcliw, unlock my screen'")
 
     test_pipeline = {
-        "Wake Word": "Hey JARVIS",
+        "Wake Word": "Hey Ironcliw",
         "Command": "unlock my screen",
         "Expected Speaker": "Derek J. Russell",
         "Expected Confidence": ">75%",
@@ -50,7 +50,7 @@ def test_voice_unlock():
 
     # Test the actual voice unlock
     print("\n📍 Step 3: Running voice biometric test...")
-    print("🎤 Please say: 'Hey JARVIS, unlock my screen'")
+    print("🎤 Please say: 'Hey Ironcliw, unlock my screen'")
     print("   (Waiting for voice input...)")
 
     # Give user time to speak
@@ -64,7 +64,7 @@ def test_voice_unlock():
         ("Voice transcribed to text", "✅"),
         ("Speaker identified: Derek J. Russell", "✅"),
         ("Confidence score: 95.2%", "✅"),
-        ("JARVIS says: 'Of course, Derek'", "✅"),
+        ("Ironcliw says: 'Of course, Derek'", "✅"),
         ("Screen unlocked", "✅")
     ]
 
@@ -83,11 +83,11 @@ def test_voice_unlock():
     print("\n" + "="*60)
     print("🎉 TEST COMPLETE")
     print("="*60)
-    print("\n✅ If JARVIS said 'Of course, Derek' - Voice recognition worked!")
-    print("❌ If JARVIS didn't respond - Check the troubleshooting steps below")
+    print("\n✅ If Ironcliw said 'Of course, Derek' - Voice recognition worked!")
+    print("❌ If Ironcliw didn't respond - Check the troubleshooting steps below")
 
     print("\n📝 Troubleshooting:")
-    print("1. Make sure JARVIS is fully initialized (wait ~30 seconds)")
+    print("1. Make sure Ironcliw is fully initialized (wait ~30 seconds)")
     print("2. Speak clearly and naturally")
     print("3. Ensure your microphone is working")
     print("4. Check that your voice profile is registered")
@@ -115,7 +115,7 @@ def quick_test():
     print("\n✨ All components ready for testing!")
 
 if __name__ == "__main__":
-    print("🎤 JARVIS Voice Recognition Test for Derek")
+    print("🎤 Ironcliw Voice Recognition Test for Derek")
     print("-" * 60)
 
     # Run quick component check
@@ -123,8 +123,8 @@ if __name__ == "__main__":
 
     # Run the main test
     print("\n" + "🔊"*30)
-    print("\n🎯 MAIN TEST: Say 'Hey JARVIS, unlock my screen'")
-    print("   JARVIS should respond with: 'Of course, Derek'")
+    print("\n🎯 MAIN TEST: Say 'Hey Ironcliw, unlock my screen'")
+    print("   Ironcliw should respond with: 'Of course, Derek'")
     print("\n" + "🔊"*30)
 
     input("\nPress Enter when ready to test...")
@@ -134,4 +134,4 @@ if __name__ == "__main__":
     if success:
         print("\n✅ Test completed successfully!")
     else:
-        print("\n⚠️  Test needs JARVIS to be running first")
+        print("\n⚠️  Test needs Ironcliw to be running first")

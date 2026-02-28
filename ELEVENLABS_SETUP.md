@@ -1,10 +1,10 @@
-# ElevenLabs TTS Integration Setup Guide
+﻿# ElevenLabs TTS Integration Setup Guide
 
-This guide explains how to integrate ElevenLabs TTS for African American, African, and Asian accent voices in JARVIS voice security testing.
+This guide explains how to integrate ElevenLabs TTS for African American, African, and Asian accent voices in Ironcliw voice security testing.
 
 ## Overview
 
-JARVIS now supports **hybrid TTS** using multiple providers:
+Ironcliw now supports **hybrid TTS** using multiple providers:
 - **Google Cloud TTS**: 60 voices (US, British, Australian, Indian, Hispanic, European accents)
 - **ElevenLabs TTS**: 16+ voices (African American, African, Asian accents)
 

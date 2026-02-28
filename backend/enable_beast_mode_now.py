@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Enable BEAST MODE for Existing Profile
 ========================================
@@ -261,7 +261,7 @@ async def enable_beast_mode():
     print("✅ BEAST MODE ENABLED!")
     print("=" * 80)
     print("\n🎯 Next steps:")
-    print("   1. Restart JARVIS backend (it will auto-reload the new profile)")
+    print("   1. Restart Ironcliw backend (it will auto-reload the new profile)")
     print("   2. Try 'unlock my screen' again")
     print("   3. You should now get 85-95% confidence!")
     print("\n💡 Your profile now has:")

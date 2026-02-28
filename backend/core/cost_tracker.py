@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Cost Tracking System for JARVIS Hybrid Cloud Intelligence v3.0
+Advanced Cost Tracking System for Ironcliw Hybrid Cloud Intelligence v3.0
 ========================================================================
 
 Fully async, dynamic, configuration-driven cost tracking with no hardcoding.
@@ -144,17 +144,17 @@ class CostTrackerConfig:
     # =========================================================================
     # When enabled, provides stricter budget enforcement and more frequent alerts
     solo_developer_mode: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_SOLO_DEVELOPER_MODE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_SOLO_DEVELOPER_MODE", "true").lower() == "true"
     )
     
     # Hard budget enforcement - BLOCKS VM creation when exceeded (not just alerts)
     hard_budget_enforcement: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_HARD_BUDGET_ENFORCEMENT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_HARD_BUDGET_ENFORCEMENT", "true").lower() == "true"
     )
     
     # Alert when this percentage of daily budget is reached (default: 50%)
     budget_warning_percent: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_BUDGET_WARNING_PERCENT", "50"))
+        default_factory=lambda: float(os.getenv("Ironcliw_BUDGET_WARNING_PERCENT", "50"))
     )
     
     # Alert thresholds (configurable via env)
@@ -193,7 +193,7 @@ class CostTrackerConfig:
     )
 
     # Alert notification configuration
-    alert_email: Optional[str] = field(default_factory=lambda: os.getenv("JARVIS_ALERT_EMAIL"))
+    alert_email: Optional[str] = field(default_factory=lambda: os.getenv("Ironcliw_ALERT_EMAIL"))
     enable_desktop_notifications: bool = field(
         default_factory=lambda: os.getenv("ENABLE_DESKTOP_NOTIFICATIONS", "true").lower() == "true"
     )
@@ -211,7 +211,7 @@ class CostTrackerConfig:
     
     # Cost forecasting window (days of history to use)
     forecast_history_days: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_FORECAST_HISTORY_DAYS", "7"))
+        default_factory=lambda: int(os.getenv("Ironcliw_FORECAST_HISTORY_DAYS", "7"))
     )
 
     # =========================================================================
@@ -223,7 +223,7 @@ class CostTrackerConfig:
     # - Cross-instance synchronization
     
     enable_redis: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_COST_REDIS_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_COST_REDIS_ENABLED", "true").lower() == "true"
     )
     
     # Redis connection - supports both local and GCP Cloud Memorystore
@@ -247,7 +247,7 @@ class CostTrackerConfig:
     
     # Pub/Sub settings
     redis_pubsub_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_REDIS_PUBSUB", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_REDIS_PUBSUB", "true").lower() == "true"
     )
 
     def __post_init__(self):
@@ -1726,7 +1726,7 @@ class CostTracker:
                 cmd = [
                     "osascript",
                     "-e",
-                    f'display notification "{message}" with title "JARVIS Cost Alert" sound name "Purr"',
+                    f'display notification "{message}" with title "Ironcliw Cost Alert" sound name "Purr"',
                 ]
                 await asyncio.create_subprocess_exec(*cmd)
         except Exception as e:
@@ -1757,21 +1757,21 @@ class CostTracker:
             msg = MIMEMultipart("alternative")
             msg["From"] = smtp_user
             msg["To"] = self.config.alert_email
-            msg["Subject"] = f"🤖 JARVIS: {subject}"
+            msg["Subject"] = f"🤖 Ironcliw: {subject}"
 
             # HTML email content
             html = f"""
             <html>
               <head></head>
               <body style="font-family: Arial, sans-serif; padding: 20px;">
-                <h2 style="color: #2196F3;">🤖 JARVIS Cost Alert</h2>
+                <h2 style="color: #2196F3;">🤖 Ironcliw Cost Alert</h2>
                 <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px;">
                   <h3>{subject}</h3>
                   <p style="white-space: pre-wrap;">{message}</p>
                 </div>
                 <hr style="margin: 20px 0;">
                 <p style="color: #666; font-size: 12px;">
-                  This is an automated alert from JARVIS Hybrid Cloud Intelligence.<br>
+                  This is an automated alert from Ironcliw Hybrid Cloud Intelligence.<br>
                   <a href="http://localhost:8010/hybrid/status">View Cost Dashboard</a>
                 </p>
               </body>
@@ -1779,7 +1779,7 @@ class CostTracker:
             """
 
             # Plain text fallback
-            text = f"JARVIS Cost Alert\n\n{subject}\n\n{message}"
+            text = f"Ironcliw Cost Alert\n\n{subject}\n\n{message}"
 
             msg.attach(MIMEText(text, "plain"))
             msg.attach(MIMEText(html, "html"))

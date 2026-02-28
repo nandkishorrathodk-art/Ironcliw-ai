@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Calendar Bridge - Python interface to Swift Calendar Context Provider
-Provides seamless integration with macOS calendar for JARVIS
+Provides seamless integration with macOS calendar for Ironcliw
 """
 
 import json

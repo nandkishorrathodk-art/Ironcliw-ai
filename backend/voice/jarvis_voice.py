@@ -1,5 +1,5 @@
-"""
-JARVIS Voice System v100.0 - Ultra-Robust Enhanced Voice Processing
+﻿"""
+Ironcliw Voice System v100.0 - Ultra-Robust Enhanced Voice Processing
 ====================================================================
 
 Professional-grade voice recognition and synthesis with:
@@ -12,7 +12,7 @@ Professional-grade voice recognition and synthesis with:
 - Graceful shutdown with resource cleanup
 - Deep integration with Trinity Voice Coordinator
 
-Author: JARVIS Trinity v100.0
+Author: Ironcliw Trinity v100.0
 """
 
 # Fix TensorFlow issues before importing ML components
@@ -49,7 +49,7 @@ import weakref
 from contextlib import asynccontextmanager
 
 # Set up logging with configurable level
-_log_level = os.environ.get("JARVIS_VOICE_LOG_LEVEL", "INFO").upper()
+_log_level = os.environ.get("Ironcliw_VOICE_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, _log_level, logging.INFO))
 logger = logging.getLogger(__name__)
 
@@ -84,10 +84,10 @@ try:
     )
 
     TRINITY_VOICE_AVAILABLE = True
-    logger.info("[JARVISVoice] Trinity Voice Coordinator v100.0 available")
+    logger.info("[IroncliwVoice] Trinity Voice Coordinator v100.0 available")
 except ImportError:
     TRINITY_VOICE_AVAILABLE = False
-    logger.warning("[JARVISVoice] Trinity Voice Coordinator not available")
+    logger.warning("[IroncliwVoice] Trinity Voice Coordinator not available")
 
 # Use macOS native voice on Mac
 if platform.system() == "Darwin":
@@ -140,9 +140,9 @@ def _env_list(key: str, default: List[str]) -> List[str]:
 
 
 @dataclass
-class JARVISVoiceConfig:
+class IroncliwVoiceConfig:
     """
-    Ultra-robust configuration for JARVIS Voice System v100.0.
+    Ultra-robust configuration for Ironcliw Voice System v100.0.
 
     ALL values are environment-driven with sensible defaults.
     Zero hardcoding - everything configurable at runtime.
@@ -151,107 +151,107 @@ class JARVISVoiceConfig:
     # ==========================================================================
     # TTS (Text-to-Speech) Configuration
     # ==========================================================================
-    tts_rate: int = field(default_factory=lambda: _env_int("JARVIS_TTS_RATE", 175))
-    tts_volume: float = field(default_factory=lambda: _env_float("JARVIS_TTS_VOLUME", 0.9))
-    tts_voice_preference: str = field(default_factory=lambda: _env_str("JARVIS_TTS_VOICE", "british"))
-    tts_timeout_ms: int = field(default_factory=lambda: _env_int("JARVIS_TTS_TIMEOUT_MS", 30000))
+    tts_rate: int = field(default_factory=lambda: _env_int("Ironcliw_TTS_RATE", 175))
+    tts_volume: float = field(default_factory=lambda: _env_float("Ironcliw_TTS_VOLUME", 0.9))
+    tts_voice_preference: str = field(default_factory=lambda: _env_str("Ironcliw_TTS_VOICE", "british"))
+    tts_timeout_ms: int = field(default_factory=lambda: _env_int("Ironcliw_TTS_TIMEOUT_MS", 30000))
 
     # ==========================================================================
     # Speech Recognition Configuration
     # ==========================================================================
-    energy_threshold: int = field(default_factory=lambda: _env_int("JARVIS_ENERGY_THRESHOLD", 200))
-    energy_threshold_min: int = field(default_factory=lambda: _env_int("JARVIS_ENERGY_THRESHOLD_MIN", 50))
-    energy_threshold_max: int = field(default_factory=lambda: _env_int("JARVIS_ENERGY_THRESHOLD_MAX", 500))
+    energy_threshold: int = field(default_factory=lambda: _env_int("Ironcliw_ENERGY_THRESHOLD", 200))
+    energy_threshold_min: int = field(default_factory=lambda: _env_int("Ironcliw_ENERGY_THRESHOLD_MIN", 50))
+    energy_threshold_max: int = field(default_factory=lambda: _env_int("Ironcliw_ENERGY_THRESHOLD_MAX", 500))
 
-    pause_threshold: float = field(default_factory=lambda: _env_float("JARVIS_PAUSE_THRESHOLD", 0.5))
-    pause_threshold_min: float = field(default_factory=lambda: _env_float("JARVIS_PAUSE_THRESHOLD_MIN", 0.3))
-    pause_threshold_max: float = field(default_factory=lambda: _env_float("JARVIS_PAUSE_THRESHOLD_MAX", 1.2))
+    pause_threshold: float = field(default_factory=lambda: _env_float("Ironcliw_PAUSE_THRESHOLD", 0.5))
+    pause_threshold_min: float = field(default_factory=lambda: _env_float("Ironcliw_PAUSE_THRESHOLD_MIN", 0.3))
+    pause_threshold_max: float = field(default_factory=lambda: _env_float("Ironcliw_PAUSE_THRESHOLD_MAX", 1.2))
 
-    damping: float = field(default_factory=lambda: _env_float("JARVIS_DAMPING", 0.10))
-    damping_min: float = field(default_factory=lambda: _env_float("JARVIS_DAMPING_MIN", 0.05))
-    damping_max: float = field(default_factory=lambda: _env_float("JARVIS_DAMPING_MAX", 0.25))
+    damping: float = field(default_factory=lambda: _env_float("Ironcliw_DAMPING", 0.10))
+    damping_min: float = field(default_factory=lambda: _env_float("Ironcliw_DAMPING_MIN", 0.05))
+    damping_max: float = field(default_factory=lambda: _env_float("Ironcliw_DAMPING_MAX", 0.25))
 
-    energy_ratio: float = field(default_factory=lambda: _env_float("JARVIS_ENERGY_RATIO", 1.3))
-    energy_ratio_min: float = field(default_factory=lambda: _env_float("JARVIS_ENERGY_RATIO_MIN", 1.1))
-    energy_ratio_max: float = field(default_factory=lambda: _env_float("JARVIS_ENERGY_RATIO_MAX", 2.0))
+    energy_ratio: float = field(default_factory=lambda: _env_float("Ironcliw_ENERGY_RATIO", 1.3))
+    energy_ratio_min: float = field(default_factory=lambda: _env_float("Ironcliw_ENERGY_RATIO_MIN", 1.1))
+    energy_ratio_max: float = field(default_factory=lambda: _env_float("Ironcliw_ENERGY_RATIO_MAX", 2.0))
 
-    phrase_time_limit: int = field(default_factory=lambda: _env_int("JARVIS_PHRASE_TIME_LIMIT", 8))
-    phrase_time_limit_min: int = field(default_factory=lambda: _env_int("JARVIS_PHRASE_TIME_LIMIT_MIN", 3))
-    phrase_time_limit_max: int = field(default_factory=lambda: _env_int("JARVIS_PHRASE_TIME_LIMIT_MAX", 15))
+    phrase_time_limit: int = field(default_factory=lambda: _env_int("Ironcliw_PHRASE_TIME_LIMIT", 8))
+    phrase_time_limit_min: int = field(default_factory=lambda: _env_int("Ironcliw_PHRASE_TIME_LIMIT_MIN", 3))
+    phrase_time_limit_max: int = field(default_factory=lambda: _env_int("Ironcliw_PHRASE_TIME_LIMIT_MAX", 15))
 
-    listen_timeout: float = field(default_factory=lambda: _env_float("JARVIS_LISTEN_TIMEOUT", 1.0))
-    listen_timeout_min: float = field(default_factory=lambda: _env_float("JARVIS_LISTEN_TIMEOUT_MIN", 0.5))
-    listen_timeout_max: float = field(default_factory=lambda: _env_float("JARVIS_LISTEN_TIMEOUT_MAX", 3.0))
+    listen_timeout: float = field(default_factory=lambda: _env_float("Ironcliw_LISTEN_TIMEOUT", 1.0))
+    listen_timeout_min: float = field(default_factory=lambda: _env_float("Ironcliw_LISTEN_TIMEOUT_MIN", 0.5))
+    listen_timeout_max: float = field(default_factory=lambda: _env_float("Ironcliw_LISTEN_TIMEOUT_MAX", 3.0))
 
     # Recognition engines
     recognition_engines: List[str] = field(
-        default_factory=lambda: _env_list("JARVIS_RECOGNITION_ENGINES", ["google", "sphinx", "whisper"])
+        default_factory=lambda: _env_list("Ironcliw_RECOGNITION_ENGINES", ["google", "sphinx", "whisper"])
     )
-    default_engine: str = field(default_factory=lambda: _env_str("JARVIS_DEFAULT_ENGINE", "google"))
+    default_engine: str = field(default_factory=lambda: _env_str("Ironcliw_DEFAULT_ENGINE", "google"))
 
     # ==========================================================================
     # Queue Configuration
     # ==========================================================================
-    queue_maxsize: int = field(default_factory=lambda: _env_int("JARVIS_QUEUE_MAXSIZE", 100))
-    max_concurrent: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONCURRENT", 3))
-    queue_timeout_ms: int = field(default_factory=lambda: _env_int("JARVIS_QUEUE_TIMEOUT_MS", 30000))
+    queue_maxsize: int = field(default_factory=lambda: _env_int("Ironcliw_QUEUE_MAXSIZE", 100))
+    max_concurrent: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_CONCURRENT", 3))
+    queue_timeout_ms: int = field(default_factory=lambda: _env_int("Ironcliw_QUEUE_TIMEOUT_MS", 30000))
 
     # ==========================================================================
     # Circuit Breaker Configuration
     # ==========================================================================
-    circuit_failure_threshold: int = field(default_factory=lambda: _env_int("JARVIS_CIRCUIT_FAILURE_THRESHOLD", 5))
-    circuit_timeout_sec: int = field(default_factory=lambda: _env_int("JARVIS_CIRCUIT_TIMEOUT_SEC", 30))
-    circuit_adaptive: bool = field(default_factory=lambda: _env_bool("JARVIS_CIRCUIT_ADAPTIVE", True))
-    circuit_half_open_max_calls: int = field(default_factory=lambda: _env_int("JARVIS_CIRCUIT_HALF_OPEN_MAX_CALLS", 3))
+    circuit_failure_threshold: int = field(default_factory=lambda: _env_int("Ironcliw_CIRCUIT_FAILURE_THRESHOLD", 5))
+    circuit_timeout_sec: int = field(default_factory=lambda: _env_int("Ironcliw_CIRCUIT_TIMEOUT_SEC", 30))
+    circuit_adaptive: bool = field(default_factory=lambda: _env_bool("Ironcliw_CIRCUIT_ADAPTIVE", True))
+    circuit_half_open_max_calls: int = field(default_factory=lambda: _env_int("Ironcliw_CIRCUIT_HALF_OPEN_MAX_CALLS", 3))
 
     # ==========================================================================
     # Bounded Collection Limits (Prevent Memory Leaks)
     # ==========================================================================
-    max_event_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_EVENT_HISTORY", 100))
-    max_failure_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_FAILURE_HISTORY", 100))
-    max_success_rate_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_SUCCESS_RATE_HISTORY", 100))
-    max_command_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_COMMAND_HISTORY", 50))
-    max_confidence_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONFIDENCE_HISTORY", 100))
-    max_recognition_times: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RECOGNITION_TIMES", 100))
-    max_first_attempt_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_FIRST_ATTEMPT_HISTORY", 100))
-    max_config_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONFIG_HISTORY", 100))
-    max_engine_history: int = field(default_factory=lambda: _env_int("JARVIS_MAX_ENGINE_HISTORY", 100))
-    max_context_messages: int = field(default_factory=lambda: _env_int("JARVIS_MAX_CONTEXT_MESSAGES", 20))
-    max_dedup_cache: int = field(default_factory=lambda: _env_int("JARVIS_MAX_DEDUP_CACHE", 1000))
+    max_event_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_EVENT_HISTORY", 100))
+    max_failure_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_FAILURE_HISTORY", 100))
+    max_success_rate_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_SUCCESS_RATE_HISTORY", 100))
+    max_command_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_COMMAND_HISTORY", 50))
+    max_confidence_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_CONFIDENCE_HISTORY", 100))
+    max_recognition_times: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_RECOGNITION_TIMES", 100))
+    max_first_attempt_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_FIRST_ATTEMPT_HISTORY", 100))
+    max_config_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_CONFIG_HISTORY", 100))
+    max_engine_history: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_ENGINE_HISTORY", 100))
+    max_context_messages: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_CONTEXT_MESSAGES", 20))
+    max_dedup_cache: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_DEDUP_CACHE", 1000))
 
     # ==========================================================================
     # Optimization Configuration
     # ==========================================================================
-    optimization_interval_sec: int = field(default_factory=lambda: _env_int("JARVIS_OPTIMIZATION_INTERVAL_SEC", 60))
-    optimization_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_OPTIMIZATION_ENABLED", True))
+    optimization_interval_sec: int = field(default_factory=lambda: _env_int("Ironcliw_OPTIMIZATION_INTERVAL_SEC", 60))
+    optimization_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_OPTIMIZATION_ENABLED", True))
 
     # ==========================================================================
     # System Monitor Configuration
     # ==========================================================================
-    metric_cache_duration_sec: float = field(default_factory=lambda: _env_float("JARVIS_METRIC_CACHE_DURATION_SEC", 1.0))
-    cpu_high_threshold: float = field(default_factory=lambda: _env_float("JARVIS_CPU_HIGH_THRESHOLD", 80.0))
-    memory_high_threshold: float = field(default_factory=lambda: _env_float("JARVIS_MEMORY_HIGH_THRESHOLD", 85.0))
-    cpu_claude_threshold: float = field(default_factory=lambda: _env_float("JARVIS_CPU_CLAUDE_THRESHOLD", 25.0))
+    metric_cache_duration_sec: float = field(default_factory=lambda: _env_float("Ironcliw_METRIC_CACHE_DURATION_SEC", 1.0))
+    cpu_high_threshold: float = field(default_factory=lambda: _env_float("Ironcliw_CPU_HIGH_THRESHOLD", 80.0))
+    memory_high_threshold: float = field(default_factory=lambda: _env_float("Ironcliw_MEMORY_HIGH_THRESHOLD", 85.0))
+    cpu_claude_threshold: float = field(default_factory=lambda: _env_float("Ironcliw_CPU_CLAUDE_THRESHOLD", 25.0))
 
     # ==========================================================================
     # Calibration Configuration
     # ==========================================================================
-    calibration_duration_sec: int = field(default_factory=lambda: _env_int("JARVIS_CALIBRATION_DURATION_SEC", 3))
-    recalibration_failures: int = field(default_factory=lambda: _env_int("JARVIS_RECALIBRATION_FAILURES", 30))
+    calibration_duration_sec: int = field(default_factory=lambda: _env_int("Ironcliw_CALIBRATION_DURATION_SEC", 3))
+    recalibration_failures: int = field(default_factory=lambda: _env_int("Ironcliw_RECALIBRATION_FAILURES", 30))
 
     # ==========================================================================
     # Wake Word Configuration
     # ==========================================================================
-    wake_word_threshold: float = field(default_factory=lambda: _env_float("JARVIS_WAKE_WORD_THRESHOLD", 0.6))
-    command_threshold: float = field(default_factory=lambda: _env_float("JARVIS_COMMAND_THRESHOLD", 0.7))
+    wake_word_threshold: float = field(default_factory=lambda: _env_float("Ironcliw_WAKE_WORD_THRESHOLD", 0.6))
+    command_threshold: float = field(default_factory=lambda: _env_float("Ironcliw_COMMAND_THRESHOLD", 0.7))
     wake_words_primary: List[str] = field(
-        default_factory=lambda: _env_list("JARVIS_WAKE_WORDS_PRIMARY", ["jarvis", "hey jarvis", "okay jarvis"])
+        default_factory=lambda: _env_list("Ironcliw_WAKE_WORDS_PRIMARY", ["jarvis", "hey jarvis", "okay jarvis"])
     )
     wake_words_variations: List[str] = field(
-        default_factory=lambda: _env_list("JARVIS_WAKE_WORDS_VARIATIONS", ["jar vis", "hey jar vis", "jarv"])
+        default_factory=lambda: _env_list("Ironcliw_WAKE_WORDS_VARIATIONS", ["jar vis", "hey jar vis", "jarv"])
     )
     wake_words_urgent: List[str] = field(
-        default_factory=lambda: _env_list("JARVIS_WAKE_WORDS_URGENT", ["jarvis emergency", "jarvis urgent"])
+        default_factory=lambda: _env_list("Ironcliw_WAKE_WORDS_URGENT", ["jarvis emergency", "jarvis urgent"])
     )
 
     # ==========================================================================
@@ -259,32 +259,32 @@ class JARVISVoiceConfig:
     # ==========================================================================
     metrics_db_path: str = field(
         default_factory=lambda: _env_str(
-            "JARVIS_METRICS_DB_PATH",
+            "Ironcliw_METRICS_DB_PATH",
             str(Path.home() / ".jarvis" / "voice_metrics.db")
         )
     )
-    metrics_persist_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_METRICS_PERSIST_ENABLED", True))
-    metrics_flush_interval_sec: int = field(default_factory=lambda: _env_int("JARVIS_METRICS_FLUSH_INTERVAL_SEC", 60))
+    metrics_persist_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_METRICS_PERSIST_ENABLED", True))
+    metrics_flush_interval_sec: int = field(default_factory=lambda: _env_int("Ironcliw_METRICS_FLUSH_INTERVAL_SEC", 60))
 
     # ==========================================================================
     # Tracing Configuration
     # ==========================================================================
-    tracing_enabled: bool = field(default_factory=lambda: _env_bool("JARVIS_TRACING_ENABLED", True))
-    trace_sample_rate: float = field(default_factory=lambda: _env_float("JARVIS_TRACE_SAMPLE_RATE", 1.0))
+    tracing_enabled: bool = field(default_factory=lambda: _env_bool("Ironcliw_TRACING_ENABLED", True))
+    trace_sample_rate: float = field(default_factory=lambda: _env_float("Ironcliw_TRACE_SAMPLE_RATE", 1.0))
 
     # ==========================================================================
     # Retry Configuration
     # ==========================================================================
-    max_retries: int = field(default_factory=lambda: _env_int("JARVIS_MAX_RETRIES", 3))
-    retry_base_delay_ms: int = field(default_factory=lambda: _env_int("JARVIS_RETRY_BASE_DELAY_MS", 100))
-    retry_max_delay_ms: int = field(default_factory=lambda: _env_int("JARVIS_RETRY_MAX_DELAY_MS", 5000))
-    retry_exponential_base: float = field(default_factory=lambda: _env_float("JARVIS_RETRY_EXPONENTIAL_BASE", 2.0))
+    max_retries: int = field(default_factory=lambda: _env_int("Ironcliw_MAX_RETRIES", 3))
+    retry_base_delay_ms: int = field(default_factory=lambda: _env_int("Ironcliw_RETRY_BASE_DELAY_MS", 100))
+    retry_max_delay_ms: int = field(default_factory=lambda: _env_int("Ironcliw_RETRY_MAX_DELAY_MS", 5000))
+    retry_exponential_base: float = field(default_factory=lambda: _env_float("Ironcliw_RETRY_EXPONENTIAL_BASE", 2.0))
 
     # ==========================================================================
     # Shutdown Configuration
     # ==========================================================================
-    shutdown_timeout_sec: float = field(default_factory=lambda: _env_float("JARVIS_SHUTDOWN_TIMEOUT_SEC", 10.0))
-    shutdown_drain_queue: bool = field(default_factory=lambda: _env_bool("JARVIS_SHUTDOWN_DRAIN_QUEUE", True))
+    shutdown_timeout_sec: float = field(default_factory=lambda: _env_float("Ironcliw_SHUTDOWN_TIMEOUT_SEC", 10.0))
+    shutdown_drain_queue: bool = field(default_factory=lambda: _env_bool("Ironcliw_SHUTDOWN_DRAIN_QUEUE", True))
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -293,13 +293,13 @@ class JARVISVoiceConfig:
             db_dir = Path(self.metrics_db_path).parent
             db_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"[JARVISVoiceConfig] Loaded configuration with {self._count_env_overrides()} environment overrides")
+        logger.info(f"[IroncliwVoiceConfig] Loaded configuration with {self._count_env_overrides()} environment overrides")
 
     def _count_env_overrides(self) -> int:
         """Count how many values were overridden from environment."""
         count = 0
         for f in self.__dataclass_fields__:
-            env_key = f"JARVIS_{f.upper()}"
+            env_key = f"Ironcliw_{f.upper()}"
             if os.environ.get(env_key) is not None:
                 count += 1
         return count
@@ -310,14 +310,14 @@ class JARVISVoiceConfig:
 
 
 # Global config instance (created on first access)
-_voice_config: Optional[JARVISVoiceConfig] = None
+_voice_config: Optional[IroncliwVoiceConfig] = None
 
 
-def get_voice_config() -> JARVISVoiceConfig:
+def get_voice_config() -> IroncliwVoiceConfig:
     """Get the global voice configuration (lazy initialization)."""
     global _voice_config
     if _voice_config is None:
-        _voice_config = JARVISVoiceConfig()
+        _voice_config = IroncliwVoiceConfig()
     return _voice_config
 
 
@@ -633,8 +633,8 @@ def get_metrics_persistence() -> Optional[VoiceMetricsPersistence]:
         _metrics_persistence = VoiceMetricsPersistence(config.metrics_db_path)
     return _metrics_persistence
 
-# JARVIS Personality System Prompt
-JARVIS_SYSTEM_PROMPT = """You are JARVIS, Tony Stark's AI assistant. Be concise and helpful.
+# Ironcliw Personality System Prompt
+Ironcliw_SYSTEM_PROMPT = """You are Ironcliw, Tony Stark's AI assistant. Be concise and helpful.
 
 CRITICAL RULES:
 1. Keep responses SHORT (1-2 sentences max unless explaining something complex)
@@ -659,10 +659,10 @@ Examples of BAD responses (avoid these):
 - Asking multiple questions at once
 Busy period: "Ready when you are, sir. What's the priority?"
 
-Remember: You're not just an AI following a script - you're JARVIS, a sophisticated assistant with genuine personality. Each interaction should feel fresh and authentic."""
+Remember: You're not just an AI following a script - you're Ironcliw, a sophisticated assistant with genuine personality. Each interaction should feel fresh and authentic."""
 
 # Voice-specific system prompt for Anthropic
-VOICE_OPTIMIZATION_PROMPT = """You are processing voice commands for JARVIS. Voice commands differ from typed text:
+VOICE_OPTIMIZATION_PROMPT = """You are processing voice commands for Ironcliw. Voice commands differ from typed text:
 
 Context: This was spoken aloud and may contain:
 - Recognition errors
@@ -692,7 +692,7 @@ Instead of "How may I assist you?" try:
 - "Need something?"
 - "I'm listening."
 
-Respond as JARVIS would - sophisticated, natural, and genuinely helpful."""
+Respond as Ironcliw would - sophisticated, natural, and genuinely helpful."""
 
 
 # ===================================================================
@@ -724,7 +724,7 @@ class AdaptiveCircuitBreaker:
     def __init__(
         self,
         name: str = "voice_recognition",
-        config: Optional[JARVISVoiceConfig] = None
+        config: Optional[IroncliwVoiceConfig] = None
     ):
         self.name = name
         self.config = config or get_voice_config()
@@ -967,7 +967,7 @@ class AsyncEventBus:
     - Metrics integration
     """
 
-    def __init__(self, config: Optional[JARVISVoiceConfig] = None):
+    def __init__(self, config: Optional[IroncliwVoiceConfig] = None):
         self.config = config or get_voice_config()
         self.subscribers: Dict[str, List[weakref.ref]] = defaultdict(list)
         self.event_history: BoundedDeque = BoundedDeque(
@@ -1218,7 +1218,7 @@ class AsyncVoiceQueue:
     - Task timeout protection
     """
 
-    def __init__(self, config: Optional[JARVISVoiceConfig] = None):
+    def __init__(self, config: Optional[IroncliwVoiceConfig] = None):
         self.config = config or get_voice_config()
         self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(
             maxsize=self.config.queue_maxsize
@@ -1443,7 +1443,7 @@ class EnhancedVoiceEngine:
         self,
         ml_trainer: Optional["VoiceMLTrainer"] = None,
         ml_enhanced_system: Optional["MLEnhancedVoiceSystem"] = None,
-        config: Optional[JARVISVoiceConfig] = None,
+        config: Optional[IroncliwVoiceConfig] = None,
     ):
         # Load configuration (100% environment-driven)
         self.config = config or get_voice_config()
@@ -1559,7 +1559,7 @@ class EnhancedVoiceEngine:
 
         # Text-to-speech — AudioBus-aware initialization
         self._audio_bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
         if self._audio_bus_enabled:
             self.tts_engine: Union[MacOSVoice, Any] = None  # Lazy: use _get_tts() to acquire
@@ -1690,7 +1690,7 @@ class EnhancedVoiceEngine:
         return self.tts_engine
 
     def _setup_voice(self):
-        """Configure JARVIS voice settings from environment."""
+        """Configure Ironcliw voice settings from environment."""
         if USE_MACOS_VOICE:
             # macOS voice - use config-driven rate
             self.tts_engine.setProperty("rate", self.config.tts_rate)
@@ -1880,7 +1880,7 @@ class EnhancedVoiceEngine:
         return "conversation"  # Default intent
 
     def speak(self, text: str, interrupt_callback: Optional[Callable] = None):
-        """Convert text to speech with JARVIS voice"""
+        """Convert text to speech with Ironcliw voice"""
         # Add subtle processing sound
         self._play_sound("processing")
 
@@ -2552,8 +2552,8 @@ class EnhancedVoiceEngine:
             print("✅ *success*")
 
 
-class EnhancedJARVISPersonality:
-    """Enhanced JARVIS personality with voice-specific intelligence and ML integration"""
+class EnhancedIroncliwPersonality:
+    """Enhanced Ironcliw personality with voice-specific intelligence and ML integration"""
 
     def __init__(
         self, claude_api_key: str, ml_trainer: Optional["VoiceMLTrainer"] = None
@@ -2696,7 +2696,7 @@ class EnhancedJARVISPersonality:
             model="claude-3-haiku-20240307",  # Fast model for voice processing
             max_tokens=200,
             temperature=0.3,  # Lower temperature for accuracy
-            system=JARVIS_SYSTEM_PROMPT,
+            system=Ironcliw_SYSTEM_PROMPT,
             messages=[
                 *self.voice_context[-5:],  # Include recent voice context
                 {"role": "user", "content": prompt},
@@ -2729,7 +2729,7 @@ class EnhancedJARVISPersonality:
             self.claude.messages.create,
             model="claude-3-haiku-20240307",
             max_tokens=300,
-            system=JARVIS_SYSTEM_PROMPT,
+            system=Ironcliw_SYSTEM_PROMPT,
             messages=[*self.context, {"role": "user", "content": enhanced_prompt}],
         )
 
@@ -2891,7 +2891,7 @@ class EnhancedJARVISPersonality:
                 self.claude.messages.create,
                 model="claude-3-haiku-20240307",
                 max_tokens=150,
-                system="You are JARVIS. Give a brief, direct weather response. Be concise.",
+                system="You are Ironcliw. Give a brief, direct weather response. Be concise.",
                 messages=[{"role": "user", "content": enhanced_prompt}],
             )
             return message.content[0].text
@@ -2958,14 +2958,14 @@ class EnhancedJARVISPersonality:
             if weather_data.get("error"):
                 return f"I apologize, sir, but I couldn't find weather information for {location}. Perhaps you could verify the location name?"
 
-            # Format response in JARVIS style
+            # Format response in Ironcliw style
             location = weather_data.get("location", "your location")
             temp = weather_data.get("temperature", 0)
             feels_like = weather_data.get("feels_like", temp)
             description = weather_data.get("description", "unknown conditions")
             wind = weather_data.get("wind_speed", 0)
 
-            # Build JARVIS-style response
+            # Build Ironcliw-style response
             response = f"Currently in {location}, we have {description} "
             response += f"with a temperature of {temp} degrees Celsius"
 
@@ -2997,9 +2997,9 @@ class EnhancedJARVISPersonality:
             return await self._process_clear_command(command, self._get_context_info())
 
 
-class EnhancedJARVISVoiceAssistant:
+class EnhancedIroncliwVoiceAssistant:
     """
-    Enhanced JARVIS Voice Assistant with professional-grade accuracy and ML training.
+    Enhanced Ironcliw Voice Assistant with professional-grade accuracy and ML training.
 
     v100.0 Enhancements:
     - 100% environment-driven configuration
@@ -3013,7 +3013,7 @@ class EnhancedJARVISVoiceAssistant:
         self,
         claude_api_key: str,
         enable_ml_training: bool = True,
-        config: Optional[JARVISVoiceConfig] = None
+        config: Optional[IroncliwVoiceConfig] = None
     ):
         # Load configuration (100% environment-driven)
         self.config = config or get_voice_config()
@@ -3045,7 +3045,7 @@ class EnhancedJARVISVoiceAssistant:
                         logger.error(f"Failed to initialize ML trainer: {e}")
 
         # Initialize components with ML systems and shared config
-        self.personality = EnhancedJARVISPersonality(
+        self.personality = EnhancedIroncliwPersonality(
             claude_api_key, ml_trainer=self.ml_trainer
         )
 
@@ -3058,7 +3058,7 @@ class EnhancedJARVISVoiceAssistant:
 
         # Wire up voice engine reference to personality for system metrics
         self.personality.set_voice_engine(self.voice_engine)
-        logger.info("[JARVISVoiceAssistant] Voice engine wired to personality")
+        logger.info("[IroncliwVoiceAssistant] Voice engine wired to personality")
 
         self.running = False
         self._shutdown_requested = False
@@ -3107,7 +3107,7 @@ class EnhancedJARVISVoiceAssistant:
         }
 
         logger.info(
-            f"[JARVISVoiceAssistant] Initialized v100.0 with "
+            f"[IroncliwVoiceAssistant] Initialized v100.0 with "
             f"wake_words={len(self.wake_words['primary'])}, "
             f"thresholds=(wake={self.wake_word_threshold}, cmd={self.command_threshold})"
         )
@@ -3117,11 +3117,11 @@ class EnhancedJARVISVoiceAssistant:
         try:
             if TRINITY_VOICE_AVAILABLE:
                 # Will be initialized on first use via get_voice_coordinator()
-                logger.info("[JARVISVoiceAssistant] Trinity Voice Coordinator available")
+                logger.info("[IroncliwVoiceAssistant] Trinity Voice Coordinator available")
             else:
-                logger.warning("[JARVISVoiceAssistant] Trinity Voice Coordinator not available")
+                logger.warning("[IroncliwVoiceAssistant] Trinity Voice Coordinator not available")
         except Exception as e:
-            logger.error(f"[JARVISVoiceAssistant] Error initializing Trinity: {e}")
+            logger.error(f"[IroncliwVoiceAssistant] Error initializing Trinity: {e}")
 
     async def _announce_via_trinity(
         self,
@@ -3266,8 +3266,8 @@ Configuration:
         return False, None
 
     async def start(self):
-        """Start enhanced JARVIS voice assistant"""
-        print("\n=== JARVIS Enhanced Voice System Initializing ===")
+        """Start enhanced Ironcliw voice assistant"""
+        print("\n=== Ironcliw Enhanced Voice System Initializing ===")
         print("🚀 Loading professional-grade voice processing...")
 
         # ===================================================================
@@ -3282,17 +3282,17 @@ Configuration:
         print("🔧 Starting adaptive optimization...")
         await self.voice_engine._start_optimization_async()
 
-        logger.info("[JARVIS] All background monitors started successfully")
+        logger.info("[Ironcliw] All background monitors started successfully")
 
         # Enhanced calibration
         self.voice_engine.calibrate_microphone(duration=3)
 
         # Startup greeting
-        startup_msg = "JARVIS enhanced voice system online. All systems operational."
+        startup_msg = "Ironcliw enhanced voice system online. All systems operational."
         self.voice_engine.speak(startup_msg)
 
         self.running = True
-        print("\n🎤 Say 'JARVIS' to activate...")
+        print("\n🎤 Say 'Ironcliw' to activate...")
         print(
             "💡 Tip: For better accuracy, speak clearly and wait for the listening indicator"
         )
@@ -3556,13 +3556,13 @@ Configuration:
         self.voice_engine.calibrate_microphone(duration=4)
 
         self.voice_engine.speak(
-            "Excellent. Now, please say 'Hey JARVIS' three times, pausing between each."
+            "Excellent. Now, please say 'Hey Ironcliw' three times, pausing between each."
         )
 
         # Collect samples
         samples = []
         for i in range(3):
-            self.voice_engine.speak(f"Sample {i+1} of 3. Please say 'Hey JARVIS'.")
+            self.voice_engine.speak(f"Sample {i+1} of 3. Please say 'Hey Ironcliw'.")
             text, confidence = self.voice_engine.listen_with_confidence(timeout=5)
             if text:
                 samples.append((text, confidence))
@@ -3592,22 +3592,22 @@ Configuration:
     async def _stop_listening(self):
         """Temporarily stop listening"""
         self.voice_engine.speak(
-            "Going into standby mode, sir. Say 'JARVIS' when you need me."
+            "Going into standby mode, sir. Say 'Ironcliw' when you need me."
         )
         # Continue wake word loop
 
     async def _shutdown(self):
-        """Shutdown JARVIS with complete cleanup of all background tasks"""
+        """Shutdown Ironcliw with complete cleanup of all background tasks"""
         self.voice_engine.speak("Shutting down. Goodbye, sir.")
 
-        logger.info("[JARVIS] Starting shutdown sequence...")
+        logger.info("[Ironcliw] Starting shutdown sequence...")
 
         # Stop system monitor
-        logger.info("[JARVIS] Stopping system monitor...")
+        logger.info("[Ironcliw] Stopping system monitor...")
         await self.voice_engine.stop_system_monitor()
 
         # Stop optimization task
-        logger.info("[JARVIS] Stopping optimization task...")
+        logger.info("[Ironcliw] Stopping optimization task...")
         self.voice_engine.stop_optimization = True
         if hasattr(self.voice_engine, 'optimization_task'):
             self.voice_engine.optimization_task.cancel()
@@ -3618,11 +3618,11 @@ Configuration:
 
         # Stop ML enhanced system if running
         if self.ml_enhanced_system:
-            logger.info("[JARVIS] Stopping ML enhanced system...")
+            logger.info("[Ironcliw] Stopping ML enhanced system...")
             await self.ml_enhanced_system.stop()
 
         self.running = False
-        logger.info("[JARVIS] Shutdown complete")
+        logger.info("[Ironcliw] Shutdown complete")
 
     async def _calibrate(self):
         """Recalibrate microphone"""
@@ -3631,7 +3631,7 @@ Configuration:
         self.voice_engine.speak("Calibration complete.")
 
     async def _change_name(self):
-        """Change how JARVIS addresses the user"""
+        """Change how Ironcliw addresses the user"""
         self.voice_engine.speak("What would you prefer I call you?")
         name_text, confidence = self.voice_engine.listen_with_confidence(timeout=5)
 
@@ -3811,7 +3811,7 @@ else:
 
 __all__ = [
     # Configuration
-    "JARVISVoiceConfig",
+    "IroncliwVoiceConfig",
     "get_voice_config",
 
     # Bounded Collections
@@ -3846,10 +3846,10 @@ __all__ = [
     "EnhancedVoiceEngine",
 
     # Personality
-    "EnhancedJARVISPersonality",
+    "EnhancedIroncliwPersonality",
 
     # Voice Assistant
-    "EnhancedJARVISVoiceAssistant",
+    "EnhancedIroncliwVoiceAssistant",
 
     # Trinity Integration
     "TRINITY_VOICE_AVAILABLE",
@@ -3867,13 +3867,13 @@ async def main():
         print("Error: ANTHROPIC_API_KEY not set in environment")
         return
 
-    # Initialize enhanced JARVIS
-    jarvis = EnhancedJARVISVoiceAssistant(api_key)
+    # Initialize enhanced Ironcliw
+    jarvis = EnhancedIroncliwVoiceAssistant(api_key)
 
     try:
         await jarvis.start()
     except KeyboardInterrupt:
-        print("\nShutting down JARVIS...")
+        print("\nShutting down Ironcliw...")
         await jarvis._shutdown()
     except Exception as e:
         logger.error(f"Error: {e}")

@@ -1,15 +1,15 @@
-# JARVIS Quick Reference Guide
+﻿# Ironcliw Quick Reference Guide
 
 > **Fast Lookup** | **Common Commands** | **Quick Troubleshooting** | **Cheat Sheet**
 
-This is your go-to reference for common JARVIS operations, commands, and quick troubleshooting.
+This is your go-to reference for common Ironcliw operations, commands, and quick troubleshooting.
 
 ---
 
 ## 🚀 Quick Start Commands
 
 ```bash
-# Start JARVIS
+# Start Ironcliw
 ./start_system.py
 
 # Start backend only
@@ -31,7 +31,7 @@ tail -f jarvis_startup.log
 
 ### Screen Control
 ```
-"Hey JARVIS, unlock my screen"
+"Hey Ironcliw, unlock my screen"
 "Lock my screen"
 "Wake my displays"
 ```
@@ -253,7 +253,7 @@ SELECT COUNT(*) FROM voice_interactions WHERE confidence > 0.75;
 ### Environment Variables
 ```bash
 # Core settings
-export JARVIS_ENV=production
+export Ironcliw_ENV=production
 export LOG_LEVEL=INFO
 
 # GCP settings
@@ -354,8 +354,8 @@ pytest -k "test_voice_unlock"
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/yourusername/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Install Python dependencies
 pip install -r backend/requirements.txt
@@ -471,7 +471,7 @@ watch -n 5 'curl -s http://localhost:8000/api/components/status | jq'
 
 ### Kill Everything
 ```bash
-# Stop all JARVIS processes
+# Stop all Ironcliw processes
 pkill -f "jarvis"
 pkill -f "cloud_sql_proxy"
 

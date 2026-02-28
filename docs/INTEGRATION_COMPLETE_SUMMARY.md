@@ -1,4 +1,4 @@
-# Follow-Up System Integration - Implementation Complete
+﻿# Follow-Up System Integration - Implementation Complete
 
 **Date:** October 8th, 2025
 **Status:** ✅ Core Integration Complete
@@ -44,7 +44,7 @@
 
 **Usage Example:**
 ```python
-# After JARVIS asks a question:
+# After Ironcliw asks a question:
 context_id = await vision.track_pending_question(
     question_text="Would you like me to describe the Terminal?",
     window_type="terminal",
@@ -117,7 +117,7 @@ Response: "I see this error: ModuleNotFoundError..."
 
 ### Where Pending Questions Are Tracked
 
-**Scenario:** JARVIS detects a terminal and offers help
+**Scenario:** Ironcliw detects a terminal and offers help
 
 ```python
 # In your vision analysis code:
@@ -168,14 +168,14 @@ Already created with 50+ follow-up patterns:
 
 ### Manual Test Flow
 
-1. **Start JARVIS** with follow-up enabled
+1. **Start Ironcliw** with follow-up enabled
 2. **Open Terminal** with an error (e.g., `python test.py` → ModuleNotFoundError)
 3. **Say:** "Can you see my terminal?"
-4. **JARVIS responds:** "I can see your Terminal. Would you like me to describe what's displayed?"
+4. **Ironcliw responds:** "I can see your Terminal. Would you like me to describe what's displayed?"
    - *This triggers `track_pending_question()`*
 5. **Say:** "yes"
    - *This triggers follow-up detection*
-6. **JARVIS responds:** "I see this error in your Terminal: 'ModuleNotFoundError: No module named requests'. Try: `pip install requests`..."
+6. **Ironcliw responds:** "I see this error in your Terminal: 'ModuleNotFoundError: No module named requests'. Try: `pip install requests`..."
 
 ### Expected Logs
 
@@ -357,7 +357,7 @@ pipeline.context_store = context_store  # Optional: if they need to share
 ### Immediate (1-2 hours)
 1. Update `backend/main.py` or startup script
 2. Share context store between pipeline & vision
-3. Run manual test with real JARVIS instance
+3. Run manual test with real Ironcliw instance
 
 ### Short-term (1 day)
 1. Write E2E integration tests

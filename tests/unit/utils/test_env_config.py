@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for backend.utils.env_config module.
 
 This module tests the consolidated environment configuration utilities for
@@ -607,7 +607,7 @@ class TestEnvConfig:
     def test_from_env_uses_jarvis_prefix(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verify default JARVIS_ prefix is used for env keys."""
+        """Verify default Ironcliw_ prefix is used for env keys."""
         from backend.utils.env_config import EnvConfig
 
         @dataclass
@@ -615,8 +615,8 @@ class TestEnvConfig:
             sample_rate: int = 16000
             threshold: float = 0.85
 
-        monkeypatch.setenv("JARVIS_SAMPLE_RATE", "44100")
-        monkeypatch.setenv("JARVIS_THRESHOLD", "0.90")
+        monkeypatch.setenv("Ironcliw_SAMPLE_RATE", "44100")
+        monkeypatch.setenv("Ironcliw_THRESHOLD", "0.90")
 
         config = TestConfig.from_env()
 
@@ -634,8 +634,8 @@ class TestEnvConfig:
             timeout: int = 30
             enabled: bool = True
 
-        monkeypatch.delenv("JARVIS_TIMEOUT", raising=False)
-        monkeypatch.delenv("JARVIS_ENABLED", raising=False)
+        monkeypatch.delenv("Ironcliw_TIMEOUT", raising=False)
+        monkeypatch.delenv("Ironcliw_ENABLED", raising=False)
 
         config = TestConfig.from_env()
 
@@ -671,8 +671,8 @@ class TestEnvConfig:
             debug: bool = False
             verbose: bool = True
 
-        monkeypatch.setenv("JARVIS_DEBUG", "true")
-        monkeypatch.setenv("JARVIS_VERBOSE", "no")
+        monkeypatch.setenv("Ironcliw_DEBUG", "true")
+        monkeypatch.setenv("Ironcliw_VERBOSE", "no")
 
         config = BoolConfig.from_env()
 
@@ -690,8 +690,8 @@ class TestEnvConfig:
             name: str = "default_name"
             path: str = "/default/path"
 
-        monkeypatch.setenv("JARVIS_NAME", "custom_name")
-        monkeypatch.delenv("JARVIS_PATH", raising=False)
+        monkeypatch.setenv("Ironcliw_NAME", "custom_name")
+        monkeypatch.delenv("Ironcliw_PATH", raising=False)
 
         config = StrConfig.from_env()
 
@@ -709,8 +709,8 @@ class TestEnvConfig:
             my_setting: int = 100
             another_long_name: str = "default"
 
-        monkeypatch.setenv("JARVIS_MY_SETTING", "200")
-        monkeypatch.setenv("JARVIS_ANOTHER_LONG_NAME", "custom")
+        monkeypatch.setenv("Ironcliw_MY_SETTING", "200")
+        monkeypatch.setenv("Ironcliw_ANOTHER_LONG_NAME", "custom")
 
         config = SnakeCaseConfig.from_env()
 
@@ -729,7 +729,7 @@ class TestEnvConfig:
             setting_b: str = "b"
             setting_c: bool = True
 
-        monkeypatch.setenv("JARVIS_SETTING_A", "10")
+        monkeypatch.setenv("Ironcliw_SETTING_A", "10")
 
         config = DictConfig.from_env()
         result = config.to_dict()
@@ -751,10 +751,10 @@ class TestEnvConfig:
             bool_field: bool = False
             str_field: str = ""
 
-        monkeypatch.setenv("JARVIS_INT_FIELD", "42")
-        monkeypatch.setenv("JARVIS_FLOAT_FIELD", "3.14")
-        monkeypatch.setenv("JARVIS_BOOL_FIELD", "yes")
-        monkeypatch.setenv("JARVIS_STR_FIELD", "hello")
+        monkeypatch.setenv("Ironcliw_INT_FIELD", "42")
+        monkeypatch.setenv("Ironcliw_FLOAT_FIELD", "3.14")
+        monkeypatch.setenv("Ironcliw_BOOL_FIELD", "yes")
+        monkeypatch.setenv("Ironcliw_STR_FIELD", "hello")
 
         config = MixedConfig.from_env()
 
@@ -773,13 +773,13 @@ class TestEnvConfig:
         class IntConfig(EnvConfig):
             count: int = 5
 
-        monkeypatch.setenv("JARVIS_COUNT", "not_an_int")
+        monkeypatch.setenv("Ironcliw_COUNT", "not_an_int")
 
         with caplog.at_level(logging.WARNING):
             config = IntConfig.from_env()
 
         assert config.count == 5
-        assert "JARVIS_COUNT" in caplog.text
+        assert "Ironcliw_COUNT" in caplog.text
 
 
 # =============================================================================

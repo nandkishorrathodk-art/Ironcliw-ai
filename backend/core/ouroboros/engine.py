@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ouroboros Self-Improvement Engine v1.0
 ======================================
 
@@ -77,10 +77,10 @@ logger = logging.getLogger("Ouroboros")
 class OuroborosConfig:
     """Dynamic configuration for Ouroboros engine."""
 
-    # JARVIS Prime endpoint
-    PRIME_API_BASE = os.getenv("JARVIS_PRIME_API_BASE", "http://localhost:8000/v1")
-    PRIME_API_KEY = os.getenv("JARVIS_PRIME_API_KEY", "sk-local-jarvis-key")
-    PRIME_MODEL = os.getenv("JARVIS_PRIME_MODEL", "deepseek-coder-v2")
+    # Ironcliw Prime endpoint
+    PRIME_API_BASE = os.getenv("Ironcliw_PRIME_API_BASE", "http://localhost:8000/v1")
+    PRIME_API_KEY = os.getenv("Ironcliw_PRIME_API_KEY", "sk-local-jarvis-key")
+    PRIME_MODEL = os.getenv("Ironcliw_PRIME_MODEL", "deepseek-coder-v2")
 
     # Evolution settings
     MAX_RETRIES = int(os.getenv("OUROBOROS_MAX_RETRIES", "10"))
@@ -94,7 +94,7 @@ class OuroborosConfig:
     TEST_TIMEOUT = float(os.getenv("OUROBOROS_TEST_TIMEOUT", "300.0"))
 
     # Paths
-    JARVIS_PATH = Path(os.getenv("JARVIS_PATH", Path.home() / "Documents/repos/JARVIS-AI-Agent"))
+    Ironcliw_PATH = Path(os.getenv("Ironcliw_PATH", Path.home() / "Documents/repos/Ironcliw-AI-Agent"))
     LEARNING_MEMORY_PATH = Path(os.getenv("OUROBOROS_MEMORY_PATH", Path.home() / ".jarvis/ouroboros/memory"))
     SNAPSHOT_PATH = Path(os.getenv("OUROBOROS_SNAPSHOT_PATH", Path.home() / ".jarvis/ouroboros/snapshots"))
 
@@ -173,7 +173,7 @@ class FileCreationRequest:
     """
     Request for creating a new file from scratch.
 
-    This is a first-class operation in Ouroboros v2.0, enabling JARVIS to:
+    This is a first-class operation in Ouroboros v2.0, enabling Ironcliw to:
     - Generate complete new files based on natural language descriptions
     - Create files with proper structure, imports, and documentation
     - Optionally generate accompanying test files
@@ -231,7 +231,7 @@ class CodeChange:
     Represents a code change with support for file creation, modification, and deletion.
 
     This is the core data structure for tracking all file operations in Ouroboros.
-    File creation is now a first-class operation, enabling JARVIS to write new files from scratch.
+    File creation is now a first-class operation, enabling Ironcliw to write new files from scratch.
     """
     file_path: Path
     original_content: str  # Empty string for new file creation
@@ -481,12 +481,12 @@ class LearningMemory:
 
 
 # =============================================================================
-# LLM CLIENT (JARVIS Prime Interface)
+# LLM CLIENT (Ironcliw Prime Interface)
 # =============================================================================
 
 class JarvisPrimeClient:
     """
-    Client for communicating with JARVIS Prime (local LLM).
+    Client for communicating with Ironcliw Prime (local LLM).
 
     Uses OpenAI-compatible API for inference.
     """
@@ -526,7 +526,7 @@ class JarvisPrimeClient:
         max_tokens: int = 4096,
         timeout: float = OuroborosConfig.LLM_TIMEOUT,
     ) -> str:
-        """Generate a response from JARVIS Prime."""
+        """Generate a response from Ironcliw Prime."""
         session = await self._get_session()
 
         messages = []
@@ -549,15 +549,15 @@ class JarvisPrimeClient:
             ) as resp:
                 if resp.status != 200:
                     error_text = await resp.text()
-                    raise RuntimeError(f"JARVIS Prime error ({resp.status}): {error_text}")
+                    raise RuntimeError(f"Ironcliw Prime error ({resp.status}): {error_text}")
 
                 data = await resp.json()
                 return data["choices"][0]["message"]["content"]
 
         except asyncio.TimeoutError:
-            raise RuntimeError(f"JARVIS Prime timeout after {timeout}s")
+            raise RuntimeError(f"Ironcliw Prime timeout after {timeout}s")
         except aiohttp.ClientError as e:
-            raise RuntimeError(f"JARVIS Prime connection error: {e}")
+            raise RuntimeError(f"Ironcliw Prime connection error: {e}")
 
     async def generate_code_improvement(
         self,
@@ -641,7 +641,7 @@ class OpenCodeIntegration:
     model selection based on code complexity and available models.
 
     Configures OpenCode to use:
-    1. Dynamically discovered JARVIS Prime models
+    1. Dynamically discovered Ironcliw Prime models
     2. Fallback Ollama models
     3. Cloud API models (if configured)
     """
@@ -666,27 +666,27 @@ class OpenCodeIntegration:
         """
         Ensure OpenCode is properly configured with dynamic model discovery.
 
-        v2.0: Discovers available models from JARVIS Prime and configures
+        v2.0: Discovers available models from Ironcliw Prime and configures
         OpenCode with all available models for intelligent selection.
         """
         # Create config directory
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Discover available JARVIS Prime models
+        # Discover available Ironcliw Prime models
         discovered_models = []
         discovery = await self._get_model_discovery()
         if discovery:
             try:
                 models = await discovery.discover_models(force_refresh=force_refresh)
                 discovered_models = [m["id"] for m in models]
-                logger.info(f"Discovered {len(discovered_models)} JARVIS Prime models")
+                logger.info(f"Discovered {len(discovered_models)} Ironcliw Prime models")
             except Exception as e:
                 logger.warning(f"Model discovery failed: {e}")
 
         # Build provider configurations
         providers = {}
 
-        # JARVIS Prime provider with discovered models
+        # Ironcliw Prime provider with discovered models
         prime_models = discovered_models if discovered_models else [OuroborosConfig.PRIME_MODEL]
         providers["jarvis-prime"] = {
             "type": "openai-compatible",
@@ -1045,19 +1045,19 @@ class OuroborosEngine:
                 self.logger.warning(f"Enhanced integration not available: {e}, falling back to legacy client")
                 self._integration = None
 
-        # Fallback: Check JARVIS Prime connectivity directly
+        # Fallback: Check Ironcliw Prime connectivity directly
         if not self._integration:
             try:
                 response = await self._llm_client.generate(
-                    "Say 'JARVIS Prime online' if you can read this.",
+                    "Say 'Ironcliw Prime online' if you can read this.",
                     max_tokens=20,
                 )
                 if "online" in response.lower() or "jarvis" in response.lower():
-                    self.logger.info("JARVIS Prime connection verified (legacy mode)")
+                    self.logger.info("Ironcliw Prime connection verified (legacy mode)")
                 else:
-                    self.logger.warning(f"Unexpected JARVIS Prime response: {response}")
+                    self.logger.warning(f"Unexpected Ironcliw Prime response: {response}")
             except Exception as e:
-                self.logger.warning(f"JARVIS Prime not available: {e}")
+                self.logger.warning(f"Ironcliw Prime not available: {e}")
 
         self._running = True
         self.logger.info("Ouroboros Engine initialized")

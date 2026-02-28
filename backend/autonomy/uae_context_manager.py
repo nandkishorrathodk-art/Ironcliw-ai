@@ -1,4 +1,4 @@
-"""
+﻿"""
 UAE (Unified Autonomous Execution) Context Manager
 ===================================================
 
@@ -11,7 +11,7 @@ Provides continuous context management for autonomous execution:
 
 v1.0: Initial implementation with screen state tracking and context updates.
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 import asyncio
@@ -35,37 +35,37 @@ class UAEContextConfig:
 
     # Update settings
     continuous_update: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_CONTINUOUS", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_CONTINUOUS", "true").lower() == "true"
     )
     update_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_UAE_UPDATE_INTERVAL", "2.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_UAE_UPDATE_INTERVAL", "2.0"))
     )
     max_history_depth: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_UAE_HISTORY_DEPTH", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_UAE_HISTORY_DEPTH", "10"))
     )
 
     # Screen capture settings
     screen_capture_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_SCREEN_CAPTURE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_SCREEN_CAPTURE", "true").lower() == "true"
     )
     capture_on_change_only: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_CHANGE_ONLY", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_CHANGE_ONLY", "false").lower() == "true"
     )
 
     # Change detection settings
     change_detection_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_CHANGE_DETECT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_CHANGE_DETECT", "true").lower() == "true"
     )
     change_threshold: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_UAE_CHANGE_THRESHOLD", "0.05"))
+        default_factory=lambda: float(os.getenv("Ironcliw_UAE_CHANGE_THRESHOLD", "0.05"))
     )
 
     # Element tracking settings
     element_tracking_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_UAE_ELEMENT_TRACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_UAE_ELEMENT_TRACK", "true").lower() == "true"
     )
     max_tracked_elements: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_UAE_MAX_ELEMENTS", "50"))
+        default_factory=lambda: int(os.getenv("Ironcliw_UAE_MAX_ELEMENTS", "50"))
     )
 
 

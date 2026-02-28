@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Intelligent Startup Orchestrator v1.0.0
+Ironcliw Intelligent Startup Orchestrator v1.0.0
 ==============================================
 
 Production-grade, async, parallel startup system that:
@@ -40,10 +40,10 @@ Architecture:
 
 Key Insight:
 The frontend only needs WebSocket to be ready for interaction. ML models
-can continue loading in the background while the user interacts with JARVIS
+can continue loading in the background while the user interacts with Ironcliw
 in degraded mode.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -91,7 +91,7 @@ def _env_bool(key: str, default: bool) -> bool:
 
 class ReadinessLevel(IntEnum):
     """
-    Progressive readiness levels for JARVIS startup.
+    Progressive readiness levels for Ironcliw startup.
     
     Higher levels include all capabilities of lower levels.
     The supervisor should accept INTERACTIVE (L2) as "ready for user".
@@ -175,7 +175,7 @@ class ComponentDef:
 
 class IntelligentStartupOrchestrator:
     """
-    Manages JARVIS startup with progressive readiness levels.
+    Manages Ironcliw startup with progressive readiness levels.
     
     Key Features:
     1. Progressive readiness - user can interact before ML is fully loaded
@@ -230,7 +230,7 @@ class IntelligentStartupOrchestrator:
         logger.info("🚀 IntelligentStartupOrchestrator initialized")
     
     def _register_default_components(self):
-        """Register the default JARVIS startup components."""
+        """Register the default Ironcliw startup components."""
         # Level 1: HTTP (implicitly ready when server starts)
         
         # Level 2: WebSocket
@@ -438,7 +438,7 @@ class IntelligentStartupOrchestrator:
         Generate a health response for the /health/ready endpoint.
         
         This is the key integration point - it provides progressive readiness
-        that the supervisor can use to determine when JARVIS is "ready enough".
+        that the supervisor can use to determine when Ironcliw is "ready enough".
         """
         state = self._state
         
@@ -508,7 +508,7 @@ class IntelligentStartupOrchestrator:
         self._start_time = time.time()
         
         logger.info("=" * 60)
-        logger.info("🚀 JARVIS Intelligent Startup v1.0 - Progressive Readiness")
+        logger.info("🚀 Ironcliw Intelligent Startup v1.0 - Progressive Readiness")
         logger.info("=" * 60)
         
         # Immediately mark HTTP as ready (we're running)

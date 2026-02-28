@@ -1,29 +1,29 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🎯 Testing JARVIS Context Awareness"
+echo "🎯 Testing Ironcliw Context Awareness"
 echo "=================================="
 echo ""
 echo "This script will demonstrate the context awareness feature."
-echo "Make sure your React app is running and connected to JARVIS."
+echo "Make sure your React app is running and connected to Ironcliw."
 echo ""
 echo "Press Enter to continue..."
 read
 
 echo "1. First, let's lock your screen..."
-echo "   Say: 'Hey JARVIS, lock my screen'"
+echo "   Say: 'Hey Ironcliw, lock my screen'"
 echo ""
 echo "Press Enter after your screen is locked..."
 read
 
 echo "2. Now, with your screen locked, try a command that needs screen access:"
-echo "   Say: 'Hey JARVIS, open Safari and search for puppies'"
+echo "   Say: 'Hey Ironcliw, open Safari and search for puppies'"
 echo ""
 echo "Expected behavior:"
-echo "   - JARVIS detects the screen is locked"
-echo "   - JARVIS says: 'Your screen is locked. I'll unlock it now by typing in the password.'"
-echo "   - JARVIS unlocks your screen"
-echo "   - JARVIS opens Safari and searches"
-echo "   - JARVIS confirms what was done"
+echo "   - Ironcliw detects the screen is locked"
+echo "   - Ironcliw says: 'Your screen is locked. I'll unlock it now by typing in the password.'"
+echo "   - Ironcliw unlocks your screen"
+echo "   - Ironcliw opens Safari and searches"
+echo "   - Ironcliw confirms what was done"
 echo ""
 echo "Press Enter after testing..."
 read

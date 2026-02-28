@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Diagnose why voice verification is failing for the owner."""
 
 import asyncio
@@ -192,7 +192,7 @@ async def diagnose_verification():
             print("\n✅ No obvious issues found")
 
         print("\n📋 RECOMMENDATIONS:")
-        print("   1. Check if JARVIS is properly loading profiles on startup")
+        print("   1. Check if Ironcliw is properly loading profiles on startup")
         print("   2. Verify the speechbrain model is initialized correctly")
         print("   3. Consider re-enrolling voice with proper 192D embeddings")
         print("   4. Check audio input quality and format")

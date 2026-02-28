@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 # Voice Unlock Dependencies Installation Script
 # ============================================
 
-echo "🎯 Installing JARVIS Voice Unlock Dependencies..."
+echo "🎯 Installing Ironcliw Voice Unlock Dependencies..."
 
 # Check if we're in a virtual environment
 if [ -z "$VIRTUAL_ENV" ]; then

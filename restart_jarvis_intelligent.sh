@@ -1,12 +1,12 @@
-#!/bin/bash
-# Restart JARVIS with Full Intelligent Vision
-# This ensures JARVIS can understand "what am I working on?" queries
+﻿#!/bin/bash
+# Restart Ironcliw with Full Intelligent Vision
+# This ensures Ironcliw can understand "what am I working on?" queries
 
-echo "🧠 Restarting JARVIS with Full Screen Comprehension..."
+echo "🧠 Restarting Ironcliw with Full Screen Comprehension..."
 echo "============================================"
 
 # Kill existing processes
-echo "📍 Stopping existing JARVIS..."
+echo "📍 Stopping existing Ironcliw..."
 pkill -f "python.*start_system.py" 2>/dev/null || true
 pkill -f "python.*main.py" 2>/dev/null || true
 sleep 2
@@ -30,8 +30,8 @@ echo "🔍 Testing vision command recognition..."
 python -c "
 import sys
 sys.path.append('backend')
-from voice.jarvis_agent_voice import JARVISAgentVoice
-jarvis = JARVISAgentVoice()
+from voice.jarvis_agent_voice import IroncliwAgentVoice
+jarvis = IroncliwAgentVoice()
 
 # Test command detection
 test_cmds = ['what am i working on', 'can you see my screen']
@@ -40,17 +40,17 @@ for cmd in test_cmds:
     print(f'  • \"{cmd}\" → Vision: {\"✅\" if is_system else \"❌\"}')"
 
 echo ""
-echo "🚀 Starting JARVIS with intelligent vision..."
+echo "🚀 Starting Ironcliw with intelligent vision..."
 echo "============================================"
 echo ""
 echo "🎯 Try these commands:"
-echo "  • 'Hey JARVIS, what am I working on?'"
+echo "  • 'Hey Ironcliw, what am I working on?'"
 echo "  • 'What can you see in Cursor?'"
 echo "  • 'Describe what I'm doing'"
 echo "  • 'Can you see my screen?'"
 echo ""
-echo "JARVIS will now provide intelligent, contextual responses!"
+echo "Ironcliw will now provide intelligent, contextual responses!"
 echo ""
 
-# Start JARVIS
+# Start Ironcliw
 python start_system.py

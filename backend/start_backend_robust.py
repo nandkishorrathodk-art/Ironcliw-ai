@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Robust Backend Starter
 Starts both TypeScript WebSocket Router and Python Backend with proper error handling
@@ -217,7 +217,7 @@ class RobustBackendStarter:
 
     def run(self):
         """Main execution"""
-        print("🤖 JARVIS Unified Backend Starter")
+        print("🤖 Ironcliw Unified Backend Starter")
         print("=" * 50)
 
         # Set up signal handlers

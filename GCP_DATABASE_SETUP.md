@@ -1,4 +1,4 @@
-# 🌐 JARVIS Centralized GCP Database Setup
+﻿# 🌐 Ironcliw Centralized GCP Database Setup
 
 This guide will help you set up centralized Google Cloud SQL (PostgreSQL) and Cloud Storage databases so your local Mac and GCP VM share the same data in real-time.
 
@@ -34,8 +34,8 @@ same DB                            ↓
 
 1. ✅ GCP account with project `jarvis-473803`
 2. ✅ `gcloud` CLI installed and authenticated
-3. ✅ Local JARVIS working with SQLite
-4. ✅ GCP VM running JARVIS backend
+3. ✅ Local Ironcliw working with SQLite
+4. ✅ GCP VM running Ironcliw backend
 
 ---
 
@@ -106,20 +106,20 @@ python scripts/migrate_to_cloud.py
 
 ---
 
-### **Step 5: Configure JARVIS to Use Cloud SQL**
+### **Step 5: Configure Ironcliw to Use Cloud SQL**
 
 #### **Option A: Environment Variables**
 
 ```bash
 # Add to your ~/.zshrc or ~/.bashrc
-export JARVIS_DB_TYPE=cloudsql
-export JARVIS_DB_CONNECTION_NAME="jarvis-473803:us-central1:jarvis-learning-db"
+export Ironcliw_DB_TYPE=cloudsql
+export Ironcliw_DB_CONNECTION_NAME="jarvis-473803:us-central1:jarvis-learning-db"
 ```
 
 #### **Option B: Load from .env.gcp**
 
 ```bash
-# In your JARVIS startup script
+# In your Ironcliw startup script
 source .env.gcp
 ```
 
@@ -157,7 +157,7 @@ Should output: `✅ Using: Cloud SQL`
 
 ### **Automatic Fallback**
 
-JARVIS automatically falls back to local SQLite if:
+Ironcliw automatically falls back to local SQLite if:
 - Cloud SQL is unavailable
 - Credentials are missing
 - No internet connection
@@ -296,7 +296,7 @@ The setup uses:
 ### **"Using SQLite instead of Cloud SQL"**
 
 This is the automatic fallback. Check:
-1. Environment variable set: `echo $JARVIS_DB_TYPE`
+1. Environment variable set: `echo $Ironcliw_DB_TYPE`
 2. Cloud SQL Proxy running: `lsof -i:5432`
 3. Network connectivity: `ping 8.8.8.8`
 
@@ -306,19 +306,19 @@ This is the automatic fallback. Check:
 
 ### **Use Cloud SQL:**
 ```bash
-export JARVIS_DB_TYPE=cloudsql
+export Ironcliw_DB_TYPE=cloudsql
 # Start Cloud SQL Proxy
 cloud_sql_proxy -instances=jarvis-473803:us-central1:jarvis-learning-db=tcp:5432
-# Start JARVIS
+# Start Ironcliw
 python main.py
 ```
 
 ### **Use Local SQLite:**
 ```bash
-export JARVIS_DB_TYPE=sqlite
+export Ironcliw_DB_TYPE=sqlite
 # Or just unset it:
-unset JARVIS_DB_TYPE
-# Start JARVIS
+unset Ironcliw_DB_TYPE
+# Start Ironcliw
 python main.py
 ```
 
@@ -393,7 +393,7 @@ After setup:
 - [Cloud SQL Documentation](https://cloud.google.com/sql/docs)
 - [Cloud SQL Proxy Guide](https://cloud.google.com/sql/docs/postgres/sql-proxy)
 - [asyncpg Documentation](https://magicstack.github.io/asyncpg/)
-- [JARVIS Hybrid Architecture](./HYBRID_ARCHITECTURE.md)
+- [Ironcliw Hybrid Architecture](./HYBRID_ARCHITECTURE.md)
 
 ---
 

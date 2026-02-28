@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Voice Unlock Metrics Monitor
 ======================================
@@ -44,7 +44,7 @@ All notifications are:
 
 Restart Behavior (python start_system.py --restart):
 ====================================================
-When JARVIS is restarted with --restart flag:
+When Ironcliw is restarted with --restart flag:
 
 1. Orphan Cleanup Phase:
    - Checks for stale PID file from previous session
@@ -636,7 +636,7 @@ class VoiceUnlockMetricsMonitor:
                     plyer_notif.notify(
                         title=title,
                         message=message,
-                        app_name="JARVIS Voice Unlock",
+                        app_name="Ironcliw Voice Unlock",
                         timeout=5
                     )
                     logger.debug(f"📱 Sent Windows notification: {title}")
@@ -751,7 +751,7 @@ class VoiceUnlockMetricsMonitor:
 
                 # Add action buttons (macOS 10.14+)
                 # Note: terminal-notifier actions execute the -execute command with button name as argument
-                export_script_path = self.log_dir.parent.parent.parent / "Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/export_to_excel.sh"
+                export_script_path = self.log_dir.parent.parent.parent / "Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock/export_to_excel.sh"
                 if export_script_path.exists():
                     cmd.extend([
                         '-closeLabel', 'Dismiss',

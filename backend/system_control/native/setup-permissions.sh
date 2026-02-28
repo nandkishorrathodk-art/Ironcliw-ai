@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "=== JARVIS Weather Location Permission Setup ==="
+echo "=== Ironcliw Weather Location Permission Setup ==="
 echo ""
 echo "To use real-time location for weather, Terminal needs location permission."
 echo ""

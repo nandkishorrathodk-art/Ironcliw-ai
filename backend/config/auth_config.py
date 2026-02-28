@@ -1,14 +1,14 @@
-"""
-Authentication Configuration for JARVIS
+﻿"""
+Authentication Configuration for Ironcliw
 ========================================
 
 Provides configuration for authentication bypass mechanism.
 Designed for Windows/Linux where voice biometric authentication may not be available.
 
 Environment Variables:
-- JARVIS_BYPASS_AUTH: Set to "true" to bypass authentication completely
-- JARVIS_DEV_MODE: Set to "true" to enable development mode (auto-bypass)
-- JARVIS_BYPASS_PASSWORD: Optional password for bypass mode
+- Ironcliw_BYPASS_AUTH: Set to "true" to bypass authentication completely
+- Ironcliw_DEV_MODE: Set to "true" to enable development mode (auto-bypass)
+- Ironcliw_BYPASS_PASSWORD: Optional password for bypass mode
 
 Security Warning:
 Bypassing authentication reduces system security. Only use in trusted environments.
@@ -22,14 +22,14 @@ class AuthConfig:
     """Authentication configuration and bypass management."""
     
     # Environment variable checks
-    BYPASS_AUTH: bool = os.getenv("JARVIS_BYPASS_AUTH", "false").lower() in ("true", "1", "yes")
-    DEV_MODE: bool = os.getenv("JARVIS_DEV_MODE", "false").lower() in ("true", "1", "yes")
-    BYPASS_PASSWORD: Optional[str] = os.getenv("JARVIS_BYPASS_PASSWORD")
+    BYPASS_AUTH: bool = os.getenv("Ironcliw_BYPASS_AUTH", "false").lower() in ("true", "1", "yes")
+    DEV_MODE: bool = os.getenv("Ironcliw_DEV_MODE", "false").lower() in ("true", "1", "yes")
+    BYPASS_PASSWORD: Optional[str] = os.getenv("Ironcliw_BYPASS_PASSWORD")
     
     # Platform-based auto-bypass (for Windows/Linux by default)
     import platform
-    AUTO_BYPASS_ON_WINDOWS: bool = os.getenv("JARVIS_AUTO_BYPASS_WINDOWS", "true").lower() in ("true", "1", "yes")
-    AUTO_BYPASS_ON_LINUX: bool = os.getenv("JARVIS_AUTO_BYPASS_LINUX", "true").lower() in ("true", "1", "yes")
+    AUTO_BYPASS_ON_WINDOWS: bool = os.getenv("Ironcliw_AUTO_BYPASS_WINDOWS", "true").lower() in ("true", "1", "yes")
+    AUTO_BYPASS_ON_LINUX: bool = os.getenv("Ironcliw_AUTO_BYPASS_LINUX", "true").lower() in ("true", "1", "yes")
     IS_WINDOWS: bool = platform.system() == "Windows"
     IS_LINUX: bool = platform.system() == "Linux"
     IS_MACOS: bool = platform.system() == "Darwin"
@@ -40,8 +40,8 @@ class AuthConfig:
         Check if authentication should be bypassed.
         
         Returns True if:
-        - JARVIS_BYPASS_AUTH is set to true
-        - JARVIS_DEV_MODE is set to true
+        - Ironcliw_BYPASS_AUTH is set to true
+        - Ironcliw_DEV_MODE is set to true
         - Running on Windows and AUTO_BYPASS_ON_WINDOWS is true
         - Running on Linux and AUTO_BYPASS_ON_LINUX is true
         
@@ -70,10 +70,10 @@ class AuthConfig:
             str: Reason for authentication bypass
         """
         if cls.BYPASS_AUTH:
-            return "Authentication bypass enabled (JARVIS_BYPASS_AUTH=true)"
+            return "Authentication bypass enabled (Ironcliw_BYPASS_AUTH=true)"
         
         if cls.DEV_MODE:
-            return "Development mode enabled (JARVIS_DEV_MODE=true)"
+            return "Development mode enabled (Ironcliw_DEV_MODE=true)"
         
         if cls.IS_WINDOWS and cls.AUTO_BYPASS_ON_WINDOWS:
             return "Windows platform auto-bypass (voice biometric unavailable)"
@@ -136,7 +136,7 @@ def get_auth_status() -> Dict[str, any]:
 if __name__ == "__main__":
     # Self-test
     print("=" * 60)
-    print("JARVIS Authentication Configuration")
+    print("Ironcliw Authentication Configuration")
     print("=" * 60)
     
     config = AuthConfig.get_config_summary()

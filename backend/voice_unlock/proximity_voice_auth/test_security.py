@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Security Testing for JARVIS Proximity + Voice Auth
+Security Testing for Ironcliw Proximity + Voice Auth
 ==================================================
 
 Tests security features and threat detection capabilities.
@@ -304,7 +304,7 @@ class SecurityTester:
     
     async def run_all_tests(self):
         """Run all security tests."""
-        print("🔐 JARVIS Proximity + Voice Auth Security Testing")
+        print("🔐 Ironcliw Proximity + Voice Auth Security Testing")
         print("=" * 50)
         
         await self.setup()

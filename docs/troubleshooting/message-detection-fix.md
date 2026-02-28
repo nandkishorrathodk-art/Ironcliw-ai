@@ -1,7 +1,7 @@
-# Message Detection Fix Documentation
+﻿# Message Detection Fix Documentation
 
 ## Issue
-When users asked JARVIS "do I have any messages?", it was being processed as a regular conversation query instead of triggering the Multi-Window Intelligence system.
+When users asked Ironcliw "do I have any messages?", it was being processed as a regular conversation query instead of triggering the Multi-Window Intelligence system.
 
 ## Root Cause
 The query "do I have any messages" was not being recognized as a system command because:
@@ -33,11 +33,11 @@ workspace_phrases = [
 
 ## How It Works Now
 
-1. User says: "Hey JARVIS, do I have any messages?"
+1. User says: "Hey Ironcliw, do I have any messages?"
 2. `_is_system_command()` detects this as a workspace intelligence query
 3. `_handle_system_command()` routes it to `_handle_workspace_command()`
 4. The workspace intelligence system analyzes open windows
-5. JARVIS responds with: "You have Discord and Slack open but no new messages"
+5. Ironcliw responds with: "You have Discord and Slack open but no new messages"
 
 ## Supported Message Queries
 - "Do I have any messages?"

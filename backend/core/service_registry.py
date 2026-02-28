@@ -1,9 +1,9 @@
-"""
+﻿"""
 Enterprise-Grade Service Registry v3.0
 ======================================
 
 Dynamic service discovery system eliminating hardcoded ports and enabling
-true distributed orchestration across JARVIS, J-Prime, and Reactor-Core.
+true distributed orchestration across Ironcliw, J-Prime, and Reactor-Core.
 
 Architecture:
     ┌──────────────────────────────────────────────────────────────────┐
@@ -11,7 +11,7 @@ Architecture:
     │  ┌────────────────────────────────────────────────────────────┐  │
     │  │  File-Based Registry: ~/.jarvis/registry/services.json     │  │
     │  │  ┌──────────────┬──────────────┬─────────────────────┐     │  │
-    │  │  │   JARVIS     │   J-PRIME    │   REACTOR-CORE      │     │  │
+    │  │  │   Ironcliw     │   J-PRIME    │   REACTOR-CORE      │     │  │
     │  │  │  PID: 12345  │  PID: 12346  │   PID: 12347        │     │  │
     │  │  │  Port: 5001  │  Port: 8000  │   Port: 8090        │     │  │
     │  │  │  Status: ✅  │  Status: ✅  │   Status: ✅         │     │  │
@@ -47,7 +47,7 @@ Usage:
     # Clean deregistration on shutdown
     await registry.deregister_service("jarvis-prime")
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 93.0.0
 
 v93.0 Changes:
@@ -221,7 +221,7 @@ class AtomicSharedRegistry:
         held for the ENTIRE read-modify-write cycle, ensuring true atomicity.
 
     Usage:
-        # From JARVIS Prime, Reactor Core, or any external process
+        # From Ironcliw Prime, Reactor Core, or any external process
         from backend.core.service_registry import AtomicSharedRegistry
 
         async with AtomicSharedRegistry.atomic_update() as registry:
@@ -245,7 +245,7 @@ class AtomicSharedRegistry:
     def get_registry_path(cls) -> Path:
         """Get the registry file path from environment or default."""
         registry_dir = Path(os.getenv(
-            "JARVIS_REGISTRY_DIR",
+            "Ironcliw_REGISTRY_DIR",
             str(cls.DEFAULT_REGISTRY_DIR)
         ))
         return registry_dir / cls.DEFAULT_REGISTRY_FILE
@@ -254,7 +254,7 @@ class AtomicSharedRegistry:
     def get_lock_path(cls) -> Path:
         """Get the lock file path."""
         registry_dir = Path(os.getenv(
-            "JARVIS_REGISTRY_DIR",
+            "Ironcliw_REGISTRY_DIR",
             str(cls.DEFAULT_REGISTRY_DIR)
         ))
         return registry_dir / cls.DEFAULT_LOCK_FILE
@@ -838,7 +838,7 @@ class ServiceInfo:
         ├─────────────────────────────────────────────────────────────────────┤
         │ Phase 3: Process Identity Validation                                │
         │   - Compare process name (must match exactly)                       │
-        │   - Compare command line (JARVIS-specific patterns)                 │
+        │   - Compare command line (Ironcliw-specific patterns)                 │
         │   - Compare executable path (if available)                          │
         └─────────────────────────────────────────────────────────────────────┘
 
@@ -869,7 +869,7 @@ class ServiceInfo:
                 if current_name != self.process_name:
                     return False, f"name_mismatch:expected={self.process_name},got={current_name}"
 
-            # 3b: Command line validation (JARVIS-specific patterns)
+            # 3b: Command line validation (Ironcliw-specific patterns)
             if self.process_cmdline:
                 try:
                     current_cmdline = " ".join(process.cmdline())
@@ -883,7 +883,7 @@ class ServiceInfo:
                     stored_has_jarvis = any(p in self.process_cmdline.lower() for p in jarvis_patterns)
                     current_has_jarvis = any(p in current_cmdline.lower() for p in jarvis_patterns)
 
-                    # If stored was JARVIS but current isn't, that's a reuse
+                    # If stored was Ironcliw but current isn't, that's a reuse
                     if stored_has_jarvis and not current_has_jarvis:
                         return False, "cmdline_mismatch:jarvis_pattern_missing"
 
@@ -953,7 +953,7 @@ class ServiceInfo:
 
         v102.0: Also filters out unknown fields to prevent TypeError when
         registry contains fields from other components (e.g., machine_id from
-        J-Prime or Reactor-Core that JARVIS doesn't have in its dataclass).
+        J-Prime or Reactor-Core that Ironcliw doesn't have in its dataclass).
         """
         # Make a copy to avoid modifying original
         data = dict(data)
@@ -1044,7 +1044,7 @@ class ServiceInfo:
 
         v112.0 Enhancement: Increased PID reuse tolerance from 1s to 5s (configurable)
         to handle clock skew, NTP adjustments, and floating-point precision issues.
-        The tolerance is configurable via JARVIS_PID_REUSE_TOLERANCE env var.
+        The tolerance is configurable via Ironcliw_PID_REUSE_TOLERANCE env var.
         """
         # v112.0: Configurable PID reuse tolerance (default 5 seconds)
         # Increased from 1s to handle:
@@ -1052,7 +1052,7 @@ class ServiceInfo:
         # - System clock skew
         # - Floating-point precision differences
         # - Container/VM time synchronization delays
-        pid_tolerance = float(os.environ.get("JARVIS_PID_REUSE_TOLERANCE", "5.0"))
+        pid_tolerance = float(os.environ.get("Ironcliw_PID_REUSE_TOLERANCE", "5.0"))
 
         try:
             process = psutil.Process(self.pid)
@@ -1207,11 +1207,11 @@ class ServiceRegistry:
 
         # v93.3: Startup-aware grace period configuration
         self.startup_grace_period = startup_grace_period or float(
-            os.environ.get("JARVIS_SERVICE_STARTUP_GRACE", "120.0")
+            os.environ.get("Ironcliw_SERVICE_STARTUP_GRACE", "120.0")
         )
         # v93.3: Extended stale threshold during startup (5x normal)
         self.startup_stale_multiplier = float(
-            os.environ.get("JARVIS_STARTUP_STALE_MULTIPLIER", "5.0")
+            os.environ.get("Ironcliw_STARTUP_STALE_MULTIPLIER", "5.0")
         )
 
         # v93.0: Use DirectoryManager for robust directory handling
@@ -1220,7 +1220,7 @@ class ServiceRegistry:
         # v93.14: Rate limit stale warnings (max 1 per service per 60s)
         self._stale_warning_times: Dict[str, float] = {}
         self._warning_rate_limit_seconds = float(
-            os.environ.get("JARVIS_STALE_WARNING_RATE_LIMIT", "60.0")
+            os.environ.get("Ironcliw_STALE_WARNING_RATE_LIMIT", "60.0")
         )
 
         # v95.0: Callback system for service lifecycle events
@@ -1237,11 +1237,11 @@ class ServiceRegistry:
         # Format: {"service_pattern": threshold_seconds}
         self._service_stale_thresholds: Dict[str, float] = {
             "reactor": float(os.environ.get("REACTOR_STALE_THRESHOLD", "600.0")),  # 10 minutes
-            "jarvis-prime": float(os.environ.get("JARVIS_PRIME_STALE_THRESHOLD", "600.0")),  # 10 minutes
-            "jprime": float(os.environ.get("JARVIS_PRIME_STALE_THRESHOLD", "600.0")),  # 10 minutes
+            "jarvis-prime": float(os.environ.get("Ironcliw_PRIME_STALE_THRESHOLD", "600.0")),  # 10 minutes
+            "jprime": float(os.environ.get("Ironcliw_PRIME_STALE_THRESHOLD", "600.0")),  # 10 minutes
             # v95.0: jarvis-body (registry owner) has highest threshold - should never be stale
-            "jarvis-body": float(os.environ.get("JARVIS_BODY_STALE_THRESHOLD", "3600.0")),  # 1 hour
-            "default": float(os.environ.get("JARVIS_VERY_STALE_THRESHOLD", "300.0")),  # 5 minutes
+            "jarvis-body": float(os.environ.get("Ironcliw_BODY_STALE_THRESHOLD", "3600.0")),  # 1 hour
+            "default": float(os.environ.get("Ironcliw_VERY_STALE_THRESHOLD", "300.0")),  # 5 minutes
         }
         logger.debug(f"[v95.0] Service stale thresholds: {self._service_stale_thresholds}")
 
@@ -1249,10 +1249,10 @@ class ServiceRegistry:
         self._circuit_breaker_state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
         self._circuit_breaker_failures = 0
         self._circuit_breaker_threshold = int(
-            os.environ.get("JARVIS_REGISTRY_CB_THRESHOLD", "5")
+            os.environ.get("Ironcliw_REGISTRY_CB_THRESHOLD", "5")
         )
         self._circuit_breaker_reset_timeout = float(
-            os.environ.get("JARVIS_REGISTRY_CB_RESET", "30.0")
+            os.environ.get("Ironcliw_REGISTRY_CB_RESET", "30.0")
         )
         self._circuit_breaker_last_failure = 0.0
         self._circuit_breaker_lock = asyncio.Lock()
@@ -1260,7 +1260,7 @@ class ServiceRegistry:
         # v95.0: Local cache for graceful degradation when registry unavailable
         self._local_cache: Dict[str, ServiceInfo] = {}
         self._cache_lock = asyncio.Lock()
-        self._cache_ttl = float(os.environ.get("JARVIS_REGISTRY_CACHE_TTL", "60.0"))
+        self._cache_ttl = float(os.environ.get("Ironcliw_REGISTRY_CACHE_TTL", "60.0"))
         self._cache_last_update = 0.0
 
         # v95.0: Heartbeat retry queue for transient failures
@@ -1272,11 +1272,11 @@ class ServiceRegistry:
         # Owner is NEVER marked stale because if the registry is running,
         # the owner must be alive (by definition)
         self._owner_service_name: str = os.environ.get(
-            "JARVIS_REGISTRY_OWNER", "jarvis-body"
+            "Ironcliw_REGISTRY_OWNER", "jarvis-body"
         )
         self._self_heartbeat_task: Optional[asyncio.Task] = None
         self._self_heartbeat_interval: float = float(
-            os.environ.get("JARVIS_SELF_HEARTBEAT_INTERVAL", "15.0")
+            os.environ.get("Ironcliw_SELF_HEARTBEAT_INTERVAL", "15.0")
         )
         logger.debug(f"[v95.0] Registry owner: {self._owner_service_name}")
 
@@ -1284,10 +1284,10 @@ class ServiceRegistry:
         # Tracks services that appear dead but haven't been confirmed yet
         self._suspicious_services: Dict[str, float] = {}  # service_name -> first_detection_time
         self._dead_confirmation_grace_period: float = float(
-            os.environ.get("JARVIS_DEAD_CONFIRMATION_GRACE", "30.0")  # 30 second grace
+            os.environ.get("Ironcliw_DEAD_CONFIRMATION_GRACE", "30.0")  # 30 second grace
         )
         self._dead_confirmation_retries: int = int(
-            os.environ.get("JARVIS_DEAD_CONFIRMATION_RETRIES", "3")
+            os.environ.get("Ironcliw_DEAD_CONFIRMATION_RETRIES", "3")
         )
         self._suspicious_retry_counts: Dict[str, int] = {}  # service_name -> retry_count
 
@@ -1725,7 +1725,7 @@ class ServiceRegistry:
 
         # Use default port from environment if not specified
         actual_port = port if port is not None else int(
-            os.environ.get("JARVIS_BODY_PORT", "8010")
+            os.environ.get("Ironcliw_BODY_PORT", "8010")
         )
 
         # v96.0: Determine primary port (configured port)
@@ -2113,7 +2113,7 @@ class ServiceRegistry:
     # =========================================================================
     # v112.0: Cross-Repo Lifecycle Coordination
     # =========================================================================
-    # These methods enable safe coordination between JARVIS, JARVIS-Prime,
+    # These methods enable safe coordination between Ironcliw, Ironcliw-Prime,
     # and Reactor-Core during service transitions (restarts, upgrades, etc.)
     # =========================================================================
 
@@ -2244,7 +2244,7 @@ class ServiceRegistry:
         """
         v112.0: Get the lifecycle state of a service for cross-repo coordination.
 
-        This is useful for external services (JARVIS-Prime, Reactor-Core) to check
+        This is useful for external services (Ironcliw-Prime, Reactor-Core) to check
         if they should wait for a service to complete its transition.
 
         Args:
@@ -2633,7 +2633,7 @@ class ServiceRegistry:
                     f"[v95.2] Registering owner '{self._owner_service_name}': {reason} "
                     f"(PID: {current_pid})"
                 )
-                owner_port = int(os.environ.get("JARVIS_BODY_PORT", "8010"))
+                owner_port = int(os.environ.get("Ironcliw_BODY_PORT", "8010"))
 
                 # Create ServiceInfo with explicit process_start_time
                 service = ServiceInfo(
@@ -3313,7 +3313,7 @@ class ServiceSupervisor:
 
     Features:
     - Automatic restart of dead services with exponential backoff
-    - Cross-repo service management (JARVIS, J-Prime, Reactor-Core)
+    - Cross-repo service management (Ironcliw, J-Prime, Reactor-Core)
     - Health monitoring with configurable restart policies
     - Parallel launch support for fast startup
     - Graceful degradation when services repeatedly fail
@@ -3641,7 +3641,7 @@ class ServiceSupervisor:
             # Get port from environment or config
             port = None
             if "jarvis-prime" in service_name.lower() or "jprime" in service_name.lower():
-                port = int(os.environ.get("JARVIS_PRIME_PORT", "8000"))
+                port = int(os.environ.get("Ironcliw_PRIME_PORT", "8000"))
             elif "reactor" in service_name.lower():
                 port = int(os.environ.get("REACTOR_CORE_PORT", "8090"))
 
@@ -3842,8 +3842,8 @@ def get_service_supervisor() -> ServiceSupervisor:
 # v93.0: Startup Directory Initialization
 # =============================================================================
 
-# All required .jarvis directories for JARVIS ecosystem
-REQUIRED_JARVIS_DIRECTORIES = [
+# All required .jarvis directories for Ironcliw ecosystem
+REQUIRED_Ironcliw_DIRECTORIES = [
     Path.home() / ".jarvis",
     Path.home() / ".jarvis" / "registry",
     Path.home() / ".jarvis" / "state",
@@ -3885,11 +3885,11 @@ REQUIRED_JARVIS_DIRECTORIES = [
 
 def ensure_all_jarvis_directories() -> Dict[str, Any]:
     """
-    v93.0: Ensure all required JARVIS directories exist.
+    v93.0: Ensure all required Ironcliw directories exist.
 
     Should be called ONCE at startup before any services initialize.
     This prevents race conditions and "No such file or directory" errors
-    throughout the JARVIS ecosystem.
+    throughout the Ironcliw ecosystem.
 
     Returns:
         Dict with creation stats: created, existed, failed
@@ -3898,12 +3898,12 @@ def ensure_all_jarvis_directories() -> Dict[str, Any]:
         "created": [],
         "existed": [],
         "failed": [],
-        "total": len(REQUIRED_JARVIS_DIRECTORIES),
+        "total": len(REQUIRED_Ironcliw_DIRECTORIES),
     }
 
     logger.info("[v93.0] Pre-flight directory initialization...")
 
-    for dir_path in REQUIRED_JARVIS_DIRECTORIES:
+    for dir_path in REQUIRED_Ironcliw_DIRECTORIES:
         try:
             if dir_path.exists():
                 stats["existed"].append(str(dir_path))
@@ -3989,7 +3989,7 @@ __all__ = [
     # v93.0: Directory Management
     "DirectoryManager",
     "ensure_all_jarvis_directories",
-    "REQUIRED_JARVIS_DIRECTORIES",
+    "REQUIRED_Ironcliw_DIRECTORIES",
     # Convenience functions
     "get_service_registry",
     "get_service_supervisor",

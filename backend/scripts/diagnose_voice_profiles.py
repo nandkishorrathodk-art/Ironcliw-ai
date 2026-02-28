@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 🔍 VOICE PROFILE DIAGNOSTIC TOOL
 ═══════════════════════════════════════════════════════════════════════
@@ -135,7 +135,7 @@ async def diagnose_profiles():
         db_paths = [
             os.path.expanduser("~/.jarvis/learning/jarvis_learning.db"),  # Primary location
             os.path.expanduser("~/.jarvis/jarvis_learning.db"),  # Legacy
-            os.path.expanduser("~/Library/Application Support/JARVIS/jarvis_learning.db"),
+            os.path.expanduser("~/Library/Application Support/Ironcliw/jarvis_learning.db"),
             "data/jarvis_learning.db",
         ]
         

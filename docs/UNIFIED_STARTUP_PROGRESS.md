@@ -1,4 +1,4 @@
-# Unified Startup Progress System v2.0
+﻿# Unified Startup Progress System v2.0
 
 **Version:** 2.0.0
 **Date:** December 19, 2025
@@ -10,7 +10,7 @@ The **Unified Startup Progress System** is a comprehensive solution that elimina
 
 ### The Problem We Solved
 
-**Before v2.0**, JARVIS had **THREE separate progress tracking systems** that were NOT synchronized:
+**Before v2.0**, Ironcliw had **THREE separate progress tracking systems** that were NOT synchronized:
 
 1. **`loading_server.py`** - Standalone loading page server (port 3001) with `ProgressState`
 2. **`startup_progress_api.py`** - Backend WebSocket API (port 8010) with `StartupProgressManager`
@@ -18,7 +18,7 @@ The **Unified Startup Progress System** is a comprehensive solution that elimina
 
 **Issues:**
 - ❌ Progress percentages differed between frontend and backend
-- ❌ Voice narrator said "JARVIS is ready" before system was truly ready
+- ❌ Voice narrator said "Ironcliw is ready" before system was truly ready
 - ❌ Loading bar showed 11% while backend showed 16%
 - ❌ Each system calculated progress independently
 - ❌ No central authority for the "is_ready" state
@@ -129,10 +129,10 @@ await hub.component_complete("backend", "Backend ready!")
 
 # Check readiness
 if hub.is_ready():
-    await narrator.speak("JARVIS is online!")
+    await narrator.speak("Ironcliw is online!")
 
 # Mark complete
-await hub.mark_complete(True, "JARVIS is online!")
+await hub.mark_complete(True, "Ironcliw is online!")
 ```
 
 ---
@@ -277,7 +277,7 @@ def update(self, stage: str, message: str, progress: float, metadata: Optional[D
 
 ---
 
-### 5. JARVIS Supervisor Integration
+### 5. Ironcliw Supervisor Integration
 
 **Location:** `backend/core/supervisor/jarvis_supervisor.py`
 
@@ -322,7 +322,7 @@ if ready_for_completion:
     # Mark unified hub as complete (CRITICAL: must happen BEFORE announcements)
     # This ensures all systems know we're truly ready
     if self._progress_hub:
-        await self._progress_hub.mark_complete(True, "JARVIS is online!")
+        await self._progress_hub.mark_complete(True, "Ironcliw is online!")
 
     # Visual: Complete and redirect
     await self._progress_reporter.complete(...)
@@ -413,7 +413,7 @@ else:
 
 ### The Problem
 
-Previously, the voice narrator would announce "JARVIS is online!" before the system was truly ready because each component had its own `is_ready` logic.
+Previously, the voice narrator would announce "Ironcliw is online!" before the system was truly ready because each component had its own `is_ready` logic.
 
 ### The Solution
 
@@ -456,11 +456,11 @@ def is_ready(self) -> bool:
 ```python
 # CORRECT: Only announce ready when hub says so
 if self._progress_hub and self._progress_hub.is_ready():
-    await self._narrator.speak("JARVIS is online!")
+    await self._narrator.speak("Ironcliw is online!")
 
 # WRONG: Would announce too early
 # if backend_ready:  ❌
-#     await self._narrator.speak("JARVIS is online!")
+#     await self._narrator.speak("Ironcliw is online!")
 ```
 
 ---
@@ -574,7 +574,7 @@ async def _sync_to_websockets(self, state: Dict[str, Any]):
 ```
 Loading page: "11% (2/19 components)"
 Backend log:  "Progress: 16% (3/19 components)"
-Voice:        "JARVIS is ready" (at 45%)
+Voice:        "Ironcliw is ready" (at 45%)
 ```
 
 **After:**
@@ -588,7 +588,7 @@ Voice:        [Waits until 100% and hub.is_ready() = True]
 
 ✅ Voice narrator only speaks after `hub.is_ready()` returns `True`
 ✅ `is_ready()` checks that ALL required components are complete
-✅ No more "JARVIS is online!" when only backend is up
+✅ No more "Ironcliw is online!" when only backend is up
 
 ### 3. **Dynamic Component Registration**
 
@@ -647,7 +647,7 @@ async def main():
     print(f'4. Frontend complete: {hub.get_progress():.1f}%, ready={hub.is_ready()}')
 
     # Mark complete
-    await hub.mark_complete(True, 'JARVIS is online!')
+    await hub.mark_complete(True, 'Ironcliw is online!')
     print(f'5. Marked complete: {hub.get_progress():.1f}%, ready={hub.is_ready()}')
 
     print(f'\nSummary: {get_progress_summary()}')
@@ -769,7 +769,7 @@ print(f"Components detail: {state['components']}")
 
 ### Voice Says "Ready" Too Early
 
-**Symptom:** JARVIS announces "online" before system is truly ready.
+**Symptom:** Ironcliw announces "online" before system is truly ready.
 
 **Diagnosis:**
 ```python
@@ -784,12 +784,12 @@ print(f"Completed components: {[name for name, c in hub._components.items() if c
 Ensure the supervisor calls `hub.mark_complete()` BEFORE voice narration:
 ```python
 # CORRECT order
-await hub.mark_complete(True, "JARVIS is online!")
-await narrator.speak("JARVIS is online!")
+await hub.mark_complete(True, "Ironcliw is online!")
+await narrator.speak("Ironcliw is online!")
 
 # WRONG order (voice will speak before hub is marked ready)
-await narrator.speak("JARVIS is online!")  # ❌
-await hub.mark_complete(True, "JARVIS is online!")
+await narrator.speak("Ironcliw is online!")  # ❌
+await hub.mark_complete(True, "Ironcliw is online!")
 ```
 
 ### Different Progress on Different Systems
@@ -930,7 +930,7 @@ Get human-readable progress summary.
 
 ## Credits
 
-**Designed and implemented by:** JARVIS System + Claude Sonnet 4.5
+**Designed and implemented by:** Ironcliw System + Claude Sonnet 4.5
 **Date:** December 19, 2025
 **Version:** 2.0.0
 **Status:** ✅ Production Ready

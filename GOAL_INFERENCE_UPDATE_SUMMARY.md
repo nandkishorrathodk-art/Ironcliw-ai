@@ -1,11 +1,11 @@
-# Goal Inference Configuration Update Summary
+﻿# Goal Inference Configuration Update Summary
 
 ## Changes Made
 
 ### 1. **start_jarvis.sh** - Updated Default Settings
 - Added environment variables with optimal defaults:
-  - `JARVIS_GOAL_PRESET=balanced` (default)
-  - `JARVIS_GOAL_AUTOMATION=true` (default enabled)
+  - `Ironcliw_GOAL_PRESET=balanced` (default)
+  - `Ironcliw_GOAL_AUTOMATION=true` (default enabled)
 - Updated description to show "Automation: ON by default" for balanced preset
 
 ### 2. **start_system.py** - Enhanced Auto-Detection
@@ -28,7 +28,7 @@
 
 ## Result
 
-When you now start JARVIS:
+When you now start Ironcliw:
 ```bash
 ./start_jarvis.sh
 ```
@@ -48,7 +48,7 @@ Instead of the previous:
 
 ## Benefits
 
-1. **Automation Enabled**: JARVIS can now proactively execute high-confidence actions
+1. **Automation Enabled**: Ironcliw can now proactively execute high-confidence actions
 2. **More Responsive**: Lower confidence thresholds mean faster response to your patterns
 3. **Better Learning**: System can learn from automated actions, improving over time
 4. **Consistent Defaults**: All configuration files now have matching optimal settings
@@ -59,8 +59,8 @@ If you want different settings, you can still override:
 
 1. **Environment Variables** (permanent):
    ```bash
-   export JARVIS_GOAL_PRESET=aggressive
-   export JARVIS_GOAL_AUTOMATION=false
+   export Ironcliw_GOAL_PRESET=aggressive
+   export Ironcliw_GOAL_AUTOMATION=false
    ```
 
 2. **Command Line** (per session):

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Process-Isolated ML Loader
 ===========================
 
@@ -37,7 +37,7 @@ Usage:
         operation_name="Custom Model"
     )
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -84,7 +84,7 @@ class MLLoaderConfig:
     force_kill_delay: float = 2.0  # Delay before SIGKILL after SIGTERM
 
     # Process identification
-    process_marker: str = "JARVIS_ML_LOADER"
+    process_marker: str = "Ironcliw_ML_LOADER"
 
     @classmethod
     def from_environment(cls) -> 'MLLoaderConfig':
@@ -189,7 +189,7 @@ class SelfHealingConfig:
 
 class AdvancedProcessSelfHealer:
     """
-    Advanced Self-Healing Process Manager for JARVIS.
+    Advanced Self-Healing Process Manager for Ironcliw.
 
     Provides:
     - Dynamic port discovery with parallel health checks (fully async)
@@ -734,7 +734,7 @@ class MLLoadError(Exception):
 # Process Cleanup Utilities
 # =============================================================================
 
-def find_stuck_ml_processes(marker: str = "JARVIS_ML_LOADER") -> List[Dict[str, Any]]:
+def find_stuck_ml_processes(marker: str = "Ironcliw_ML_LOADER") -> List[Dict[str, Any]]:
     """
     Find ML loader processes that appear stuck.
 
@@ -835,7 +835,7 @@ def kill_process_tree(pid: int, timeout: float = 5.0) -> bool:
 
 
 async def cleanup_stuck_ml_processes(
-    marker: str = "JARVIS_ML_LOADER",
+    marker: str = "Ironcliw_ML_LOADER",
     max_age_seconds: float = 300.0
 ) -> int:
     """
@@ -887,7 +887,7 @@ def _worker_load_speechbrain_model(
     # Set process title for identification
     try:
         import setproctitle
-        setproctitle.setproctitle(f"JARVIS_ML_LOADER: {model_name}")
+        setproctitle.setproctitle(f"Ironcliw_ML_LOADER: {model_name}")
     except ImportError:
         pass
 

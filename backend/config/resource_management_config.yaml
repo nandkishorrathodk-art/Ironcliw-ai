@@ -1,4 +1,4 @@
-# Unified Resource Management Configuration
+﻿# Unified Resource Management Configuration
 # Dynamic configuration for 16GB RAM constraint optimization
 
 # System Resource Limits
@@ -232,7 +232,7 @@ dynamic_config:
       path: "~/.jarvis/config_overrides.yaml"
       priority: 10
     - type: "environment"
-      prefix: "JARVIS_"
+      prefix: "Ironcliw_"
       priority: 20
     - type: "learned"
       path: "~/.jarvis/learned_config.yaml"

@@ -1,10 +1,10 @@
-# ARM64 Assembly Integration Architecture for JARVIS ML
+﻿# ARM64 Assembly Integration Architecture for Ironcliw ML
 
 ## 🏗️ **Complete Integration Flow**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    JARVIS ML Pipeline                        │
+│                    Ironcliw ML Pipeline                        │
 └─────────────────────────────────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -255,7 +255,7 @@ Add ARM64 assembly compilation check:
 # main.py
 
 async def lifespan(app: FastAPI):
-    logger.info("Starting JARVIS backend...")
+    logger.info("Starting Ironcliw backend...")
 
     # Check and compile ARM64 assembly if needed
     try:
@@ -334,7 +334,7 @@ arm64_simd.softmax(hidden, len(hidden))
 
 ### **Build ARM64 Extension**
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/core
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/core
 python setup_arm64.py build_ext --inplace
 ```
 

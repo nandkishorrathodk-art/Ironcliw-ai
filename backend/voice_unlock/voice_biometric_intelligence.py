@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Biometric Intelligence v1.0
 ==================================
@@ -15,12 +15,12 @@ Key Features:
 - Learning acknowledgment
 - Anti-spoofing detection with transparent feedback
 
-This module ensures JARVIS communicates voice recognition status
+This module ensures Ironcliw communicates voice recognition status
 BEFORE the unlock process, providing transparency and trust.
 
 Example Flow:
 1. User: "Unlock my screen"
-2. JARVIS: "Voice verified, Derek. 94% confidence. Unlocking now..."
+2. Ironcliw: "Voice verified, Derek. 94% confidence. Unlocking now..."
 3. [Screen unlocks]
 
 vs Previous Flow:
@@ -307,19 +307,19 @@ class VBIConfig:
         # ==========================================================================
         cloud_cfg = self._json_config.get('cloud_first', {})
         self.cloud_first_enabled = self._get_bool_config(
-            'JARVIS_VBI_CLOUD_FIRST', cloud_cfg.get('enabled', True)
+            'Ironcliw_VBI_CLOUD_FIRST', cloud_cfg.get('enabled', True)
         )
         self.force_local = self._get_bool_config(
-            'JARVIS_VBI_FORCE_LOCAL', cloud_cfg.get('force_local', False)
+            'Ironcliw_VBI_FORCE_LOCAL', cloud_cfg.get('force_local', False)
         )
         self.progress_updates_enabled = self._get_bool_config(
-            'JARVIS_VBI_PROGRESS_UPDATES', cloud_cfg.get('progress_updates_enabled', True)
+            'Ironcliw_VBI_PROGRESS_UPDATES', cloud_cfg.get('progress_updates_enabled', True)
         )
         
         # Cloud endpoints
         endpoints_cfg = self._json_config.get('cloud_endpoints', {})
         self.cloud_endpoint = os.getenv(
-            'JARVIS_CLOUD_ML_ENDPOINT',
+            'Ironcliw_CLOUD_ML_ENDPOINT',
             endpoints_cfg.get('primary', 'https://jarvis-ml-888774109345.us-central1.run.app')
         )
         
@@ -463,7 +463,7 @@ class VBIConfig:
         """Load configuration from JSON file if available."""
         config_paths = [
             os.path.join(os.path.dirname(__file__), '..', 'config', 'cloud_first_config.json'),
-            '/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/backend/config/cloud_first_config.json',
+            '/Users/djrussell23/Documents/repos/Ironcliw-AI-Agent/backend/config/cloud_first_config.json',
         ]
 
         for config_path in config_paths:
@@ -3427,7 +3427,7 @@ class VoiceBiometricIntelligence:
                         if result.get('error') == 'enrollment_required':
                             diagnostics['failure_reasons'].append('enrollment_required')
                             logger.warning(
-                                "⚠️ Voice enrollment required - say 'JARVIS, learn my voice'"
+                                "⚠️ Voice enrollment required - say 'Ironcliw, learn my voice'"
                             )
                         elif result.get('error') == 'corrupted_profile':
                             diagnostics['failure_reasons'].append('corrupted_profile')

@@ -1,5 +1,5 @@
-"""
-Test Suite for JARVIS Windows Vision System
+﻿"""
+Test Suite for Ironcliw Windows Vision System
 ═══════════════════════════════════════════════════════════════════════════════
 
 Comprehensive tests for Phase 7: Vision System Port
@@ -9,7 +9,7 @@ Run with:
     pytest tests/vision/test_windows_vision.py -v
     python tests/vision/test_windows_vision.py  # Standalone
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port - Phase 7)
 """
 
@@ -298,7 +298,7 @@ def test_reliable_screenshot_capture():
 def main():
     """Run all tests"""
     logger.info("\n" + "=" * 70)
-    logger.info("JARVIS WINDOWS VISION SYSTEM TEST SUITE")
+    logger.info("Ironcliw WINDOWS VISION SYSTEM TEST SUITE")
     logger.info("Phase 7: Vision System Port - Verification")
     logger.info("=" * 70 + "\n")
     

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Create Speaker Profile for Derek from Voice Samples
 This creates the speaker profile needed for voice biometric authentication
@@ -180,10 +180,10 @@ async def verify_profile():
                 logger.info(f"  - Samples: {profile['total_samples']}")
 
                 # Test loading in speaker service
-                from intelligence.learning_database import JARVISLearningDatabase
+                from intelligence.learning_database import get_learning_database
                 from voice.speaker_verification_service import SpeakerVerificationService
 
-                learning_db = JARVISLearningDatabase()
+                learning_db = await get_learning_database()
                 learning_db.db_adapter = adapter
 
                 service = SpeakerVerificationService(learning_db)
@@ -225,7 +225,7 @@ async def main():
 
     if success:
         logger.info("\n✅ SUCCESS! Derek's speaker profile is ready")
-        logger.info("  JARVIS will now recognize Derek by voice")
+        logger.info("  Ironcliw will now recognize Derek by voice")
         logger.info("  Screen unlock will use voice biometric authentication")
     else:
         logger.error("\n❌ FAILED to set up speaker profile")

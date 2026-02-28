@@ -1,4 +1,4 @@
-# Cost Monitoring & Alerts Setup Guide 💰
+﻿# Cost Monitoring & Alerts Setup Guide 💰
 
 **Branch:** `cost-monitoring-alerts`
 **Priority:** HIGH
@@ -22,7 +22,7 @@
 
 ## Overview
 
-JARVIS Hybrid Cloud Intelligence now includes comprehensive cost monitoring to track GCP Spot VM usage, prevent cost leaks from orphaned VMs, and provide real-time visibility into cloud spending.
+Ironcliw Hybrid Cloud Intelligence now includes comprehensive cost monitoring to track GCP Spot VM usage, prevent cost leaks from orphaned VMs, and provide real-time visibility into cloud spending.
 
 ### Why Cost Monitoring?
 
@@ -104,7 +104,7 @@ This will:
 
 Edit `~/.jarvis/.env`:
 ```bash
-JARVIS_ALERT_EMAIL=your-email@example.com
+Ironcliw_ALERT_EMAIL=your-email@example.com
 ```
 
 ### 3. Set Up GCP Budget Alerts (Manual - See Below)
@@ -112,7 +112,7 @@ JARVIS_ALERT_EMAIL=your-email@example.com
 ### 4. Test Cost Tracking
 
 ```bash
-# Start JARVIS backend
+# Start Ironcliw backend
 python backend/main.py
 
 # Check cost summary (in another terminal)
@@ -296,11 +296,11 @@ curl http://localhost:8010/hybrid/status
 
 ### What are Orphaned VMs?
 
-VMs created by JARVIS but not properly deleted on shutdown due to:
-- JARVIS crash before cleanup runs
+VMs created by Ironcliw but not properly deleted on shutdown due to:
+- Ironcliw crash before cleanup runs
 - Network issues preventing deletion
 - GCP API errors
-- Manual JARVIS termination (SIGKILL)
+- Manual Ironcliw termination (SIGKILL)
 
 ### Detection & Cleanup
 
@@ -308,7 +308,7 @@ VMs created by JARVIS but not properly deleted on shutdown due to:
 
 Runs every 6 hours via cron:
 ```bash
-0 */6 * * * ~/Documents/repos/JARVIS-AI-Agent/scripts/cleanup_orphaned_vms.sh
+0 */6 * * * ~/Documents/repos/Ironcliw-AI-Agent/scripts/cleanup_orphaned_vms.sh
 ```
 
 **What it does:**
@@ -358,7 +358,7 @@ gcloud compute instances list \
 - **Cost tracking:** Records all orphaned VMs with runtime and cost
 - **Notifications:**
   - macOS: Desktop notification via `osascript`
-  - Email: Alert if `JARVIS_ALERT_EMAIL` configured
+  - Email: Alert if `Ironcliw_ALERT_EMAIL` configured
 - **Comprehensive logging:** All actions logged with timestamps
 
 ### Notification Setup
@@ -371,7 +371,7 @@ Already enabled - notifications appear automatically when orphaned VMs are found
 
 1. Configure email in `~/.jarvis/.env`:
    ```bash
-   JARVIS_ALERT_EMAIL=your-email@example.com
+   Ironcliw_ALERT_EMAIL=your-email@example.com
    ```
 
 2. Ensure `mail` command is available:
@@ -432,14 +432,14 @@ cat ~/.jarvis/logs/vm_cleanup_$(date +%Y%m%d).log
 
 Expected output:
 ```
-[2025-10-25 12:00:00] 🔍 Checking for orphaned JARVIS VMs...
+[2025-10-25 12:00:00] 🔍 Checking for orphaned Ironcliw VMs...
 [2025-10-25 12:00:01] ✅ No orphaned VMs found
 ```
 
 ### 4. Test End-to-End Cost Tracking
 
 ```bash
-# 1. Start JARVIS
+# 1. Start Ironcliw
 python start_system.py
 
 # 2. Trigger GCP shift (simulate high RAM)
@@ -450,7 +450,7 @@ python start_system.py
 # 3. Check cost API
 curl http://localhost:8010/hybrid/cost?period=day
 
-# 4. Stop JARVIS (graceful shutdown)
+# 4. Stop Ironcliw (graceful shutdown)
 # Wait for VM deletion logs:
 # "✅ Deleted GCP instance: jarvis-auto-XXXXX"
 # "💰 Cost tracking: VM deletion recorded"
@@ -563,7 +563,7 @@ sqlite3 ~/.jarvis/learning/cost_tracking.db "SELECT * FROM vm_sessions;"
 - [x] Cost tracking endpoint implemented (`/hybrid/cost`)
 - [x] Orphaned VM cron job running (setup script creates it)
 - [x] Cost dashboard visible via API (JSON responses)
-- [x] Email alerts working (if `JARVIS_ALERT_EMAIL` configured)
+- [x] Email alerts working (if `Ironcliw_ALERT_EMAIL` configured)
 
 ---
 
@@ -583,7 +583,7 @@ sqlite3 ~/.jarvis/learning/cost_tracking.db "SELECT * FROM vm_sessions;"
 4. **Test end-to-end:**
    - Create VM via RAM pressure
    - Verify cost tracking records it
-   - Stop JARVIS and verify deletion recorded
+   - Stop Ironcliw and verify deletion recorded
    - Check cost summary via API
 
 5. **Monitor regularly:**

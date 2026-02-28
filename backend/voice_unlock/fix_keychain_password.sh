@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
 # Voice Unlock Keychain Password Fix
 # ===================================
@@ -7,7 +7,7 @@
 
 set -e
 
-echo "🔐 JARVIS Voice Unlock - Keychain Password Setup"
+echo "🔐 Ironcliw Voice Unlock - Keychain Password Setup"
 echo "=================================================="
 echo ""
 echo "Current Issue: Password not found in keychain"
@@ -52,7 +52,7 @@ if [ $? -eq 0 ]; then
         echo ""
         echo "🎉 Voice unlock is now ready to use!"
         echo ""
-        echo "Try saying: 'JARVIS, unlock my screen'"
+        echo "Try saying: 'Ironcliw, unlock my screen'"
     else
         echo "⚠️  Warning: Stored password doesn't match"
         echo "You may need to run this script again"

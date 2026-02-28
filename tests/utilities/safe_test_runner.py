@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Safe Test Runner for JARVIS Multi-Window Intelligence
+Safe Test Runner for Ironcliw Multi-Window Intelligence
 Runs tests with proper timeout handling and error recovery
 """
 
@@ -46,7 +46,7 @@ class SafeTestRunner:
         start_time = time.time()
         
         print("\n" + "="*60)
-        print("🚀 JARVIS SAFE TEST RUNNER")
+        print("🚀 Ironcliw SAFE TEST RUNNER")
         print("="*60)
         print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         

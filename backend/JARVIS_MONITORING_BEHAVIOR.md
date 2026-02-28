@@ -1,8 +1,8 @@
-# What Happens When You Run JARVIS and Start Monitoring
+﻿# What Happens When You Run Ironcliw and Start Monitoring
 
 ## Current State (What Actually Happens Now)
 
-### 1. When You Run JARVIS
+### 1. When You Run Ironcliw
 
 ```bash
 python main.py
@@ -17,7 +17,7 @@ python main.py
 
 2. **Initial Output:**
 ```
-INFO: JARVIS Voice API starting up...
+INFO: Ironcliw Voice API starting up...
 INFO: Proactive Vision Intelligence System initialized
 INFO: Starting proactive monitoring...
 INFO: Monitoring active - watching for:
@@ -28,10 +28,10 @@ INFO: Monitoring active - watching for:
 ```
 
 3. **Voice Component** (if enabled)
-   - Waits for wake word "JARVIS"
+   - Waits for wake word "Ironcliw"
    - OR listens continuously if in continuous mode
 
-### 2. When You Say "JARVIS, start monitoring my screen"
+### 2. When You Say "Ironcliw, start monitoring my screen"
 
 **Current Chaos:**
 1. **Command Bounces Between Interpreters:**
@@ -54,7 +54,7 @@ INFO: Monitoring active - watching for:
 
 ## Ideal State (What SHOULD Happen)
 
-### 1. When You Run JARVIS
+### 1. When You Run Ironcliw
 
 ```bash
 jarvis start
@@ -63,20 +63,20 @@ jarvis start
 **What Should Happen:**
 
 ```
-🤖 JARVIS v13.0.0 Initializing...
+🤖 Ironcliw v13.0.0 Initializing...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ Core Systems
    • Unified Intelligence Engine: Ready
    • Vision System: Initialized (memory safe mode)
-   • Voice Interface: Listening for "JARVIS"
+   • Voice Interface: Listening for "Ironcliw"
    • System Control: Connected
 
 ⚡ Capabilities Available
    • Vision Analysis (Claude 3.5)
    • System Control (macOS integrated)
    • Proactive Intelligence (standby)
-   • Voice Interaction (wake word: JARVIS)
+   • Voice Interaction (wake word: Ironcliw)
 
 🔧 Configuration
    • Memory Limit: 1.5GB
@@ -84,16 +84,16 @@ jarvis start
    • Monitoring: Manual start required
 
 💡 Quick Start
-   Say "JARVIS" followed by:
+   Say "Ironcliw" followed by:
    • "Start monitoring" - Begin proactive screen monitoring
    • "What do you see?" - One-time analysis
    • "Help" - Show all commands
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🟢 JARVIS Ready. Awaiting your command.
+🟢 Ironcliw Ready. Awaiting your command.
 ```
 
-### 2. When You Say "JARVIS, start monitoring my screen"
+### 2. When You Say "Ironcliw, start monitoring my screen"
 
 **Ideal Flow:**
 
@@ -115,7 +115,7 @@ Intent Resolver: {
 
 2. **User Confirmation (First Time):**
 ```
-JARVIS: "I'll start proactive screen monitoring. This means I'll:
+Ironcliw: "I'll start proactive screen monitoring. This means I'll:
 • Watch for important changes and notify you
 • Alert you to errors or issues  
 • Notice updates and opportunities
@@ -128,7 +128,7 @@ You: "Yes"
 
 3. **Monitoring Starts:**
 ```
-JARVIS: "Screen monitoring active. I'll let you know when I notice something important."
+Ironcliw: "Screen monitoring active. I'll let you know when I notice something important."
 
 [Background Process]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -152,13 +152,13 @@ JARVIS: "Screen monitoring active. I'll let you know when I notice something imp
 2. **Smart Notifications:**
 ```
 [10 minutes later]
-JARVIS: "I noticed Cursor has an update available in the status bar."
+Ironcliw: "I noticed Cursor has an update available in the status bar."
 
 [While coding]
-JARVIS: "There's a syntax error in your terminal - missing import for pandas."
+Ironcliw: "There's a syntax error in your terminal - missing import for pandas."
 
 [During research]
-JARVIS: "You have 15 Stack Overflow tabs open. Would you like me to summarize the solutions?"
+Ironcliw: "You have 15 Stack Overflow tabs open. Would you like me to summarize the solutions?"
 ```
 
 3. **Context-Aware Behavior:**
@@ -170,10 +170,10 @@ JARVIS: "You have 15 Stack Overflow tabs open. Would you like me to summarize th
 4. **Natural Interaction:**
 ```
 You: "What was that about Cursor?"
-JARVIS: "Cursor shows an update available. The changelog mentions improved TypeScript performance and bug fixes."
+Ironcliw: "Cursor shows an update available. The changelog mentions improved TypeScript performance and bug fixes."
 
 You: "Remind me later"
-JARVIS: "I'll remind you after your coding session."
+Ironcliw: "I'll remind you after your coding session."
 ```
 
 ## Current Problems You'll Actually Experience
@@ -192,9 +192,9 @@ Result: Which monitoring? Continuous? Proactive? Video stream?
 
 ### 3. **Context Loss**
 ```
-JARVIS: "I see an error"
+Ironcliw: "I see an error"
 You: "What error?"
-JARVIS: "What would you like me to analyze?"
+Ironcliw: "What would you like me to analyze?"
 (Lost context already!)
 ```
 
@@ -209,27 +209,27 @@ JARVIS: "What would you like me to analyze?"
 ### Perfect Monitoring Session:
 
 ```
-You: "JARVIS, start monitoring"
-JARVIS: "Monitoring active."
+You: "Ironcliw, start monitoring"
+Ironcliw: "Monitoring active."
 
 [You work normally]
 
-JARVIS: "Chrome is using 47% CPU and seems frozen."
+Ironcliw: "Chrome is using 47% CPU and seems frozen."
 You: "Close it"
-JARVIS: "Chrome closed. CPU usage back to normal."
+Ironcliw: "Chrome closed. CPU usage back to normal."
 
 [Later]
 
-JARVIS: "Your build failed with a TypeScript error on line 42."
+Ironcliw: "Your build failed with a TypeScript error on line 42."
 You: "Show me"
-JARVIS: "It's a type mismatch in the user interface. The error says 'Property name does not exist on type User'."
+Ironcliw: "It's a type mismatch in the user interface. The error says 'Property name does not exist on type User'."
 You: "Fix it"
-JARVIS: "Adding the 'name' property to the User interface... Done. Rebuilding."
+Ironcliw: "Adding the 'name' property to the User interface... Done. Rebuilding."
 
 [Even later]
 
 You: "Stop monitoring"
-JARVIS: "Monitoring stopped. I tracked 3 issues and helped resolve 2. Would you like a summary?"
+Ironcliw: "Monitoring stopped. I tracked 3 issues and helped resolve 2. Would you like a summary?"
 ```
 
 ### Key Differences:
@@ -253,4 +253,4 @@ JARVIS: "Monitoring stopped. I tracked 3 issues and helped resolve 2. Would you 
 - Single orchestrated system
 - Conversation flows naturally
 
-**Bottom Line:** Right now, when you tell JARVIS to monitor your screen, you're rolling dice on which interpreter handles it and whether the systems coordinate. The unified architecture would make it deterministic and reliable.
+**Bottom Line:** Right now, when you tell Ironcliw to monitor your screen, you're rolling dice on which interpreter handles it and whether the systems coordinate. The unified architecture would make it deterministic and reliable.

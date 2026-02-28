@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Vision System v2.0 Integration for JARVIS Voice
+Vision System v2.0 Integration for Ironcliw Voice
 Connects the ML-powered vision system with voice commands
 """
 
@@ -11,7 +11,7 @@ from vision.vision_system_v2 import get_vision_system_v2
 logger = logging.getLogger(__name__)
 
 class VisionV2Integration:
-    """Integration layer for Vision System v2.0 with JARVIS Voice"""
+    """Integration layer for Vision System v2.0 with Ironcliw Voice"""
     
     def __init__(self):
         """Initialize Vision System v2.0 integration"""

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.4: Unified ARM64 SIMD Acceleration Layer
 ==============================================
 
@@ -20,7 +20,7 @@ Performance Gains:
 - Similarity calculations: 40-50x faster
 - Hash operations: 20-30x faster
 
-Author: JARVIS v77.4
+Author: Ironcliw v77.4
 """
 
 from __future__ import annotations
@@ -931,7 +931,7 @@ class CrossRepoAccelerationRegistry:
     Registry for cross-repo acceleration configuration.
 
     Tracks which components use acceleration and allows
-    coordinated optimization across JARVIS, J-Prime, and Reactor Core.
+    coordinated optimization across Ironcliw, J-Prime, and Reactor Core.
     """
 
     _instance: Optional['CrossRepoAccelerationRegistry'] = None

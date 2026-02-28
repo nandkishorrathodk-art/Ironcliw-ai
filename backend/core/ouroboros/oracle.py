@@ -1,16 +1,16 @@
-"""
+﻿"""
 The Oracle - GraphRAG Codebase Knowledge Graph v1.0
 ====================================================
 
 "God Mode" Pillar 1: Structural Understanding
 
-This module provides JARVIS with omniscient knowledge of codebase structure
+This module provides Ironcliw with omniscient knowledge of codebase structure
 through a directed graph that captures not just what code exists, but how
 it's connected - imports, calls, inheritance, and data flow.
 
 Key Differences from Text-Based AI:
 - Claude Code sees: "bag of files with similar words"
-- JARVIS Oracle sees: "living web of connected logic"
+- Ironcliw Oracle sees: "living web of connected logic"
 
 When you say "Fix the auth bug", standard AI checks files with "auth" in name.
 Oracle finds auth file AND the database it imports AND middleware that calls it.
@@ -25,7 +25,7 @@ Architecture:
 Features:
 - Async parallel file indexing
 - Incremental updates (only re-index changed files)
-- Cross-repo graph connectivity (JARVIS + Prime + Reactor)
+- Cross-repo graph connectivity (Ironcliw + Prime + Reactor)
 - Blast radius analysis for change impact
 - Dependency chain visualization
 - Dead code detection
@@ -86,8 +86,8 @@ class OracleConfig:
     """Dynamic configuration for the Oracle."""
 
     # Repo paths (auto-detected from environment)
-    JARVIS_PATH = Path(os.getenv("JARVIS_PATH", Path.home() / "Documents/repos/JARVIS-AI-Agent"))
-    JARVIS_PRIME_PATH = Path(os.getenv("JARVIS_PRIME_PATH", Path.home() / "Documents/repos/jarvis-prime"))
+    Ironcliw_PATH = Path(os.getenv("Ironcliw_PATH", Path.home() / "Documents/repos/Ironcliw-AI-Agent"))
+    Ironcliw_PRIME_PATH = Path(os.getenv("Ironcliw_PRIME_PATH", Path.home() / "Documents/repos/jarvis-prime"))
     REACTOR_CORE_PATH = Path(os.getenv("REACTOR_CORE_PATH", Path.home() / "Documents/repos/reactor-core"))
 
     # Cache paths
@@ -611,7 +611,7 @@ class CodebaseKnowledgeGraph:
     """
     The Oracle's core: A directed graph representing the entire codebase structure.
 
-    This is what makes JARVIS see code as connected logic, not just text.
+    This is what makes Ironcliw see code as connected logic, not just text.
     """
 
     def __init__(self):
@@ -1049,7 +1049,7 @@ class TheOracle:
     """
     The Oracle - Omniscient Codebase Knowledge System.
 
-    This is what transforms JARVIS from a "text processor" into a
+    This is what transforms Ironcliw from a "text processor" into a
     "structural analyst" that understands code connections.
     """
 
@@ -1061,8 +1061,8 @@ class TheOracle:
 
         # Repository configurations
         self._repos: Dict[str, Path] = {
-            "jarvis": OracleConfig.JARVIS_PATH,
-            "prime": OracleConfig.JARVIS_PRIME_PATH,
+            "jarvis": OracleConfig.Ironcliw_PATH,
+            "prime": OracleConfig.Ironcliw_PRIME_PATH,
             "reactor": OracleConfig.REACTOR_CORE_PATH,
         }
 

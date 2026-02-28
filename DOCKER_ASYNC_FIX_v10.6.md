@@ -1,4 +1,4 @@
-# Docker Async/Await Fix v10.6 - JARVIS AI System
+﻿# Docker Async/Await Fix v10.6 - Ironcliw AI System
 **"Production-Grade Async Patterns Edition"**
 
 ## 🎯 Issue Fixed
@@ -8,7 +8,7 @@
 ❌ Docker: 'coroutine' object has no attribute 'check_docker_installed'
 ```
 
-**Symptom:** JARVIS startup fails when probing Docker backend, falls back to Local ECAPA only.
+**Symptom:** Ironcliw startup fails when probing Docker backend, falls back to Local ECAPA only.
 
 ---
 
@@ -301,7 +301,7 @@ docker_manager = await get_docker_daemon_manager()
 open -a "Docker Desktop"
 
 # Wait for daemon to start (30-60s)
-# Run JARVIS
+# Run Ironcliw
 python3 run_supervisor.py
 
 # Expected: ✅ Docker: Ready (daemon running, container healthy)
@@ -312,7 +312,7 @@ python3 run_supervisor.py
 # Stop Docker daemon
 pkill -x "Docker Desktop"
 
-# Run JARVIS
+# Run Ironcliw
 python3 run_supervisor.py
 
 # Expected: ⚠️ Docker: Daemon not running → Falls back to Cloud Run or Local ECAPA
@@ -321,7 +321,7 @@ python3 run_supervisor.py
 ### Test 3: Docker Not Installed
 ```bash
 # Uninstall Docker or move it out of PATH
-# Run JARVIS
+# Run Ironcliw
 python3 run_supervisor.py
 
 # Expected: ⚠️ Docker: Not installed → Falls back to Cloud Run or Local ECAPA
@@ -371,7 +371,7 @@ python3 run_supervisor.py
 
 ---
 
-**Author:** Claude Sonnet 4.5 (JARVIS AI Assistant)
+**Author:** Claude Sonnet 4.5 (Ironcliw AI Assistant)
 **Date:** 2025-12-27
 **Version:** v10.6 - "Production-Grade Async Patterns Edition"
 **Status:** ✅ VERIFIED & PRODUCTION READY

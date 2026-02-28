@@ -1,7 +1,7 @@
-# Context Intelligence System Integration Complete ✅
+﻿# Context Intelligence System Integration Complete ✅
 
 ## Overview
-Successfully integrated Priority 1-3 features into JARVIS backend with NO duplicate files.
+Successfully integrated Priority 1-3 features into Ironcliw backend with NO duplicate files.
 
 ---
 
@@ -200,7 +200,7 @@ Vision intelligence automatically feeds OCR updates to context bridge for multi-
 
 ## 🚀 How to Use
 
-### **Start JARVIS:**
+### **Start Ironcliw:**
 ```bash
 python start_system.py
 ```
@@ -229,9 +229,9 @@ python start_system.py
 ### **Ask Questions:**
 
 **Via Voice:**
-- "Hey JARVIS, what does it say?"
-- "Hey JARVIS, what's the error?"
-- "Hey JARVIS, what am I working on?"
+- "Hey Ironcliw, what does it say?"
+- "Hey Ironcliw, what's the error?"
+- "Hey Ironcliw, what am I working on?"
 
 **Via API:**
 ```bash
@@ -359,7 +359,7 @@ bridge = await initialize_integration_bridge(
 
 ## 🎙️ Speech-to-Text Normalization
 
-JARVIS now handles common speech-to-text errors automatically!
+Ironcliw now handles common speech-to-text errors automatically!
 
 ### **Common Corrections:**
 ```python
@@ -392,7 +392,7 @@ python backend/tests/test_speech_normalization.py
 
 ## 🔄 Dynamic Follow-Up Queries
 
-JARVIS now supports conversational follow-up queries for detailed explanations!
+Ironcliw now supports conversational follow-up queries for detailed explanations!
 
 ### **How It Works:**
 
@@ -400,13 +400,13 @@ JARVIS now supports conversational follow-up queries for detailed explanations!
 ```
 User: "can you see my terminal in the other window?"
 
-JARVIS: "Yes, I can see Terminal in Space 2.
+Ironcliw: "Yes, I can see Terminal in Space 2.
          I notice there's an error...
          Would you like me to explain what's happening in detail?"
 
 User: "explain what's happening in detail"
 
-JARVIS: **Terminal (Space 2)**
+Ironcliw: **Terminal (Space 2)**
         Working directory: `/Users/project`
 
         Recent commands:
@@ -504,7 +504,7 @@ The system is fully integrated and ready for testing!
 1. Run `python start_system.py`
 2. Open multiple desktop spaces in macOS
 3. Trigger some errors in Terminal
-4. Ask JARVIS: "what does it say?"
+4. Ask Ironcliw: "what does it say?"
 5. Watch as it synthesizes context from all spaces!
 
 **Future enhancements could include:**

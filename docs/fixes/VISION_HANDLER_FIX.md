@@ -1,13 +1,13 @@
-# Vision Handler Fix - Multiple Process Detection Enhancement
+﻿# Vision Handler Fix - Multiple Process Detection Enhancement
 
 ## Issue
-JARVIS vision commands ("can you see my screen?") were hanging indefinitely due to:
+Ironcliw vision commands ("can you see my screen?") were hanging indefinitely due to:
 1. Anthropic API key not being retrieved from GCP Secret Manager
 2. Multiple backend processes running simultaneously when using `python start_system.py --restart`
 
 ## Root Cause
 - **API Key Issue**: Vision handler was using `os.getenv("ANTHROPIC_API_KEY")` instead of SecretManager
-- **Multiple Processes**: Process detection in `start_system.py` wasn't catching all JARVIS backend processes, particularly those bound to ports 8010, 8000, and 3000
+- **Multiple Processes**: Process detection in `start_system.py` wasn't catching all Ironcliw backend processes, particularly those bound to ports 8010, 8000, and 3000
 
 ## Solution
 
@@ -21,13 +21,13 @@ JARVIS vision commands ("can you see my screen?") were hanging indefinitely due 
 Added **Strategy 3: Port-based detection** to complement existing strategies:
 
 #### Three Detection Strategies:
-1. **Strategy 1: psutil enumeration** - Scans all processes for JARVIS-related names
+1. **Strategy 1: psutil enumeration** - Scans all processes for Ironcliw-related names
 2. **Strategy 2: ps command verification** - Uses `ps aux | grep` for additional verification
 3. **Strategy 3: Port-based detection** *(NEW)* - Uses `lsof` to find processes on ports 8010, 8000, 3000
 
 #### Strategy 3 Implementation:
 ```python
-# Strategy 3: Check for processes using JARVIS ports (8010, 8000, 3000)
+# Strategy 3: Check for processes using Ironcliw ports (8010, 8000, 3000)
 for port in [8010, 8000, 3000]:
     lsof_result = subprocess.run(
         ["lsof", "-ti", f":{port}"],
@@ -52,7 +52,7 @@ for port in [8010, 8000, 3000]:
 When running `python start_system.py --restart`, all three strategies execute:
 - Strategy 1 finds processes by name
 - Strategy 2 verifies with ps command
-- Strategy 3 catches any processes bound to JARVIS ports
+- Strategy 3 catches any processes bound to Ironcliw ports
 
 ## Usage
 
@@ -62,14 +62,14 @@ python start_system.py --restart
 ```
 
 This now properly detects and terminates:
-- Main JARVIS processes
+- Main Ironcliw processes
 - Backend API servers (port 8010)
 - Frontend servers (port 3000)
-- Any orphaned processes still bound to JARVIS ports
+- Any orphaned processes still bound to Ironcliw ports
 
 ### Manual Cleanup (if needed):
 ```bash
-# Find processes on JARVIS ports
+# Find processes on Ironcliw ports
 lsof -ti :8010
 lsof -ti :8000
 lsof -ti :3000
@@ -82,7 +82,7 @@ kill -9 <PID>
 
 The enhanced 3-strategy detection ensures:
 - No multiple backend processes when using `--restart`
-- All JARVIS-related processes are properly terminated before starting fresh
+- All Ironcliw-related processes are properly terminated before starting fresh
 - Port conflicts are avoided
 - Clean startup every time
 

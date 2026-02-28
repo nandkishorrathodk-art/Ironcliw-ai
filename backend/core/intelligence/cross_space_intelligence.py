@@ -1,8 +1,8 @@
-"""
-Cross-Space Intelligence System - Advanced Multi-Space Understanding for JARVIS
+﻿"""
+Cross-Space Intelligence System - Advanced Multi-Space Understanding for Ironcliw
 ==============================================================================
 
-This system provides JARVIS with the ability to:
+This system provides Ironcliw with the ability to:
 - Detect when activities across spaces are semantically related (not just pattern-based)
 - Synthesize information from multiple sources into coherent understanding
 - Provide workspace-wide answers drawing from all spaces

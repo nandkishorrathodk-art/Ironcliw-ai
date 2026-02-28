@@ -1,8 +1,8 @@
-# Workflow Pattern Engine Guide
+﻿# Workflow Pattern Engine Guide
 
 ## Overview
 
-The Workflow Pattern Engine is a sophisticated component of the JARVIS Vision Intelligence System that learns, optimizes, and automates user work patterns. It uses dynamic pattern discovery with zero hardcoding to understand how users work and suggest improvements.
+The Workflow Pattern Engine is a sophisticated component of the Ironcliw Vision Intelligence System that learns, optimizes, and automates user work patterns. It uses dynamic pattern discovery with zero hardcoding to understand how users work and suggest improvements.
 
 ## Key Features
 

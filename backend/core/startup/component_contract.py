@@ -1,5 +1,5 @@
-"""
-JARVIS Component Contract System v149.2
+﻿"""
+Ironcliw Component Contract System v149.2
 =======================================
 
 Enterprise-grade component classification and logging severity policy.
@@ -169,7 +169,7 @@ def get_component_type(component_name: str) -> ComponentType:
     Get the type classification for a component.
     
     Checks (in order):
-    1. Environment override: JARVIS_COMPONENT_{NAME}_TYPE
+    1. Environment override: Ironcliw_COMPONENT_{NAME}_TYPE
     2. Production environment escalation
     3. Default classification
     4. Falls back to OPTIONAL if unknown
@@ -184,14 +184,14 @@ def get_component_type(component_name: str) -> ComponentType:
         >>> get_component_type("redis")
         ComponentType.OPTIONAL
         
-        >>> os.environ["JARVIS_COMPONENT_REDIS_TYPE"] = "required"
+        >>> os.environ["Ironcliw_COMPONENT_REDIS_TYPE"] = "required"
         >>> get_component_type("redis")
         ComponentType.REQUIRED
     """
     name_lower = component_name.lower().replace("-", "_")
     
     # 1. Check for environment override
-    env_key = f"JARVIS_COMPONENT_{name_lower.upper()}_TYPE"
+    env_key = f"Ironcliw_COMPONENT_{name_lower.upper()}_TYPE"
     env_value = os.getenv(env_key, "").lower()
     
     if env_value in ("required", "req"):
@@ -202,7 +202,7 @@ def get_component_type(component_name: str) -> ComponentType:
         return ComponentType.DEGRADABLE
     
     # 2. Check if production escalation applies
-    is_production = os.getenv("JARVIS_ENV", "").lower() == "production"
+    is_production = os.getenv("Ironcliw_ENV", "").lower() == "production"
     if is_production and name_lower in PRODUCTION_REQUIRED:
         return ComponentType.REQUIRED
     

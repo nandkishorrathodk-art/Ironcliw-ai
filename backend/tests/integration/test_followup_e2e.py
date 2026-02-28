@@ -1,4 +1,4 @@
-"""
+﻿"""
 End-to-End Integration Tests for Follow-Up System
 Tests the complete flow from pending question tracking to follow-up resolution.
 """
@@ -63,7 +63,7 @@ class TestFollowUpE2E:
     async def test_terminal_error_follow_up_flow(self, context_bridge, mock_vision_intelligence):
         """
         Test complete flow:
-        1. JARVIS detects terminal with error
+        1. Ironcliw detects terminal with error
         2. Asks user "Would you like me to describe it?"
         3. Tracks pending question
         4. User says "yes"
@@ -72,7 +72,7 @@ class TestFollowUpE2E:
         # Step 1: Integrate vision intelligence with bridge
         context_bridge.integrate_vision_intelligence(mock_vision_intelligence)
 
-        # Step 2: Simulate JARVIS asking a question and tracking it
+        # Step 2: Simulate Ironcliw asking a question and tracking it
         question_text = "I can see your Terminal. Would you like me to describe what's displayed?"
         window_type = "terminal"
         window_id = "term_1"
@@ -289,7 +289,7 @@ class TestFollowUpIntegrationWithPipeline:
         """Test that pipeline correctly detects and routes follow-up intents."""
         from backend.core.async_pipeline import AdvancedAsyncPipeline, PipelineContext
 
-        # Create mock JARVIS instance
+        # Create mock Ironcliw instance
         mock_jarvis = Mock()
         mock_jarvis.async_pipeline = None
 

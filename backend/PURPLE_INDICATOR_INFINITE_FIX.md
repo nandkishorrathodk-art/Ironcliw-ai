@@ -1,4 +1,4 @@
-# 🟣 Purple Indicator Infinite Fix - Complete Solution
+﻿# 🟣 Purple Indicator Infinite Fix - Complete Solution
 
 ## Problem
 The purple indicator was disappearing on its own after a few seconds instead of staying on indefinitely until the user says "stop monitoring my screen".
@@ -54,7 +54,7 @@ if self.capture_process.poll() is not None:
 ## How It Works Now
 
 1. **User**: "start monitoring my screen"
-2. **JARVIS**: Starts `infinite_purple_capture.swift`
+2. **Ironcliw**: Starts `infinite_purple_capture.swift`
 3. **Swift Process**: 
    - Creates AVCaptureSession
    - Starts infinite monitoring loop
@@ -63,7 +63,7 @@ if self.capture_process.poll() is not None:
 4. **Purple Indicator**: Appears and **STAYS ON INDEFINITELY**
 5. **Monitoring**: Continues until user says "stop monitoring"
 6. **User**: "stop monitoring my screen"
-7. **JARVIS**: Kills the Swift process
+7. **Ironcliw**: Kills the Swift process
 8. **Purple Indicator**: Disappears
 
 ## Testing
@@ -74,7 +74,7 @@ swift backend/vision/infinite_purple_capture.swift --start
 # Purple indicator appears and stays on
 # Process runs forever until killed with Ctrl+C
 
-# Test through JARVIS
+# Test through Ironcliw
 # Say: "start monitoring my screen"
 # Purple indicator appears and stays on indefinitely
 # Say: "stop monitoring" 
@@ -94,4 +94,4 @@ swift backend/vision/infinite_purple_capture.swift --start
 - ✅ Only stops when explicitly told to stop
 - ✅ Proper cleanup on stop command
 
-The purple indicator now truly stays on indefinitely until you tell JARVIS to stop monitoring!
+The purple indicator now truly stays on indefinitely until you tell Ironcliw to stop monitoring!

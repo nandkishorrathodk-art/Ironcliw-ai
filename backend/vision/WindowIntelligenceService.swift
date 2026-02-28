@@ -1,7 +1,7 @@
-#!/usr/bin/swift
+﻿#!/usr/bin/swift
 //
 // WindowIntelligenceService.swift
-// Enhanced window metadata collection for JARVIS multi-space awareness
+// Enhanced window metadata collection for Ironcliw multi-space awareness
 //
 
 import Foundation

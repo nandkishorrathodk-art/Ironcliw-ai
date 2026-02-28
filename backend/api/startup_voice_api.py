@@ -1,4 +1,4 @@
-"""
+﻿"""
 Startup Voice Announcement API v3.0 - Trinity Integration (Ultra-Robust)
 =========================================================================
 
@@ -36,7 +36,7 @@ v3.0 Implementation (Ultra-Robust):
 - Distributed tracing with correlation IDs
 - SQLite metrics persistence
 
-Author: JARVIS Trinity v3.0
+Author: Ironcliw Trinity v3.0
 """
 
 from fastapi import APIRouter
@@ -65,7 +65,7 @@ router = APIRouter(prefix="/api/startup-voice", tags=["startup-voice"])
 @router.post("/announce-online")
 async def announce_system_online(correlation_id: Optional[str] = None):
     """
-    Announce JARVIS startup completion using Trinity Voice Coordinator v100.0.
+    Announce Ironcliw startup completion using Trinity Voice Coordinator v100.0.
     Called by loading page when system reaches 100%.
 
     v3.0 Changes:
@@ -77,7 +77,7 @@ async def announce_system_online(correlation_id: Optional[str] = None):
     - Returns detailed queue status and reason
     """
     try:
-        message = "JARVIS is online. All systems operational. Ready for your command."
+        message = "Ironcliw is online. All systems operational. Ready for your command."
 
         # Use Trinity Voice Coordinator with STARTUP context
         # Returns (success: bool, reason: str) tuple

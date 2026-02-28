@@ -1,8 +1,8 @@
-"""
-JARVIS Backend Module - v8.0 Hyper-Speed Edition
+﻿"""
+Ironcliw Backend Module - v8.0 Hyper-Speed Edition
 =================================================
 
-Core backend services for the JARVIS AI Assistant.
+Core backend services for the Ironcliw AI Assistant.
 
 v8.0 LAZY LOADING: All heavy modules are JIT-loaded on first access,
 reducing import time from 300ms+ to <50ms.
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Version info
 __version__ = "13.4.0"
-__author__ = "JARVIS Team"
+__author__ = "Ironcliw Team"
 
 # =============================================================================
 # LAZY LOADING SYSTEM v8.0 - JIT Module Loading
@@ -136,7 +136,7 @@ def get_backend_status():
 async def initialize_backend():
     """Initialize all backend services with 30% memory target (4.8GB on 16GB systems)"""
     global _resource_manager
-    logger.info("Initializing JARVIS backend services...")
+    logger.info("Initializing Ironcliw backend services...")
     logger.info("Memory target: 30% of system RAM - ultra-aggressive optimization enabled")
     
     # Initialize resource manager first (CRITICAL for 30% memory target)
@@ -170,7 +170,7 @@ async def initialize_backend():
 
 async def cleanup_backend():
     """Cleanup all backend services"""
-    logger.info("Cleaning up JARVIS backend services...")
+    logger.info("Cleaning up Ironcliw backend services...")
     
     # Cleanup voice unlock if available
     if VOICE_UNLOCK_AVAILABLE:

@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Intelligent Reload Manager
+Ironcliw Intelligent Reload Manager
 ==================================
-Monitors code changes and automatically reloads JARVIS with updated code.
+Monitors code changes and automatically reloads Ironcliw with updated code.
 No hardcoding - uses dynamic discovery and intelligent restart.
 """
 
@@ -24,11 +24,11 @@ import json
 logger = logging.getLogger(__name__)
 
 
-class JARVISReloadManager:
-    """Intelligent reload manager for JARVIS that ensures latest code is always running"""
+class IroncliwReloadManager:
+    """Intelligent reload manager for Ironcliw that ensures latest code is always running"""
 
     def __init__(self):
-        self.repo_root = Path(__file__).parent.parent  # JARVIS-AI-Agent root
+        self.repo_root = Path(__file__).parent.parent  # Ironcliw-AI-Agent root
         self.backend_dir = self.repo_root / "backend"
         self.cache_dir = self.backend_dir / ".jarvis_cache"
         self.cache_dir.mkdir(exist_ok=True)
@@ -42,7 +42,7 @@ class JARVISReloadManager:
         # STARTUP GRACE PERIOD - Critical for preventing reload during init
         # ═══════════════════════════════════════════════════════════════════
         self._startup_time = time.time()
-        self._startup_grace_period = int(os.getenv("JARVIS_RELOAD_GRACE_PERIOD", "120"))  # 2 minutes default
+        self._startup_grace_period = int(os.getenv("Ironcliw_RELOAD_GRACE_PERIOD", "120"))  # 2 minutes default
         self._startup_complete = False
         self._grace_period_logged = False
 
@@ -97,7 +97,7 @@ class JARVISReloadManager:
         are suppressed to allow the system to fully initialize.
         """
         # Check environment variable from supervisor
-        if os.getenv("JARVIS_STARTUP_COMPLETE", "").lower() == "true":
+        if os.getenv("Ironcliw_STARTUP_COMPLETE", "").lower() == "true":
             self._startup_complete = True
             return False
 
@@ -119,7 +119,7 @@ class JARVISReloadManager:
     def mark_startup_complete(self):
         """Mark startup as complete, ending the grace period."""
         self._startup_complete = True
-        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
+        os.environ["Ironcliw_STARTUP_COMPLETE"] = "true"
         logger.info("✅ Startup marked complete - hot-reload fully active")
 
     def load_config(self) -> Dict:
@@ -277,14 +277,14 @@ class JARVISReloadManager:
         return protected
 
     async def find_jarvis_process(self, exclude_protected: bool = True) -> Optional[psutil.Process]:
-        """Find running JARVIS process dynamically.
+        """Find running Ironcliw process dynamically.
 
         Args:
             exclude_protected: If True, excludes current process and its ancestors/children
                              to prevent killing the startup process chain.
 
         Returns:
-            The JARVIS process if found, None otherwise.
+            The Ironcliw process if found, None otherwise.
         """
         protected_pids = self._get_protected_pids() if exclude_protected else set()
 
@@ -303,7 +303,7 @@ class JARVISReloadManager:
                 if cmdline and any('main.py' in arg for arg in cmdline):
                     # Check if it's in our backend directory
                     if any(str(self.backend_dir) in arg for arg in cmdline):
-                        logger.debug(f"Found JARVIS process: PID {pid}")
+                        logger.debug(f"Found Ironcliw process: PID {pid}")
                         return proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -313,13 +313,13 @@ class JARVISReloadManager:
         return None
 
     async def find_all_jarvis_processes(self, exclude_protected: bool = True) -> List[psutil.Process]:
-        """Find ALL running JARVIS processes (there might be stale ones).
+        """Find ALL running Ironcliw processes (there might be stale ones).
 
         Args:
             exclude_protected: If True, excludes current process chain from results.
 
         Returns:
-            List of all JARVIS processes found.
+            List of all Ironcliw processes found.
         """
         protected_pids = self._get_protected_pids() if exclude_protected else set()
         jarvis_processes = []
@@ -345,7 +345,7 @@ class JARVISReloadManager:
         return jarvis_processes
 
     async def stop_jarvis(self, force: bool = False, exclude_protected: bool = True):
-        """Stop JARVIS process gracefully or forcefully.
+        """Stop Ironcliw process gracefully or forcefully.
 
         Args:
             force: If True, use SIGKILL instead of SIGTERM for stubborn processes.
@@ -355,7 +355,7 @@ class JARVISReloadManager:
         protected_pids = self._get_protected_pids() if exclude_protected else set()
         current_pid = os.getpid()
 
-        logger.info(f"🛑 Stopping JARVIS... (protecting PID {current_pid} and {len(protected_pids)-1} related processes)")
+        logger.info(f"🛑 Stopping Ironcliw... (protecting PID {current_pid} and {len(protected_pids)-1} related processes)")
 
         stopped_count = 0
 
@@ -366,27 +366,27 @@ class JARVISReloadManager:
                 try:
                     self.jarvis_process.terminate()
                     await asyncio.wait_for(self.jarvis_process.wait(), timeout=5)
-                    logger.info(f"✅ JARVIS managed process stopped gracefully (PID: {managed_pid})")
+                    logger.info(f"✅ Ironcliw managed process stopped gracefully (PID: {managed_pid})")
                     stopped_count += 1
                     return
                 except asyncio.TimeoutError:
                     if force:
                         self.jarvis_process.kill()
                         await self.jarvis_process.wait()
-                        logger.info(f"✅ JARVIS managed process force killed (PID: {managed_pid})")
+                        logger.info(f"✅ Ironcliw managed process force killed (PID: {managed_pid})")
                         stopped_count += 1
                         return
             else:
                 logger.debug(f"⏭️ Skipping managed process (PID: {managed_pid}) - in protected set")
 
-        # Find and stop ALL stale JARVIS processes (excluding protected ones)
+        # Find and stop ALL stale Ironcliw processes (excluding protected ones)
         jarvis_procs = await self.find_all_jarvis_processes(exclude_protected=exclude_protected)
 
         if not jarvis_procs:
-            logger.info("ℹ️ No stale JARVIS processes found to stop")
+            logger.info("ℹ️ No stale Ironcliw processes found to stop")
             return
 
-        logger.info(f"🔍 Found {len(jarvis_procs)} JARVIS process(es) to stop")
+        logger.info(f"🔍 Found {len(jarvis_procs)} Ironcliw process(es) to stop")
 
         for jarvis_proc in jarvis_procs:
             try:
@@ -402,12 +402,12 @@ class JARVISReloadManager:
 
                 try:
                     jarvis_proc.wait(timeout=5)
-                    logger.info(f"✅ Stopped JARVIS process (PID: {pid})")
+                    logger.info(f"✅ Stopped Ironcliw process (PID: {pid})")
                     stopped_count += 1
                 except psutil.TimeoutExpired:
                     if force:
                         jarvis_proc.kill()
-                        logger.info(f"✅ Force killed JARVIS process (PID: {pid})")
+                        logger.info(f"✅ Force killed Ironcliw process (PID: {pid})")
                         stopped_count += 1
                     else:
                         logger.warning(f"⚠️ Process {pid} didn't stop gracefully, use force=True to kill")
@@ -420,12 +420,12 @@ class JARVISReloadManager:
                 logger.error(f"Error stopping process: {e}")
 
         if stopped_count > 0:
-            logger.info(f"🧹 Cleaned up {stopped_count} JARVIS process(es)")
+            logger.info(f"🧹 Cleaned up {stopped_count} Ironcliw process(es)")
         else:
             logger.info("ℹ️ No processes were stopped (all protected or already gone)")
 
     async def start_jarvis(self) -> bool:
-        """Start JARVIS with dynamic configuration"""
+        """Start Ironcliw with dynamic configuration"""
         try:
             # Find available port if not set
             if not self.config.get('port'):
@@ -436,15 +436,15 @@ class JARVISReloadManager:
             env = os.environ.copy()
             env['PYTHONPATH'] = str(self.backend_dir)
             env['BACKEND_PORT'] = str(self.config['port'])
-            env['JARVIS_AUTO_RELOAD'] = 'true'
+            env['Ironcliw_AUTO_RELOAD'] = 'true'
 
             # Enable optimizations
             env['OPTIMIZE_STARTUP'] = 'true'
             env['LAZY_LOAD_MODELS'] = 'true'
             env['PARALLEL_INIT'] = 'true'
 
-            # Start JARVIS
-            logger.info(f"Starting JARVIS on port {self.config['port']}...")
+            # Start Ironcliw
+            logger.info(f"Starting Ironcliw on port {self.config['port']}...")
 
             self.jarvis_process = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -461,10 +461,10 @@ class JARVISReloadManager:
 
             # Check if process is still running
             if self.jarvis_process.returncode is not None:
-                logger.error("JARVIS failed to start")
+                logger.error("Ironcliw failed to start")
                 return False
 
-            logger.info(f"JARVIS started successfully (PID: {self.jarvis_process.pid})")
+            logger.info(f"Ironcliw started successfully (PID: {self.jarvis_process.pid})")
 
             # Save restart time
             self.last_restart_time = time.time()
@@ -478,11 +478,11 @@ class JARVISReloadManager:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to start JARVIS: {e}")
+            logger.error(f"Failed to start Ironcliw: {e}")
             return False
 
     async def restart_jarvis(self, reason: str = "Manual restart"):
-        """Restart JARVIS with cooldown protection"""
+        """Restart Ironcliw with cooldown protection"""
         # Check cooldown
         time_since_restart = time.time() - self.last_restart_time
         if time_since_restart < self.restart_cooldown:
@@ -490,7 +490,7 @@ class JARVISReloadManager:
             logger.info(f"Restart cooldown active, waiting {wait_time:.1f}s...")
             await asyncio.sleep(wait_time)
 
-        logger.info(f"Restarting JARVIS: {reason}")
+        logger.info(f"Restarting Ironcliw: {reason}")
 
         # Stop current instance
         await self.stop_jarvis()
@@ -502,7 +502,7 @@ class JARVISReloadManager:
         success = await self.start_jarvis()
 
         if not success:
-            logger.error("Failed to restart JARVIS")
+            logger.error("Failed to restart Ironcliw")
             # Try alternative startup methods
             await self.try_alternative_startup()
 
@@ -543,7 +543,7 @@ class JARVISReloadManager:
 
     async def monitor_loop(self):
         """Main monitoring loop with startup grace period protection."""
-        logger.info("Starting JARVIS monitor loop...")
+        logger.info("Starting Ironcliw monitor loop...")
         logger.info(f"🛡️ Startup grace period: {self._startup_grace_period}s (no auto-restarts during this time)")
 
         while True:
@@ -583,9 +583,9 @@ class JARVISReloadManager:
                     if cold_files:
                         logger.info(f"📦 Cold-restart files changed (requires manual restart): {cold_files}")
 
-                # Check if JARVIS is still running (but only act after grace period)
+                # Check if Ironcliw is still running (but only act after grace period)
                 if self.jarvis_process and self.jarvis_process.returncode is not None:
-                    logger.warning("JARVIS process died unexpectedly")
+                    logger.warning("Ironcliw process died unexpectedly")
                     if self.config.get('reload_on_error', True) and not in_grace_period:
                         await self.restart_jarvis("Process died")
                     elif in_grace_period:
@@ -607,13 +607,13 @@ class JARVISReloadManager:
 
     async def run(self):
         """Main entry point"""
-        logger.info("JARVIS Reload Manager starting...")
+        logger.info("Ironcliw Reload Manager starting...")
         logger.info(f"🛡️ Grace period: {self._startup_grace_period}s before hot-reload activates")
 
-        # Check if JARVIS is already running
+        # Check if Ironcliw is already running
         existing = await self.find_jarvis_process()
         if existing:
-            logger.info(f"Found existing JARVIS process (PID: {existing.pid})")
+            logger.info(f"Found existing Ironcliw process (PID: {existing.pid})")
 
             # Check for code changes (hot-reload only, not cold-restart files)
             has_hot_changes, hot_files, cold_files = self.detect_code_changes()
@@ -629,7 +629,7 @@ class JARVISReloadManager:
                 logger.info("No code changes, attaching to existing process")
                 # We could monitor the existing process instead
         else:
-            # Start JARVIS
+            # Start Ironcliw
             await self.start_jarvis()
 
         # Start monitoring
@@ -650,7 +650,7 @@ async def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    manager = JARVISReloadManager()
+    manager = IroncliwReloadManager()
     await manager.run()
 
 

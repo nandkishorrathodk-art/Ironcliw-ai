@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS functionality after fixing torchaudio compatibility"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw functionality after fixing torchaudio compatibility"""
 
 import sys
 from pathlib import Path
@@ -14,22 +14,22 @@ import json
 
 BASE_URL = "http://localhost:8000"
 
-print("🤖 Testing JARVIS Voice System")
+print("🤖 Testing Ironcliw Voice System")
 print("=" * 50)
 
-# 1. Check JARVIS status
-print("\n1. Checking JARVIS status...")
+# 1. Check Ironcliw status
+print("\n1. Checking Ironcliw status...")
 response = requests.get(f"{BASE_URL}/voice/jarvis/status")
 if response.ok:
     status = response.json()
-    print(f"✅ JARVIS Status: {status['status']}")
+    print(f"✅ Ironcliw Status: {status['status']}")
     print(f"   User: {status['user_name']}")
     print(f"   Features: {', '.join(status['features'])}")
 else:
     print(f"❌ Failed to get status: {response.status_code}")
 
-# 2. Test JARVIS command
-print("\n2. Testing JARVIS command processing...")
+# 2. Test Ironcliw command
+print("\n2. Testing Ironcliw command processing...")
 command = {
     "text": "What's the weather like today?"
 }
@@ -53,7 +53,7 @@ else:
     print(f"❌ Failed to get ML status: {response.status_code}")
 
 print("\n✅ All tests completed!")
-print("\nJARVIS is fully operational with:")
+print("\nIroncliw is fully operational with:")
 print("- ✅ Fixed torchaudio compatibility")
 print("- ✅ ML-enhanced voice detection") 
 print("- ✅ Personalized wake word with 80%+ false positive reduction")

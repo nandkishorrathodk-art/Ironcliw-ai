@@ -1,7 +1,7 @@
-"""
-PROJECT TRINITY Phase 3: Auto-Initializer for JARVIS Body
+﻿"""
+PROJECT TRINITY Phase 3: Auto-Initializer for Ironcliw Body
 
-This module provides automatic Trinity initialization for JARVIS.
+This module provides automatic Trinity initialization for Ironcliw.
 It integrates with the FastAPI lifespan to:
 - Connect to the Trinity network on startup
 - Register command handlers
@@ -59,7 +59,7 @@ class AtomicTrinityIO:
 
     The Problem:
         Standard file writing (`open('w').write()`) takes non-zero time (e.g., 5ms).
-        If JARVIS tries to read the file during those 5ms, it reads incomplete JSON
+        If Ironcliw tries to read the file during those 5ms, it reads incomplete JSON
         and crashes with JSONDecodeError.
 
     The Solution:
@@ -228,8 +228,8 @@ TRINITY_HEARTBEAT_INTERVAL = float(os.getenv("TRINITY_HEARTBEAT_INTERVAL", "5.0"
 TRINITY_AUTO_CONNECT = os.getenv("TRINITY_AUTO_CONNECT", "true").lower() == "true"
 
 # Instance identification
-JARVIS_INSTANCE_ID = os.getenv(
-    "JARVIS_INSTANCE_ID",
+Ironcliw_INSTANCE_ID = os.getenv(
+    "Ironcliw_INSTANCE_ID",
     f"jarvis-{os.getpid()}-{int(time.time())}"
 )
 
@@ -464,7 +464,7 @@ async def _shutdown_gcp_hybrid_prime_router():
 
 async def initialize_trinity(app=None) -> bool:
     """
-    Initialize Trinity for JARVIS Body.
+    Initialize Trinity for Ironcliw Body.
 
     This should be called during FastAPI lifespan startup.
 
@@ -485,7 +485,7 @@ async def initialize_trinity(app=None) -> bool:
         return True
 
     logger.info("=" * 60)
-    logger.info("PROJECT TRINITY: Initializing JARVIS Body Connection")
+    logger.info("PROJECT TRINITY: Initializing Ironcliw Body Connection")
     logger.info("=" * 60)
 
     _app = app
@@ -530,11 +530,11 @@ async def initialize_trinity(app=None) -> bool:
         except Exception as e:
             logger.warning(f"[Trinity] TrinityBridgeAdapter failed to start: {e}")
 
-        # Step 6: Start CrossRepoComponentRegistry (exposes JARVIS components)
+        # Step 6: Start CrossRepoComponentRegistry (exposes Ironcliw components)
         try:
             registry = await _get_cross_repo_registry()
             if registry:
-                logger.info("[Trinity] ✓ CrossRepoComponentRegistry started (exposing JARVIS components)")
+                logger.info("[Trinity] ✓ CrossRepoComponentRegistry started (exposing Ironcliw components)")
                 if app is not None:
                     app.state.cross_repo_registry = registry
             else:
@@ -581,7 +581,7 @@ async def initialize_trinity(app=None) -> bool:
         # Step 10: Attach to app state if available
         if app is not None:
             app.state.trinity_bridge = bridge
-            app.state.trinity_instance_id = JARVIS_INSTANCE_ID
+            app.state.trinity_instance_id = Ironcliw_INSTANCE_ID
             logger.info("[Trinity] ✓ Attached to FastAPI app.state")
 
         # Step 11: Register Ghost Display → WebSocket observer (v129.0)
@@ -590,7 +590,7 @@ async def initialize_trinity(app=None) -> bool:
         _trinity_initialized = True
 
         logger.info("=" * 60)
-        logger.info(f"PROJECT TRINITY: JARVIS Body Online (ID: {JARVIS_INSTANCE_ID[:16]})")
+        logger.info(f"PROJECT TRINITY: Ironcliw Body Online (ID: {Ironcliw_INSTANCE_ID[:16]})")
         logger.info("=" * 60)
 
         return True
@@ -611,7 +611,7 @@ async def shutdown_trinity() -> None:
     if not _trinity_initialized:
         return
 
-    logger.info("[Trinity] Shutting down JARVIS Body connection...")
+    logger.info("[Trinity] Shutting down Ironcliw Body connection...")
 
     # Stop heartbeat
     if _heartbeat_task:
@@ -666,7 +666,7 @@ async def shutdown_trinity() -> None:
     _bridge = None
     _bridge_adapter = None
 
-    logger.info("[Trinity] JARVIS Body disconnected")
+    logger.info("[Trinity] Ironcliw Body disconnected")
 
 
 @asynccontextmanager
@@ -721,9 +721,9 @@ async def _broadcast_heartbeat() -> None:
 
 
 async def _gather_jarvis_state() -> Dict[str, Any]:
-    """Gather current JARVIS state for heartbeat."""
+    """Gather current Ironcliw state for heartbeat."""
     state = {
-        "instance_id": JARVIS_INSTANCE_ID,
+        "instance_id": Ironcliw_INSTANCE_ID,
         "uptime_seconds": time.time() - _start_time,
         "timestamp": time.time(),
     }
@@ -789,7 +789,7 @@ async def _write_state_to_orchestrator(state: Dict[str, Any]) -> None:
         # v73.0: Atomic write - prevents JSONDecodeError from partial reads
         data = {
             "component_type": "jarvis_body",
-            "instance_id": JARVIS_INSTANCE_ID,
+            "instance_id": Ironcliw_INSTANCE_ID,
             "timestamp": time.time(),
             "metrics": state,
         }
@@ -1001,7 +1001,7 @@ class TrinityHealthMonitor:
         components_dir = Path.home() / ".jarvis" / "trinity" / "components"
 
         # v90.0: Check if J-Prime is enabled before checking heartbeat
-        jprime_enabled = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() in ("true", "1", "yes")
+        jprime_enabled = os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() in ("true", "1", "yes")
         if jprime_enabled:
             # Check J-Prime (Mind)
             # v78.1: Support both naming conventions for backwards compatibility
@@ -1027,7 +1027,7 @@ class TrinityHealthMonitor:
             # Mark as disabled - not an error
             self._component_states["reactor_core"] = "disabled"
 
-        # JARVIS Body is this process - always healthy if running
+        # Ironcliw Body is this process - always healthy if running
         self._component_states["jarvis_body"] = "healthy"
 
     def _find_heartbeat_file(self, components_dir: Path, candidates: list) -> Path:
@@ -1504,7 +1504,7 @@ class TrinityHealthMonitor:
         Startup order:
         1. Reactor-Core (nerves) - must be up first for message passing
         2. J-Prime (mind) - depends on Reactor-Core for communication
-        3. JARVIS Body - can function in degraded mode without the others
+        3. Ironcliw Body - can function in degraded mode without the others
 
         v90.0: Now respects component enabled status - disabled components
         are treated as "ok" for dependency purposes.
@@ -1526,7 +1526,7 @@ class TrinityHealthMonitor:
 
         # v90.0: Check if components are enabled
         reactor_enabled = os.getenv("REACTOR_CORE_ENABLED", "true").lower() in ("true", "1", "yes")
-        jprime_enabled = os.getenv("JARVIS_PRIME_ENABLED", "true").lower() in ("true", "1", "yes")
+        jprime_enabled = os.getenv("Ironcliw_PRIME_ENABLED", "true").lower() in ("true", "1", "yes")
 
         # Check Reactor-Core first (it's the communication backbone)
         if reactor_enabled:
@@ -1568,7 +1568,7 @@ class TrinityHealthMonitor:
             results["degraded_mode_required"] = True
             results["recommendations"].extend([
                 "J-Prime is not available - operating in degraded mode",
-                "JARVIS can execute commands but cognitive functions are limited",
+                "Ironcliw can execute commands but cognitive functions are limited",
                 f"J-Prime error: {jprime_status.get('error', 'unknown')}",
             ])
         elif not reactor_ok:
@@ -1649,7 +1649,7 @@ class TrinityHealthMonitor:
         """
         v78.1: Wait for Trinity dependencies to become available.
 
-        This should be called during JARVIS startup to ensure dependencies
+        This should be called during Ironcliw startup to ensure dependencies
         are ready before enabling full functionality.
 
         Args:
@@ -1830,7 +1830,7 @@ def get_trinity_status() -> Dict[str, Any]:
     return {
         "enabled": TRINITY_ENABLED,
         "initialized": _trinity_initialized,
-        "instance_id": JARVIS_INSTANCE_ID,
+        "instance_id": Ironcliw_INSTANCE_ID,
         "uptime_seconds": time.time() - _start_time if _trinity_initialized else 0,
         "connected": bridge.is_connected() if bridge else False,
         "heartbeat_interval": TRINITY_HEARTBEAT_INTERVAL,
@@ -1849,7 +1849,7 @@ __all__ = [
     "trinity_context",
     "is_trinity_initialized",
     "get_trinity_status",
-    "JARVIS_INSTANCE_ID",
+    "Ironcliw_INSTANCE_ID",
     # v73.0: Atomic I/O
     "AtomicTrinityIO",
     "write_json_atomic",
@@ -1862,7 +1862,7 @@ __all__ = [
     # v75.0: File system resilience
     "FileSystemGuard",
     # v80.0: TrinityBridgeAdapter - Closes the Trinity Loop
-    # Watches Reactor Core events and forwards to JARVIS handlers
+    # Watches Reactor Core events and forwards to Ironcliw handlers
     # Access via: app.state.trinity_bridge_adapter after initialization
 ]
 

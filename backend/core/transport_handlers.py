@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Transport Method Handlers
 ==========================
@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # COMPUTER USE INTEGRATION (v6.0 - Open Interpreter-Inspired)
 # =============================================================================
 # Environment-driven configuration
-COMPUTER_USE_ENABLED = os.getenv("JARVIS_COMPUTER_USE_ENABLED", "true").lower() == "true"
-COMPUTER_USE_SAFETY_STRICT = os.getenv("JARVIS_COMPUTER_USE_SAFETY_STRICT", "true").lower() == "true"
+COMPUTER_USE_ENABLED = os.getenv("Ironcliw_COMPUTER_USE_ENABLED", "true").lower() == "true"
+COMPUTER_USE_SAFETY_STRICT = os.getenv("Ironcliw_COMPUTER_USE_SAFETY_STRICT", "true").lower() == "true"
 
 # Lazy import flag to avoid heavy imports at module load
 _computer_use_initialized = False

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 UAE-Enhanced Adaptive Control Center Clicker
 =============================================
@@ -582,7 +582,7 @@ class UAEEnhancedControlCenterClicker(AdaptiveControlCenterClicker):
                 )
 
             # CRITICAL: Wait for connection to complete and UI to close
-            # This prevents JARVIS from continuing to click after the task is done
+            # This prevents Ironcliw from continuing to click after the task is done
             logger.info("[UAE-CLICKER] ⏳ Waiting for connection to complete...")
 
             # Wait longer to ensure:

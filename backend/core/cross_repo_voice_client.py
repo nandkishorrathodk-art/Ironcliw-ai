@@ -1,13 +1,13 @@
-"""
+﻿"""
 Cross-Repo Voice Client v100.0 - Trinity Voice Integration for External Repos
 ==============================================================================
 
-Lightweight client for JARVIS Prime and Reactor Core to send voice announcements
-to the centralized Trinity Voice Coordinator in JARVIS Body.
+Lightweight client for Ironcliw Prime and Reactor Core to send voice announcements
+to the centralized Trinity Voice Coordinator in Ironcliw Body.
 
 Architecture:
-- JARVIS Body: Hosts the full Trinity Voice Coordinator (TTS engines, queue, etc.)
-- JARVIS Prime: Uses this client to send voice announcements via IPC/HTTP
+- Ironcliw Body: Hosts the full Trinity Voice Coordinator (TTS engines, queue, etc.)
+- Ironcliw Prime: Uses this client to send voice announcements via IPC/HTTP
 - Reactor Core: Uses this client to announce training events via IPC/HTTP
 
 Communication Methods (in priority order):
@@ -23,7 +23,7 @@ Features:
 - Automatic fallback between communication methods
 - Health check integration
 
-Author: JARVIS Trinity v100.0
+Author: Ironcliw Trinity v100.0
 """
 
 from __future__ import annotations
@@ -75,33 +75,33 @@ def _env_bool(key: str, default: bool) -> bool:
 @dataclass
 class CrossRepoVoiceConfig:
     """Configuration for cross-repo voice client."""
-    # JARVIS Body API Configuration
+    # Ironcliw Body API Configuration
     jarvis_host: str = field(default_factory=lambda: _env_str(
-        "JARVIS_HOST", "localhost"
+        "Ironcliw_HOST", "localhost"
     ))
     jarvis_port: int = field(default_factory=lambda: _env_int(
-        "JARVIS_PORT", 8010
+        "Ironcliw_PORT", 8010
     ))
 
     # Timeout Configuration
     request_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_REQUEST_TIMEOUT", 10.0
+        "Ironcliw_VOICE_REQUEST_TIMEOUT", 10.0
     ))
     connection_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_CONNECTION_TIMEOUT", 5.0
+        "Ironcliw_VOICE_CONNECTION_TIMEOUT", 5.0
     ))
 
     # Retry Configuration
     max_retries: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_CLIENT_MAX_RETRIES", 3
+        "Ironcliw_VOICE_CLIENT_MAX_RETRIES", 3
     ))
     retry_delay: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_CLIENT_RETRY_DELAY", 1.0
+        "Ironcliw_VOICE_CLIENT_RETRY_DELAY", 1.0
     ))
 
     # IPC Configuration
     ipc_enabled: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_IPC_ENABLED", True
+        "Ironcliw_VOICE_IPC_ENABLED", True
     ))
     trinity_dir: Path = field(default_factory=lambda: Path(
         _env_str("TRINITY_DIR", str(Path.home() / ".jarvis" / "trinity"))
@@ -109,10 +109,10 @@ class CrossRepoVoiceConfig:
 
     # Fallback Configuration
     fallback_to_http: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_FALLBACK_HTTP", True
+        "Ironcliw_VOICE_FALLBACK_HTTP", True
     ))
     fallback_to_local: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_FALLBACK_LOCAL", True
+        "Ironcliw_VOICE_FALLBACK_LOCAL", True
     ))
 
     @property
@@ -151,7 +151,7 @@ class CrossRepoVoiceClient:
     """
     Lightweight client for sending voice announcements from external repos.
 
-    Usage in JARVIS Prime:
+    Usage in Ironcliw Prime:
         client = CrossRepoVoiceClient(source="jarvis_prime")
         await client.initialize()
 
@@ -380,14 +380,14 @@ class CrossRepoVoiceClient:
 
             # Create voice command
             source_component = {
-                "jarvis_prime": ComponentType.JARVIS_PRIME,
+                "jarvis_prime": ComponentType.Ironcliw_PRIME,
                 "reactor_core": ComponentType.REACTOR_CORE,
-            }.get(self.source, ComponentType.JARVIS_BODY)
+            }.get(self.source, ComponentType.Ironcliw_BODY)
 
             command = TrinityCommand(
                 command_type="voice_announce",
                 source=source_component,
-                target=ComponentType.JARVIS_BODY,
+                target=ComponentType.Ironcliw_BODY,
                 payload={
                     "message": message,
                     "context": context.value,
@@ -458,15 +458,15 @@ class CrossRepoVoiceClient:
         model_name: str,
         load_time_seconds: Optional[float] = None
     ) -> Tuple[bool, str]:
-        """Announce model loaded (for JARVIS Prime)."""
+        """Announce model loaded (for Ironcliw Prime)."""
         if load_time_seconds:
             message = (
-                f"JARVIS Prime: {model_name} loaded in {load_time_seconds:.1f} seconds. "
+                f"Ironcliw Prime: {model_name} loaded in {load_time_seconds:.1f} seconds. "
                 f"Ready for edge processing."
             )
         else:
             message = (
-                f"JARVIS Prime: {model_name} loaded and ready for edge processing."
+                f"Ironcliw Prime: {model_name} loaded and ready for edge processing."
             )
 
         return await self.announce(
@@ -483,7 +483,7 @@ class CrossRepoVoiceClient:
     ) -> Tuple[bool, str]:
         """Announce inference completion (optional, low priority)."""
         return await self.announce(
-            f"JARVIS Prime inference complete. {latency_ms:.0f}ms response time.",
+            f"Ironcliw Prime inference complete. {latency_ms:.0f}ms response time.",
             VoiceContext.RUNTIME,
             VoicePriority.LOW,
             metadata={"model": model_name, "latency_ms": latency_ms}
@@ -561,7 +561,7 @@ class CrossRepoVoiceClient:
     async def announce_ready(self) -> Tuple[bool, str]:
         """Announce component ready."""
         source_name = {
-            "jarvis_prime": "JARVIS Prime",
+            "jarvis_prime": "Ironcliw Prime",
             "reactor_core": "Reactor Core",
         }.get(self.source, self.source)
 
@@ -606,7 +606,7 @@ async def get_voice_client(source: str) -> CrossRepoVoiceClient:
 
 
 async def get_jarvis_prime_voice() -> CrossRepoVoiceClient:
-    """Get voice client for JARVIS Prime."""
+    """Get voice client for Ironcliw Prime."""
     return await get_voice_client("jarvis_prime")
 
 

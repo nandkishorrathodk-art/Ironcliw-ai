@@ -1,18 +1,18 @@
-# Trinity Cross-Repo Coordination Contract
+﻿# Trinity Cross-Repo Coordination Contract
 
-> This document defines the coordination contract between JARVIS, JARVIS-Prime, and Reactor-Core.
+> This document defines the coordination contract between Ironcliw, Ironcliw-Prime, and Reactor-Core.
 > Version: 1.0.0 | Last Updated: 2026-02-02
 
 ## Overview
 
-The JARVIS Trinity system consists of three coordinating components:
-- **JARVIS (Body)** - Main supervisor, UI server, and orchestrator
-- **JARVIS-Prime (Mind)** - AI inference orchestrator and ML model host
+The Ironcliw Trinity system consists of three coordinating components:
+- **Ironcliw (Body)** - Main supervisor, UI server, and orchestrator
+- **Ironcliw-Prime (Mind)** - AI inference orchestrator and ML model host
 - **Reactor-Core (Nerves)** - Background processing, training, and learning
 
 ```
     +------------------+
-    |    JARVIS        |
+    |    Ironcliw        |
     |  (Supervisor)    |
     |   Port: 8010     |
     +--------+---------+
@@ -28,13 +28,13 @@ The JARVIS Trinity system consists of three coordinating components:
 
 ## Health Endpoints
 
-### JARVIS (Body)
-- **URL**: `http://localhost:${JARVIS_PORT:-8010}/health`
-- **Ping URL**: `http://localhost:${JARVIS_PORT:-8010}/health/ping`
+### Ironcliw (Body)
+- **URL**: `http://localhost:${Ironcliw_PORT:-8010}/health`
+- **Ping URL**: `http://localhost:${Ironcliw_PORT:-8010}/health/ping`
 - **Expected Response**: HTTP 200 with JSON `{"status": "healthy"}` or `{"ready": true}`
 
-### JARVIS-Prime
-- **URL**: `http://localhost:${JARVIS_PRIME_PORT:-8001}/health`
+### Ironcliw-Prime
+- **URL**: `http://localhost:${Ironcliw_PRIME_PORT:-8001}/health`
 - **Expected Response**: HTTP 200 with JSON containing status and optional PID
 - **Note**: Port changed from 8000 to 8001 in v192.2 to avoid conflicts with unified_supervisor
 
@@ -52,32 +52,32 @@ The JARVIS Trinity system consists of three coordinating components:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_MAX_TIMEOUT` | 900.0 | Maximum allowed timeout for any operation (safety cap) |
+| `Ironcliw_MAX_TIMEOUT` | 900.0 | Maximum allowed timeout for any operation (safety cap) |
 
 ### Signal Timeouts (Shutdown)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_CLEANUP_TIMEOUT_SIGINT` | 10.0 | Wait time after SIGINT before SIGTERM |
-| `JARVIS_CLEANUP_TIMEOUT_SIGTERM` | 5.0 | Wait time after SIGTERM before SIGKILL |
-| `JARVIS_CLEANUP_TIMEOUT_SIGKILL` | 2.0 | Wait time after SIGKILL before giving up |
+| `Ironcliw_CLEANUP_TIMEOUT_SIGINT` | 10.0 | Wait time after SIGINT before SIGTERM |
+| `Ironcliw_CLEANUP_TIMEOUT_SIGTERM` | 5.0 | Wait time after SIGTERM before SIGKILL |
+| `Ironcliw_CLEANUP_TIMEOUT_SIGKILL` | 2.0 | Wait time after SIGKILL before giving up |
 
 ### Port and Network Timeouts
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_PORT_CHECK_TIMEOUT` | 1.0 | Timeout for TCP port availability check |
-| `JARVIS_PORT_RELEASE_WAIT` | 2.0 | Time to wait for port release after process exit |
-| `JARVIS_IPC_SOCKET_TIMEOUT` | 8.0 | Timeout for Unix socket connections |
+| `Ironcliw_PORT_CHECK_TIMEOUT` | 1.0 | Timeout for TCP port availability check |
+| `Ironcliw_PORT_RELEASE_WAIT` | 2.0 | Time to wait for port release after process exit |
+| `Ironcliw_IPC_SOCKET_TIMEOUT` | 8.0 | Timeout for Unix socket connections |
 
 ### Health Check Timeouts
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_BACKEND_HEALTH_TIMEOUT` | 30.0 | Timeout for backend HTTP health check |
-| `JARVIS_FRONTEND_HEALTH_TIMEOUT` | 60.0 | Timeout for frontend health check |
-| `JARVIS_LOADING_SERVER_HEALTH_TIMEOUT` | 5.0 | Timeout for loading server health |
-| `JARVIS_REACTOR_HEALTH_TIMEOUT` | 10.0 | Timeout for Reactor-Core health check |
+| `Ironcliw_BACKEND_HEALTH_TIMEOUT` | 30.0 | Timeout for backend HTTP health check |
+| `Ironcliw_FRONTEND_HEALTH_TIMEOUT` | 60.0 | Timeout for frontend health check |
+| `Ironcliw_LOADING_SERVER_HEALTH_TIMEOUT` | 5.0 | Timeout for loading server health |
+| `Ironcliw_REACTOR_HEALTH_TIMEOUT` | 10.0 | Timeout for Reactor-Core health check |
 | `HEALTH_CHECK_TIMEOUT` | 3.0 | General health check timeout |
 | `HEALTH_CHECK_INTERVAL` | 5.0 | Interval between health checks |
 
@@ -85,8 +85,8 @@ The JARVIS Trinity system consists of three coordinating components:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_PRIME_STARTUP_TIMEOUT` | 600.0 | Timeout for JARVIS-Prime startup (includes model loading) |
-| `JARVIS_REACTOR_STARTUP_TIMEOUT` | 120.0 | Timeout for Reactor-Core startup |
+| `Ironcliw_PRIME_STARTUP_TIMEOUT` | 600.0 | Timeout for Ironcliw-Prime startup (includes model loading) |
+| `Ironcliw_REACTOR_STARTUP_TIMEOUT` | 120.0 | Timeout for Reactor-Core startup |
 | `TRINITY_SIGTERM_TIMEOUT` | 5.0 | Graceful shutdown SIGTERM wait |
 | `TRINITY_SIGKILL_TIMEOUT` | 2.0 | Forced shutdown SIGKILL wait |
 
@@ -94,13 +94,13 @@ The JARVIS Trinity system consists of three coordinating components:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_LOCK_DIR` | ~/.jarvis/cross_repo/locks | Directory for lock files |
-| `JARVIS_MAX_LOCK_TIMEOUT` | 300.0 | Maximum lock acquisition timeout |
-| `JARVIS_MIN_LOCK_TIMEOUT` | 0.1 | Minimum lock acquisition timeout (prevents spin-lock) |
-| `JARVIS_DEFAULT_LOCK_TIMEOUT` | 5.0 | Default lock timeout if not specified |
-| `JARVIS_STALE_LOCK_RETRY_TIMEOUT` | 1.0 | Timeout for retry after stale lock removal |
-| `JARVIS_STARTUP_LOCK_TIMEOUT` | 30.0 | Timeout for acquiring startup lock |
-| `JARVIS_TAKEOVER_HANDOVER_TIMEOUT` | 15.0 | Timeout for instance takeover handover |
+| `Ironcliw_LOCK_DIR` | ~/.jarvis/cross_repo/locks | Directory for lock files |
+| `Ironcliw_MAX_LOCK_TIMEOUT` | 300.0 | Maximum lock acquisition timeout |
+| `Ironcliw_MIN_LOCK_TIMEOUT` | 0.1 | Minimum lock acquisition timeout (prevents spin-lock) |
+| `Ironcliw_DEFAULT_LOCK_TIMEOUT` | 5.0 | Default lock timeout if not specified |
+| `Ironcliw_STALE_LOCK_RETRY_TIMEOUT` | 1.0 | Timeout for retry after stale lock removal |
+| `Ironcliw_STARTUP_LOCK_TIMEOUT` | 30.0 | Timeout for acquiring startup lock |
+| `Ironcliw_TAKEOVER_HANDOVER_TIMEOUT` | 15.0 | Timeout for instance takeover handover |
 | `LOCK_ACQUIRE_TIMEOUT_S` | 5.0 | Lock acquisition timeout for RobustFileLock |
 | `LOCK_POLL_INTERVAL_S` | 0.05 | Lock polling interval |
 | `LOCK_STALE_WARNING_S` | 30.0 | Threshold for stale lock warning |
@@ -109,10 +109,10 @@ The JARVIS Trinity system consists of three coordinating components:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_HOST` | localhost | JARVIS Body API host |
-| `JARVIS_PORT` | 8010 | JARVIS Body API port |
-| `JARVIS_PRIME_HOST` | localhost | JARVIS Prime API host |
-| `JARVIS_PRIME_PORT` | 8001 | JARVIS Prime API port |
+| `Ironcliw_HOST` | localhost | Ironcliw Body API host |
+| `Ironcliw_PORT` | 8010 | Ironcliw Body API port |
+| `Ironcliw_PRIME_HOST` | localhost | Ironcliw Prime API host |
+| `Ironcliw_PRIME_PORT` | 8001 | Ironcliw Prime API port |
 | `REACTOR_CORE_HOST` | localhost | Reactor Core API host |
 | `REACTOR_CORE_PORT` | 8090 | Reactor Core API port |
 
@@ -138,22 +138,22 @@ The JARVIS Trinity system consists of three coordinating components:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_BROADCAST_TIMEOUT` | 2.0 | Timeout for progress/status broadcasts |
+| `Ironcliw_BROADCAST_TIMEOUT` | 2.0 | Timeout for progress/status broadcasts |
 
 ### Async Utility Timeouts
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JARVIS_PROCESS_WAIT_TIMEOUT` | 10.0 | Default timeout for async_process_wait |
-| `JARVIS_SUBPROCESS_TIMEOUT` | 30.0 | Default timeout for async_subprocess_run |
-| `JARVIS_LSOF_TIMEOUT` | 5.0 | Timeout for lsof subprocess calls |
+| `Ironcliw_PROCESS_WAIT_TIMEOUT` | 10.0 | Default timeout for async_process_wait |
+| `Ironcliw_SUBPROCESS_TIMEOUT` | 30.0 | Default timeout for async_subprocess_run |
+| `Ironcliw_LSOF_TIMEOUT` | 5.0 | Timeout for lsof subprocess calls |
 
 ## Lock Files
 
 ### Locations
-- **Startup Lock**: `${JARVIS_LOCK_DIR}/startup_lock.lock`
-- **VBIA State Lock**: `${JARVIS_LOCK_DIR}/vbia_state.lock`
-- **Voice Client Lock**: `${JARVIS_LOCK_DIR}/voice_client.lock`
+- **Startup Lock**: `${Ironcliw_LOCK_DIR}/startup_lock.lock`
+- **VBIA State Lock**: `${Ironcliw_LOCK_DIR}/vbia_state.lock`
+- **Voice Client Lock**: `${Ironcliw_LOCK_DIR}/voice_client.lock`
 
 ### Format
 Lock files contain JSON metadata written atomically:
@@ -195,7 +195,7 @@ Lock files contain JSON metadata written atomically:
 A heartbeat file is considered stale if:
 - `timestamp` > 30 seconds old (configurable via `TRINITY_HEARTBEAT_TIMEOUT`)
 - PID no longer running (dead process verified via `os.kill(pid, 0)`)
-- Process running but doesn't match JARVIS pattern (PID reused by OS)
+- Process running but doesn't match Ironcliw pattern (PID reused by OS)
 
 ### Multi-Directory Search
 The system checks multiple heartbeat directories for backwards compatibility:
@@ -252,7 +252,7 @@ These operations should not prevent startup if they fail:
 |-----------|---------------------|
 | Progress broadcasts to loading server | Log warning, continue |
 | Lock cleanup for stale locks | Log warning, continue |
-| JARVIS-Prime startup | Fallback to Claude API |
+| Ironcliw-Prime startup | Fallback to Claude API |
 | Reactor-Core startup | Continue without training |
 | Redis connection | Continue without caching |
 | GCP pre-warm | Continue without cloud acceleration |
@@ -379,7 +379,7 @@ Components communicate via file-based IPC through `~/.jarvis/trinity/commands/`:
 
 ### Detection Methods
 1. **PID file staleness**: Check if PID files point to dead processes
-2. **Process pattern matching**: Find processes matching JARVIS patterns
+2. **Process pattern matching**: Find processes matching Ironcliw patterns
 3. **Heartbeat staleness**: Find processes with old/missing heartbeats
 4. **HTTP health check**: Verify via health endpoint (most reliable)
 

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Voice Profile Learning Engine
+Ironcliw Voice Profile Learning Engine
 =====================================
 
 ACTIVE continuous learning system that ACTUALLY improves voice recognition over time.
@@ -74,23 +74,23 @@ class LearningConfig:
 
     def __init__(self):
         # Learning rates - ADAPTIVE based on profile maturity
-        self.embedding_learning_rate = float(os.getenv('JARVIS_EMBEDDING_LR', '0.1'))
-        self.temporal_learning_rate = float(os.getenv('JARVIS_TEMPORAL_LR', '0.05'))
+        self.embedding_learning_rate = float(os.getenv('Ironcliw_EMBEDDING_LR', '0.1'))
+        self.temporal_learning_rate = float(os.getenv('Ironcliw_TEMPORAL_LR', '0.05'))
 
         # ADVANCED: Adaptive learning rate parameters
-        self.min_learning_rate = float(os.getenv('JARVIS_MIN_LR', '0.02'))
-        self.max_learning_rate = float(os.getenv('JARVIS_MAX_LR', '0.25'))
-        self.learning_rate_decay = float(os.getenv('JARVIS_LR_DECAY', '0.995'))  # Per sample decay
-        self.mature_profile_samples = int(os.getenv('JARVIS_MATURE_SAMPLES', '50'))
+        self.min_learning_rate = float(os.getenv('Ironcliw_MIN_LR', '0.02'))
+        self.max_learning_rate = float(os.getenv('Ironcliw_MAX_LR', '0.25'))
+        self.learning_rate_decay = float(os.getenv('Ironcliw_LR_DECAY', '0.995'))  # Per sample decay
+        self.mature_profile_samples = int(os.getenv('Ironcliw_MATURE_SAMPLES', '50'))
 
         # Sample quality thresholds - STRICTER for security
-        self.min_confidence_for_learning = float(os.getenv('JARVIS_MIN_LEARN_CONF', '0.80'))  # Raised from 0.75
-        self.high_quality_threshold = float(os.getenv('JARVIS_HIGH_QUALITY_CONF', '0.92'))  # Raised from 0.90
-        self.elite_quality_threshold = float(os.getenv('JARVIS_ELITE_CONF', '0.95'))  # New: Elite samples
+        self.min_confidence_for_learning = float(os.getenv('Ironcliw_MIN_LEARN_CONF', '0.80'))  # Raised from 0.75
+        self.high_quality_threshold = float(os.getenv('Ironcliw_HIGH_QUALITY_CONF', '0.92'))  # Raised from 0.90
+        self.elite_quality_threshold = float(os.getenv('Ironcliw_ELITE_CONF', '0.95'))  # New: Elite samples
 
         # Update frequency
-        self.min_samples_for_update = int(os.getenv('JARVIS_MIN_SAMPLES_UPDATE', '5'))
-        self.max_samples_per_update = int(os.getenv('JARVIS_MAX_SAMPLES_UPDATE', '20'))
+        self.min_samples_for_update = int(os.getenv('Ironcliw_MIN_SAMPLES_UPDATE', '5'))
+        self.max_samples_per_update = int(os.getenv('Ironcliw_MAX_SAMPLES_UPDATE', '20'))
 
         # Temporal buckets (hours)
         self.temporal_buckets = {
@@ -103,36 +103,36 @@ class LearningConfig:
         }
 
         # ADVANCED: Statistical outlier detection parameters
-        self.outlier_std_threshold = float(os.getenv('JARVIS_OUTLIER_STD', '2.5'))
-        self.outlier_iqr_multiplier = float(os.getenv('JARVIS_OUTLIER_IQR', '1.5'))
-        self.min_similarity_threshold = float(os.getenv('JARVIS_MIN_SIMILARITY', '0.40'))
+        self.outlier_std_threshold = float(os.getenv('Ironcliw_OUTLIER_STD', '2.5'))
+        self.outlier_iqr_multiplier = float(os.getenv('Ironcliw_OUTLIER_IQR', '1.5'))
+        self.min_similarity_threshold = float(os.getenv('Ironcliw_MIN_SIMILARITY', '0.40'))
 
         # ADVANCED: Profile optimization parameters
-        self.weak_sample_threshold = float(os.getenv('JARVIS_WEAK_SAMPLE_THRESH', '0.70'))
-        self.optimization_interval_samples = int(os.getenv('JARVIS_OPT_INTERVAL', '25'))
-        self.min_samples_for_optimization = int(os.getenv('JARVIS_MIN_OPT_SAMPLES', '15'))
-        self.target_profile_variance = float(os.getenv('JARVIS_TARGET_VARIANCE', '0.05'))
+        self.weak_sample_threshold = float(os.getenv('Ironcliw_WEAK_SAMPLE_THRESH', '0.70'))
+        self.optimization_interval_samples = int(os.getenv('Ironcliw_OPT_INTERVAL', '25'))
+        self.min_samples_for_optimization = int(os.getenv('Ironcliw_MIN_OPT_SAMPLES', '15'))
+        self.target_profile_variance = float(os.getenv('Ironcliw_TARGET_VARIANCE', '0.05'))
 
         # ADVANCED: Multi-factor confidence boosting
-        self.enable_multi_factor_boost = os.getenv('JARVIS_MULTI_FACTOR_BOOST', 'true').lower() == 'true'
-        self.temporal_match_boost = float(os.getenv('JARVIS_TEMPORAL_BOOST', '0.03'))
-        self.behavioral_boost = float(os.getenv('JARVIS_BEHAVIORAL_BOOST', '0.02'))
-        self.consistency_boost = float(os.getenv('JARVIS_CONSISTENCY_BOOST', '0.02'))
-        self.max_total_boost = float(os.getenv('JARVIS_MAX_BOOST', '0.08'))
+        self.enable_multi_factor_boost = os.getenv('Ironcliw_MULTI_FACTOR_BOOST', 'true').lower() == 'true'
+        self.temporal_match_boost = float(os.getenv('Ironcliw_TEMPORAL_BOOST', '0.03'))
+        self.behavioral_boost = float(os.getenv('Ironcliw_BEHAVIORAL_BOOST', '0.02'))
+        self.consistency_boost = float(os.getenv('Ironcliw_CONSISTENCY_BOOST', '0.02'))
+        self.max_total_boost = float(os.getenv('Ironcliw_MAX_BOOST', '0.08'))
 
         # ADVANCED: Profile quality scoring
-        self.diversity_weight = float(os.getenv('JARVIS_DIVERSITY_WEIGHT', '0.25'))
-        self.consistency_weight = float(os.getenv('JARVIS_CONSISTENCY_WEIGHT', '0.35'))
-        self.coverage_weight = float(os.getenv('JARVIS_COVERAGE_WEIGHT', '0.25'))
-        self.recency_weight = float(os.getenv('JARVIS_RECENCY_WEIGHT', '0.15'))
+        self.diversity_weight = float(os.getenv('Ironcliw_DIVERSITY_WEIGHT', '0.25'))
+        self.consistency_weight = float(os.getenv('Ironcliw_CONSISTENCY_WEIGHT', '0.35'))
+        self.coverage_weight = float(os.getenv('Ironcliw_COVERAGE_WEIGHT', '0.25'))
+        self.recency_weight = float(os.getenv('Ironcliw_RECENCY_WEIGHT', '0.15'))
 
         # Database paths
         self.metrics_db_path = Path(os.getenv(
-            'JARVIS_METRICS_DB',
+            'Ironcliw_METRICS_DB',
             os.path.expanduser('~/.jarvis/logs/unlock_metrics/unlock_metrics.db')
         ))
         self.learning_db_path = Path(os.getenv(
-            'JARVIS_LEARNING_DB',
+            'Ironcliw_LEARNING_DB',
             os.path.expanduser('~/.jarvis/learning/jarvis_learning.db')
         ))
 
@@ -1148,7 +1148,7 @@ class VoiceProfileLearningEngine:
             guidance['steps'].append({
                 'action': 'optimize_profile',
                 'description': 'Run profile optimization to remove weak samples',
-                'command': 'JARVIS, optimize my voice profile'
+                'command': 'Ironcliw, optimize my voice profile'
             })
 
         if quality['coverage_score'] < 0.5:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test weather with location awareness"""
 
 import asyncio
@@ -9,7 +9,7 @@ async def test_weather_with_note():
     print("🌤️ Weather Test with Location Note")
     print("="*60)
     
-    from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+    from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
     from api.jarvis_factory import set_app_state
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
     from system_control.macos_controller import MacOSController
@@ -27,15 +27,15 @@ async def test_weather_with_note():
     )
     set_app_state(app_state)
     
-    jarvis_api = JARVISVoiceAPI()
+    jarvis_api = IroncliwVoiceAPI()
     
     # Test
-    print("\nAsking JARVIS: 'What's the weather for today?'")
-    command = JARVISCommand(text="What's the weather for today?")
+    print("\nAsking Ironcliw: 'What's the weather for today?'")
+    command = IroncliwCommand(text="What's the weather for today?")
     result = await jarvis_api.process_command(command)
     
     response = result.get('response', '')
-    print(f"\nJARVIS Response:")
+    print(f"\nIroncliw Response:")
     print(f"{response}")
     
     # Analysis
@@ -58,10 +58,10 @@ async def test_weather_with_note():
         print("Weather information provided")
         
     print("\n" + "-"*60)
-    print("Summary: JARVIS successfully opens the Weather app and reads")
+    print("Summary: Ironcliw successfully opens the Weather app and reads")
     print("the displayed weather. The app defaults to New York, but you")  
     print("can manually select Toronto for your local weather.")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_weather_with_note())

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 AirPlay RAOP Protocol Handler
 ==============================
@@ -571,7 +571,7 @@ class AirPlayProtocol:
             request = (
                 f"OPTIONS * RTSP/1.0\r\n"
                 f"CSeq: 1\r\n"
-                f"User-Agent: JARVIS/2.0\r\n"
+                f"User-Agent: Ironcliw/2.0\r\n"
                 f"\r\n"
             )
 

@@ -1,5 +1,5 @@
-"""
-JARVIS Voice Unlock Module
+﻿"""
+Ironcliw Voice Unlock Module
 ========================
 
 Voice-based biometric authentication system for macOS unlocking.
@@ -18,7 +18,7 @@ Version: 2.0.0 - Clean Architecture (No Placeholders)
 """
 
 __version__ = "2.0.0"
-__author__ = "JARVIS Team"
+__author__ = "Ironcliw Team"
 
 import logging
 from typing import Optional, Dict, Any

@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Screen Context Analyzer
+﻿"""
+Ironcliw macOS Helper - Screen Context Analyzer
 
 Advanced screen context analysis using Claude Vision integration.
 Extracts semantic understanding of what the user is doing from screen content.

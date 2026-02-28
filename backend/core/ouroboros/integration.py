@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ouroboros Integration Layer v3.0 - Advanced Multi-LLM Orchestration
 ====================================================================
 
@@ -10,7 +10,7 @@ Enterprise-grade integration between Ouroboros and the Trinity ecosystem with:
 - Multi-model orchestration for complex task decomposition
 - Unified Trinity coordination for cross-repo integration
 - Intelligent model selection via IntelligentModelSelector (no hardcoding)
-- Dynamic JARVIS Prime model discovery with actual capabilities
+- Dynamic Ironcliw Prime model discovery with actual capabilities
 - Context-aware model selection based on code complexity
 - Large context window support (32k) for big files
 - Multi-provider LLM fallback (Prime -> Ollama -> API)
@@ -31,7 +31,7 @@ v3.0 Enhancements:
 - ParallelModelExecutor for concurrent model invocation
 
 This layer handles ALL edge cases that could cause failures:
-- JARVIS Prime not running -> fallback to Ollama -> fallback to API
+- Ironcliw Prime not running -> fallback to Ollama -> fallback to API
 - Model not loaded -> check load status -> prefer loaded models
 - Context window exceeded -> intelligent chunking or model escalation
 - Model version mismatch -> prefer newer versions
@@ -104,7 +104,7 @@ class TaskDifficulty(Enum):
 
 
 class ModelLoadStatus(Enum):
-    """Current load status of a model in JARVIS Prime."""
+    """Current load status of a model in Ironcliw Prime."""
     LOADED = "loaded"           # In RAM, instant access
     CACHED = "cached"           # On disk, fast load (5-15s)
     ARCHIVED = "archived"       # Cold storage, slow load (30-120s)
@@ -152,7 +152,7 @@ class ModelCapability:
 
 @dataclass
 class ModelMetadata:
-    """Complete metadata for a model from JARVIS Prime."""
+    """Complete metadata for a model from Ironcliw Prime."""
     id: str
     name: str
     context_window: int
@@ -254,7 +254,7 @@ class PerformanceRecordPersistence:
             retention_days: Days to retain records before cleanup
         """
         self._storage_path = storage_path or Path(
-            os.getenv("JARVIS_PERFORMANCE_STORAGE",
+            os.getenv("Ironcliw_PERFORMANCE_STORAGE",
                      Path.home() / ".jarvis" / "performance")
         )
         self._storage_path.mkdir(parents=True, exist_ok=True)
@@ -1224,7 +1224,7 @@ class AdvancedModelCapabilityRegistry:
     v3.0: Enterprise-grade model capability registry with dynamic discovery.
 
     Provides comprehensive model management including:
-    - Real-time capability fetching from JARVIS Prime API
+    - Real-time capability fetching from Ironcliw Prime API
     - Load status monitoring (loaded/cached/archived)
     - Performance metrics tracking per model
     - Specialization detection and matching
@@ -1287,7 +1287,7 @@ class AdvancedModelCapabilityRegistry:
     ]
 
     def __init__(self, api_base: Optional[str] = None, enable_persistence: bool = True):
-        self.api_base = api_base or os.getenv("JARVIS_PRIME_API_BASE", "http://localhost:8000/v1")
+        self.api_base = api_base or os.getenv("Ironcliw_PRIME_API_BASE", "http://localhost:8000/v1")
         self._models: Dict[str, ModelMetadata] = {}
         self._cached_models: Optional[List[Dict]] = None
         self._cache_time: float = 0
@@ -1306,7 +1306,7 @@ class AdvancedModelCapabilityRegistry:
         # v16.0: Service readiness integration
         self._service_checker: Optional['ServiceReadinessChecker'] = None
         self._circuit_breaker = CircuitBreaker(name="model_registry_discovery")
-        self._discovery_wait_timeout = float(os.getenv("JARVIS_PRIME_DISCOVERY_TIMEOUT", "15.0"))
+        self._discovery_wait_timeout = float(os.getenv("Ironcliw_PRIME_DISCOVERY_TIMEOUT", "15.0"))
         self._offline_mode = False
         self._last_discovery_error: Optional[str] = None
 
@@ -1350,7 +1350,7 @@ class AdvancedModelCapabilityRegistry:
         timeout: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """
-        v16.0/v152.0: Discover available JARVIS Prime models with enhanced resilience.
+        v16.0/v152.0: Discover available Ironcliw Prime models with enhanced resilience.
 
         v152.0 CRITICAL FIX: Check cloud state FIRST before any network requests.
         When cloud mode is active, local discovery is SKIPPED ENTIRELY to prevent
@@ -1462,7 +1462,7 @@ class AdvancedModelCapabilityRegistry:
                 if not is_ready:
                     self._offline_mode = True
                     self._last_discovery_error = (
-                        f"JARVIS Prime not ready after {discovery_timeout}s - "
+                        f"Ironcliw Prime not ready after {discovery_timeout}s - "
                         f"using offline mode"
                     )
                     logger.warning(f"[v16.0] {self._last_discovery_error}")
@@ -1501,7 +1501,7 @@ class AdvancedModelCapabilityRegistry:
                             self._offline_mode = False
                             self._last_discovery_error = None
                             self._circuit_breaker.record_success()
-                            logger.info(f"✅ [v16.0] Discovered {len(enriched)} models from JARVIS Prime")
+                            logger.info(f"✅ [v16.0] Discovered {len(enriched)} models from Ironcliw Prime")
                             return enriched
 
                         else:
@@ -1515,7 +1515,7 @@ class AdvancedModelCapabilityRegistry:
                 self._last_discovery_error = f"Connection refused: {e}"
                 self._offline_mode = True
                 self._circuit_breaker.record_failure()
-                logger.warning(f"[v16.0] JARVIS Prime unavailable: {self._last_discovery_error}")
+                logger.warning(f"[v16.0] Ironcliw Prime unavailable: {self._last_discovery_error}")
 
             except asyncio.TimeoutError:
                 # Timeout
@@ -1556,7 +1556,7 @@ class AdvancedModelCapabilityRegistry:
     # =========================================================================
     # These methods check if cloud mode is active BEFORE attempting any local
     # network operations. This prevents 56+ circuit breaker failures during
-    # startup when JARVIS_GCP_OFFLOAD_ACTIVE=true.
+    # startup when Ironcliw_GCP_OFFLOAD_ACTIVE=true.
     # =========================================================================
 
     def _is_cloud_mode_active(self) -> bool:
@@ -1564,7 +1564,7 @@ class AdvancedModelCapabilityRegistry:
         v152.0: Check if cloud mode is active (skip local discovery).
 
         Checks in order:
-        1. JARVIS_GCP_OFFLOAD_ACTIVE environment variable
+        1. Ironcliw_GCP_OFFLOAD_ACTIVE environment variable
         2. cloud_lock.json persistent state
         3. Hollow Client mode indicator
 
@@ -1572,11 +1572,11 @@ class AdvancedModelCapabilityRegistry:
             True if cloud mode is active and local discovery should be SKIPPED
         """
         # Check 1: Environment variable (set by supervisor during startup)
-        if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+        if os.getenv("Ironcliw_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
             return True
 
         # Check 2: Hollow Client mode (alternative env var)
-        if os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true":
+        if os.getenv("Ironcliw_HOLLOW_CLIENT", "false").lower() == "true":
             return True
 
         # Check 3: Persistent cloud lock file
@@ -1604,11 +1604,11 @@ class AdvancedModelCapabilityRegistry:
         Returns:
             Reason string if cloud mode is active, None otherwise
         """
-        if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
-            return "JARVIS_GCP_OFFLOAD_ACTIVE=true"
+        if os.getenv("Ironcliw_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+            return "Ironcliw_GCP_OFFLOAD_ACTIVE=true"
 
-        if os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true":
-            return "JARVIS_HOLLOW_CLIENT=true"
+        if os.getenv("Ironcliw_HOLLOW_CLIENT", "false").lower() == "true":
+            return "Ironcliw_HOLLOW_CLIENT=true"
 
         try:
             cloud_lock_file = Path.home() / ".jarvis" / "trinity" / "cloud_lock.json"
@@ -1630,7 +1630,7 @@ class AdvancedModelCapabilityRegistry:
 
         Checks in order:
         1. GCPHybridPrimeRouter.get_active_discovery_endpoint()
-        2. JARVIS_PRIME_CLOUD_RUN_URL environment variable
+        2. Ironcliw_PRIME_CLOUD_RUN_URL environment variable
         3. Construct from GCP_PROJECT_ID + GCP_REGION
 
         Returns:
@@ -1641,7 +1641,7 @@ class AdvancedModelCapabilityRegistry:
         # The environment variables are the authoritative sources anyway.
 
         # Priority 1: Direct environment variable
-        cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+        cloud_run_url = os.getenv("Ironcliw_PRIME_CLOUD_RUN_URL")
         if cloud_run_url:
             # Ensure it has /v1 suffix
             if not cloud_run_url.rstrip('/').endswith('/v1'):
@@ -2077,7 +2077,7 @@ class IntelligentOuroborosModelSelector:
     v3.0: Advanced intelligent model selection for Ouroboros self-programming.
 
     Combines:
-    - AdvancedModelCapabilityRegistry for JARVIS Prime models with load status
+    - AdvancedModelCapabilityRegistry for Ironcliw Prime models with load status
     - EnhancedCodeComplexityAnalyzer for sophisticated code analysis
     - IntelligentModelSelector for general model selection
     - RAMAwareSelection for preferring loaded models
@@ -2121,7 +2121,7 @@ class IntelligentOuroborosModelSelector:
         Args:
             code: The code to be improved
             task_type: Type of task (code_improvement, refactoring, bug_fix, code_review)
-            prefer_local: Prefer local models (JARVIS Prime, Ollama)
+            prefer_local: Prefer local models (Ironcliw Prime, Ollama)
             strategy: Selection strategy to use
             urgency: Task urgency (urgent, normal, low) - affects load time tolerance
             max_load_time: Maximum acceptable model load time (None = no limit)
@@ -2160,7 +2160,7 @@ class IntelligentOuroborosModelSelector:
             task_specializations = self._get_task_specializations(task_type, complexity)
             reasoning.append(f"Target specializations: {[s.value for s in task_specializations]}")
 
-            # Step 3: Try JARVIS Prime with advanced selection
+            # Step 3: Try Ironcliw Prime with advanced selection
             if prefer_local:
                 prime_model = await self._model_discovery.get_best_model_for_task(
                     required_context=complexity["required_context"],
@@ -2174,7 +2174,7 @@ class IntelligentOuroborosModelSelector:
                     success_rate = prime_model.get("success_rate", 1.0)
 
                     reasoning.append(
-                        f"Selected JARVIS Prime model: {prime_model['id']} "
+                        f"Selected Ironcliw Prime model: {prime_model['id']} "
                         f"(context: {prime_model['context_window']}, "
                         f"load_status: {load_status}, "
                         f"success_rate: {success_rate:.2f})"
@@ -2188,7 +2188,7 @@ class IntelligentOuroborosModelSelector:
                     result = SelectionResult(
                         provider="jarvis-prime",
                         model=prime_model["id"],
-                        api_base=os.getenv("JARVIS_PRIME_API_BASE", "http://localhost:8000/v1"),
+                        api_base=os.getenv("Ironcliw_PRIME_API_BASE", "http://localhost:8000/v1"),
                         context_window=prime_model["context_window"],
                         strategy_used=strategy,
                         reasoning=reasoning,
@@ -2311,7 +2311,7 @@ class IntelligentOuroborosModelSelector:
 
         # Add static fallbacks
         if complexity["required_context"] in ("16k", "32k"):
-            fallback_model = os.getenv("JARVIS_PRIME_MODEL", "deepseek-coder-v2")
+            fallback_model = os.getenv("Ironcliw_PRIME_MODEL", "deepseek-coder-v2")
             if fallback_model not in exclude:
                 chain.append(("jarvis-prime", fallback_model))
         else:
@@ -2347,8 +2347,8 @@ class IntelligentOuroborosModelSelector:
         if complexity["required_context"] in ("16k", "32k"):
             return SelectionResult(
                 provider="jarvis-prime",
-                model=os.getenv("JARVIS_PRIME_MODEL", "deepseek-coder-v2"),
-                api_base=os.getenv("JARVIS_PRIME_API_BASE", "http://localhost:8000/v1"),
+                model=os.getenv("Ironcliw_PRIME_MODEL", "deepseek-coder-v2"),
+                api_base=os.getenv("Ironcliw_PRIME_API_BASE", "http://localhost:8000/v1"),
                 context_window=16384,
                 strategy_used=strategy,
                 reasoning=reasoning + ["Fallback: deepseek-coder-v2 for large context"],
@@ -2724,7 +2724,7 @@ class MultiModelOrchestrator:
 
 class TrinityCoordinator:
     """
-    v3.0: Unified coordinator for JARVIS, JARVIS Prime, and Reactor Core.
+    v3.0: Unified coordinator for Ironcliw, Ironcliw Prime, and Reactor Core.
 
     Provides:
     - Cross-repo health monitoring
@@ -2737,19 +2737,19 @@ class TrinityCoordinator:
     # Repository configurations
     REPOS = {
         "jarvis": {
-            "name": "JARVIS",
-            "path_env": "JARVIS_REPO_PATH",
-            "default_path": "~/Documents/repos/JARVIS-AI-Agent",
+            "name": "Ironcliw",
+            "path_env": "Ironcliw_REPO_PATH",
+            "default_path": "~/Documents/repos/Ironcliw-AI-Agent",
             "health_endpoint": "/health",
-            "port_env": "JARVIS_PORT",
+            "port_env": "Ironcliw_PORT",
             "default_port": 8010,
         },
         "prime": {
-            "name": "JARVIS-Prime",
-            "path_env": "JARVIS_PRIME_REPO_PATH",
+            "name": "Ironcliw-Prime",
+            "path_env": "Ironcliw_PRIME_REPO_PATH",
             "default_path": "~/Documents/repos/jarvis-prime",
             "health_endpoint": "/v1/models",
-            "port_env": "JARVIS_PRIME_PORT",
+            "port_env": "Ironcliw_PRIME_PORT",
             "default_port": 8000,
         },
         "reactor": {
@@ -2964,9 +2964,9 @@ class IntegrationConfig:
     PROVIDERS = [
         {
             "name": "jarvis-prime",
-            "api_base": os.getenv("JARVIS_PRIME_API_BASE", "http://localhost:8000/v1"),
-            "api_key": os.getenv("JARVIS_PRIME_API_KEY", "sk-local-jarvis"),
-            "model": os.getenv("JARVIS_PRIME_MODEL", "deepseek-coder-v2"),
+            "api_base": os.getenv("Ironcliw_PRIME_API_BASE", "http://localhost:8000/v1"),
+            "api_key": os.getenv("Ironcliw_PRIME_API_KEY", "sk-local-jarvis"),
+            "model": os.getenv("Ironcliw_PRIME_MODEL", "deepseek-coder-v2"),
             "timeout": 120.0,
         },
         {
@@ -3044,9 +3044,9 @@ def _is_cloud_mode_active_for_circuit_breaker() -> bool:
         True if cloud mode is active
     """
     # Check environment variables
-    if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+    if os.getenv("Ironcliw_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
         return True
-    if os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true":
+    if os.getenv("Ironcliw_HOLLOW_CLIENT", "false").lower() == "true":
         return True
 
     # Check cloud lock file
@@ -3167,7 +3167,7 @@ class CircuitBreaker:
 
         v152.0: Added skip_if_cloud_mode parameter to prevent recording failures
         when cloud mode is active. This is CRITICAL for preventing 56+ failures
-        during startup when JARVIS_GCP_OFFLOAD_ACTIVE=true.
+        during startup when Ironcliw_GCP_OFFLOAD_ACTIVE=true.
 
         Args:
             skip_if_cloud_mode: If True, check cloud mode and skip recording
@@ -3562,7 +3562,7 @@ class MultiProviderLLMClient:
 
     Falls back through providers in order:
     1. Intelligently selected model (based on code analysis)
-    2. JARVIS Prime (local, free)
+    2. Ironcliw Prime (local, free)
     3. Ollama (local, free)
     4. Anthropic API (cloud, paid)
 
@@ -3660,7 +3660,7 @@ class MultiProviderLLMClient:
             max_tokens: Maximum tokens in response
             code_context: Optional code for complexity analysis (enables intelligent selection)
             task_type: Type of task (code_improvement, refactoring, bug_fix)
-            prefer_local: Prefer local models (JARVIS Prime, Ollama) over cloud APIs
+            prefer_local: Prefer local models (Ironcliw Prime, Ollama) over cloud APIs
 
         Returns:
             (response_text, provider_name)
@@ -3757,7 +3757,7 @@ class MultiProviderLLMClient:
     def _get_api_key_for_provider(self, provider_type: str) -> str:
         """Get API key for a provider type."""
         provider_keys = {
-            "jarvis-prime": os.getenv("JARVIS_PRIME_API_KEY", "sk-local-jarvis"),
+            "jarvis-prime": os.getenv("Ironcliw_PRIME_API_KEY", "sk-local-jarvis"),
             "ollama": "ollama",
             "anthropic": os.getenv("ANTHROPIC_API_KEY", ""),
             "openai": os.getenv("OPENAI_API_KEY", ""),
@@ -4082,7 +4082,7 @@ class EnhancedOuroborosIntegration:
             error_log: Optional error from previous attempt
             context: Optional context from related files
             task_type: Type of task (code_improvement, refactoring, bug_fix)
-            prefer_local: Prefer local models (JARVIS Prime, Ollama) over cloud APIs
+            prefer_local: Prefer local models (Ironcliw Prime, Ollama) over cloud APIs
 
         Returns:
             Improved code or None if all providers fail
@@ -4793,8 +4793,8 @@ class CrossRepoAutonomousIntegration:
     v4.0: Enterprise-grade cross-repository autonomous integration.
 
     Connects autonomous self-programming across:
-    - JARVIS (main agent)
-    - JARVIS Prime (local LLM)
+    - Ironcliw (main agent)
+    - Ironcliw Prime (local LLM)
     - Reactor Core (training pipeline)
 
     Features:
@@ -4809,8 +4809,8 @@ class CrossRepoAutonomousIntegration:
         self._lock = asyncio.Lock()
         self._initialized = False
         self._repos = {
-            "jarvis": Path(os.getenv("JARVIS_PATH", Path.home() / "Documents/repos/JARVIS-AI-Agent")),
-            "jarvis_prime": Path(os.getenv("JARVIS_PRIME_PATH", Path.home() / "Documents/repos/jarvis-prime")),
+            "jarvis": Path(os.getenv("Ironcliw_PATH", Path.home() / "Documents/repos/Ironcliw-AI-Agent")),
+            "jarvis_prime": Path(os.getenv("Ironcliw_PRIME_PATH", Path.home() / "Documents/repos/jarvis-prime")),
             "reactor_core": Path(os.getenv("REACTOR_CORE_PATH", Path.home() / "Documents/repos/reactor-core")),
         }
         self._components: Dict[str, Any] = {}
@@ -5807,12 +5807,12 @@ class CrossRepoAutonomousIntegration:
         logger.info("  ✅ v6.0 component wiring complete")
 
     async def _connect_cross_repo_services(self) -> None:
-        """Connect to cross-repo services (JARVIS Prime, Reactor Core)."""
+        """Connect to cross-repo services (Ironcliw Prime, Reactor Core)."""
 
-        # Check JARVIS Prime availability
+        # Check Ironcliw Prime availability
         prime_path = self._repos.get("jarvis_prime")
         if prime_path and prime_path.exists():
-            logger.info(f"  JARVIS Prime repo detected at {prime_path}")
+            logger.info(f"  Ironcliw Prime repo detected at {prime_path}")
             # Could initialize Prime client connection here
 
         # Check Reactor Core availability
@@ -6225,7 +6225,7 @@ async def start_full_jarvis_system(
     start_autonomous_loops: bool = False,  # Default to False for safety
 ) -> Dict[str, Any]:
     """
-    Start the complete JARVIS self-programming system.
+    Start the complete Ironcliw self-programming system.
 
     This is the master initialization that starts:
     1. OuroborosIntegration (LLM providers, model selection)
@@ -6268,19 +6268,19 @@ async def start_full_jarvis_system(
             result["autonomous"] = autonomous
 
         result["status"] = "running"
-        logger.info("✅ Full JARVIS system started successfully")
+        logger.info("✅ Full Ironcliw system started successfully")
 
         return result
 
     except Exception as e:
-        logger.error(f"Failed to start full JARVIS system: {e}")
+        logger.error(f"Failed to start full Ironcliw system: {e}")
         result["status"] = f"error: {e}"
         return result
 
 
 async def stop_full_jarvis_system() -> None:
-    """Stop the complete JARVIS self-programming system."""
-    logger.info("Stopping full JARVIS system...")
+    """Stop the complete Ironcliw self-programming system."""
+    logger.info("Stopping full Ironcliw system...")
 
     try:
         # 1. Stop autonomous self-programming
@@ -6289,6 +6289,6 @@ async def stop_full_jarvis_system() -> None:
         # 2. Stop orchestrator and integration
         await shutdown_ouroboros_integration()
 
-        logger.info("✅ Full JARVIS system stopped")
+        logger.info("✅ Full Ironcliw system stopped")
     except Exception as e:
-        logger.error(f"Error stopping JARVIS system: {e}")
+        logger.error(f"Error stopping Ironcliw system: {e}")

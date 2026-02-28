@@ -1,5 +1,5 @@
-/**
- * JARVIS Intelligent Command Classifier
+﻿/**
+ * Ironcliw Intelligent Command Classifier
  * Uses advanced NLP and machine learning to intelligently route commands
  * No hardcoding - learns and adapts dynamically
  */
@@ -430,7 +430,7 @@ public struct CommandAnalysis {
     
     private func loadLearnedPatterns() {
         // Load from UserDefaults or file
-        if let data = UserDefaults.standard.data(forKey: "JARVISLearnedPatterns"),
+        if let data = UserDefaults.standard.data(forKey: "IroncliwLearnedPatterns"),
            let patterns = try? JSONDecoder().decode([CommandPattern].self, from: data) {
             learnedPatterns = patterns
         }
@@ -439,7 +439,7 @@ public struct CommandAnalysis {
     private func saveLearnedPatterns() {
         // Save to UserDefaults or file
         if let data = try? JSONEncoder().encode(learnedPatterns) {
-            UserDefaults.standard.set(data, forKey: "JARVISLearnedPatterns")
+            UserDefaults.standard.set(data, forKey: "IroncliwLearnedPatterns")
         }
     }
     

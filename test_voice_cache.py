@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Voice Profile Cache System
 ================================
@@ -25,11 +25,11 @@ async def test_voice_cache():
     print("=" * 60 + "\n")
 
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
+        from intelligence.learning_database import IroncliwLearningDatabase
 
         # Initialize database (will trigger bootstrap if needed)
         print("1️⃣  Initializing learning database...")
-        learning_db = JARVISLearningDatabase()
+        learning_db = IroncliwLearningDatabase()
         await learning_db.initialize()
         print("✅ Learning database initialized\n")
 

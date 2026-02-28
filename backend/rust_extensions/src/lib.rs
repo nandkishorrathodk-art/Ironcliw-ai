@@ -1,4 +1,4 @@
-use pyo3::prelude::*;
+﻿use pyo3::prelude::*;
 
 mod memory_monitor;
 mod model_loader;
@@ -7,7 +7,7 @@ mod quantization;
 use memory_monitor::RustMemoryMonitor;
 use model_loader::RustModelLoader;
 
-/// High-performance Rust extensions for JARVIS ML memory management
+/// High-performance Rust extensions for Ironcliw ML memory management
 #[pymodule]
 fn jarvis_rust_extensions(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<RustMemoryMonitor>()?;

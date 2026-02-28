@@ -1,10 +1,10 @@
-"""
+﻿"""
 Cross-Repository Security Bridge v1.0
 ======================================
 
 Provides secure cross-repo communication and coordination for the Trinity ecosystem:
-- JARVIS (Body) - Primary interface and execution
-- JARVIS Prime (Mind) - Intelligence and decision making
+- Ironcliw (Body) - Primary interface and execution
+- Ironcliw Prime (Mind) - Intelligence and decision making
 - Reactor Core (Learning) - Training and model updates
 
 Features:
@@ -155,7 +155,7 @@ class SecurityEvent:
     """A security event for cross-repo communication."""
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     event_type: SecurityEventType = SecurityEventType.HEARTBEAT
-    source: ComponentIdentity = ComponentIdentity.JARVIS_BODY
+    source: ComponentIdentity = ComponentIdentity.Ironcliw_BODY
     target: Optional[ComponentIdentity] = None
     payload: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.utcnow)
@@ -613,8 +613,8 @@ class CrossRepoSecurityBridge:
 
             # Initialize trust info for known repos
             for component in [
-                ComponentIdentity.JARVIS_BODY,
-                ComponentIdentity.JARVIS_PRIME,
+                ComponentIdentity.Ironcliw_BODY,
+                ComponentIdentity.Ironcliw_PRIME,
                 ComponentIdentity.REACTOR_CORE,
             ]:
                 self._trust_info[component] = RepoTrustInfo(
@@ -691,8 +691,8 @@ class CrossRepoSecurityBridge:
 
         # Generate service token
         token = await self._security_engine.jwt.generate_token(
-            subject=ComponentIdentity.JARVIS_BODY.value,
-            component=ComponentIdentity.JARVIS_BODY,
+            subject=ComponentIdentity.Ironcliw_BODY.value,
+            component=ComponentIdentity.Ironcliw_BODY,
             roles=[Role.SERVICE],
             permissions=[
                 Permission.READ_DATA,
@@ -705,7 +705,7 @@ class CrossRepoSecurityBridge:
         # Send auth request
         event = SecurityEvent(
             event_type=SecurityEventType.AUTH_REQUEST,
-            source=ComponentIdentity.JARVIS_BODY,
+            source=ComponentIdentity.Ironcliw_BODY,
             target=target,
             payload={
                 "token": token.token,
@@ -801,7 +801,7 @@ class CrossRepoSecurityBridge:
         # Sync to other repos
         event = SecurityEvent(
             event_type=SecurityEventType.POLICY_SYNC,
-            source=ComponentIdentity.JARVIS_BODY,
+            source=ComponentIdentity.Ironcliw_BODY,
             payload={
                 "action": "add",
                 "policy": {
@@ -824,7 +824,7 @@ class CrossRepoSecurityBridge:
 
         event = SecurityEvent(
             event_type=SecurityEventType.POLICY_SYNC,
-            source=ComponentIdentity.JARVIS_BODY,
+            source=ComponentIdentity.Ironcliw_BODY,
             payload={
                 "action": "remove",
                 "policy_id": policy_id,
@@ -891,7 +891,7 @@ class CrossRepoSecurityBridge:
         # Send response
         response = SecurityEvent(
             event_type=SecurityEventType.AUTH_RESPONSE,
-            source=ComponentIdentity.JARVIS_BODY,
+            source=ComponentIdentity.Ironcliw_BODY,
             target=event.source,
             payload={
                 "success": principal is not None,
@@ -969,7 +969,7 @@ class CrossRepoSecurityBridge:
                 # Send heartbeat
                 event = SecurityEvent(
                     event_type=SecurityEventType.HEARTBEAT,
-                    source=ComponentIdentity.JARVIS_BODY,
+                    source=ComponentIdentity.Ironcliw_BODY,
                     payload={"timestamp": time.time()},
                 )
                 await self.event_bus.publish(event)
@@ -993,7 +993,7 @@ class CrossRepoSecurityBridge:
                     for policy in self._policies.values():
                         event = SecurityEvent(
                             event_type=SecurityEventType.POLICY_SYNC,
-                            source=ComponentIdentity.JARVIS_BODY,
+                            source=ComponentIdentity.Ironcliw_BODY,
                             payload={
                                 "action": "add",
                                 "policy": {

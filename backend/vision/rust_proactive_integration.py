@@ -1,5 +1,5 @@
-"""
-Rust-accelerated proactive monitoring integration for JARVIS.
+﻿"""
+Rust-accelerated proactive monitoring integration for Ironcliw.
 Optimized for macOS with 16GB RAM using Metal GPU acceleration.
 """
 

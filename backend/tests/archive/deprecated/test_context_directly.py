@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Direct test of context awareness functionality
 """
@@ -12,13 +12,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 async def test_jarvis_context():
-    """Test JARVIS WebSocket with context awareness"""
+    """Test Ironcliw WebSocket with context awareness"""
     ws_url = "ws://localhost:8000/voice/jarvis/stream"
     
     try:
         logger.info(f"Connecting to {ws_url}")
         async with websockets.connect(ws_url) as websocket:
-            logger.info("Connected to JARVIS WebSocket")
+            logger.info("Connected to Ironcliw WebSocket")
             
             # Wait for connection confirmation
             response = await websocket.recv()
@@ -53,7 +53,7 @@ async def test_jarvis_context():
         logger.error(f"Error: {e}")
         
 if __name__ == "__main__":
-    logger.info("Testing JARVIS context awareness...")
+    logger.info("Testing Ironcliw context awareness...")
     logger.info("Make sure your screen is LOCKED before running this test")
     logger.info("Starting test in 3 seconds...")
     import time

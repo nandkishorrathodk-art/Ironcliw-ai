@@ -1,4 +1,4 @@
-"""
+﻿"""
 v78.0: Command Buffer for Early Trinity Commands
 ================================================
 
@@ -39,7 +39,7 @@ Usage:
     # Signal system is ready
     await buffer.signal_ready()  # Triggers replay
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 from __future__ import annotations

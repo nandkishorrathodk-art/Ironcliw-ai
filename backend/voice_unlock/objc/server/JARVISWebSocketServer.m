@@ -1,12 +1,12 @@
-/**
- * JARVISWebSocketServer.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwWebSocketServer.m
+ * Ironcliw Voice Unlock System
  *
  * WebSocket server implementation for daemon communication
  */
 
-#import "JARVISWebSocketServer.h"
-#import "../daemon/JARVISVoiceUnlockDaemon.h"
+#import "IroncliwWebSocketServer.h"
+#import "../daemon/IroncliwVoiceUnlockDaemon.h"
 #import <os/log.h>
 #import <CommonCrypto/CommonDigest.h>
 
@@ -73,7 +73,7 @@
 @implementation PSWebSocketServer
 @end
 
-@interface JARVISWebSocketServer ()
+@interface IroncliwWebSocketServer ()
 @property (nonatomic, strong) PSWebSocketServer *server;
 @property (nonatomic, strong) SimpleWebSocketServer *simpleServer;
 @property (nonatomic, readwrite) NSUInteger port;
@@ -84,7 +84,7 @@
 @property (nonatomic, strong) NSNetService *netService;
 @end
 
-@implementation JARVISWebSocketServer
+@implementation IroncliwWebSocketServer
 
 - (instancetype)initWithPort:(NSUInteger)port {
     self = [super init];
@@ -118,7 +118,7 @@
     // Start listening using Bonjour for service discovery
     self.netService = [[NSNetService alloc] initWithDomain:@"local."
                                                       type:@"_jarvis-voice-unlock._tcp"
-                                                      name:@"JARVIS Voice Unlock"
+                                                      name:@"Ironcliw Voice Unlock"
                                                       port:(int)self.port];
     [self.netService publish];
     
@@ -264,7 +264,7 @@
         NSString *response = @"HTTP/1.1 200 OK\r\n"
                             @"Content-Type: application/json\r\n"
                             @"\r\n"
-                            @"{\"status\":\"JARVIS Voice Unlock WebSocket Server\",\"port\":8765}\r\n";
+                            @"{\"status\":\"Ironcliw Voice Unlock WebSocket Server\",\"port\":8765}\r\n";
         send(clientSocket, [response UTF8String], [response length], 0);
         close(clientSocket);
     }
@@ -435,7 +435,7 @@
 }
 
 - (void)sendStatusToClient:(PSWebSocket *)client {
-    JARVISVoiceUnlockDaemon *daemon = [JARVISVoiceUnlockDaemon sharedDaemon];
+    IroncliwVoiceUnlockDaemon *daemon = [IroncliwVoiceUnlockDaemon sharedDaemon];
     NSDictionary *status = [daemon getStatus];
     
     NSDictionary *response = @{
@@ -448,7 +448,7 @@
 }
 
 - (void)handleCommand:(NSString *)command parameters:(NSDictionary *)parameters completion:(void (^)(NSDictionary *))completion {
-    JARVISVoiceUnlockDaemon *daemon = [JARVISVoiceUnlockDaemon sharedDaemon];
+    IroncliwVoiceUnlockDaemon *daemon = [IroncliwVoiceUnlockDaemon sharedDaemon];
     
     dispatch_async(self.messageQueue, ^{
         NSDictionary *response = nil;
@@ -458,7 +458,7 @@
                 @"type": @"handshake",
                 @"success": @YES,
                 @"version": @"1.0",
-                @"daemon": @"JARVIS Voice Unlock"
+                @"daemon": @"Ironcliw Voice Unlock"
             };
         }
         else if ([command isEqualToString:@"get_status"]) {

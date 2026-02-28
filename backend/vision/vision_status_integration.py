@@ -1,4 +1,4 @@
-"""
+﻿"""
 Vision Status Integration - Connects vision status manager with WebSocket
 """
 
@@ -71,16 +71,16 @@ def setup_vision_status_callbacks(app):
             
         status_manager = app.state.vision_status_manager
         
-        # Add callback to update JARVIS UI
+        # Add callback to update Ironcliw UI
         async def jarvis_ui_callback(connected: bool):
-            """Update JARVIS UI with vision status"""
+            """Update Ironcliw UI with vision status"""
             try:
-                # If JARVIS API is available, update UI
+                # If Ironcliw API is available, update UI
                 if hasattr(app.state, 'jarvis_api'):
                     jarvis_api = app.state.jarvis_api
                     status_text = "Vision connected" if connected else "Vision disconnected"
                     
-                    # Send status update through JARVIS
+                    # Send status update through Ironcliw
                     if hasattr(jarvis_api, 'update_ui_status'):
                         await jarvis_api.update_ui_status({
                             'vision': {
@@ -91,7 +91,7 @@ def setup_vision_status_callbacks(app):
                         })
                     
             except Exception as e:
-                logger.error(f"Error updating JARVIS UI: {e}")
+                logger.error(f"Error updating Ironcliw UI: {e}")
                 
         status_manager.add_status_callback(jarvis_ui_callback)
         logger.info("Vision status callbacks configured")

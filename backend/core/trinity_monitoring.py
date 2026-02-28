@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Unified Monitoring v2.7
 ===============================
 
@@ -17,7 +17,7 @@ Architecture:
     │  ┌─────────────────────────────────────────────────────────┐    │
     │  │                  Metrics Collectors                      │    │
     │  │                                                          │    │
-    │  │  JARVIS        PRIME          REACTOR                   │    │
+    │  │  Ironcliw        PRIME          REACTOR                   │    │
     │  │  • Latency     • Inference    • Training                │    │
     │  │  • Memory      • Tokens/s     • GPU util                │    │
     │  │  • Requests    • Model perf   • Loss curves             │    │
@@ -115,7 +115,7 @@ class MonitoringConfig:
 
 class RepoType(Enum):
     """Trinity repository types."""
-    JARVIS = "jarvis"
+    Ironcliw = "jarvis"
     PRIME = "prime"
     REACTOR = "reactor"
 
@@ -152,7 +152,7 @@ class Metric:
     metric_type: MetricType = MetricType.GAUGE
     labels: Dict[str, str] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
-    repo: RepoType = RepoType.JARVIS
+    repo: RepoType = RepoType.Ironcliw
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -195,7 +195,7 @@ class TraceSpan:
     span_id: str
     parent_span_id: Optional[str] = None
     operation: str = ""
-    repo: RepoType = RepoType.JARVIS
+    repo: RepoType = RepoType.Ironcliw
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
     duration_ms: float = 0.0
@@ -667,7 +667,7 @@ class TrinityMonitoring:
     - Alerting and anomaly detection
     """
 
-    def __init__(self, local_repo: RepoType = RepoType.JARVIS):
+    def __init__(self, local_repo: RepoType = RepoType.Ironcliw):
         self.local_repo = local_repo
         self._running = False
         self._start_time = time.time()
@@ -725,7 +725,7 @@ class TrinityMonitoring:
     @classmethod
     async def create(
         cls,
-        local_repo: RepoType = RepoType.JARVIS,
+        local_repo: RepoType = RepoType.Ironcliw,
     ) -> "TrinityMonitoring":
         """Create and initialize monitoring."""
         monitoring = cls(local_repo)
@@ -897,7 +897,7 @@ class TrinityMonitoring:
         import aiohttp
 
         checks = [
-            (RepoType.JARVIS, "main", "http://localhost:8000/health"),
+            (RepoType.Ironcliw, "main", "http://localhost:8000/health"),
             (RepoType.PRIME, "inference", "http://localhost:8000/health"),
             (RepoType.REACTOR, "training", "http://localhost:8090/health"),
         ]
@@ -991,7 +991,7 @@ _monitoring: Optional[TrinityMonitoring] = None
 
 
 async def get_trinity_monitoring(
-    local_repo: RepoType = RepoType.JARVIS,
+    local_repo: RepoType = RepoType.Ironcliw,
 ) -> TrinityMonitoring:
     """Get or create global monitoring."""
     global _monitoring

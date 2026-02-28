@@ -1,10 +1,10 @@
-/**
+﻿/**
  * Error Handling and Memory Management for Fast Capture Engine
  * Provides RAII wrappers and exception-safe operations
  */
 
-#ifndef JARVIS_ERROR_HANDLING_H
-#define JARVIS_ERROR_HANDLING_H
+#ifndef Ironcliw_ERROR_HANDLING_H
+#define Ironcliw_ERROR_HANDLING_H
 
 #include <string>
 #include <exception>
@@ -332,4 +332,4 @@ inline std::string cf_string_to_std_string(CFStringRef cf_str) {
 } // namespace vision
 } // namespace jarvis
 
-#endif // JARVIS_ERROR_HANDLING_H
+#endif // Ironcliw_ERROR_HANDLING_H

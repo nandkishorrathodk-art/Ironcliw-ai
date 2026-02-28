@@ -1,13 +1,13 @@
-"""
-PROJECT TRINITY: Command Handlers for JARVIS Body
+﻿"""
+PROJECT TRINITY: Command Handlers for Ironcliw Body
 
 This module registers handlers for Trinity commands received from J-Prime (Mind)
 through Reactor Core (Nerves). These handlers execute the actual operations
-in JARVIS.
+in Ironcliw.
 
 ARCHITECTURE:
 ┌────────────┐    Commands    ┌──────────────┐    Execute    ┌────────────┐
-│  J-PRIME   │ ──────────────│ REACTOR CORE │ ─────────────│   JARVIS   │
+│  J-PRIME   │ ──────────────│ REACTOR CORE │ ─────────────│   Ironcliw   │
 │   (Mind)   │               │   (Nerves)   │              │   (Body)   │
 └────────────┘    Results    └──────────────┘              └────────────┘
                                                                   ↓
@@ -51,7 +51,7 @@ except ImportError:
         TRINITY_AVAILABLE = False
         logger.warning("[Trinity] ReactorBridge not available")
 
-# Import JARVIS components
+# Import Ironcliw components
 VisualMonitorAgent = None
 VISUAL_MONITOR_AVAILABLE = False
 try:
@@ -398,7 +398,7 @@ async def handle_execute_plan(command: TrinityCommand) -> None:
     Handle EXECUTE_PLAN command from J-Prime.
 
     This is the primary cognitive output from J-Prime - a multi-step
-    plan of actions for JARVIS to execute sequentially.
+    plan of actions for Ironcliw to execute sequentially.
     """
     payload = command.payload
     plan_id = payload.get("plan_id", "unknown")
@@ -527,7 +527,7 @@ async def handle_model_ready(command: TrinityCommand) -> None:
     Handle MODEL_READY event from Reactor Core.
 
     THIS IS THE KEY EVENT THAT CLOSES THE TRINITY LOOP:
-    JARVIS → Experiences → Reactor Core → Training → MODEL_READY → JARVIS
+    Ironcliw → Experiences → Reactor Core → Training → MODEL_READY → Ironcliw
     """
     global _active_model_path
 

@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Supervisor Configuration
+Ironcliw Supervisor Configuration
 ================================
 
 Dynamic YAML-based configuration loader for the Self-Updating Lifecycle Manager.
 Supports environment variable overrides, hot-reload, and sensible defaults.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -112,24 +112,24 @@ class ZeroTouchConfig:
     """
     Zero-Touch Autonomous Update Configuration.
     
-    Enables JARVIS to autonomously detect, validate, apply, and verify
+    Enables Ironcliw to autonomously detect, validate, apply, and verify
     updates without human intervention - transforming it from a "tool"
     into a "living organism" that can evolve safely.
     
     Safety Features:
-    1. JARVIS busy-state check before update
+    1. Ironcliw busy-state check before update
     2. Staging area with dry-run validation
     3. Dead Man's Switch post-update monitoring
     4. Automatic rollback on failure
     5. Immutable core protection
     """
     # Master toggle for autonomous updates
-    # v4.0: Now ON by default - JARVIS is a living, self-updating system
-    # Disable with environment variable or config: JARVIS_ZERO_TOUCH_ENABLED=false
+    # v4.0: Now ON by default - Ironcliw is a living, self-updating system
+    # Disable with environment variable or config: Ironcliw_ZERO_TOUCH_ENABLED=false
     enabled: bool = True
     
     # Pre-Update Safety Checks
-    check_jarvis_busy: bool = True           # Query JARVIS internal state before update
+    check_jarvis_busy: bool = True           # Query Ironcliw internal state before update
     busy_check_endpoint: str = "/health/busy"  # Endpoint to check busy state
     busy_check_timeout: float = 5.0          # Timeout for busy check
     require_idle_system: bool = True         # Require macOS idle before update
@@ -163,20 +163,20 @@ class ZeroTouchConfig:
 @dataclass
 class PrimeDirectivesConfig:
     """
-    Prime Directives - Immutable Safety Constraints for Autonomous JARVIS.
+    Prime Directives - Immutable Safety Constraints for Autonomous Ironcliw.
     
-    These are the "constitutional" constraints that JARVIS cannot override,
+    These are the "constitutional" constraints that Ironcliw cannot override,
     even in autonomous mode. They represent the ethical and safety boundaries
     that protect both the user and the system.
     
-    The Immutable Core Protection ensures JARVIS cannot:
+    The Immutable Core Protection ensures Ironcliw cannot:
     - Modify the Supervisor itself
     - Disable safety mechanisms
     - Act without user consent for dangerous operations
     """
     # === CORE IMMUTABLE DIRECTIVES ===
     
-    # File Protection - JARVIS cannot modify these patterns
+    # File Protection - Ironcliw cannot modify these patterns
     protected_files: tuple = (
         "run_supervisor.py",                 # The God Process
         "backend/core/supervisor/*.py",      # All supervisor modules
@@ -184,10 +184,10 @@ class PrimeDirectivesConfig:
         "*.pem", "*.key", "*.crt",           # Cryptographic keys
     )
     
-    # The Supervisor is READ-ONLY to JARVIS process
+    # The Supervisor is READ-ONLY to Ironcliw process
     supervisor_read_only: bool = True
     
-    # JARVIS cannot update its own Prime Directives
+    # Ironcliw cannot update its own Prime Directives
     directives_immutable: bool = True
     
     # === USER CONSENT REQUIREMENTS ===
@@ -200,7 +200,7 @@ class PrimeDirectivesConfig:
     
     # === OPERATION LIMITS ===
     
-    # Resource usage limits JARVIS cannot exceed autonomously
+    # Resource usage limits Ironcliw cannot exceed autonomously
     max_autonomous_api_calls_per_hour: int = 1000
     max_autonomous_file_changes_per_update: int = 100
     max_autonomous_memory_gb: float = 8.0
@@ -235,14 +235,14 @@ class DeadManSwitchConfig:
     Dead Man's Switch Configuration - Post-Update Stability Verification.
     
     The "Dead Man's Switch" is a critical safety mechanism that:
-    1. Monitors JARVIS health after updates for a probation period
+    1. Monitors Ironcliw health after updates for a probation period
     2. Automatically rolls back if health checks fail
     3. Commits the update as "stable" once probation passes
     4. Uses parallel health probing for fast detection
     5. Provides intelligent, multi-signal health assessment
     
-    This transforms JARVIS from a "tool" to an "organism" that can
-    safely self-update without creating "Zombie JARVIS" loops.
+    This transforms Ironcliw from a "tool" to an "organism" that can
+    safely self-update without creating "Zombie Ironcliw" loops.
     """
     # Core settings
     enabled: bool = True
@@ -336,7 +336,7 @@ class DevModeConfig:
     v5.0: Developer Mode Configuration - Intelligent Polyglot Hot Reload
     
     When enabled, the supervisor watches for code changes across ALL languages
-    in your codebase and automatically restarts JARVIS when files are modified.
+    in your codebase and automatically restarts Ironcliw when files are modified.
     
     SUPPORTED LANGUAGES (auto-detected):
     - Python (.py, .pyx)        → Backend restart
@@ -349,31 +349,31 @@ class DevModeConfig:
     - HTML                      → Frontend restart
     - YAML/TOML                 → Config reload
     
-    Think of this as JARVIS's own "nodemon" - you run `python3 run_supervisor.py`
+    Think of this as Ironcliw's own "nodemon" - you run `python3 run_supervisor.py`
     once and it handles all restarts automatically as you develop.
     """
     enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_DEV_MODE", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_DEV_MODE", "true").lower() == "true"
     )
     
     # Grace period before hot reload activates (allows initial startup)
     startup_grace_period_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_RELOAD_GRACE_PERIOD", "120"))
+        default_factory=lambda: int(os.getenv("Ironcliw_RELOAD_GRACE_PERIOD", "120"))
     )
     
     # How often to check for file changes
     check_interval_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_RELOAD_CHECK_INTERVAL", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_RELOAD_CHECK_INTERVAL", "10"))
     )
     
     # Cooldown between restarts (prevents rapid-fire restarts)
     restart_cooldown_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_RELOAD_COOLDOWN", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_RELOAD_COOLDOWN", "10"))
     )
     
     # Debounce delay for rapid file changes (seconds)
     debounce_delay_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_RELOAD_DEBOUNCE", "0.5"))
+        default_factory=lambda: float(os.getenv("Ironcliw_RELOAD_DEBOUNCE", "0.5"))
     )
     
     # Directories to exclude from watching
@@ -411,7 +411,7 @@ class DevModeConfig:
     
     # Verbose logging of file changes
     verbose_logging: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_RELOAD_VERBOSE", "false").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_RELOAD_VERBOSE", "false").lower() == "true"
     )
     
     # Auto-discover file types (vs using predefined list)
@@ -466,13 +466,13 @@ class SupervisorConfig:
     
     @property
     def is_autonomous_mode(self) -> bool:
-        """Check if JARVIS is in full autonomous mode."""
+        """Check if Ironcliw is in full autonomous mode."""
         return self.is_zero_touch_enabled and self.mode == SupervisorMode.AUTO
 
 
 def _env_override(key: str, default: Any, cast_type: type = str) -> Any:
     """Get environment variable with type casting."""
-    env_key = f"JARVIS_SUPERVISOR_{key.upper()}"
+    env_key = f"Ironcliw_SUPERVISOR_{key.upper()}"
     value = os.environ.get(env_key)
     if value is None:
         return default
@@ -507,7 +507,7 @@ def load_config(config_path: Optional[Path] = None) -> SupervisorConfig:
     
     Searches in order:
     1. Provided path
-    2. JARVIS_SUPERVISOR_CONFIG env var
+    2. Ironcliw_SUPERVISOR_CONFIG env var
     3. backend/config/supervisor_config.yaml
     4. Default config
     
@@ -515,7 +515,7 @@ def load_config(config_path: Optional[Path] = None) -> SupervisorConfig:
     """
     # Determine config path
     if config_path is None:
-        config_path = os.environ.get("JARVIS_SUPERVISOR_CONFIG")
+        config_path = os.environ.get("Ironcliw_SUPERVISOR_CONFIG")
         if config_path:
             config_path = Path(config_path)
     

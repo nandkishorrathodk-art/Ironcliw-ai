@@ -1,5 +1,5 @@
-"""
-Action Safety Validator for JARVIS Autonomous System.
+﻿"""
+Action Safety Validator for Ironcliw Autonomous System.
 
 This module provides comprehensive safety validation for autonomous actions,
 including constraint checking, risk assessment, and pre-execution validation.
@@ -13,10 +13,10 @@ Key Features:
     - Safety override mechanisms
 
 Environment Variables:
-    JARVIS_SAFETY_LEVEL: default safety level (strict/standard/relaxed)
-    JARVIS_SAFETY_MAX_RISK_SCORE: maximum allowed risk score (default: 0.7)
-    JARVIS_SAFETY_ANOMALY_THRESHOLD: anomaly detection threshold (default: 0.8)
-    JARVIS_SAFETY_AUDIT_ENABLED: enable safety audit logging (default: true)
+    Ironcliw_SAFETY_LEVEL: default safety level (strict/standard/relaxed)
+    Ironcliw_SAFETY_MAX_RISK_SCORE: maximum allowed risk score (default: 0.7)
+    Ironcliw_SAFETY_ANOMALY_THRESHOLD: anomaly detection threshold (default: 0.8)
+    Ironcliw_SAFETY_AUDIT_ENABLED: enable safety audit logging (default: true)
 """
 
 from __future__ import annotations
@@ -286,20 +286,20 @@ class SafetyValidatorConfig:
     @classmethod
     def from_env(cls) -> "SafetyValidatorConfig":
         """Create configuration from environment variables."""
-        level_str = os.getenv("JARVIS_SAFETY_LEVEL", "standard").lower()
+        level_str = os.getenv("Ironcliw_SAFETY_LEVEL", "standard").lower()
         level = SafetyLevel(level_str) if level_str in [l.value for l in SafetyLevel] else SafetyLevel.STANDARD
 
         return cls(
             level=level,
-            max_risk_score=float(os.getenv("JARVIS_SAFETY_MAX_RISK_SCORE", "0.7")),
-            warning_risk_score=float(os.getenv("JARVIS_SAFETY_WARNING_RISK_SCORE", "0.5")),
-            anomaly_threshold=float(os.getenv("JARVIS_SAFETY_ANOMALY_THRESHOLD", "0.8")),
-            anomaly_window_minutes=int(os.getenv("JARVIS_SAFETY_ANOMALY_WINDOW", "30")),
-            max_windows_close=int(os.getenv("JARVIS_SAFETY_MAX_WINDOWS_CLOSE", "5")),
-            max_apps_launch=int(os.getenv("JARVIS_SAFETY_MAX_APPS_LAUNCH", "3")),
-            max_files_delete=int(os.getenv("JARVIS_SAFETY_MAX_FILES_DELETE", "10")),
-            max_actions_per_minute=int(os.getenv("JARVIS_SAFETY_MAX_ACTIONS_MINUTE", "30")),
-            audit_enabled=os.getenv("JARVIS_SAFETY_AUDIT_ENABLED", "true").lower() == "true",
+            max_risk_score=float(os.getenv("Ironcliw_SAFETY_MAX_RISK_SCORE", "0.7")),
+            warning_risk_score=float(os.getenv("Ironcliw_SAFETY_WARNING_RISK_SCORE", "0.5")),
+            anomaly_threshold=float(os.getenv("Ironcliw_SAFETY_ANOMALY_THRESHOLD", "0.8")),
+            anomaly_window_minutes=int(os.getenv("Ironcliw_SAFETY_ANOMALY_WINDOW", "30")),
+            max_windows_close=int(os.getenv("Ironcliw_SAFETY_MAX_WINDOWS_CLOSE", "5")),
+            max_apps_launch=int(os.getenv("Ironcliw_SAFETY_MAX_APPS_LAUNCH", "3")),
+            max_files_delete=int(os.getenv("Ironcliw_SAFETY_MAX_FILES_DELETE", "10")),
+            max_actions_per_minute=int(os.getenv("Ironcliw_SAFETY_MAX_ACTIONS_MINUTE", "30")),
+            audit_enabled=os.getenv("Ironcliw_SAFETY_AUDIT_ENABLED", "true").lower() == "true",
         )
 
 

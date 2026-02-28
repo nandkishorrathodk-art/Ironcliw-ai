@@ -1,4 +1,4 @@
-# Phase 3.0 Architecture Upgrade Plan - Enterprise-Grade Trinity Ecosystem
+﻿# Phase 3.0 Architecture Upgrade Plan - Enterprise-Grade Trinity Ecosystem
 
 **Status**: ✅ Complete
 **Version**: 3.0.0
@@ -8,7 +8,7 @@
 
 ## 🎯 Objective
 
-Transform the Trinity Ecosystem (JARVIS, J-Prime, Reactor-Core) from a "good bones" implementation to **true Enterprise Grade** with:
+Transform the Trinity Ecosystem (Ironcliw, J-Prime, Reactor-Core) from a "good bones" implementation to **true Enterprise Grade** with:
 - Dynamic service discovery (zero hardcoded ports)
 - Self-healing process orchestration
 - High-performance data pipelines
@@ -68,13 +68,13 @@ service = await registry.wait_for_service("reactor-core", timeout=30.0)
 
 #### 2. Output Streaming
 - ✅ Capture stdout/stderr from child processes
-- ✅ Stream logs in real-time to main JARVIS log
+- ✅ Stream logs in real-time to main Ironcliw log
 - ✅ Prefix each line with `[SERVICE]` for easy filtering
 - ✅ Non-blocking async streaming
 
 Example log output:
 ```
-[JARVIS] Starting system...
+[Ironcliw] Starting system...
 [J-PRIME] Loading model...
 [J-PRIME] Model loaded in 2.3s
 [REACTOR] Initializing training pipeline...
@@ -173,7 +173,7 @@ dataset = json.loads(Path(dataset_path).read_text())
 - ✅ Automatic cleanup after training
 
 #### 3. Persistent State Machine
-**Problem**: If JARVIS crashes mid-training, no way to resume
+**Problem**: If Ironcliw crashes mid-training, no way to resume
 
 **Solution**: SQLite state tracking
 ```python
@@ -318,9 +318,9 @@ All configuration via environment variables:
 
 ```bash
 # Service Registry
-export JARVIS_REGISTRY_DIR=~/.jarvis/registry
-export JARVIS_HEARTBEAT_TIMEOUT=60  # seconds
-export JARVIS_CLEANUP_INTERVAL=30  # seconds
+export Ironcliw_REGISTRY_DIR=~/.jarvis/registry
+export Ironcliw_HEARTBEAT_TIMEOUT=60  # seconds
+export Ironcliw_CLEANUP_INTERVAL=30  # seconds
 
 # Process Orchestration
 export JPRIME_REPO_PATH=~/Documents/repos/jarvis-prime
@@ -416,12 +416,12 @@ export AUTO_RESUME_JOBS=true
 
 ### 1. Zero Configuration Startup
 ```bash
-cd ~/Documents/repos/JARVIS-AI-Agent
+cd ~/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
 Expected behavior:
-- ✅ JARVIS starts and registers itself
+- ✅ Ironcliw starts and registers itself
 - ✅ Discovers J-Prime is not running, launches it automatically
 - ✅ J-Prime registers itself in service registry
 - ✅ Discovers Reactor-Core is not running, launches it
@@ -447,7 +447,7 @@ tail -f logs/jarvis*.log
 
 Expected output:
 ```
-[JARVIS] System starting...
+[Ironcliw] System starting...
 [J-PRIME] Loading model from /path/to/model.gguf
 [J-PRIME] Model loaded successfully (2.3s)
 [J-PRIME] Listening on port 8002

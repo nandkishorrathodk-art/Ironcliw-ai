@@ -1,5 +1,5 @@
-"""
-Screen Lock Context Detector for JARVIS
+﻿"""
+Screen Lock Context Detector for Ironcliw
 ======================================
 
 Detects screen lock state and provides context-aware responses.

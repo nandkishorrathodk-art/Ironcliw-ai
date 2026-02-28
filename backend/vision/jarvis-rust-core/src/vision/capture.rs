@@ -1,4 +1,4 @@
-//! Advanced thread-safe screen capture with dynamic configuration
+﻿//! Advanced thread-safe screen capture with dynamic configuration
 //! 
 //! Features:
 //! - Zero-copy operations with shared memory
@@ -62,10 +62,10 @@ impl DynamicConfigStore {
     }
     
     fn load_from_env(&self) {
-        // Load all JARVIS_CAPTURE_* environment variables
+        // Load all Ironcliw_CAPTURE_* environment variables
         for (key, value) in std::env::vars() {
-            if key.starts_with("JARVIS_CAPTURE_") {
-                let config_key = key.strip_prefix("JARVIS_CAPTURE_").unwrap().to_lowercase();
+            if key.starts_with("Ironcliw_CAPTURE_") {
+                let config_key = key.strip_prefix("Ironcliw_CAPTURE_").unwrap().to_lowercase();
                 if let Ok(json_value) = serde_json::from_str(&value) {
                     self.set(&config_key, json_value);
                 }
@@ -201,13 +201,13 @@ impl CaptureConfig {
     }
     
     fn load_from_env(&mut self) {
-        if let Ok(fps) = std::env::var("JARVIS_TARGET_FPS") {
+        if let Ok(fps) = std::env::var("Ironcliw_TARGET_FPS") {
             if let Ok(fps_val) = fps.parse() {
                 self.target_fps = fps_val;
             }
         }
         
-        if let Ok(quality) = std::env::var("JARVIS_CAPTURE_QUALITY") {
+        if let Ok(quality) = std::env::var("Ironcliw_CAPTURE_QUALITY") {
             self.capture_quality = match quality.to_lowercase().as_str() {
                 "low" => CaptureQuality::Low,
                 "medium" => CaptureQuality::Medium,
@@ -1220,8 +1220,8 @@ mod tests {
     
     #[test]
     fn test_config_loading() {
-        std::env::set_var("JARVIS_TARGET_FPS", "60");
-        std::env::set_var("JARVIS_CAPTURE_QUALITY", "ultra");
+        std::env::set_var("Ironcliw_TARGET_FPS", "60");
+        std::env::set_var("Ironcliw_CAPTURE_QUALITY", "ultra");
         
         let config = CaptureConfig::load();
         assert_eq!(config.target_fps, 60);

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Multi-Space Context Graph - Interactive Demo
 =============================================
 
-This demo shows how JARVIS uses the multi-space context graph to:
+This demo shows how Ironcliw uses the multi-space context graph to:
 1. Track activity across multiple spaces
 2. Detect cross-space relationships
 3. Answer "what does it say?" queries
@@ -92,12 +92,12 @@ async def demo_debugging_workflow():
     await asyncio.sleep(1)
 
     # Give correlation time to detect pattern
-    print("🧠 JARVIS is analyzing cross-space activity...\n")
+    print("🧠 Ironcliw is analyzing cross-space activity...\n")
     await asyncio.sleep(2)
 
-    # Check what JARVIS detected
+    # Check what Ironcliw detected
     if graph.correlator and graph.correlator.relationships:
-        print("✨ JARVIS Detected Cross-Space Relationships:\n")
+        print("✨ Ironcliw Detected Cross-Space Relationships:\n")
         for rel in graph.correlator.relationships.values():
             print(f"   Type: {rel.relationship_type}")
             print(f"   Confidence: {rel.confidence:.0%}")
@@ -111,7 +111,7 @@ async def demo_debugging_workflow():
     error_context = graph.find_most_recent_error()
     if error_context:
         space_id, app_name, details = error_context
-        print(f"🤖 JARVIS: The error in {app_name} (Space {space_id}) is:")
+        print(f"🤖 Ironcliw: The error in {app_name} (Space {space_id}) is:")
         print(f"   {details.get('errors', ['Unknown'])[0]}")
         print(f"\n   This happened when you ran: `{details.get('command', 'unknown')}`")
         print(f"   Working directory: {graph.spaces[space_id].applications[app_name].terminal_context.working_directory}\n")
@@ -119,7 +119,7 @@ async def demo_debugging_workflow():
     # Demo: Cross-space summary
     print("💬 User: 'what am I working on?'\n")
     summary = graph.get_cross_space_summary()
-    print(f"🤖 JARVIS: {summary}\n")
+    print(f"🤖 Ironcliw: {summary}\n")
 
     await graph.stop()
     print("="*80 + "\n")
@@ -182,12 +182,12 @@ async def demo_what_does_it_say():
     print("💬 User: 'what does it say?'\n")
 
     response = await bridge.answer_query("what does it say?")
-    print(f"🤖 JARVIS:\n{response}\n")
+    print(f"🤖 Ironcliw:\n{response}\n")
 
     # Alternative queries
     print("💬 User: 'what was the error?'\n")
     response2 = await bridge.answer_query("what was the error?")
-    print(f"🤖 JARVIS:\n{response2}\n")
+    print(f"🤖 Ironcliw:\n{response2}\n")
 
     await graph.stop()
     print("="*80 + "\n")
@@ -200,7 +200,7 @@ async def demo_what_does_it_say():
 async def demo_workspace_health():
     """
     Scenario: User has many spaces open
-    JARVIS provides intelligent summary and recommendations
+    Ironcliw provides intelligent summary and recommendations
     """
     print("\n" + "="*80)
     print(" SCENARIO 3: Workspace Health & Organization")
@@ -248,7 +248,7 @@ async def demo_workspace_health():
         space.infer_tags()
 
     # Get workspace summary
-    print("🧠 JARVIS Workspace Analysis:\n")
+    print("🧠 Ironcliw Workspace Analysis:\n")
     summary = graph.get_summary()
 
     print(f"   Total Spaces: {summary['total_spaces']}")
@@ -343,9 +343,9 @@ async def demo_realtime_updates():
 async def main():
     """Run all demo scenarios"""
     print("\n" + "="*80)
-    print(" 🤖 JARVIS Multi-Space Context Graph - Interactive Demo")
+    print(" 🤖 Ironcliw Multi-Space Context Graph - Interactive Demo")
     print("="*80)
-    print("\nThis demo shows how JARVIS tracks your workspace across")
+    print("\nThis demo shows how Ironcliw tracks your workspace across")
     print("multiple macOS Spaces and understands your workflow.\n")
 
     scenarios = [
@@ -373,7 +373,7 @@ async def main():
     print("\n" + "="*80)
     print(" Demo Complete!")
     print("="*80)
-    print("\n✨ This is how JARVIS tracks your workspace and answers")
+    print("\n✨ This is how Ironcliw tracks your workspace and answers")
     print("   'what does it say?' queries!\n")
 
 

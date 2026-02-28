@@ -1,4 +1,4 @@
-"""
+﻿"""
 Complete Bootstrap Example: Context-Aware Follow-Up System
 
 This example shows how to wire together all components:
@@ -149,7 +149,7 @@ class FollowUpSystem:
         ocr_text: str | None = None,
     ) -> str:
         """
-        Track a pending question after JARVIS asks the user something.
+        Track a pending question after Ironcliw asks the user something.
         Returns context ID.
         """
         # Create vision context
@@ -295,11 +295,11 @@ async def demo():
     await system.start()
 
     try:
-        # Simulate JARVIS detecting a terminal and asking a question
+        # Simulate Ironcliw detecting a terminal and asking a question
         print("\n=== Scenario 1: Terminal Error Detection ===\n")
 
         question = "I can see your Terminal. Would you like me to describe what's displayed?"
-        print(f"JARVIS: {question}")
+        print(f"Ironcliw: {question}")
 
         context_id = await system.track_pending_question(
             question_text=question,
@@ -319,13 +319,13 @@ async def demo():
         print(f"\nYou: {user_response}")
 
         response = await system.process_user_input(user_response)
-        print(f"\nJARVIS: {response}\n")
+        print(f"\nIroncliw: {response}\n")
 
         # Scenario 2: Follow-up inquiry
         print("\n=== Scenario 2: Negative Response ===\n")
 
         question2 = "Would you like me to help fix this error?"
-        print(f"JARVIS: {question2}")
+        print(f"Ironcliw: {question2}")
 
         await system.track_pending_question(
             question_text=question2,
@@ -340,7 +340,7 @@ async def demo():
         print(f"\nYou: {user_response2}")
 
         response2 = await system.process_user_input(user_response2)
-        print(f"\nJARVIS: {response2}\n")
+        print(f"\nIroncliw: {response2}\n")
 
         # Show stats
         print("\n=== System Statistics ===\n")

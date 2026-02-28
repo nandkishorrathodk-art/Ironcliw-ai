@@ -1,4 +1,4 @@
-"""
+﻿"""
 Proactive Resource Guard v1.0 - OOM Prevention Through Preemptive Memory Management
 =====================================================================================
 
@@ -36,7 +36,7 @@ Usage:
     # When done with the resource
     guard.release_budget("sentence_transformer")
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -60,10 +60,10 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Default memory thresholds (can be overridden via environment variables)
-DEFAULT_MIN_AVAILABLE_GB = float(os.getenv("JARVIS_MIN_AVAILABLE_MEMORY_GB", "2.0"))
-DEFAULT_LITE_MODE_THRESHOLD_GB = float(os.getenv("JARVIS_LITE_MODE_THRESHOLD_GB", "4.0"))
-DEFAULT_CRITICAL_THRESHOLD_GB = float(os.getenv("JARVIS_CRITICAL_MEMORY_THRESHOLD_GB", "1.0"))
-DEFAULT_MEMORY_CHECK_INTERVAL = float(os.getenv("JARVIS_MEMORY_CHECK_INTERVAL", "5.0"))
+DEFAULT_MIN_AVAILABLE_GB = float(os.getenv("Ironcliw_MIN_AVAILABLE_MEMORY_GB", "2.0"))
+DEFAULT_LITE_MODE_THRESHOLD_GB = float(os.getenv("Ironcliw_LITE_MODE_THRESHOLD_GB", "4.0"))
+DEFAULT_CRITICAL_THRESHOLD_GB = float(os.getenv("Ironcliw_CRITICAL_MEMORY_THRESHOLD_GB", "1.0"))
+DEFAULT_MEMORY_CHECK_INTERVAL = float(os.getenv("Ironcliw_MEMORY_CHECK_INTERVAL", "5.0"))
 
 # Known memory requirements for common components (in MB)
 COMPONENT_MEMORY_ESTIMATES = {

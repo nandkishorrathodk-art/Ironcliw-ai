@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Demo: Real-Time ML Model Loading Visualization
 ==============================================
 
-This demo shows how JARVIS intelligently loads ML models one at a time,
+This demo shows how Ironcliw intelligently loads ML models one at a time,
 only when needed, while maintaining <35% memory usage.
 """
 
@@ -32,9 +32,9 @@ async def demo_smart_lazy_loading():
     """Demonstrate smart lazy loading with real-time logging"""
     
     print("\n" + "=" * 70)
-    print("🎬 JARVIS ML MODEL LOADING DEMO")
+    print("🎬 Ironcliw ML MODEL LOADING DEMO")
     print("=" * 70)
-    print("\nThis demo shows how JARVIS loads models intelligently:")
+    print("\nThis demo shows how Ironcliw loads models intelligently:")
     print("• One model at a time")
     print("• Only when needed for the current context")
     print("• Automatic unloading when switching contexts")
@@ -62,7 +62,7 @@ async def demo_smart_lazy_loading():
             "duration": 5
         },
         {
-            "name": "User Says 'Hey JARVIS'",
+            "name": "User Says 'Hey Ironcliw'",
             "context": SystemContext.VOICE_COMMAND,
             "proximity": ProximityLevel.NEAR,
             "duration": 5
@@ -175,7 +175,7 @@ async def demo_memory_pressure():
 async def main():
     """Run the demos"""
     
-    print("\n🚀 JARVIS ML Model Loading Demo Suite")
+    print("\n🚀 Ironcliw ML Model Loading Demo Suite")
     print("\nSelect a demo:")
     print("1. Smart Lazy Loading Demo")
     print("2. Memory Pressure Handling Demo")

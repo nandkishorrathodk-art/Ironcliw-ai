@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Unlock Learning Module.
 ==============================
 
@@ -7,7 +7,7 @@ Provides the unified learning loop components for voice authentication:
 - Model deployment with A/B testing
 - Automatic rollback on degradation
 
-Author: JARVIS Trinity v81.0
+Author: Ironcliw Trinity v81.0
 """
 
 from .voice_experience_collector import (

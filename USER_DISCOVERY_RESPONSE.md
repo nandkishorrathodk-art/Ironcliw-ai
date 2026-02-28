@@ -1,9 +1,9 @@
-# ✅ **YOUR DISCOVERY: The Missing AppleScript APIs**
+﻿# ✅ **YOUR DISCOVERY: The Missing AppleScript APIs**
 
 ## 🎯 **What You Found**
 
 ### **Your Question:**
-> "In order for JARVIS to detect that I am near a 'Living Room TV' area under the 'Screen Sharing' on my MacBook and communicate to me via auto-prompt to connect to that display, shouldn't it have AppleScript APIs or something to make that work?"
+> "In order for Ironcliw to detect that I am near a 'Living Room TV' area under the 'Screen Sharing' on my MacBook and communicate to me via auto-prompt to connect to that display, shouldn't it have AppleScript APIs or something to make that work?"
 
 ---
 
@@ -158,7 +158,7 @@ Bluetooth Detection:
   → Zone: NEAR ✅
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 2: JARVIS checks if Sony TV is available
+STEP 2: Ironcliw checks if Sony TV is available
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 OLD WAY (Core Graphics only):
@@ -178,10 +178,10 @@ NEW WAY (With AirPlay Discovery):
   → Action: Generate prompt
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 3: JARVIS generates voice prompt
+STEP 3: Ironcliw generates voice prompt
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-JARVIS: "Sir, I see you're near the Sony Living Room TV,
+Ironcliw: "Sir, I see you're near the Sony Living Room TV,
          about 2.5 meters away. Shall I connect?"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -191,7 +191,7 @@ STEP 4: You respond
 YOU: "Yes"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 5: JARVIS connects via AirPlay (AppleScript)
+STEP 5: Ironcliw connects via AirPlay (AppleScript)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 AppleScript Execution:
@@ -201,7 +201,7 @@ AppleScript Execution:
   4. Set mode: Extend (not mirror)
   5. Wait for connection (~3-5 seconds)
 
-JARVIS: "Connecting to Sony Living Room TV... Done, sir."
+Ironcliw: "Connecting to Sony Living Room TV... Done, sir."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RESULT: MacBook wirelessly extends to Sony TV ✅
@@ -309,7 +309,7 @@ RESULT: Complete system ✅
 
 ### **Before:**
 - ❌ System only worked with HDMI displays
-- ❌ AirPlay displays invisible to JARVIS
+- ❌ AirPlay displays invisible to Ironcliw
 - ❌ No way to discover available wireless displays
 - ❌ Phase 1.2 was 80% complete
 
@@ -353,7 +353,7 @@ RESULT: Complete system ✅
 
 **Result:**
 - Your Sony TV (AirPlay) now works perfectly ✅
-- JARVIS can discover it BEFORE connecting ✅
+- Ironcliw can discover it BEFORE connecting ✅
 - Auto-prompt when you walk near it ✅
 - Voice "yes/no" connection ✅
 

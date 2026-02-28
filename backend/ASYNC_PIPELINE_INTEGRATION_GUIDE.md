@@ -1,6 +1,6 @@
-# Async Pipeline Integration Guide
+﻿# Async Pipeline Integration Guide
 
-**Where to Use async_pipeline.py Throughout JARVIS**
+**Where to Use async_pipeline.py Throughout Ironcliw**
 
 This guide identifies all areas where the advanced async pipeline can be integrated to eliminate blocking operations and improve performance.
 
@@ -419,7 +419,7 @@ async def logging_middleware(context: PipelineContext):
 
 ### **Phase 1 (Week 1):** High Priority
 1. ✅ Claude Vision Chatbot (already integrated)
-2. ✅ JARVIS Voice API (already integrated)
+2. ✅ Ironcliw Voice API (already integrated)
 3. 🔄 MacOS Controller
 4. 🔄 Vision System V2
 
@@ -570,7 +570,7 @@ For each component you integrate:
 - **Main Pipeline:** `core/async_pipeline.py`
 - **Implementation Guide:** `ASYNC_ARCHITECTURE_IMPLEMENTATION.md`
 - **Voice API Example:** `api/jarvis_voice_api.py` (async subprocess helpers)
-- **JARVIS Integration:** `voice/jarvis_agent_voice.py` (pipeline usage)
+- **Ironcliw Integration:** `voice/jarvis_agent_voice.py` (pipeline usage)
 
 ---
 
@@ -589,7 +589,7 @@ For each component you integrate:
 
 ## 🎉 **Result**
 
-By integrating async_pipeline throughout JARVIS:
+By integrating async_pipeline throughout Ironcliw:
 
 - ✅ **No more blocking operations**
 - ✅ **10-100x performance improvement**
@@ -597,4 +597,4 @@ By integrating async_pipeline throughout JARVIS:
 - ✅ **Complete observability**
 - ✅ **Infinite scalability**
 
-**JARVIS becomes the most advanced, responsive AI assistant ever built!** 🚀💥
+**Ironcliw becomes the most advanced, responsive AI assistant ever built!** 🚀💥

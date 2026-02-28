@@ -1,4 +1,4 @@
-"""Setup script for building the Fast Capture C++ extension.
+﻿"""Setup script for building the Fast Capture C++ extension.
 
 This module provides a custom setuptools configuration for building a high-performance
 C++ screen capture extension using CMake. It includes platform-specific build
@@ -121,10 +121,10 @@ class CMakeBuild(build_ext):
 setup(
     name='jarvis_fast_capture',
     version='1.0.0',
-    author='JARVIS Team',
-    description='High-performance screen capture for JARVIS Vision System',
+    author='Ironcliw Team',
+    description='High-performance screen capture for Ironcliw Vision System',
     long_description='A C++ extension providing optimized screen capture capabilities '
-                    'for the JARVIS Vision System. Built with CMake for cross-platform '
+                    'for the Ironcliw Vision System. Built with CMake for cross-platform '
                     'compatibility and maximum performance.',
     ext_modules=[CMakeExtension('fast_capture')],
     cmdclass=dict(build_ext=CMakeBuild),

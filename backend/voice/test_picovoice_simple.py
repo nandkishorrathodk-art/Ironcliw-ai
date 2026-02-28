@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple test to verify Picovoice wake word detection
 """
@@ -46,7 +46,7 @@ def test_basic_picovoice():
         result = porcupine.process(pcm)
         
         if result >= 0:
-            print(f"✨ Frame {i}: 'JARVIS' detected!")
+            print(f"✨ Frame {i}: 'Ironcliw' detected!")
         else:
             print(f"   Frame {i}: Listening...")
     
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     test_basic_picovoice()
     test_with_sensitivities()
     
-    print("\n🎯 Integration with JARVIS:")
+    print("\n🎯 Integration with Ironcliw:")
     print("   When you use the optimized_voice_system,")
     print("   Picovoice will automatically handle the")
     print("   initial wake word detection!")
@@ -103,4 +103,4 @@ if __name__ == "__main__":
     print("   • Works offline")
     print("   • Handles 'Jarvis' and 'Hey Jarvis'")
     
-    print("\n✨ Picovoice is ready to use in your JARVIS system!")
+    print("\n✨ Picovoice is ready to use in your Ironcliw system!")

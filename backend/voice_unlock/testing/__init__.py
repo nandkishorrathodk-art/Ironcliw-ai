@@ -1,10 +1,10 @@
-"""
+﻿"""
 Voice Unlock Testing Module.
 =============================
 
 Provides A/B testing framework for voice authentication models.
 
-Author: JARVIS Trinity v81.0
+Author: Ironcliw Trinity v81.0
 """
 
 from .ab_testing import (

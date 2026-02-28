@@ -1,8 +1,8 @@
-"""
+﻿"""
 High-Level Python Wrapper for ScreenCaptureKit Streaming
 Async-friendly interface for continuous 60 FPS window capture
 
-This is the "Ferrari Engine" for JARVIS Vision - native ScreenCaptureKit
+This is the "Ferrari Engine" for Ironcliw Vision - native ScreenCaptureKit
 streaming with GPU acceleration, replacing CLI-based fallbacks.
 """
 

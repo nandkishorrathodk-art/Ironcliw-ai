@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -8,17 +8,17 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/jarvis_voice_unlock.py</string>
+        <string>/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock/jarvis_voice_unlock.py</string>
         <string>start</string>
     </array>
     
     <key>WorkingDirectory</key>
-    <string>/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent</string>
+    <string>/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent</string>
     
     <key>EnvironmentVariables</key>
     <dict>
         <key>PYTHONPATH</key>
-        <string>/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent</string>
+        <string>/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent</string>
         <key>VOICE_UNLOCK_MAX_MEMORY</key>
         <string>400</string>
         <key>VOICE_UNLOCK_CACHE_SIZE</key>

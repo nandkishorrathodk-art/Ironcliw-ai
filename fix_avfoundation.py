@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix AVFoundation installation
 """
@@ -70,11 +70,11 @@ def main():
     if install_pyobjc_avfoundation():
         logger.info("\n✅ AVFoundation fixed successfully!")
         logger.info("Video streaming will now use native macOS capture with purple indicator")
-        logger.info("Restart JARVIS to use the native video capture: python start_system.py")
+        logger.info("Restart Ironcliw to use the native video capture: python start_system.py")
         return True
     else:
         logger.warning("\n⚠️  AVFoundation installation incomplete")
-        logger.info("JARVIS will use fallback video capture mode")
+        logger.info("Ironcliw will use fallback video capture mode")
         logger.info("This still works but may have reduced performance")
         return False
 

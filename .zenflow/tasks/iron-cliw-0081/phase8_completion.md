@@ -1,4 +1,4 @@
-# Phase 8 Completion Report: Ghost Hands Automation Port
+﻿# Phase 8 Completion Report: Ghost Hands Automation Port
 
 **Phase:** 8 - Ghost Hands Automation Port (Week 7-8)  
 **Status:** ✅ **COMPLETED**  
@@ -486,7 +486,7 @@ await engine.focus_window(window_id)
 
 3. **Permission Elevation**
    - Cannot focus elevated windows from non-elevated process
-   - Workaround: Run JARVIS with administrator privileges
+   - Workaround: Run Ironcliw with administrator privileges
    - Windows security limitation
 
 4. **Skipped Tests**
@@ -543,18 +543,18 @@ backend/ghost_hands/
 
 ```bash
 # Focus preservation
-JARVIS_WIN_PRESERVE_FOCUS=true
-JARVIS_WIN_FOCUS_DELAY_MS=100
+Ironcliw_WIN_PRESERVE_FOCUS=true
+Ironcliw_WIN_FOCUS_DELAY_MS=100
 
 # Multi-monitor support
-JARVIS_WIN_MULTIMON=true
+Ironcliw_WIN_MULTIMON=true
 
 # Backend preference
-JARVIS_WIN_PREFER_PYAUTOGUI=true
+Ironcliw_WIN_PREFER_PYAUTOGUI=true
 
 # Timing
-JARVIS_WIN_ACTION_DELAY_MS=50
-JARVIS_WIN_ANIMATION_MS=300
+Ironcliw_WIN_ACTION_DELAY_MS=50
+Ironcliw_WIN_ANIMATION_MS=300
 
 # C# DLL path (optional)
 WINDOWS_NATIVE_DLL_PATH=C:\path\to\dll\folder
@@ -623,7 +623,7 @@ cd backend\windows_native
 
 **Solutions:**
 1. Move mouse away from screen corners
-2. Run JARVIS with appropriate permissions
+2. Run Ironcliw with appropriate permissions
 3. Check for conflicting applications
 
 ### Focus preservation not working
@@ -631,7 +631,7 @@ cd backend\windows_native
 **Cause:** Trying to focus elevated window from non-elevated process
 
 **Solutions:**
-1. Run JARVIS with administrator privileges
+1. Run Ironcliw with administrator privileges
 2. Disable focus preservation: `config.preserve_focus = False`
 
 ---

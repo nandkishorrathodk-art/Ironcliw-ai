@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Minimal Disruption Space Switching for JARVIS
+Minimal Disruption Space Switching for Ironcliw
 Provides controlled, user-permitted space switching with minimal visual disruption
 """
 
@@ -86,9 +86,9 @@ class SpaceSwitchPermission:
         """Handle urgent permission requests"""
         # For urgent requests, use system notification
         script = f'''
-        display dialog "JARVIS needs to briefly switch to Desktop {request.target_space} to {request.reason}. This is marked as urgent." ¬
+        display dialog "Ironcliw needs to briefly switch to Desktop {request.target_space} to {request.reason}. This is marked as urgent." ¬
             buttons {{"Deny", "Allow"}} default button "Allow" ¬
-            with title "JARVIS Space Switch Request" ¬
+            with title "Ironcliw Space Switch Request" ¬
             giving up after {int(request.max_wait_time)}
         '''
         
@@ -116,7 +116,7 @@ class SpaceSwitchPermission:
         
         # In production, this would integrate with your UI
         # For now, check environment variable for testing
-        if os.getenv('JARVIS_AUTO_APPROVE_SPACE_SWITCH', 'false').lower() == 'true':
+        if os.getenv('Ironcliw_AUTO_APPROVE_SPACE_SWITCH', 'false').lower() == 'true':
             return True
             
         return False

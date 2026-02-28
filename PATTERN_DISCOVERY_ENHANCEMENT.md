@@ -1,4 +1,4 @@
-# 🔍 Pattern-Based Discovery Enhancement - Complete!
+﻿# 🔍 Pattern-Based Discovery Enhancement - Complete!
 
 ## ✅ What Was Added
 
@@ -244,7 +244,7 @@ components:
 ## 🧪 Testing
 
 ```bash
-# Start JARVIS and watch discovery logs
+# Start Ironcliw and watch discovery logs
 ./start_system.py
 
 # Look for these log messages:

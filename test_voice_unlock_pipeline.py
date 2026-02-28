@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Voice Unlock Pipeline Test Suite
 =================================
@@ -40,7 +40,7 @@ def print_test(message, status=None):
 
 
 async def test_1_api_health():
-    """Test 1: Check if JARVIS API is responding"""
+    """Test 1: Check if Ironcliw API is responding"""
     print(f"\n{Colors.BOLD}Test 1: API Health Check{Colors.ENDC}")
 
     try:
@@ -57,7 +57,7 @@ async def test_1_api_health():
                     return False
     except Exception as e:
         print_test(f"API not available: {e}", "fail")
-        print_test("Make sure JARVIS is running: ./start_system.py", "warning")
+        print_test("Make sure Ironcliw is running: ./start_system.py", "warning")
         return False
 
 
@@ -293,7 +293,7 @@ async def test_8_macos_controller():
 async def run_all_tests():
     """Run all tests in sequence"""
     print(f"\n{Colors.BOLD}{'='*60}")
-    print(f"JARVIS Voice Unlock Pipeline Test Suite")
+    print(f"Ironcliw Voice Unlock Pipeline Test Suite")
     print(f"{'='*60}{Colors.ENDC}")
 
     print_test("Starting comprehensive test suite...", "info")
@@ -331,7 +331,7 @@ async def run_all_tests():
     if passed == total:
         print(f"{Colors.GREEN}{Colors.BOLD}✅ ALL TESTS PASSED! ({passed}/{total}){Colors.ENDC}")
         print_test("\n🎉 Your voice unlock system is fully operational!", "pass")
-        print_test("You can now say: 'Hey JARVIS, unlock my screen'", "info")
+        print_test("You can now say: 'Hey Ironcliw, unlock my screen'", "info")
     else:
         print(f"{Colors.YELLOW}{Colors.BOLD}⚠️  SOME TESTS FAILED ({passed}/{total} passed){Colors.ENDC}")
         print_test("\nFailed components need attention:", "warning")

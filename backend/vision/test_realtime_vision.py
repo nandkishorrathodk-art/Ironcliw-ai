@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS real-time vision capabilities
-Demonstrates how JARVIS can see and respond to the screen in real-time
+Test Ironcliw real-time vision capabilities
+Demonstrates how Ironcliw can see and respond to the screen in real-time
 """
 
 import asyncio
@@ -25,20 +25,20 @@ async def test_realtime_vision():
         logger.error("Please set ANTHROPIC_API_KEY")
         return
     
-    # Initialize JARVIS vision
+    # Initialize Ironcliw vision
     jarvis = ClaudeVisionAnalyzer(api_key, enable_realtime=True)
-    logger.info("🤖 JARVIS Vision System Initialized")
+    logger.info("🤖 Ironcliw Vision System Initialized")
     
     print("\n" + "="*60)
-    print("🎯 JARVIS Real-Time Vision Test")
+    print("🎯 Ironcliw Real-Time Vision Test")
     print("="*60)
     
     # Test 1: Basic screen understanding
-    print("\n📊 Test 1: What can JARVIS see right now?")
+    print("\n📊 Test 1: What can Ironcliw see right now?")
     context = await jarvis.get_screen_context()
     
     if 'error' not in context:
-        print(f"\n👁️ JARVIS sees: {context.get('description', 'Nothing')[:200]}...")
+        print(f"\n👁️ Ironcliw sees: {context.get('description', 'Nothing')[:200]}...")
         
         if context.get('behavior_insights'):
             print(f"\n🧠 Detected patterns: {context['behavior_insights']['detected_patterns']}")
@@ -60,7 +60,7 @@ async def test_realtime_vision():
         response = await jarvis.see_and_respond(cmd)
         
         if response['success']:
-            print(f"🤖 JARVIS: {response['response'][:200]}...")
+            print(f"🤖 Ironcliw: {response['response'][:200]}...")
         else:
             print(f"❌ Error: {response.get('error', 'Unknown error')}")
     
@@ -119,7 +119,7 @@ async def demo_autonomous_behaviors():
     jarvis = ClaudeVisionAnalyzer(api_key)
     
     print("\n" + "="*60)
-    print("🤖 JARVIS Autonomous Behavior Demo")
+    print("🤖 Ironcliw Autonomous Behavior Demo")
     print("="*60)
     
     # Get current context
@@ -151,7 +151,7 @@ async def demo_autonomous_behaviors():
 
 async def main():
     """Run all tests"""
-    print("🚀 JARVIS Vision System Test Suite")
+    print("🚀 Ironcliw Vision System Test Suite")
     print("==================================")
     
     # Run basic tests
@@ -161,7 +161,7 @@ async def main():
     await demo_autonomous_behaviors()
     
     print("\n✨ All tests complete!")
-    print("\n💡 JARVIS can now:")
+    print("\n💡 Ironcliw can now:")
     print("  - See your screen in real-time")
     print("  - Understand visual context")
     print("  - Respond to commands based on what's visible")

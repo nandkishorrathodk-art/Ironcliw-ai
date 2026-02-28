@@ -1,6 +1,6 @@
-# Setup & Installation
+﻿# Setup & Installation
 
-Complete step-by-step guide to installing and configuring JARVIS AI Agent, from prerequisites to your first voice command.
+Complete step-by-step guide to installing and configuring Ironcliw AI Agent, from prerequisites to your first voice command.
 
 ---
 
@@ -22,12 +22,12 @@ Complete step-by-step guide to installing and configuring JARVIS AI Agent, from 
 
 ## Quick Start
 
-Get JARVIS running in 10 minutes (macOS M1/M2):
+Get Ironcliw running in 10 minutes (macOS M1/M2):
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/derekjrussell/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/derekjrussell/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # 2. Run setup script
 ./scripts/quick_start.sh
@@ -36,7 +36,7 @@ cd JARVIS-AI-Agent
 cp .env.example .env
 # Edit .env with your API keys
 
-# 4. Start JARVIS
+# 4. Start Ironcliw
 python start_system.py
 ```
 
@@ -117,8 +117,8 @@ For detailed installation, continue reading...
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/derekjrussell/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/derekjrussell/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 ```
 
 ### 2. Create Python Virtual Environment
@@ -231,8 +231,8 @@ gcloud services enable cloudresourcemanager.googleapis.com
 ```bash
 # Create service account
 gcloud iam service-accounts create jarvis-deployer \
-  --display-name="JARVIS Deployer" \
-  --description="Service account for JARVIS automation"
+  --display-name="Ironcliw Deployer" \
+  --description="Service account for Ironcliw automation"
 
 # Grant necessary permissions
 gcloud projects add-iam-policy-binding jarvis-473803 \
@@ -263,7 +263,7 @@ GCP_VM_ENABLED=true
 
 ## Database Setup
 
-JARVIS uses a dual-database system:
+Ironcliw uses a dual-database system:
 - **SQLite** (local, fast, embedded)
 - **PostgreSQL** (Cloud SQL, scalable, production)
 
@@ -296,7 +296,7 @@ gcloud sql users set-password postgres \
 gcloud sql databases create jarvis_learning \
   --instance=jarvis-learning-db
 
-# Create JARVIS user
+# Create Ironcliw user
 gcloud sql users create jarvis \
   --instance=jarvis-learning-db \
   --password=JarvisSecure2025!
@@ -413,14 +413,14 @@ security add-generic-password \
 ### 5. Enroll Your Voice (First Time)
 
 ```bash
-# Start JARVIS
+# Start Ironcliw
 python start_system.py
 
 # Follow voice enrollment prompts
 # You'll be asked to say phrases like:
-# - "Hey JARVIS, unlock my screen"
-# - "JARVIS, what's on my screen?"
-# - "Hey JARVIS, open Safari"
+# - "Hey Ironcliw, unlock my screen"
+# - "Ironcliw, what's on my screen?"
+# - "Hey Ironcliw, open Safari"
 # (Repeat 3-5 times for best accuracy)
 ```
 
@@ -629,7 +629,7 @@ Create `~/.jarvis/voice/config.json`:
 
 ## First Run
 
-### 1. Start JARVIS
+### 1. Start Ironcliw
 
 **Option A: Standard Start**
 ```bash
@@ -655,7 +655,7 @@ tail -f jarvis_startup.log
 
 **Expected output:**
 ```
-[2025-10-30 12:00:00] ✅ Starting JARVIS AI Agent v17.4.0
+[2025-10-30 12:00:00] ✅ Starting Ironcliw AI Agent v17.4.0
 [2025-10-30 12:00:01] ✅ Loading environment variables
 [2025-10-30 12:00:02] ✅ Initializing hybrid orchestrator
 [2025-10-30 12:00:03] ✅ Cloud SQL proxy started successfully
@@ -665,7 +665,7 @@ tail -f jarvis_startup.log
 [2025-10-30 12:00:07] ✅ CAI initialized (intent prediction enabled)
 [2025-10-30 12:00:08] ✅ Wake word detector ready (Picovoice)
 [2025-10-30 12:00:09] ✅ Backend server started on http://localhost:8010
-[2025-10-30 12:00:10] ✅ JARVIS is ready! Say "Hey JARVIS"
+[2025-10-30 12:00:10] ✅ Ironcliw is ready! Say "Hey Ironcliw"
 ```
 
 ### 3. Access Web Interface
@@ -679,7 +679,7 @@ http://localhost:8010
 
 Say wake word:
 ```
-"Hey JARVIS"
+"Hey Ironcliw"
 ```
 
 Test commands:

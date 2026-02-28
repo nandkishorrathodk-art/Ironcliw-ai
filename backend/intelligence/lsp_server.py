@@ -1,4 +1,4 @@
-"""
+﻿"""
 LSP Server - Language Server Protocol Provider
 ===============================================
 
@@ -13,11 +13,11 @@ Production-grade LSP server providing:
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
-    │                    JARVIS LSP Server v1.0                                │
+    │                    Ironcliw LSP Server v1.0                                │
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                          │
     │   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐               │
-    │   │   IDE/      │     │    LSP      │     │   JARVIS    │               │
+    │   │   IDE/      │     │    LSP      │     │   Ironcliw    │               │
     │   │   Editor    │◀───▶│   Server    │◀───▶│   AI Core   │               │
     │   └─────────────┘     └─────────────┘     └─────────────┘               │
     │          │                   │                   │                      │
@@ -36,7 +36,7 @@ Architecture:
 
 LSP Specification: https://microsoft.github.io/language-server-protocol/
 
-Author: JARVIS Intelligence System
+Author: Ironcliw Intelligence System
 Version: 1.0.0
 """
 
@@ -65,7 +65,7 @@ from typing import (
     Union,
 )
 
-logger = logging.getLogger("JARVIS.LSP")
+logger = logging.getLogger("Ironcliw.LSP")
 
 
 # =============================================================================
@@ -909,7 +909,7 @@ class LSPMessageHandler:
     Parses JSON-RPC messages and dispatches to appropriate handlers.
     """
 
-    def __init__(self, server: "JARVISLSPServer"):
+    def __init__(self, server: "IroncliwLSPServer"):
         self.server = server
         self._request_handlers: Dict[str, Callable] = {}
         self._notification_handlers: Dict[str, Callable] = {}
@@ -1138,12 +1138,12 @@ class LSPMessageHandler:
 
 
 # =============================================================================
-# JARVIS LSP SERVER
+# Ironcliw LSP SERVER
 # =============================================================================
 
-class JARVISLSPServer:
+class IroncliwLSPServer:
     """
-    Main JARVIS LSP Server.
+    Main Ironcliw LSP Server.
 
     Provides IDE integration through Language Server Protocol.
     """
@@ -1173,7 +1173,7 @@ class JARVISLSPServer:
 
     async def start(self) -> None:
         """Start the LSP server."""
-        logger.info(f"Starting JARVIS LSP Server ({self.config.transport})")
+        logger.info(f"Starting Ironcliw LSP Server ({self.config.transport})")
         self._running = True
 
         if self.config.transport == "stdio":
@@ -1186,7 +1186,7 @@ class JARVISLSPServer:
     async def stop(self) -> None:
         """Stop the LSP server."""
         self._running = False
-        logger.info("JARVIS LSP Server stopped")
+        logger.info("Ironcliw LSP Server stopped")
 
     async def _run_stdio(self) -> None:
         """Run server using stdio transport."""
@@ -1349,12 +1349,12 @@ class JARVISLSPServer:
 # GLOBAL INSTANCES
 # =============================================================================
 
-_lsp_server: Optional[JARVISLSPServer] = None
+_lsp_server: Optional[IroncliwLSPServer] = None
 
 
 def get_lsp_server(
     config: Optional[LSPServerConfig] = None
-) -> JARVISLSPServer:
+) -> IroncliwLSPServer:
     """
     Get or create the global LSP server.
 
@@ -1363,11 +1363,11 @@ def get_lsp_server(
                uses this config. If server exists, config is ignored.
 
     Returns:
-        The global JARVISLSPServer instance.
+        The global IroncliwLSPServer instance.
     """
     global _lsp_server
     if _lsp_server is None:
-        _lsp_server = JARVISLSPServer(config=config)
+        _lsp_server = IroncliwLSPServer(config=config)
     return _lsp_server
 
 

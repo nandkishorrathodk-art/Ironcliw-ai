@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Loading Server v87.0 - Trinity Ultra Edition (LEGACY)
+Ironcliw Loading Server v87.0 - Trinity Ultra Edition (LEGACY)
 ============================================================
 
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -102,16 +102,16 @@ v4.0 Zero-Touch Features:
 v5.0 Flywheel Edition Features:
 - Data Flywheel status tracking (collecting, training, complete)
 - Learning Goals progress and discovery
-- JARVIS-Prime tier-0 brain status (local/cloud/gemini)
+- Ironcliw-Prime tier-0 brain status (local/cloud/gemini)
 - Reactor-Core model training pipeline status
-- Intelligent message generation via JARVIS-Prime
-- Cross-repo integration (JARVIS-AI-Agent, JARVIS-Prime, reactor-core)
+- Intelligent message generation via Ironcliw-Prime
+- Cross-repo integration (Ironcliw-AI-Agent, Ironcliw-Prime, reactor-core)
 - Memory-aware routing status display
 - Self-improvement metrics and analytics
 
 Port: 3001 (separate from frontend:3000 and backend:8010)
 
-Author: JARVIS Trinity v87.0 - Production-Grade Loading System
+Author: Ironcliw Trinity v87.0 - Production-Grade Loading System
 """
 
 import asyncio
@@ -163,7 +163,7 @@ class W3CTraceContext:
     v87.0: W3C Distributed Tracing context for cross-repo correlation.
 
     Implements W3C Trace Context specification for distributed tracing across
-    JARVIS Body, JARVIS Prime, and Reactor-Core.
+    Ironcliw Body, Ironcliw Prime, and Reactor-Core.
     """
     trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     span_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
@@ -289,7 +289,7 @@ class ParallelComponentTracker:
 
     def __init__(self):
         self.components: Dict[str, ParallelComponentTracker.ComponentProgress] = {
-            "jarvis_prime": self.ComponentProgress(name="JARVIS Prime"),
+            "jarvis_prime": self.ComponentProgress(name="Ironcliw Prime"),
             "reactor_core": self.ComponentProgress(name="Reactor-Core"),
         }
         self._lock = asyncio.Lock()
@@ -759,13 +759,13 @@ class IntelligentMessageGenerator:
     def _generate_in_progress_message(self, stage: str, component: Optional[str]) -> str:
         """Generate message for stages in progress."""
         if component == "jarvis_prime":
-            return "JARVIS Prime brain initializing... Loading local LLM models..."
+            return "Ironcliw Prime brain initializing... Loading local LLM models..."
         elif component == "reactor_core":
             return "Reactor-Core orchestrator starting... Initializing Trinity integration..."
         elif stage == "models":
             return "Loading AI models... This may take a moment on first run..."
         elif stage == "backend":
-            return "Starting JARVIS backend services... Initializing core systems..."
+            return "Starting Ironcliw backend services... Initializing core systems..."
         else:
             return f"{stage.replace('_', ' ').title()} in progress..."
 
@@ -1167,7 +1167,7 @@ class PredictiveETACalculator:
 
 class CrossRepoHealthAggregator:
     """
-    v87.0: Unified health aggregation across JARVIS, J-Prime, and Reactor-Core.
+    v87.0: Unified health aggregation across Ironcliw, J-Prime, and Reactor-Core.
 
     Integrates with trinity_integrator.py's CrossRepoHealthMonitor for
     enterprise-grade health monitoring.
@@ -1644,7 +1644,7 @@ class FallbackStaticPageGenerator:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS - Connecting...</title>
+    <title>Ironcliw - Connecting...</title>
     <style>
         * {{
             margin: 0;
@@ -1706,9 +1706,9 @@ class FallbackStaticPageGenerator:
 </head>
 <body>
     <div class="container">
-        <h1>JARVIS</h1>
+        <h1>Ironcliw</h1>
         <div class="spinner"></div>
-        <div class="status" id="status">Connecting to JARVIS...</div>
+        <div class="status" id="status">Connecting to Ironcliw...</div>
         <div class="message">
             <p>Loading server is temporarily unavailable.</p>
             <p>Attempting to reconnect...</p>
@@ -1753,7 +1753,7 @@ class FallbackStaticPageGenerator:
                 }});
 
                 if (response.ok) {{
-                    updateStatus('✅ JARVIS is online! Redirecting...');
+                    updateStatus('✅ Ironcliw is online! Redirecting...');
                     setTimeout(() => {{
                         window.location.href = `http://localhost:${{BACKEND_PORT}}/`;
                     }}, 500);
@@ -1941,7 +1941,7 @@ class DynamicPathResolver:
         for subdir in ['Documents/repos', 'Projects', 'Development', 'code', 'dev']:
             potential = home / subdir
             if potential.exists():
-                # Find any JARVIS-AI-Agent directory
+                # Find any Ironcliw-AI-Agent directory
                 for item in potential.iterdir():
                     if item.is_dir() and 'jarvis' in item.name.lower():
                         self._base_paths.append(item / 'frontend' / 'public')
@@ -2082,7 +2082,7 @@ class SupervisorRecoveryController:
         )
         self._project_root = self._resolve_project_root()
         self._supervisor_script = self._project_root / "unified_supervisor.py"
-        self._python_executable = os.getenv("JARVIS_SUPERVISOR_PYTHON", sys.executable)
+        self._python_executable = os.getenv("Ironcliw_SUPERVISOR_PYTHON", sys.executable)
         self._last_attempt_at: float = 0.0
         self._last_attempt_id: Optional[str] = None
         self._last_result: Dict[str, Any] = {}
@@ -2167,7 +2167,7 @@ class SupervisorRecoveryController:
         return command
 
     def _get_recovery_log_path(self) -> Path:
-        jarvis_home = os.getenv("JARVIS_HOME", str(Path.home() / ".jarvis"))
+        jarvis_home = os.getenv("Ironcliw_HOME", str(Path.home() / ".jarvis"))
         log_dir = Path(jarvis_home) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         return log_dir / "supervisor_recovery.log"
@@ -2254,9 +2254,9 @@ class SupervisorRecoveryController:
                 command = self._build_command(action)
                 recovery_log_path = self._get_recovery_log_path()
                 env = os.environ.copy()
-                env["JARVIS_RECOVERY_TRIGGER"] = "loading_server"
-                env["JARVIS_RECOVERY_ATTEMPT_ID"] = self._last_attempt_id
-                env["JARVIS_RECOVERY_REASON"] = reason
+                env["Ironcliw_RECOVERY_TRIGGER"] = "loading_server"
+                env["Ironcliw_RECOVERY_ATTEMPT_ID"] = self._last_attempt_id
+                env["Ironcliw_RECOVERY_REASON"] = reason
 
                 with open(recovery_log_path, "a", encoding="utf-8") as log_file:
                     log_file.write(
@@ -2651,9 +2651,9 @@ class LearningGoalsState:
 
 
 @dataclass
-class JARVISPrimeState:
+class IroncliwPrimeState:
     """
-    v5.0: JARVIS-Prime tier-0 brain state tracking.
+    v5.0: Ironcliw-Prime tier-0 brain state tracking.
 
     Tracks the status of the intelligent core:
     - Current tier (local, cloud_run, gemini_api)
@@ -3083,13 +3083,13 @@ class CrossRepoState:
     """
     v6.3: Cross-Repository Intelligence Coordination state tracking.
 
-    Tracks integration status across JARVIS, JARVIS Prime, and Reactor Core.
+    Tracks integration status across Ironcliw, Ironcliw Prime, and Reactor Core.
     Monitors Neural Mesh coordination and cross-repo state synchronization.
     """
     active: bool = False
     status: str = "idle"  # idle, initializing, connecting, synchronized, degraded, error
 
-    # JARVIS Prime (Tier-0 Local Brain)
+    # Ironcliw Prime (Tier-0 Local Brain)
     jarvis_prime_connected: bool = False
     jarvis_prime_port: int = 8002
     jarvis_prime_health: str = "unknown"  # unknown, healthy, degraded, offline
@@ -3166,7 +3166,7 @@ class ProgressState:
     """
 
     stage: str = "init"
-    message: str = "Initializing JARVIS..."
+    message: str = "Initializing Ironcliw..."
     progress: float = 0.0
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -3206,7 +3206,7 @@ class ProgressState:
     # v5.0: Data Flywheel and Learning
     flywheel: FlywheelState = field(default_factory=FlywheelState)
     learning_goals: LearningGoalsState = field(default_factory=LearningGoalsState)
-    jarvis_prime: JARVISPrimeState = field(default_factory=JARVISPrimeState)
+    jarvis_prime: IroncliwPrimeState = field(default_factory=IroncliwPrimeState)
     reactor_core: ReactorCoreState = field(default_factory=ReactorCoreState)
     training: TrainingOrchestratorState = field(default_factory=TrainingOrchestratorState)
 
@@ -3223,14 +3223,14 @@ class ProgressState:
     # Accounts for GCP/Trinity which can take 15-40 min
     startup_timeout_ms: int = field(default_factory=lambda: (lambda: (
         # GCP/Trinity enabled → floor at 2400s (40 min) to match supervisor behavior
-        max(int(float(os.getenv('JARVIS_STARTUP_TIMEOUT', '180')) * 1000 *
-            float(os.getenv('JARVIS_ADAPTIVE_TIMEOUT_MAX', '3.0'))),
+        max(int(float(os.getenv('Ironcliw_STARTUP_TIMEOUT', '180')) * 1000 *
+            float(os.getenv('Ironcliw_ADAPTIVE_TIMEOUT_MAX', '3.0'))),
             2400000)
-        if os.getenv('JARVIS_GCP_ENABLED', '').lower() in ('1', 'true', 'yes') or
-           os.getenv('JARVIS_TRINITY_ENABLED', '').lower() in ('1', 'true', 'yes')
+        if os.getenv('Ironcliw_GCP_ENABLED', '').lower() in ('1', 'true', 'yes') or
+           os.getenv('Ironcliw_TRINITY_ENABLED', '').lower() in ('1', 'true', 'yes')
         # No GCP/Trinity → base * adaptive_max, minimum 600s to match old behavior
-        else max(int(float(os.getenv('JARVIS_STARTUP_TIMEOUT', '180')) * 1000 *
-                     float(os.getenv('JARVIS_ADAPTIVE_TIMEOUT_MAX', '3.0'))),
+        else max(int(float(os.getenv('Ironcliw_STARTUP_TIMEOUT', '180')) * 1000 *
+                     float(os.getenv('Ironcliw_ADAPTIVE_TIMEOUT_MAX', '3.0'))),
                  600000)
     ))())
     # Tracks last time progress actually changed (for stall detection)
@@ -3381,7 +3381,7 @@ class ProgressState:
                 if lg.get('recent_discoveries'):
                     self.learning_goals.recent_discoveries = lg['recent_discoveries']
 
-            # v5.0: JARVIS-Prime state processing
+            # v5.0: Ironcliw-Prime state processing
             if 'jarvis_prime' in metadata:
                 jp = metadata['jarvis_prime']
                 self.jarvis_prime.active = jp.get('active', False)
@@ -3894,7 +3894,7 @@ class GracefulShutdownManager:
                 pass
 
     async def notify_startup_complete(self):
-        """Called when JARVIS startup reaches 100% progress."""
+        """Called when Ironcliw startup reaches 100% progress."""
         async with self._lock:
             if not self._startup_complete:
                 self._startup_complete = True
@@ -4457,7 +4457,7 @@ async def detailed_status(request: web.Request) -> web.Response:
         "components_ready": progress_state.components_ready,
         "total_components": progress_state.total_components,
         "metrics": metrics.to_dict(),
-        # v5.0: Include flywheel and JARVIS-Prime status
+        # v5.0: Include flywheel and Ironcliw-Prime status
         "flywheel": progress_state.flywheel.to_dict(),
         "learning_goals": progress_state.learning_goals.to_dict(),
         "jarvis_prime": progress_state.jarvis_prime.to_dict(),
@@ -4833,7 +4833,7 @@ async def update_zero_touch_status(request: web.Request) -> web.Response:
     """
     v4.0: Update Zero-Touch state from supervisor.
     
-    Called by the JARVISSupervisor to broadcast Zero-Touch update progress.
+    Called by the IroncliwSupervisor to broadcast Zero-Touch update progress.
     """
     try:
         data = await request.json()
@@ -4897,7 +4897,7 @@ async def update_dms_status(request: web.Request) -> web.Response:
     """
     v4.0: Update Dead Man's Switch status from supervisor.
     
-    Called by the JARVISSupervisor to broadcast DMS heartbeats and state changes.
+    Called by the IroncliwSupervisor to broadcast DMS heartbeats and state changes.
     """
     try:
         data = await request.json()
@@ -4984,7 +4984,7 @@ async def update_two_tier_status(request: web.Request) -> web.Response:
     """
     v5.0: Update Two-Tier Security status from supervisor.
 
-    Called by the JARVISSupervisor to broadcast Two-Tier Security component
+    Called by the IroncliwSupervisor to broadcast Two-Tier Security component
     initialization progress and status changes.
 
     Event types:
@@ -5255,7 +5255,7 @@ async def update_learning_goals_status(request: web.Request) -> web.Response:
 
 
 async def get_jarvis_prime_status(request: web.Request) -> web.Response:
-    """v5.0: Get JARVIS-Prime tier-0 brain status."""
+    """v5.0: Get Ironcliw-Prime tier-0 brain status."""
     return web.json_response({
         "jarvis_prime": progress_state.jarvis_prime.to_dict(),
     })
@@ -5263,10 +5263,10 @@ async def get_jarvis_prime_status(request: web.Request) -> web.Response:
 
 async def update_jarvis_prime_status(request: web.Request) -> web.Response:
     """
-    v5.0: Update JARVIS-Prime status from supervisor.
+    v5.0: Update Ironcliw-Prime status from supervisor.
 
     Event types:
-    - jarvis_prime_init: Initializing JARVIS-Prime
+    - jarvis_prime_init: Initializing Ironcliw-Prime
     - jarvis_prime_local: Using local model
     - jarvis_prime_cloud: Using Cloud Run
     - jarvis_prime_gemini: Using Gemini API fallback
@@ -5280,7 +5280,7 @@ async def update_jarvis_prime_status(request: web.Request) -> web.Response:
         progress_state.jarvis_prime.active = True
 
         if event_type == 'jarvis_prime_init':
-            progress_state.jarvis_prime.message = 'Initializing JARVIS-Prime'
+            progress_state.jarvis_prime.message = 'Initializing Ironcliw-Prime'
             progress_state.jarvis_prime.current_tier = 'initializing'
 
         elif event_type == 'jarvis_prime_local':
@@ -5328,7 +5328,7 @@ async def update_jarvis_prime_status(request: web.Request) -> web.Response:
             "jarvis_prime": progress_state.jarvis_prime.to_dict(),
         })
 
-        logger.info(f"[JARVIS-Prime] {sanitize_for_log(event_type, 32)}: {sanitize_for_log(progress_state.jarvis_prime.message, 100)}")
+        logger.info(f"[Ironcliw-Prime] {sanitize_for_log(event_type, 32)}: {sanitize_for_log(progress_state.jarvis_prime.message, 100)}")
 
         return web.json_response({
             "status": "ok",
@@ -5340,7 +5340,7 @@ async def update_jarvis_prime_status(request: web.Request) -> web.Response:
         raise
     except Exception as e:
         metrics.record_error(str(e))
-        logger.error(f"[JARVIS-Prime] Update error: {e}")
+        logger.error(f"[Ironcliw-Prime] Update error: {e}")
         return web.json_response({"status": "error", "message": str(e)}, status=500)
 
 
@@ -6524,7 +6524,7 @@ async def get_cross_repo_status(request: web.Request) -> web.Response:
     v6.3: Get Cross-Repository Intelligence Coordination status.
 
     Returns cross-repo coordination state including:
-    - JARVIS Prime (Tier-0 Local Brain) connection and health
+    - Ironcliw Prime (Tier-0 Local Brain) connection and health
     - Reactor Core training pipeline status
     - Neural Mesh multi-agent coordination
     - State synchronization status
@@ -6547,8 +6547,8 @@ async def update_cross_repo_status(request: web.Request) -> web.Response:
 
     Event types:
     - cross_repo_init: Cross-repo coordination initializing
-    - cross_repo_prime_connected: JARVIS Prime connected
-    - cross_repo_prime_health: JARVIS Prime health update
+    - cross_repo_prime_connected: Ironcliw Prime connected
+    - cross_repo_prime_health: Ironcliw Prime health update
     - cross_repo_reactor_connected: Reactor Core connected
     - cross_repo_training_active: Training pipeline active
     - cross_repo_neural_mesh_active: Neural Mesh coordination active
@@ -6692,7 +6692,7 @@ async def get_predictive_eta(request: web.Request) -> web.Response:
 
 async def get_unified_health(request: web.Request) -> web.Response:
     """
-    v87.0: Get unified health status across JARVIS, JARVIS-Prime, and Reactor-Core.
+    v87.0: Get unified health status across Ironcliw, Ironcliw-Prime, and Reactor-Core.
 
     Returns comprehensive health aggregation including:
     - Overall health score (0-100)
@@ -6964,7 +6964,7 @@ async def supervisor_event_handler(request: web.Request) -> web.Response:
     - System online/offline
     - Prime directive violations
     
-    This is the main integration point between JARVISSupervisor and the loading server.
+    This is the main integration point between IroncliwSupervisor and the loading server.
     """
     try:
         data = await request.json()
@@ -7028,7 +7028,7 @@ async def supervisor_event_handler(request: web.Request) -> web.Response:
         elif event_type == 'system_updating':
             # Enter maintenance mode for update
             progress_state.phase = 'maintenance'
-            progress_state.message = data.get('message', 'Updating JARVIS...')
+            progress_state.message = data.get('message', 'Updating Ironcliw...')
             
         elif event_type == 'system_online':
             # System back online
@@ -7101,7 +7101,7 @@ async def system_health_watchdog():
                     logger.info("[Watchdog] System ready but start_system.py silent - triggering completion")
                     progress_state.update(
                         "complete",
-                        "JARVIS is online (watchdog recovery)",
+                        "Ironcliw is online (watchdog recovery)",
                         100,
                         {
                             "success": True,
@@ -7268,7 +7268,7 @@ def create_app() -> web.Application:
     app.router.add_get('/api/learning-goals/status', get_learning_goals_status)
     app.router.add_post('/api/learning-goals/update', update_learning_goals_status)
 
-    # v5.0: JARVIS-Prime endpoints
+    # v5.0: Ironcliw-Prime endpoints
     app.router.add_get('/api/jarvis-prime/status', get_jarvis_prime_status)
     app.router.add_post('/api/jarvis-prime/update', update_jarvis_prime_status)
 
@@ -7427,7 +7427,7 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     resolved_manager = path_resolver.resolve("loading-manager.js")
 
     logger.info(f"{'='*70}")
-    logger.info(f" JARVIS Loading Server v87.0 - Trinity Ultra Edition")
+    logger.info(f" Ironcliw Loading Server v87.0 - Trinity Ultra Edition")
     logger.info(f"{'='*70}")
     logger.info(f" Server:      http://{host}:{port}")
     logger.info(f" WebSocket:   ws://{host}:{port}/ws/startup-progress")
@@ -7445,7 +7445,7 @@ async def start_server(host: str = '0.0.0.0', port: Optional[int] = None):
     logger.info(f"   ✅ Intelligent Messages        - Context-aware generation")
     logger.info(f"   ✅ Self-Healing Restart        - Auto-recovery on crash")
     logger.info(f"   ✅ Predictive ETA Calculator   - ML-based time prediction")
-    logger.info(f"   ✅ Cross-Repo Health Monitor   - Unified JARVIS/J-Prime/Reactor")
+    logger.info(f"   ✅ Cross-Repo Health Monitor   - Unified Ironcliw/J-Prime/Reactor")
     logger.info(f"   ✅ Supervisor Heartbeat Watch  - Crash detection (monotonic)")
     logger.info(f"   ✅ Startup Analytics Engine    - Performance trend analysis")
     logger.info(f"   ✅ FD Leak Detection Monitor   - File descriptor leak detection")
@@ -7578,8 +7578,8 @@ class StartupProgressReporter:
         
         await start_loading_server_background()
         reporter = StartupProgressReporter()
-        await reporter.report("init", "Initializing JARVIS...", 5)
-        await reporter.complete("JARVIS is online!")
+        await reporter.report("init", "Initializing Ironcliw...", 5)
+        await reporter.complete("Ironcliw is online!")
     """
     
     def __init__(self, host: str = None, port: int = None):
@@ -7693,7 +7693,7 @@ class StartupProgressReporter:
     
     async def complete(
         self,
-        message: str = "JARVIS is online!",
+        message: str = "Ironcliw is online!",
         redirect_url: str = None,
         success: bool = True
     ) -> bool:
@@ -8039,7 +8039,7 @@ class StartupProgressReporter:
         **kwargs
     ) -> bool:
         """
-        v5.0: Report JARVIS-Prime event.
+        v5.0: Report Ironcliw-Prime event.
 
         Args:
             event_type: One of: jarvis_prime_init, jarvis_prime_local,
@@ -8071,7 +8071,7 @@ class StartupProgressReporter:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.debug(f"JARVIS-Prime event failed: {e}")
+            logger.debug(f"Ironcliw-Prime event failed: {e}")
         return False
 
     async def reactor_core_event(
@@ -8148,7 +8148,7 @@ async def report_progress(stage: str, message: str, progress: float, metadata: D
     return await get_progress_reporter().report(stage, message, progress, metadata)
 
 
-async def report_complete(message: str = "JARVIS is online!", redirect_url: str = None) -> bool:
+async def report_complete(message: str = "Ironcliw is online!", redirect_url: str = None) -> bool:
     """Convenience function for completion"""
     return await get_progress_reporter().complete(message, redirect_url)
 
@@ -8303,7 +8303,7 @@ async def start_loading_server_background() -> bool:
         script_path = Path(__file__).resolve()
 
         # Create a log file for capturing output
-        jarvis_home = os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis"))
+        jarvis_home = os.environ.get("Ironcliw_HOME", str(Path.home() / ".jarvis"))
         log_dir = Path(jarvis_home) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         _loading_server_log_file = str(log_dir / "loading_server.log")

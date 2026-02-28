@@ -1,10 +1,10 @@
-# ✅ JARVIS Structured Logging System v10.6 - COMPLETE
+﻿# ✅ Ironcliw Structured Logging System v10.6 - COMPLETE
 
 ## What's New in v10.6
 
-JARVIS now has a **production-grade structured logging system** with:
+Ironcliw now has a **production-grade structured logging system** with:
 - 📊 **JSON formatted logs** for easy parsing and analysis
-- ⚡ **Async file writing** (non-blocking, never slows down JARVIS)
+- ⚡ **Async file writing** (non-blocking, never slows down Ironcliw)
 - 🔄 **Automatic log rotation** (prevents huge files, keeps last 10 rotations)
 - 🎯 **Context enrichment** (session IDs, request IDs, stack traces, custom fields)
 - 🧠 **Intelligent error aggregation** (detects patterns, prevents log spam)
@@ -128,28 +128,28 @@ All configuration is optional - defaults work great!
 
 ```bash
 # Log directory (default: ~/.jarvis/logs)
-export JARVIS_LOG_DIR="/path/to/logs"
+export Ironcliw_LOG_DIR="/path/to/logs"
 
 # Log file size before rotation (default: 10MB)
-export JARVIS_LOG_MAX_BYTES=10485760
+export Ironcliw_LOG_MAX_BYTES=10485760
 
 # Number of rotated files to keep (default: 10)
-export JARVIS_LOG_BACKUP_COUNT=10
+export Ironcliw_LOG_BACKUP_COUNT=10
 
 # Log level (default: INFO)
-export JARVIS_LOG_LEVEL=DEBUG
+export Ironcliw_LOG_LEVEL=DEBUG
 
 # Console log level (default: INFO)
-export JARVIS_LOG_CONSOLE_LEVEL=WARNING
+export Ironcliw_LOG_CONSOLE_LEVEL=WARNING
 
 # File log level (default: DEBUG)
-export JARVIS_LOG_FILE_LEVEL=DEBUG
+export Ironcliw_LOG_FILE_LEVEL=DEBUG
 
 # Enable error aggregation (default: true)
-export JARVIS_LOG_ERROR_AGGREGATION=true
+export Ironcliw_LOG_ERROR_AGGREGATION=true
 
 # Enable performance tracking (default: true)
-export JARVIS_LOG_PERFORMANCE_TRACKING=true
+export Ironcliw_LOG_PERFORMANCE_TRACKING=true
 ```
 
 ---
@@ -275,7 +275,7 @@ for i in range(15):
 
 ## CLI Log Analyzer
 
-JARVIS includes a powerful CLI tool for analyzing logs:
+Ironcliw includes a powerful CLI tool for analyzing logs:
 
 ```bash
 tools/analyze_logs.py
@@ -426,7 +426,7 @@ python tools/analyze_logs.py report --last 24h --output /tmp/jarvis_report.txt
 **Example Output:**
 ```
 ================================================================================
-JARVIS LOG ANALYSIS REPORT
+Ironcliw LOG ANALYSIS REPORT
 ================================================================================
 Time Range: 2025-12-26 18:00:00 to 2025-12-27 18:00:00
 Total Entries: 45,678
@@ -592,7 +592,7 @@ Total disk usage: ~100MB per module (10 files × 10MB)
 
 ---
 
-## Integration with JARVIS Supervisor
+## Integration with Ironcliw Supervisor
 
 The structured logging system is **automatically activated** when you run:
 
@@ -704,7 +704,7 @@ for module, count in modules.most_common():
 ## Troubleshooting
 
 ### Q: Where are the logs?
-**A:** `~/.jarvis/logs/` by default. Check `JARVIS_LOG_DIR` environment variable if different.
+**A:** `~/.jarvis/logs/` by default. Check `Ironcliw_LOG_DIR` environment variable if different.
 
 ### Q: Why don't I see logs?
 **A:**
@@ -715,8 +715,8 @@ for module, count in modules.most_common():
 ### Q: Logs are too verbose
 **A:** Increase log level:
 ```bash
-export JARVIS_LOG_CONSOLE_LEVEL=WARNING  # Only warnings/errors to console
-export JARVIS_LOG_FILE_LEVEL=INFO        # Only info+ to files
+export Ironcliw_LOG_CONSOLE_LEVEL=WARNING  # Only warnings/errors to console
+export Ironcliw_LOG_FILE_LEVEL=INFO        # Only info+ to files
 ```
 
 ### Q: Want JSON on console too?
@@ -727,8 +727,8 @@ export JARVIS_LOG_FILE_LEVEL=INFO        # Only info+ to files
 ### Q: How to reduce disk usage?
 **A:** Configure rotation:
 ```bash
-export JARVIS_LOG_MAX_BYTES=5242880  # 5MB per file
-export JARVIS_LOG_BACKUP_COUNT=5     # Keep only 5 rotations
+export Ironcliw_LOG_MAX_BYTES=5242880  # 5MB per file
+export Ironcliw_LOG_BACKUP_COUNT=5     # Keep only 5 rotations
 ```
 
 ### Q: Performance impact?
@@ -823,10 +823,10 @@ tools/analyze_logs.py report --last 24h     # Summary report
 
 **Configuration:**
 All via environment variables:
-- `JARVIS_LOG_DIR` - Log directory
-- `JARVIS_LOG_LEVEL` - Log level
-- `JARVIS_LOG_MAX_BYTES` - File size before rotation
-- `JARVIS_LOG_BACKUP_COUNT` - Number of rotations to keep
+- `Ironcliw_LOG_DIR` - Log directory
+- `Ironcliw_LOG_LEVEL` - Log level
+- `Ironcliw_LOG_MAX_BYTES` - File size before rotation
+- `Ironcliw_LOG_BACKUP_COUNT` - Number of rotations to keep
 
 ---
 

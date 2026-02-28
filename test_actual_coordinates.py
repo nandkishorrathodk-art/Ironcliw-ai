@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test what coordinates are actually being used by the control_center_clicker
 """
@@ -51,13 +51,13 @@ def test_control_center_clicker_simple():
         print(f"   Got: ({clicker.CONTROL_CENTER_X}, {clicker.CONTROL_CENTER_Y})")
 
 def test_what_jarvis_uses():
-    """Test what JARVIS actually imports"""
+    """Test what Ironcliw actually imports"""
     print("\n" + "="*80)
     print("Testing what advanced_display_monitor imports")
     print("="*80 + "\n")
 
     # Check what's in the advanced_display_monitor
-    with open("/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/display/advanced_display_monitor.py", "r") as f:
+    with open("/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/display/advanced_display_monitor.py", "r") as f:
         content = f.read()
 
     # Find the import line

@@ -1,5 +1,5 @@
-"""
-JARVIS Vision Intelligence System
+﻿"""
+Ironcliw Vision Intelligence System
 Multi-language vision understanding without hardcoding
 """
 
@@ -44,13 +44,13 @@ except ImportError:
     RUST_AVAILABLE = False
 
 try:
-    print("\u2728 JARVIS Vision Intelligence System initialized")
+    print("\u2728 Ironcliw Vision Intelligence System initialized")
     if RUST_AVAILABLE:
         print("  \u2705 Rust acceleration available")
     else:
         print("  \u26a0\ufe0f  Rust acceleration not available - run build.sh to enable")
 except UnicodeEncodeError:
-    print("JARVIS Vision Intelligence System initialized")
+    print("Ironcliw Vision Intelligence System initialized")
     if RUST_AVAILABLE:
         print("  Rust acceleration available")
     else:

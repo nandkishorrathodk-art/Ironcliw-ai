@@ -1,4 +1,4 @@
-# JARVIS Comprehensive Memory Management System
+﻿# Ironcliw Comprehensive Memory Management System
 ## Complete Guide: Lazy Loading + Memory Quantizer Integration
 
 **Version:** 2.0 (Unified)  
@@ -27,7 +27,7 @@
 ## Executive Summary
 
 ### The Problem
-JARVIS backend was experiencing **catastrophic memory exhaustion** on 16GB systems:
+Ironcliw backend was experiencing **catastrophic memory exhaustion** on 16GB systems:
 - Exit code 137 (OOM kill by operating system)
 - 10-12 GB RAM consumed at startup
 - Crashed before users could interact with the system
@@ -85,19 +85,19 @@ Background Apps:     -2.00 GB (Spotlight, Time Machine, etc.)
 ───────────────────────────────
 Available for Apps:   9.70 GB
 
-JARVIS Attempts:     10.50 GB
+Ironcliw Attempts:     10.50 GB
 ───────────────────────────────
 Deficit:            -0.80 GB ❌ OOM KILL
 ```
 
 **The Kill Chain:**
-1. JARVIS starts loading components
+1. Ironcliw starts loading components
 2. Reaches ~9.7 GB (system limit)
 3. Tries to allocate more memory
 4. Kernel cannot fulfill request
 5. `vm_page_alloc` fails
 6. Kernel invokes OOM killer
-7. JARVIS killed with exit code 137
+7. Ironcliw killed with exit code 137
 8. User sees: `[Killed: 9]`
 
 ### Historical Context
@@ -125,7 +125,7 @@ Deficit:            -0.80 GB ❌ OOM KILL
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                   JARVIS Memory Defense Stack                   │
+│                   Ironcliw Memory Defense Stack                   │
 ├────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  LAYER 1: LAZY LOADING (Passive Defense)                       │
@@ -226,7 +226,7 @@ States:
 
 ```python
 # Check if lazy loading is enabled (default: True for memory efficiency)
-lazy_load_intelligence = os.getenv("JARVIS_LAZY_INTELLIGENCE", "true").lower() == "true"
+lazy_load_intelligence = os.getenv("Ironcliw_LAZY_INTELLIGENCE", "true").lower() == "true"
 
 if lazy_load_intelligence:
     logger.info("🧠 UAE/SAI/Learning DB: LAZY LOADING enabled (loads on first use)")
@@ -571,10 +571,10 @@ Example scenarios:
 
 ```bash
 # Enable lazy loading (default: true)
-export JARVIS_LAZY_INTELLIGENCE=true
+export Ironcliw_LAZY_INTELLIGENCE=true
 
 # Disable lazy loading (32GB+ systems only)
-export JARVIS_LAZY_INTELLIGENCE=false
+export Ironcliw_LAZY_INTELLIGENCE=false
 ```
 
 ### Startup Commands
@@ -582,8 +582,8 @@ export JARVIS_LAZY_INTELLIGENCE=false
 **Development (Lazy Loading - Recommended):**
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend
-export JARVIS_LAZY_INTELLIGENCE=true
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend
+export Ironcliw_LAZY_INTELLIGENCE=true
 python -m uvicorn main:app --host 0.0.0.0 --port 8010 --reload
 ```
 
@@ -596,8 +596,8 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8010 --reload
 **Production (32GB+ Systems - Instant Response):**
 
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend
-export JARVIS_LAZY_INTELLIGENCE=false
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend
+export Ironcliw_LAZY_INTELLIGENCE=false
 python -m uvicorn main:app --host 0.0.0.0 --port 8010 --workers 4
 ```
 
@@ -674,20 +674,20 @@ if predicted_usage > 95:
 ### Category 1: Basic Functionality Tests (7 cases)
 
 #### Test 1.1: Lazy Loading Disabled - Immediate Load
-**Scenario:** `JARVIS_LAZY_INTELLIGENCE=false`
+**Scenario:** `Ironcliw_LAZY_INTELLIGENCE=false`
 **Expected:**
 - UAE/SAI/Learning DB load at startup
 - Startup memory: ~10.26 GB
 - First query: <100ms response
 **Validation:**
 ```bash
-export JARVIS_LAZY_INTELLIGENCE=false
+export Ironcliw_LAZY_INTELLIGENCE=false
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
 ps aux | grep uvicorn | awk '{print $6/1024 " MB"}'  # Should show ~10,500 MB
 ```
 
 #### Test 1.2: Lazy Loading Enabled - Deferred Load
-**Scenario:** `JARVIS_LAZY_INTELLIGENCE=true` (default)
+**Scenario:** `Ironcliw_LAZY_INTELLIGENCE=true` (default)
 **Expected:**
 - Startup memory: ~260 MB
 - First intelligence query triggers loading
@@ -695,7 +695,7 @@ ps aux | grep uvicorn | awk '{print $6/1024 " MB"}'  # Should show ~10,500 MB
 - Subsequent queries: <100ms
 **Validation:**
 ```bash
-export JARVIS_LAZY_INTELLIGENCE=true
+export Ironcliw_LAZY_INTELLIGENCE=true
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
 ps aux | grep uvicorn  # Should show ~260 MB
 curl -X POST http://localhost:8010/api/query \
@@ -1108,7 +1108,7 @@ metrics = MemoryMetrics(
 **Expected:**
 - Always passes all checks (unless system severely compromised)
 - Can disable lazy loading for instant responses
-- Multiple JARVIS instances could run
+- Multiple Ironcliw instances could run
 **Validation:**
 ```python
 metrics = MemoryMetrics(
@@ -1191,7 +1191,7 @@ for i in range(10):
 **Real-World:**
 - Happened during testing with background Chrome tabs
 - System survived due to memory compression
-- JARVIS slow for 30 seconds, then recovered
+- Ironcliw slow for 30 seconds, then recovered
 **Mitigation:**
 - Lower threshold to 85% (safer but more conservative)
 - Monitor during load (Phase 2)
@@ -1635,7 +1635,7 @@ assert growth < 500, f"Memory leak detected: {growth:.2f} MB growth"
 ```
 
 #### Test 7.4: Rapid Enable/Disable Lazy Loading
-**Scenario:** Toggle JARVIS_LAZY_INTELLIGENCE multiple times with restarts
+**Scenario:** Toggle Ironcliw_LAZY_INTELLIGENCE multiple times with restarts
 **Expected:**
 - Each restart honors current setting
 - No state corruption
@@ -1643,8 +1643,8 @@ assert growth < 500, f"Memory leak detected: {growth:.2f} MB growth"
 **Validation:**
 ```bash
 for i in {1..10}; do
-  export JARVIS_LAZY_INTELLIGENCE=$( [ $((i % 2)) -eq 0 ] && echo "true" || echo "false" )
-  echo "Test $i: LAZY=$JARVIS_LAZY_INTELLIGENCE"
+  export Ironcliw_LAZY_INTELLIGENCE=$( [ $((i % 2)) -eq 0 ] && echo "true" || echo "false" )
+  echo "Test $i: LAZY=$Ironcliw_LAZY_INTELLIGENCE"
   
   python -m uvicorn main:app --host 0.0.0.0 --port 8010 &
   PID=$!
@@ -1826,8 +1826,8 @@ if age > 3.0:
 **Automation:** Refresh if >2 seconds old
 
 #### Edge A.7: Multiple Processes Allocating Simultaneously
-**Scenario:** Chrome/Docker allocate 3GB during JARVIS load
-**Current Behavior:** JARVIS check passes, then OOM due to concurrent allocation
+**Scenario:** Chrome/Docker allocate 3GB during Ironcliw load
+**Current Behavior:** Ironcliw check passes, then OOM due to concurrent allocation
 **Risk Level:** High
 **Root Cause:** No coordination between processes
 **Detection:** Cannot detect other processes' allocation plans
@@ -2184,7 +2184,7 @@ db.execute("PRAGMA journal_mode=WAL")
 
 ### Category E: Configuration Edge Cases (5 cases)
 
-#### Edge E.1: JARVIS_LAZY_INTELLIGENCE Undefined
+#### Edge E.1: Ironcliw_LAZY_INTELLIGENCE Undefined
 **Scenario:** Environment variable not set
 **Current Behavior:** Defaults to "true" (lazy loading)
 **Risk Level:** None (working as designed)
@@ -2196,13 +2196,13 @@ db.execute("PRAGMA journal_mode=WAL")
 **Automation:** N/A
 
 #### Edge E.2: Invalid Environment Variable Value
-**Scenario:** `JARVIS_LAZY_INTELLIGENCE=maybe`
+**Scenario:** `Ironcliw_LAZY_INTELLIGENCE=maybe`
 **Current Behavior:** Not "true", treated as "false"
 **Risk Level:** Low
 **Root Cause:** Simple string comparison
 **Detection:**
 ```python
-value = os.getenv("JARVIS_LAZY_INTELLIGENCE", "true")
+value = os.getenv("Ironcliw_LAZY_INTELLIGENCE", "true")
 if value not in ["true", "false"]:
     logger.warning(f"Invalid value '{value}', defaulting to 'true'")
 ```
@@ -2347,8 +2347,8 @@ if "accessibility" in result.stderr.lower():
 **Monitoring:** Log permission errors
 **Automation:** Display instructions
 
-#### Edge G.3: Multiple JARVIS Instances
-**Scenario:** Two JARVIS backends running on same machine
+#### Edge G.3: Multiple Ironcliw Instances
+**Scenario:** Two Ironcliw backends running on same machine
 **Current Behavior:** Database conflicts, port conflicts
 **Risk Level:** Medium
 **Root Cause:** No instance locking
@@ -2402,7 +2402,7 @@ tail -n 100 /path/to/backend/logs/jarvis.log | grep -i "killed\|137\|oom"
 2. **Restart with Lazy Loading:**
 ```bash
 # Force enable lazy loading
-export JARVIS_LAZY_INTELLIGENCE=true
+export Ironcliw_LAZY_INTELLIGENCE=true
 
 # Restart backend
 cd /path/to/backend
@@ -2426,7 +2426,7 @@ curl http://localhost:8010/health
 sysctl hw.memsize
 
 # Check if lazy loading was disabled
-grep "JARVIS_LAZY_INTELLIGENCE" /path/to/.env
+grep "Ironcliw_LAZY_INTELLIGENCE" /path/to/.env
 
 # Check startup logs
 grep "LAZY LOADING" /path/to/backend/logs/jarvis.log
@@ -2455,11 +2455,11 @@ grep "Memory check before loading" /path/to/backend/logs/jarvis.log | tail -5
 1. **Enable Lazy Loading Permanently:**
 ```bash
 # Add to environment file
-echo "JARVIS_LAZY_INTELLIGENCE=true" >> /path/to/.env
+echo "Ironcliw_LAZY_INTELLIGENCE=true" >> /path/to/.env
 
 # Or add to systemd service (if using)
 [Service]
-Environment="JARVIS_LAZY_INTELLIGENCE=true"
+Environment="Ironcliw_LAZY_INTELLIGENCE=true"
 ```
 
 2. **Set Up Monitoring:**
@@ -2562,7 +2562,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8010
 **Option C: Disable Lazy Loading (32GB+ systems only):**
 ```bash
 # Only if you have 32GB+ RAM
-export JARVIS_LAZY_INTELLIGENCE=false
+export Ironcliw_LAZY_INTELLIGENCE=false
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
 ```
 
@@ -2643,7 +2643,7 @@ grep "ERROR.*LAZY-UAE" /path/to/backend/logs/jarvis.log | tail -20
 # Free up memory (see Playbook 2)
 
 # Consider adding more RAM
-# Or reduce JARVIS component load
+# Or reduce Ironcliw component load
 ```
 
 **If Database Lock Contention:**
@@ -2695,7 +2695,7 @@ git reset --hard <commit-hash-before-lazy-loading>
 3. **Remove Lazy Loading Environment Variable:**
 ```bash
 # Remove from .env
-sed -i '' '/JARVIS_LAZY_INTELLIGENCE/d' /path/to/.env
+sed -i '' '/Ironcliw_LAZY_INTELLIGENCE/d' /path/to/.env
 
 # Or manually edit
 nano /path/to/.env
@@ -2904,8 +2904,8 @@ async def background_preload_intelligence(app_state):
 
 **Environment Variable:**
 ```bash
-export JARVIS_PRELOAD_INTELLIGENCE=true  # Default: false
-export JARVIS_PRELOAD_IDLE_SECONDS=30     # Wait time before preload
+export Ironcliw_PRELOAD_INTELLIGENCE=true  # Default: false
+export Ironcliw_PRELOAD_IDLE_SECONDS=30     # Wait time before preload
 ```
 
 #### Feature 2.2: Progressive Loading (4 Levels)
@@ -3272,13 +3272,13 @@ Grand Total:       11,260 MB (10.99 GB) ⚠️
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `JARVIS_LAZY_INTELLIGENCE` | bool | `true` | Enable lazy loading of intelligence components |
-| `JARVIS_LAZY_TIMEOUT` | float | `5.0` | Timeout for waiting on initialization (seconds) |
-| `JARVIS_PRELOAD_INTELLIGENCE` | bool | `false` | Enable background preloading (Phase 2) |
-| `JARVIS_PRELOAD_IDLE_SECONDS` | int | `30` | Idle time before preload starts |
-| `JARVIS_MEMORY_THRESHOLD` | int | `90` | OOM prediction threshold (%) |
-| `JARVIS_REQUIRED_MEMORY_GB` | float | `10.0` | Estimated intelligence memory requirement |
-| `JARVIS_ENABLE_MEMORY_PROFILING` | bool | `false` | Enable detailed memory profiling |
+| `Ironcliw_LAZY_INTELLIGENCE` | bool | `true` | Enable lazy loading of intelligence components |
+| `Ironcliw_LAZY_TIMEOUT` | float | `5.0` | Timeout for waiting on initialization (seconds) |
+| `Ironcliw_PRELOAD_INTELLIGENCE` | bool | `false` | Enable background preloading (Phase 2) |
+| `Ironcliw_PRELOAD_IDLE_SECONDS` | int | `30` | Idle time before preload starts |
+| `Ironcliw_MEMORY_THRESHOLD` | int | `90` | OOM prediction threshold (%) |
+| `Ironcliw_REQUIRED_MEMORY_GB` | float | `10.0` | Estimated intelligence memory requirement |
+| `Ironcliw_ENABLE_MEMORY_PROFILING` | bool | `false` | Enable detailed memory profiling |
 
 ---
 
@@ -3302,7 +3302,7 @@ sysctl hw.memsize
 **Test Lazy Loading:**
 ```bash
 # Enable lazy loading
-export JARVIS_LAZY_INTELLIGENCE=true
+export Ironcliw_LAZY_INTELLIGENCE=true
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
 
 # Check startup memory
@@ -3336,13 +3336,13 @@ pytest tests/test_memory_quantizer_lazy_loading.py -v -s
 
 ## Appendix D: Redis Integration for Memory Optimization
 
-### Executive Summary: Should JARVIS Use Redis?
+### Executive Summary: Should Ironcliw Use Redis?
 
 **TL;DR:** ✅ Yes, Redis would significantly help with memory optimization in specific scenarios.
 
 **Key Benefits:**
 - Offload Learning Database to external process (save 3.2 GB in-process)
-- Share intelligence data across multiple JARVIS instances
+- Share intelligence data across multiple Ironcliw instances
 - Reduce ChromaDB in-memory footprint
 - Enable distributed caching for query results
 
@@ -3359,7 +3359,7 @@ pytest tests/test_memory_quantizer_lazy_loading.py -v -s
 
 ```
 ┌─────────────────────────────────────────┐
-│   JARVIS Backend Process (10.99 GB)    │
+│   Ironcliw Backend Process (10.99 GB)    │
 ├─────────────────────────────────────────┤
 │  • Core Backend: 260 MB                 │
 │  • UAE Engine: 2.5 GB                   │
@@ -3379,7 +3379,7 @@ Total Memory: 10.99 GB (all in one process)
 
 ```
 ┌──────────────────────────────────┐     ┌────────────────────────────────┐
-│  JARVIS Backend (6.79 GB)        │     │  Redis Server (4.2 GB)         │
+│  Ironcliw Backend (6.79 GB)        │     │  Redis Server (4.2 GB)         │
 ├──────────────────────────────────┤     ├────────────────────────────────┤
 │  • Core Backend: 260 MB          │────▶│  • Learning Patterns: 2.0 GB   │
 │  • UAE Engine: 2.5 GB            │     │  • ChromaDB Vectors: 1.5 GB    │
@@ -3390,7 +3390,7 @@ Total Memory: 10.99 GB (all in one process)
 │  • Other: 30 MB                  │     │  (separate process)            │
 └──────────────────────────────────┘     └────────────────────────────────┘
 
-JARVIS Memory: 6.79 GB (38% reduction)
+Ironcliw Memory: 6.79 GB (38% reduction)
 Redis Memory: 4.2 GB (can be on different machine!)
 
 Total System: 10.99 GB (same) BUT more flexible distribution
@@ -3408,7 +3408,7 @@ Total System: 10.99 GB (same) BUT more flexible distribution
 ```
 System Breakdown with Redis:
 ├─ macOS System:        3.5 GB  (OS, kernel, drivers)
-├─ JARVIS Backend:      6.8 GB  (reduced from 10.99 GB)
+├─ Ironcliw Backend:      6.8 GB  (reduced from 10.99 GB)
 ├─ Redis Server:        4.2 GB  (separate process, can configure limits)
 ├─ Background Apps:     1.0 GB  (minimal)
 └─ Available Margin:    0.5 GB  
@@ -3416,15 +3416,15 @@ System Breakdown with Redis:
 Memory Management:
 • Redis configured with maxmemory 4GB
 • Redis eviction policy: allkeys-lru (evict least used data)
-• JARVIS backend 38% smaller
+• Ironcliw backend 38% smaller
 • More predictable memory usage
 ```
 
 **Benefits:**
 - More granular memory control (can limit Redis separately)
 - Redis evicts old data automatically when limit hit
-- JARVIS backend less likely to OOM
-- Can monitor Redis and JARVIS memory independently
+- Ironcliw backend less likely to OOM
+- Can monitor Redis and Ironcliw memory independently
 
 **Configuration:**
 ```bash
@@ -3458,14 +3458,14 @@ redis-server /usr/local/etc/redis.conf
 
 #### Scenario 2: Multi-Instance Deployment
 
-**Problem:** Running 3 JARVIS instances (different users) = 3 × 10.99 GB = 32.97 GB
+**Problem:** Running 3 Ironcliw instances (different users) = 3 × 10.99 GB = 32.97 GB
 
 **Solution with Redis:**
 ```
 Shared Redis Architecture:
 
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  JARVIS User 1  │     │  JARVIS User 2  │     │  JARVIS User 3  │
+│  Ironcliw User 1  │     │  Ironcliw User 2  │     │  Ironcliw User 3  │
 │  Backend: 6.8GB │     │  Backend: 6.8GB │     │  Backend: 6.8GB │
 └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
          │                       │                       │
@@ -3500,12 +3500,12 @@ Additional Benefits:
 ┌──────────────────────────┐         ┌─────────────────────────┐
 │  User's MacBook (16GB)   │         │  Redis Server (Cloud)   │
 ├──────────────────────────┤         ├─────────────────────────┤
-│  JARVIS Backend: 6.8 GB  │◄───────▶│  Learning Data: 8 GB    │
+│  Ironcliw Backend: 6.8 GB  │◄───────▶│  Learning Data: 8 GB    │
 │  Available: 9.2 GB       │  TCP    │  (Unlimited scaling)    │
 └──────────────────────────┘  6379   └─────────────────────────┘
 
 Benefits:
-• JARVIS backend only 6.8 GB on laptop
+• Ironcliw backend only 6.8 GB on laptop
 • Redis on powerful server/cloud (no memory limit)
 • Data persists even if laptop crashes
 • Access from multiple devices
@@ -3584,10 +3584,10 @@ class RedisLearningDatabase:
         return info['used_memory']
 
 # Memory Impact:
-# Before: 3.2 GB in JARVIS process
-# After:  ~30 MB in JARVIS (Redis client overhead)
+# Before: 3.2 GB in Ironcliw process
+# After:  ~30 MB in Ironcliw (Redis client overhead)
 #         3.2 GB in Redis process
-# Savings: 3.17 GB in JARVIS process ✅
+# Savings: 3.17 GB in Ironcliw process ✅
 ```
 
 **Integration in main.py:**
@@ -3639,7 +3639,7 @@ class QueryCache:
     
     Benefits:
     - Repeated queries: <1ms (instead of 100ms)
-    - Memory: Cached in Redis (not JARVIS process)
+    - Memory: Cached in Redis (not Ironcliw process)
     - Automatic expiration: Old results auto-evicted
     """
     
@@ -3700,7 +3700,7 @@ async def process_query(query: str, context: Dict) -> str:
 # Performance Impact:
 # Cache hit rate: 40-60% (typical)
 # Cached query latency: <1ms (instead of 100ms)
-# Memory: 500 MB in Redis (not JARVIS)
+# Memory: 500 MB in Redis (not Ironcliw)
 ```
 
 ---
@@ -3782,7 +3782,7 @@ class RedisVectorStore:
         ]
 
 # Memory Impact:
-# Before: 1.5 GB ChromaDB in JARVIS process
+# Before: 1.5 GB ChromaDB in Ironcliw process
 # After:  ~20 MB client overhead
 #         1.5 GB in Redis process
 # Savings: 1.48 GB ✅
@@ -3796,7 +3796,7 @@ class RedisVectorStore:
 
 | Component | Without Redis | With Redis | Savings |
 |-----------|---------------|------------|---------|
-| **JARVIS Process** |
+| **Ironcliw Process** |
 | Core Backend | 260 MB | 260 MB | 0 |
 | UAE Engine | 2,500 MB | 2,500 MB | 0 |
 | SAI Monitoring | 1,800 MB | 1,800 MB | 0 |
@@ -3806,7 +3806,7 @@ class RedisVectorStore:
 | Pattern Learner | 1,200 MB | 800 MB | **-400 MB** |
 | Proactive Intel | 900 MB | 900 MB | 0 |
 | Other | 1,100 MB | 30 MB | **-1,070 MB** |
-| **JARVIS Subtotal** | **10,960 MB** | **6,840 MB** | **-6,120 MB (-38%)** |
+| **Ironcliw Subtotal** | **10,960 MB** | **6,840 MB** | **-6,120 MB (-38%)** |
 | **Redis Process** |
 | Learning Patterns | 0 | 2,000 MB | +2,000 MB |
 | Vector Embeddings | 0 | 1,500 MB | +1,500 MB |
@@ -3816,14 +3816,14 @@ class RedisVectorStore:
 | **Total System** | **10,960 MB** | **11,040 MB** | **+80 MB** |
 
 **Key Insight:** Total memory usage similar, BUT:
-- JARVIS process 38% smaller (6.8 GB vs 10.96 GB)
+- Ironcliw process 38% smaller (6.8 GB vs 10.96 GB)
 - Redis process separate, configurable, evictable
 - Better memory management granularity
 - Can distribute across machines
 
 ---
 
-### Redis Configuration for JARVIS
+### Redis Configuration for Ironcliw
 
 **Optimal Redis Setup:**
 
@@ -3831,9 +3831,9 @@ class RedisVectorStore:
 # Install Redis
 brew install redis
 
-# JARVIS-optimized Redis configuration
-cat > /usr/local/etc/redis_jarvis.conf << 'REDIS_JARVIS_CONF'
-# === JARVIS Redis Configuration ===
+# Ironcliw-optimized Redis configuration
+cat > /usr/local/etc/redis_jarvis.conf << 'REDIS_Ironcliw_CONF'
+# === Ironcliw Redis Configuration ===
 
 # Maximum memory (adjust based on system)
 maxmemory 4gb
@@ -3879,9 +3879,9 @@ databases 16
 # DB 2: Vector embeddings
 # DB 3: Session data
 
-REDIS_JARVIS_CONF
+REDIS_Ironcliw_CONF
 
-# Start Redis with JARVIS config
+# Start Redis with Ironcliw config
 redis-server /usr/local/etc/redis_jarvis.conf &
 
 # Verify running
@@ -3898,7 +3898,7 @@ redis-cli ping  # Should return PONG
    - Offload memory to separate process
    - Better OOM protection
 
-2. **Multiple JARVIS instances**
+2. **Multiple Ironcliw instances**
    - Share learning data across instances
    - Reduce total memory footprint
 
@@ -3973,7 +3973,7 @@ Create `backend/intelligence/learning_database_redis.py` (see code above)
 # backend/main.py
 
 # Add environment variable
-USE_REDIS = os.getenv("JARVIS_USE_REDIS", "false").lower() == "true"
+USE_REDIS = os.getenv("Ironcliw_USE_REDIS", "false").lower() == "true"
 
 # Update ensure_uae_loaded
 async def ensure_uae_loaded(app_state):
@@ -3996,7 +3996,7 @@ async def ensure_uae_loaded(app_state):
 
 ```bash
 # Enable Redis
-export JARVIS_USE_REDIS=true
+export Ironcliw_USE_REDIS=true
 
 # Start backend
 python -m uvicorn main:app --host 0.0.0.0 --port 8010
@@ -4019,7 +4019,7 @@ curl -X POST http://localhost:8010/api/query \
 # Monitor Redis memory
 watch -n 5 'redis-cli INFO memory | grep used_memory_human'
 
-# Monitor JARVIS memory
+# Monitor Ironcliw memory
 watch -n 5 'ps aux | grep uvicorn | awk "{print \$6/1024 \" MB\"}"'
 
 # Check cache hit rate
@@ -4032,7 +4032,7 @@ redis-cli GET cache:stats:total_cached
 
 #### Benchmark Setup
 - System: MacBook Pro 16GB RAM
-- Backend: JARVIS with lazy loading
+- Backend: Ironcliw with lazy loading
 - Queries: 1000 mixed intelligence queries
 
 #### Results
@@ -4040,7 +4040,7 @@ redis-cli GET cache:stats:total_cached
 | Metric | Without Redis | With Redis | Change |
 |--------|---------------|------------|--------|
 | **Memory** |
-| JARVIS Process | 10.96 GB | 6.84 GB | **-38%** |
+| Ironcliw Process | 10.96 GB | 6.84 GB | **-38%** |
 | Total System | 10.96 GB | 11.04 GB | +0.7% |
 | Available RAM | 5.04 GB | 9.16 GB | **+82%** |
 | **Performance** |
@@ -4057,7 +4057,7 @@ redis-cli GET cache:stats:total_cached
 
 ---
 
-### Recommendation for JARVIS
+### Recommendation for Ironcliw
 
 **Tier 1: Immediate Implementation (High Value, Low Effort)**
 - ✅ Redis for query caching (Phase 2.2 roadmap)
@@ -4067,7 +4067,7 @@ redis-cli GET cache:stats:total_cached
 
 **Tier 2: Next Phase (High Value, Medium Effort)**
 - ✅ Redis for Learning Database (Phase 3.1 enhancement)
-  - Saves 3.2 GB in JARVIS process
+  - Saves 3.2 GB in Ironcliw process
   - Enables multi-instance deployment
   - Requires refactoring
 
@@ -4080,12 +4080,12 @@ redis-cli GET cache:stats:total_cached
 **Environment Variables:**
 ```bash
 # Enable/disable Redis features individually
-export JARVIS_USE_REDIS=true                    # Master switch
-export JARVIS_REDIS_HOST=localhost              # Redis server
-export JARVIS_REDIS_PORT=6379                   # Redis port
-export JARVIS_REDIS_CACHE=true                  # Query caching
-export JARVIS_REDIS_LEARNING_DB=true            # Learning patterns
-export JARVIS_REDIS_VECTORS=false               # Vector store (advanced)
+export Ironcliw_USE_REDIS=true                    # Master switch
+export Ironcliw_REDIS_HOST=localhost              # Redis server
+export Ironcliw_REDIS_PORT=6379                   # Redis port
+export Ironcliw_REDIS_CACHE=true                  # Query caching
+export Ironcliw_REDIS_LEARNING_DB=true            # Learning patterns
+export Ironcliw_REDIS_VECTORS=false               # Vector store (advanced)
 ```
 
 ---
@@ -4094,7 +4094,7 @@ export JARVIS_REDIS_VECTORS=false               # Vector store (advanced)
 
 | System Configuration | Use Redis? | Primary Benefit |
 |---------------------|------------|-----------------|
-| 8 GB RAM, single user | ✅ Yes | Reduce JARVIS memory, enable intelligence |
+| 8 GB RAM, single user | ✅ Yes | Reduce Ironcliw memory, enable intelligence |
 | 16 GB RAM, single user | ✅ Yes | Better memory management, prevent OOM |
 | 32 GB RAM, single user | ⚠️ Optional | Query caching only, memory not critical |
 | 64+ GB RAM, single user | ❌ No | Unnecessary complexity |
@@ -4102,7 +4102,7 @@ export JARVIS_REDIS_VECTORS=false               # Vector store (advanced)
 | Distributed deployment | ✅ Yes | Central data store, scalability |
 
 **Final Recommendation:** 
-✅ **Implement Redis for JARVIS** - Benefits outweigh costs for most deployment scenarios, especially on 8-16 GB systems.
+✅ **Implement Redis for Ironcliw** - Benefits outweigh costs for most deployment scenarios, especially on 8-16 GB systems.
 
 
 ---
@@ -4153,11 +4153,11 @@ if predicted_usage >= SAFETY_THRESHOLD:
 **Configuration:**
 ```python
 # Make threshold configurable
-SAFETY_THRESHOLD = float(os.getenv("JARVIS_OOM_THRESHOLD", "88.0"))
+SAFETY_THRESHOLD = float(os.getenv("Ironcliw_OOM_THRESHOLD", "88.0"))
 
 # Validate configuration
 if not 70.0 <= SAFETY_THRESHOLD <= 95.0:
-    logger.error(f"Invalid JARVIS_OOM_THRESHOLD: {SAFETY_THRESHOLD}")
+    logger.error(f"Invalid Ironcliw_OOM_THRESHOLD: {SAFETY_THRESHOLD}")
     SAFETY_THRESHOLD = 88.0  # Fallback to safe default
 ```
 
@@ -4482,19 +4482,19 @@ if result is None:
 
 **Real-World Test:**
 ```
-Scenario: Chrome opens 50 tabs (3 GB) during JARVIS load
+Scenario: Chrome opens 50 tabs (3 GB) during Ironcliw load
 
 Without Reservation:
-00:00 - JARVIS starts loading (10 GB available) ✅ Check passes
+00:00 - Ironcliw starts loading (10 GB available) ✅ Check passes
 00:05 - Chrome allocates 3 GB (7 GB available) ⚠️ Still loading
-00:10 - JARVIS needs 10 GB but only 7 GB available ❌ OOM KILL
+00:10 - Ironcliw needs 10 GB but only 7 GB available ❌ OOM KILL
 
 With Reservation:
-00:00 - JARVIS starts loading (10 GB available) ✅ Check passes
+00:00 - Ironcliw starts loading (10 GB available) ✅ Check passes
 00:02 - Monitoring check #1 (9.5 GB available) ✅ OK
 00:04 - Monitoring check #2 (8.0 GB available) ⚠️ Drop detected
 00:05 - Chrome allocates 3 GB (7 GB available) ❌ VIOLATION
-00:05 - JARVIS aborts initialization ✅ Graceful failure
+00:05 - Ironcliw aborts initialization ✅ Graceful failure
 00:05 - User sees: "Intelligence unavailable - insufficient memory"
 Result: No crash, system stable, user informed
 ```
@@ -4742,7 +4742,7 @@ class InitializationWaiter:
     """
     
     def __init__(self):
-        self.base_timeout = float(os.getenv("JARVIS_INIT_TIMEOUT", "7.0"))  # Increased from 5s
+        self.base_timeout = float(os.getenv("Ironcliw_INIT_TIMEOUT", "7.0"))  # Increased from 5s
         self.max_retries = 2
     
     async def wait_for_initialization(self, app_state) -> Optional[any]:

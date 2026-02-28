@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Diagnostic script for JARVIS Vision WebSocket issues
+Diagnostic script for Ironcliw Vision WebSocket issues
 """
 
 import subprocess
@@ -84,7 +84,7 @@ def test_api_endpoints():
         ("http://localhost:8000/", "Root endpoint"),
         ("http://localhost:8000/health", "Health check"),
         ("http://localhost:8000/vision/status", "Vision status"),
-        ("http://localhost:8000/voice/jarvis/status", "JARVIS status")
+        ("http://localhost:8000/voice/jarvis/status", "Ironcliw status")
     ]
     
     for url, name in endpoints:
@@ -116,7 +116,7 @@ def check_frontend_running():
 
 def diagnose():
     """Run full diagnostic"""
-    print("🤖 JARVIS Vision WebSocket Diagnostic")
+    print("🤖 Ironcliw Vision WebSocket Diagnostic")
     print("=" * 50)
     
     issues = []

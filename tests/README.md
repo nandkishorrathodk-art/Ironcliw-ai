@@ -1,6 +1,6 @@
-# 🧪 JARVIS AI Agent Test Suite
+﻿# 🧪 Ironcliw AI Agent Test Suite
 
-Comprehensive test suite for the JARVIS AI Agent system, organized by test type and component.
+Comprehensive test suite for the Ironcliw AI Agent system, organized by test type and component.
 
 ## 📁 Test Organization
 
@@ -10,12 +10,12 @@ Fast, isolated tests for individual components.
 #### `/unit/backend/`
 Core backend functionality:
 - `test_imports.py` - Import verification
-- `test_jarvis_agent.py` - JARVIS agent core
+- `test_jarvis_agent.py` - Ironcliw agent core
 - `test_jarvis_commands.py` - Command processing
 - `test_jarvis_import.py` - Import system
 - `test_microphone.py` - Microphone functionality
 - `test_close_apps.py` - App closing
-- `test_jarvis_close_apps.py` - JARVIS app control
+- `test_jarvis_close_apps.py` - Ironcliw app control
 - `test_jarvis_fixed.py` - Bug fixes
 - `test_ml_enhanced_jarvis.py` - ML enhancements
 
@@ -34,13 +34,13 @@ Voice system components (to be added)
 ### 🔗 `/integration/` - Integration Tests
 Tests for component interactions and integrations.
 
-- `test_jarvis.py` - Full JARVIS system integration
+- `test_jarvis.py` - Full Ironcliw system integration
 - `test_jarvis_voice.py` - Voice integration
 - `test_claude_math.py` - Claude math capabilities
 - `test_memory_api.py` - Memory API integration
 - `test_jarvis_vision_integration.py` - Vision integration
 - `test_vision_websocket.py` - Vision WebSocket integration
-- `test_jarvis_websocket.py` - JARVIS WebSocket integration
+- `test_jarvis_websocket.py` - Ironcliw WebSocket integration
 - `test_vision_integration.py` - Vision system integration
 
 ### ⚙️ `/functional/` - Functional Tests
@@ -175,7 +175,7 @@ Tests are automatically marked based on their location:
 3. **Documentation**: Include clear docstrings:
    ```python
    def test_jarvis_activation():
-       """Test JARVIS voice activation workflow."""
+       """Test Ironcliw voice activation workflow."""
        # Test implementation
    ```
 

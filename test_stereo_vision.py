@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Stereoscopic Vision Test - Dynamic Multi-Space Parallel Surveillance
+Ironcliw Stereoscopic Vision Test - Dynamic Multi-Space Parallel Surveillance
 ===========================================================================
 
-This test proves JARVIS has true omnipresent vision by monitoring TWO
+This test proves Ironcliw has true omnipresent vision by monitoring TWO
 dynamic, changing data streams simultaneously across different macOS spaces.
 
 This is NOT a static text detection test - this proves real-time streaming
@@ -12,10 +12,10 @@ vision across parallel realities without mixing them up.
 Test Design:
 - Space 1: Vertical bouncing ball (STATUS: VERTICAL, BOUNCE COUNT updating)
 - Space 2: Horizontal bouncing ball (STATUS: HORIZONTAL, BOUNCE COUNT updating)
-- Space 3: You are here, watching JARVIS report BOTH streams in real-time
+- Space 3: You are here, watching Ironcliw report BOTH streams in real-time
 
 Success Criteria:
-JARVIS must correctly report bounce counts from BOTH windows simultaneously
+Ironcliw must correctly report bounce counts from BOTH windows simultaneously
 without hallucinating which is which. This proves:
 1. True parallel processing (not sequential switching)
 2. Distinct stream identification (no cross-contamination)
@@ -52,11 +52,11 @@ from backend.core.unified_speech_state import get_speech_state_manager
 
 
 # =============================================================================
-# JARVIS VOICE
+# Ironcliw VOICE
 # =============================================================================
 
 async def jarvis_speak(message: str, rate: int = 200, blocking: bool = False) -> None:
-    """JARVIS speaks using Daniel's British voice."""
+    """Ironcliw speaks using Daniel's British voice."""
     try:
         try:
             speech_manager = await get_speech_state_manager()
@@ -87,11 +87,11 @@ async def jarvis_speak(message: str, rate: int = 200, blocking: bool = False) ->
                     pass
             asyncio.create_task(_wait_and_cleanup())
 
-        print(f"🗣️  JARVIS: {message}")
+        print(f"🗣️  Ironcliw: {message}")
 
     except Exception as e:
         logger.warning(f"TTS error: {e}")
-        print(f"🗣️  JARVIS: {message}")
+        print(f"🗣️  Ironcliw: {message}")
 
 
 # =============================================================================
@@ -154,7 +154,7 @@ async def test_stereo_vision():
     """Run the Stereoscopic Vision Test."""
 
     print("\n" + "="*80)
-    print("🔬 JARVIS STEREOSCOPIC VISION TEST")
+    print("🔬 Ironcliw STEREOSCOPIC VISION TEST")
     print("   Dynamic Multi-Space Parallel Surveillance")
     print("="*80)
     print(f"⏰ Test started: {datetime.now().strftime('%H:%M:%S')}")

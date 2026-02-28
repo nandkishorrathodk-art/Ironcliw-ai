@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test script for Bloom Filter Network (4.4) in JARVIS Vision System
+Test script for Bloom Filter Network (4.4) in Ironcliw Vision System
 Demonstrates hierarchical bloom filter capabilities and memory efficiency
 """
 
@@ -340,13 +340,13 @@ async def test_integration_with_vision():
         
     except Exception as e:
         print(f"\n❌ Vision analyzer integration failed: {e}")
-        print("   This is expected if running outside the full JARVIS environment")
+        print("   This is expected if running outside the full Ironcliw environment")
 
 
 async def main():
     """Run all bloom filter tests"""
     print("=" * 60)
-    print("JARVIS Vision - Bloom Filter Network Test Suite")
+    print("Ironcliw Vision - Bloom Filter Network Test Suite")
     print("Testing 4MB/1MB×4/2MB hierarchical configuration")
     print("=" * 60)
     

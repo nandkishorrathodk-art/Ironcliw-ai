@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Full Context Intelligence Flow
 ==================================
 
 Demonstrates the complete flow for the example scenario:
 - Mac is locked
-- User says "JARVIS, open Safari and search for dogs"
+- User says "Ironcliw, open Safari and search for dogs"
 - System handles it with full context awareness
 """
 
@@ -79,7 +79,7 @@ class ScenarioSimulator:
 async def run_full_scenario():
     """Run the complete scenario with mocked components"""
     print("\n" + "="*70)
-    print("🤖 JARVIS CONTEXT INTELLIGENCE - FULL SCENARIO TEST")
+    print("🤖 Ironcliw CONTEXT INTELLIGENCE - FULL SCENARIO TEST")
     print("="*70)
     print("\nScenario: User wants to search while screen is locked")
     print("-"*70 + "\n")
@@ -108,7 +108,7 @@ async def run_full_scenario():
             
             async def capture_voice_feedback(feedback):
                 captured_feedback.append(feedback.content)
-                print(f"\n🗣️  JARVIS: \"{feedback.content}\"")
+                print(f"\n🗣️  Ironcliw: \"{feedback.content}\"")
                 
             feedback_manager.register_channel_handler(
                 FeedbackChannel.VOICE,
@@ -120,7 +120,7 @@ async def run_full_scenario():
             
             # Step 1: User gives command
             command = "open Safari and search for dogs"
-            print(f"👤 User: \"JARVIS, {command}\"")
+            print(f"👤 User: \"Ironcliw, {command}\"")
             
             # Step 2: Process command
             result = await integration.process_voice_command(
@@ -167,7 +167,7 @@ async def run_full_scenario():
             # Verify expected flow
             print(f"\n✅ Expected Flow Verification:")
             expected_steps = [
-                ("JARVIS detects screen is locked", "requires_unlock" in result and result["requires_unlock"]),
+                ("Ironcliw detects screen is locked", "requires_unlock" in result and result["requires_unlock"]),
                 ("Queues request", result.get("status") == "queued"),
                 ("Provides unlock feedback", any("locked" in msg.lower() for msg in captured_feedback)),
                 ("Executes command after unlock", len(captured_feedback) > 2)

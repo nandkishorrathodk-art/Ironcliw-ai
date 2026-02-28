@@ -1,7 +1,7 @@
-"""
-JARVIS AGI OS - Dynamic Owner Identity Service
+﻿"""
+Ironcliw AGI OS - Dynamic Owner Identity Service
 
-Advanced dynamic user identification via voice biometrics that enables JARVIS
+Advanced dynamic user identification via voice biometrics that enables Ironcliw
 to recognize and personally address the macOS laptop owner without any hardcoding.
 
 Key Features:
@@ -164,7 +164,7 @@ class OwnerIdentityService:
 
         Args:
             speaker_verification: SpeakerVerificationService instance
-            learning_db: JARVISLearningDatabase instance
+            learning_db: IroncliwLearningDatabase instance
         """
         if self._initialized:
             logger.debug("OwnerIdentityService already initialized")
@@ -639,7 +639,7 @@ async def get_owner_identity(
 
     Args:
         speaker_verification: Optional SpeakerVerificationService
-        learning_db: Optional JARVISLearningDatabase
+        learning_db: Optional IroncliwLearningDatabase
 
     Returns:
         OwnerIdentityService singleton

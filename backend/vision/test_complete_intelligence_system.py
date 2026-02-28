@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Complete test of the integrated JARVIS Vision Intelligence System
+Complete test of the integrated Ironcliw Vision Intelligence System
 Tests all components working together:
 - Workflow Pattern Engine
 - Anomaly Detection Framework
@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def test_complete_intelligence():
     """Test all intelligence components working together"""
-    print("🤖 JARVIS Complete Intelligence System Test")
+    print("🤖 Ironcliw Complete Intelligence System Test")
     print("=" * 70)
     
     try:
@@ -290,8 +290,8 @@ async def demonstrate_realtime_assistance():
         intervention = await analyzer.check_intervention_opportunity()
         
         if intervention['intervention_recommended']:
-            print(f"   ✨ JARVIS: 'I notice you might be having trouble.'")
-            print(f"   ✨ JARVIS: 'Would you like me to help with this error?'")
+            print(f"   ✨ Ironcliw: 'I notice you might be having trouble.'")
+            print(f"   ✨ Ironcliw: 'Would you like me to help with this error?'")
             print(f"   Confidence: {intervention['confidence']:.2f}")
         
     except Exception as e:
@@ -299,7 +299,7 @@ async def demonstrate_realtime_assistance():
 
 
 if __name__ == "__main__":
-    print("Starting JARVIS Complete Intelligence System test...\n")
+    print("Starting Ironcliw Complete Intelligence System test...\n")
     
     # Set up test environment
     os.environ['SOLUTION_STORAGE_PATH'] = './test_complete_solutions.db'

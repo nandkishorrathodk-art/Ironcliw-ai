@@ -1,5 +1,5 @@
-"""
-Unified Weather Bridge for JARVIS
+﻿"""
+Unified Weather Bridge for Ironcliw
 Single entry point for ALL weather queries using vision
 Replaces all previous weather providers with one intelligent system
 """
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class UnifiedWeatherBridge:
     """
-    The ONLY weather bridge JARVIS needs
+    The ONLY weather bridge Ironcliw needs
     Routes all weather queries to vision-based system
     """
     

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Vision Response
-Shows the expected response when you ask "Hey JARVIS, can you see my screen?"
+Test Ironcliw Vision Response
+Shows the expected response when you ask "Hey Ironcliw, can you see my screen?"
 """
 
 import os
@@ -12,14 +12,14 @@ from backend.vision.screen_capture_fallback import capture_with_intelligence
 
 
 def test_vision_response():
-    """Test what JARVIS should say when asked about screen visibility"""
+    """Test what Ironcliw should say when asked about screen visibility"""
     
-    print("🤖 Testing JARVIS Vision Response")
+    print("🤖 Testing Ironcliw Vision Response")
     print("=" * 60)
     print()
     
     # Test 1: Basic permission check
-    print("Test 1: Checking if JARVIS can see your screen...")
+    print("Test 1: Checking if Ironcliw can see your screen...")
     result = capture_with_intelligence(use_claude=False)
     
     if result["success"]:
@@ -27,9 +27,9 @@ def test_vision_response():
         print(f"✅ Screen resolution: {result['image'].shape[1]}x{result['image'].shape[0]}")
         print()
         
-        # Expected JARVIS response
-        print("When you say: 'Hey JARVIS, can you see my screen?'")
-        print("JARVIS responds:")
+        # Expected Ironcliw response
+        print("When you say: 'Hey Ironcliw, can you see my screen?'")
+        print("Ironcliw responds:")
         print()
         print("🎙️ 'Yes sir, I can see your screen perfectly. I'm viewing your " +
               f"{result['image'].shape[1]}x{result['image'].shape[0]} display. ")
@@ -69,8 +69,8 @@ def test_vision_response():
     else:
         print("❌ Screen recording permission: NOT GRANTED")
         print()
-        print("When you say: 'Hey JARVIS, can you see my screen?'")
-        print("JARVIS responds:")
+        print("When you say: 'Hey Ironcliw, can you see my screen?'")
+        print("Ironcliw responds:")
         print()
         print("🎙️ 'I'm unable to see your screen at the moment, sir.")
         print("      Please grant me screen recording permission in")

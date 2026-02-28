@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 import sys
 from pathlib import Path
@@ -26,7 +26,7 @@ from screen_capture_fallback import capture_screen_fallback
 def demonstrate_enhanced_vision():
     """Demonstrate the power of Claude-enhanced vision."""
     
-    print("🚀 JARVIS Enhanced Vision Demonstration")
+    print("🚀 Ironcliw Enhanced Vision Demonstration")
     print("=" * 60)
     print("Showing how Claude transforms basic screen capture into intelligence\n")
     
@@ -71,7 +71,7 @@ def demonstrate_enhanced_vision():
     print("   Sample text found:")
     sample_texts = [
         "File Edit View Window Help",
-        "JARVIS-AI-Agent",
+        "Ironcliw-AI-Agent",
         "backend/vision/demo_enhanced_vision.py",
         "def demonstrate_enhanced_vision():",
         "Terminal — python — 80×24"
@@ -87,7 +87,7 @@ def demonstrate_enhanced_vision():
     # Simulate intelligent responses based on common scenarios
     simulated_insights = [
         "📱 Applications: I can see you have VS Code, Chrome, and Terminal open",
-        "💻 Current Work: You're working on a Python project called JARVIS-AI-Agent",
+        "💻 Current Work: You're working on a Python project called Ironcliw-AI-Agent",
         "🔍 Code Analysis: There's a function called 'enhanced_vision_system' visible",
         "⚠️  Potential Issue: I notice an unhandled exception in the terminal output",
         "💡 Suggestion: Consider adding error handling for the async function calls",
@@ -109,7 +109,7 @@ def demonstrate_enhanced_vision():
         ("Any errors?", "Found text: 'error'", "RuntimeWarning on line 40 about async/await"),
         ("What to do next?", "N/A - just text extraction", "Fix the async issue in _check_permission()"),
         ("Find the save button", "Found text: 'Save'", "Cmd+S to save, or File menu > Save"),
-        ("What am I working on?", "Found text: 'JARVIS'", "Building an AI assistant with vision capabilities")
+        ("What am I working on?", "Found text: 'Ironcliw'", "Building an AI assistant with vision capabilities")
     ]
     
     # Print comparison table
@@ -123,23 +123,23 @@ def demonstrate_enhanced_vision():
     use_cases = {
         "🐛 Debugging Assistant": [
             "User: 'What's wrong with my code?'",
-            "JARVIS: 'I see a RuntimeWarning about an unawaited coroutine. The issue is in " +
+            "Ironcliw: 'I see a RuntimeWarning about an unawaited coroutine. The issue is in " +
             "test_enhanced_vision.py line 40. You're calling an async function synchronously.'"
         ],
         "📝 Form Filling Helper": [
             "User: 'Help me fill this form'",
-            "JARVIS: 'I see a registration form. The required fields marked with red asterisks " +
+            "Ironcliw: 'I see a registration form. The required fields marked with red asterisks " +
             "are: Name, Email, and Password. The email field expects a valid email format.'"
         ],
         "🔄 Update Detector": [
             "User: 'Check for updates'",
-            "JARVIS: 'I found 3 updates: Chrome has a green update arrow in the top-right, " +
+            "Ironcliw: 'I found 3 updates: Chrome has a green update arrow in the top-right, " +
             "VS Code shows \"Update Available\" in the bottom bar, and macOS has a red badge " +
             "on System Preferences in the dock.'"
         ],
         "🎯 Workflow Guide": [
             "User: 'What should I do next?'",
-            "JARVIS: 'Based on your screen, you should: 1) Fix the async error in line 40, " +
+            "Ironcliw: 'Based on your screen, you should: 1) Fix the async error in line 40, " +
             "2) Save your changes (unsaved indicator in VS Code), 3) Re-run the test script.'"
         ]
     }
@@ -171,7 +171,7 @@ def demonstrate_enhanced_vision():
     print("\n✨ Conclusion")
     print("=" * 60)
     print("By accepting the permission reality and enhancing it with Claude's")
-    print("intelligence, we transform a security requirement into JARVIS's most")
+    print("intelligence, we transform a security requirement into Ironcliw's most")
     print("powerful feature. One permission, infinite intelligence!")
     print("\n🚀 This is the future of computer vision - not more access, but")
     print("   deeper understanding of what we can already see.")
@@ -225,14 +225,14 @@ def analyze_screen_with_claude(screenshot_array, query):
     
     return response.content[0].text
 
-# Usage in JARVIS
+# Usage in Ironcliw
 screenshot = capture_screen_fallback()
 if screenshot:
     analysis = analyze_screen_with_claude(
         screenshot, 
         "What applications are open and what is the user working on?"
     )
-    print(f"JARVIS: {analysis}")
+    print(f"Ironcliw: {analysis}")
 '''
     
     print(code_example)
@@ -252,4 +252,4 @@ if __name__ == "__main__":
     show_api_integration_example()
     
     print("\n\n🏁 Demo Complete!")
-    print("Ready to implement this revolutionary approach in JARVIS!")
+    print("Ready to implement this revolutionary approach in Ironcliw!")

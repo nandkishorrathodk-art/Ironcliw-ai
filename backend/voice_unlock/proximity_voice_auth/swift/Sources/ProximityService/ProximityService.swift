@@ -1,10 +1,10 @@
-import Foundation
-import JARVISProximityAuth
+﻿import Foundation
+import IroncliwProximityAuth
 
 @main
 struct ProximityService {
     static func main() async {
-        print("🚀 JARVIS Proximity Service Starting...")
+        print("🚀 Ironcliw Proximity Service Starting...")
         
         let detector = AppleWatchDetector()
         let bridge = HTTPBridge(port: 5555)

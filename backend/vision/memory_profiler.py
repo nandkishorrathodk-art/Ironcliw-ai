@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Memory Profiler and Benchmarking Tool for JARVIS Vision System
+Memory Profiler and Benchmarking Tool for Ironcliw Vision System
 Measures memory usage, tracks performance improvements, validates Priority 3 targets
 """
 
@@ -55,7 +55,7 @@ class BenchmarkResult:
 
 
 class MemoryProfiler:
-    """Memory profiler for JARVIS components"""
+    """Memory profiler for Ironcliw components"""
 
     def __init__(self):
         self.process = psutil.Process()
@@ -234,7 +234,7 @@ class MemoryProfiler:
             return
 
         print("\n" + "=" * 80)
-        print("JARVIS VISION SYSTEM - MEMORY PROFILING SUMMARY")
+        print("Ironcliw VISION SYSTEM - MEMORY PROFILING SUMMARY")
         print("=" * 80)
 
         print(f"\n📊 Baseline Memory:")
@@ -349,7 +349,7 @@ async def run_full_benchmark():
     """Run complete benchmark suite"""
     profiler = MemoryProfiler()
 
-    logger.info("🚀 Starting JARVIS Vision Memory Profiling")
+    logger.info("🚀 Starting Ironcliw Vision Memory Profiling")
     logger.info("=" * 80)
 
     # Set baseline

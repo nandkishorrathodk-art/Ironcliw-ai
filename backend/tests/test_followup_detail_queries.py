@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Dynamic Follow-Up Detail Queries
 ======================================
 
@@ -7,9 +7,9 @@ detailed explanations after an initial query.
 
 Example flow:
 1. User: "can you see my terminal in the other window?"
-2. JARVIS: "Yes, I can see Terminal in Space 2..."
+2. Ironcliw: "Yes, I can see Terminal in Space 2..."
 3. User: "explain what's happening in detail"
-4. JARVIS: [Dynamic detailed explanation based on terminal context]
+4. Ironcliw: [Dynamic detailed explanation based on terminal context]
 """
 import sys
 from pathlib import Path
@@ -64,7 +64,7 @@ async def test_followup_detail_query():
         "can you see my terminal in the other window?",
         current_space_id=1
     )
-    print(f"🤖 JARVIS:\n{response1}\n")
+    print(f"🤖 Ironcliw:\n{response1}\n")
     print("-" * 80 + "\n")
 
     # Step 2: Follow-up detail query
@@ -73,7 +73,7 @@ async def test_followup_detail_query():
         "explain what's happening in detail",
         current_space_id=1
     )
-    print(f"🤖 JARVIS:\n{response2}\n")
+    print(f"🤖 Ironcliw:\n{response2}\n")
     print("-" * 80 + "\n")
 
     # Verify the response is dynamic and contains expected information
@@ -132,7 +132,7 @@ async def test_followup_timeout():
     # Initial query
     print("👤 User: \"can you see my terminal?\"\n")
     response1 = await bridge.answer_query("can you see my terminal?")
-    print(f"🤖 JARVIS: {response1[:100]}...\n")
+    print(f"🤖 Ironcliw: {response1[:100]}...\n")
 
     # Manually expire the conversation timestamp
     from datetime import datetime, timedelta
@@ -141,7 +141,7 @@ async def test_followup_timeout():
     # Follow-up should NOT work (too old)
     print("👤 User (3 minutes later): \"explain in detail\"\n")
     response2 = await bridge.answer_query("explain in detail")
-    print(f"🤖 JARVIS: {response2}\n")
+    print(f"🤖 Ironcliw: {response2}\n")
 
     # Should fall back to generic response (not detailed explanation)
     # The key is it should NOT provide detailed terminal context

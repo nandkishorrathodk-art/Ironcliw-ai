@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Command Executor
 =======================
 
 Integrates the Context Intelligence System with the existing
-JARVIS unified command processor for actual command execution.
+Ironcliw unified command processor for actual command execution.
 """
 
 import asyncio
@@ -24,7 +24,7 @@ except ImportError:
 
 class UnifiedCommandExecutor:
     """
-    Executes commands using the existing JARVIS unified command processor
+    Executes commands using the existing Ironcliw unified command processor
     while providing progress updates to the context intelligence system.
     """
     

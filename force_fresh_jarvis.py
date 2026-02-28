@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Force JARVIS to use fresh instances with the drag fix
+Force Ironcliw to use fresh instances with the drag fix
 Clears all caches and ensures proper initialization
 """
 
@@ -11,11 +11,11 @@ import subprocess
 from pathlib import Path
 
 print("=" * 80)
-print("FORCING FRESH JARVIS WITH DRAG FIX")
+print("FORCING FRESH Ironcliw WITH DRAG FIX")
 print("=" * 80)
 
-# Step 1: Kill any existing JARVIS processes
-print("\n1. Killing existing JARVIS processes...")
+# Step 1: Kill any existing Ironcliw processes
+print("\n1. Killing existing Ironcliw processes...")
 subprocess.run("pkill -f 'python.*main.py'", shell=True)
 time.sleep(2)
 
@@ -44,8 +44,8 @@ for pycache in backend_dir.rglob("__pycache__"):
 
 # Step 4: Set environment to force fresh instances
 print("\n4. Setting environment for fresh instances...")
-os.environ["JARVIS_FORCE_FRESH"] = "1"
-os.environ["JARVIS_NO_CACHE"] = "1"
+os.environ["Ironcliw_FORCE_FRESH"] = "1"
+os.environ["Ironcliw_NO_CACHE"] = "1"
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 # Step 5: Import and verify the drag fix is present
@@ -113,17 +113,17 @@ if success:
     print("✅ FRESH INSTANCE TEST PASSED!")
     print("=" * 80)
     print("\nThe drag fix is working with fresh instances.")
-    print("Now starting JARVIS with fresh configuration...")
+    print("Now starting Ironcliw with fresh configuration...")
 
-    # Step 7: Start JARVIS fresh
-    print("\n7. Starting fresh JARVIS...")
+    # Step 7: Start Ironcliw fresh
+    print("\n7. Starting fresh Ironcliw...")
     subprocess.Popen(
         ["python", "backend/main.py"],
-        env={**os.environ, "JARVIS_FRESH_START": "1"}
+        env={**os.environ, "Ironcliw_FRESH_START": "1"}
     )
 
-    print("\n✅ JARVIS started with fresh instances and drag fix!")
-    print("Try asking JARVIS to connect to Living Room TV now.")
+    print("\n✅ Ironcliw started with fresh instances and drag fix!")
+    print("Try asking Ironcliw to connect to Living Room TV now.")
 else:
     print("\n" + "=" * 80)
     print("❌ FRESH INSTANCE TEST FAILED")

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Start JARVIS backend with import fixes"""
+﻿#!/usr/bin/env python3
+"""Start Ironcliw backend with import fixes"""
 
 import sys
 from unittest.mock import MagicMock
@@ -13,4 +13,4 @@ sys.modules['rubicon.objc'] = MagicMock()
 # Now import and run the main module
 import main
 
-print("✅ JARVIS backend started with import fixes")
+print("✅ Ironcliw backend started with import fixes")

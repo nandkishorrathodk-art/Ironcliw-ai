@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 # Safe Backend Startup Script with Enhanced Error Recovery
 # Prevents crashes and ensures backend starts even with model loading failures
 
-echo "🚀 Starting JARVIS Backend with Safe Mode..."
+echo "🚀 Starting Ironcliw Backend with Safe Mode..."
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -80,9 +80,9 @@ logger = logging.getLogger(__name__)
 
 try:
     # Set safe mode flag
-    os.environ['JARVIS_SAFE_MODE'] = '1'
+    os.environ['Ironcliw_SAFE_MODE'] = '1'
     
-    logger.info("Starting JARVIS in Safe Mode...")
+    logger.info("Starting Ironcliw in Safe Mode...")
     
     # Import with error handling
     try:
@@ -122,7 +122,7 @@ try:
                 
                 @minimal_app.get("/")
                 async def root():
-                    return {"status": "safe_mode", "message": "JARVIS running in safe mode"}
+                    return {"status": "safe_mode", "message": "Ironcliw running in safe mode"}
                 
                 @minimal_app.get("/health")
                 async def health():
@@ -181,7 +181,7 @@ app = FastAPI()
 
 @app.get('/')
 async def root():
-    return {'status': 'emergency_mode', 'message': 'JARVIS in emergency recovery mode'}
+    return {'status': 'emergency_mode', 'message': 'Ironcliw in emergency recovery mode'}
 
 @app.get('/health')
 async def health():
@@ -218,7 +218,7 @@ done
 # Final status
 echo ""
 if curl -s "$HEALTH_URL" > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ JARVIS Backend started successfully!${NC}"
+    echo -e "${GREEN}✅ Ironcliw Backend started successfully!${NC}"
     echo "  URL: http://localhost:$PYTHON_PORT"
     echo "  Docs: http://localhost:$PYTHON_PORT/docs"
     echo "  Health: http://localhost:$PYTHON_PORT/health"

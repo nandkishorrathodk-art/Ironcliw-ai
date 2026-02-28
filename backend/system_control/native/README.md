@@ -1,4 +1,4 @@
-# JARVIS Weather Native Tool
+﻿# Ironcliw Weather Native Tool
 
 A Swift command-line tool that provides real-time weather data using Apple's native WeatherKit framework.
 
@@ -105,7 +105,7 @@ On first run, macOS will ask for:
 
 Grant these permissions in System Preferences > Privacy & Security.
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
 This tool is designed to be called from Python:
 
@@ -132,4 +132,4 @@ if result.returncode == 0:
 
 ## License
 
-Part of the JARVIS AI Agent project.
+Part of the Ironcliw AI Agent project.

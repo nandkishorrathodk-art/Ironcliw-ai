@@ -1,27 +1,27 @@
-# 🔄 RESTART JARVIS TO LOAD THE LOCK FIX
+﻿# 🔄 RESTART Ironcliw TO LOAD THE LOCK FIX
 
 ## The Problem
-JARVIS has been running since 3:28 AM and hasn't loaded the updated code that fixes the lock command.
+Ironcliw has been running since 3:28 AM and hasn't loaded the updated code that fixes the lock command.
 
 ## The Solution is Already Implemented
 ✅ The code is fixed and working
 ✅ Lock commands now fall back to Context Intelligence when Voice Unlock isn't available
 ✅ Tests confirm it works
 
-## You Just Need to Restart JARVIS
+## You Just Need to Restart Ironcliw
 
 ### Option 1: Quick Restart
 ```bash
-# Kill the current JARVIS process
+# Kill the current Ironcliw process
 pkill -f "python main.py"
 
-# Start JARVIS again
-cd ~/Documents/repos/JARVIS-AI-Agent/backend
+# Start Ironcliw again
+cd ~/Documents/repos/Ironcliw-AI-Agent/backend
 python main.py
 ```
 
 ### Option 2: Graceful Restart
-1. Say "Hey JARVIS, goodbye" or "JARVIS, shut down"
+1. Say "Hey Ironcliw, goodbye" or "Ironcliw, shut down"
 2. Wait for it to shut down
 3. Start it again with `python main.py`
 
@@ -36,9 +36,9 @@ Either way, your screen will lock successfully!
 
 ## Why This Happened
 
-1. You had JARVIS running since early morning
+1. You had Ironcliw running since early morning
 2. We made code changes to fix the lock command
-3. JARVIS was still using the old code
+3. Ironcliw was still using the old code
 4. A restart loads the new code with the fix
 
-The Context Intelligence System is ready and working - you just need to restart JARVIS to use it!
+The Context Intelligence System is ready and working - you just need to restart Ironcliw to use it!

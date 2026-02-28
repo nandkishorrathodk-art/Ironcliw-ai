@@ -1,4 +1,4 @@
-# JARVIS Windows Troubleshooting Guide
+﻿# Ironcliw Windows Troubleshooting Guide
 
 ## Table of Contents
 
@@ -176,16 +176,16 @@ OSError: [WinError 10048] Only one usage of each socket address (protocol/networ
    taskkill /PID 12345 /F
    ```
 
-2. **Change JARVIS port:**
+2. **Change Ironcliw port:**
    ```bash
    # Edit .env file
-   JARVIS_BACKEND_PORT=8011
+   Ironcliw_BACKEND_PORT=8011
 
-   # Restart JARVIS
+   # Restart Ironcliw
    python unified_supervisor.py --restart
    ```
 
-3. **Check for zombie JARVIS processes:**
+3. **Check for zombie Ironcliw processes:**
    ```powershell
    Get-Process | Where-Object {$_.ProcessName -like "*python*"}
 
@@ -205,9 +205,9 @@ ModuleNotFoundError: No module named 'backend.platform'
 
 **Solutions:**
 
-1. **Ensure you're in the JARVIS root directory:**
+1. **Ensure you're in the Ironcliw root directory:**
    ```powershell
-   cd C:\path\to\JARVIS
+   cd C:\path\to\Ironcliw
    # Should contain: unified_supervisor.py, backend/, frontend/, etc.
    ```
 
@@ -283,7 +283,7 @@ PermissionError: [WinError 5] Access is denied
 
 1. **Run as Administrator:**
    - Right-click PowerShell → "Run as administrator"
-   - Run JARVIS
+   - Run Ironcliw
 
 2. **Check UAC settings:**
    - Control Panel → User Accounts → Change User Account Control settings
@@ -308,7 +308,7 @@ PermissionError: [WinError 5] Access is denied
 ### Issue: High CPU usage (>80%)
 
 **Symptoms:**
-- JARVIS uses 4+ CPU cores at 100%
+- Ironcliw uses 4+ CPU cores at 100%
 - System becomes slow/unresponsive
 
 **Diagnosis:**
@@ -333,14 +333,14 @@ python -c "from backend.platform import get_platform_info; print(get_platform_in
 2. **Disable CPU-intensive features:**
    ```bash
    # .env
-   JARVIS_VISION_ENABLED=false  # Disable vision if not needed
-   JARVIS_CONTINUOUS_LEARNING=false
+   Ironcliw_VISION_ENABLED=false  # Disable vision if not needed
+   Ironcliw_CONTINUOUS_LEARNING=false
    ```
 
 3. **Set CPU affinity:**
    ```powershell
-   # Limit JARVIS to specific CPU cores (e.g., cores 0-3)
-   $process = Get-Process python | Where-Object {$_.MainWindowTitle -like "*JARVIS*"}
+   # Limit Ironcliw to specific CPU cores (e.g., cores 0-3)
+   $process = Get-Process python | Where-Object {$_.MainWindowTitle -like "*Ironcliw*"}
    $process.ProcessorAffinity = 0x0F  # Binary: 0000 1111 (cores 0-3)
    ```
 
@@ -349,7 +349,7 @@ python -c "from backend.platform import get_platform_info; print(get_platform_in
 ### Issue: High memory usage (>8GB)
 
 **Symptoms:**
-- JARVIS uses 8+ GB RAM
+- Ironcliw uses 8+ GB RAM
 - System swapping to disk
 
 **Solutions:**
@@ -357,7 +357,7 @@ python -c "from backend.platform import get_platform_info; print(get_platform_in
 1. **Enable memory-aware mode:**
    ```bash
    # .env
-   JARVIS_MEMORY_MODE=efficient  # Options: normal, efficient, minimal
+   Ironcliw_MEMORY_MODE=efficient  # Options: normal, efficient, minimal
    ```
 
 2. **Reduce cache sizes:**
@@ -371,8 +371,8 @@ python -c "from backend.platform import get_platform_info; print(get_platform_in
 3. **Disable ML models (use cloud inference):**
    ```bash
    # .env
-   JARVIS_LOCAL_ML_ENABLED=false
-   JARVIS_USE_CLOUD_ML=true
+   Ironcliw_LOCAL_ML_ENABLED=false
+   Ironcliw_USE_CLOUD_ML=true
    ```
 
 4. **Monitor memory:**
@@ -389,7 +389,7 @@ python -c "from backend.platform import get_platform_info; print(get_platform_in
 ### Issue: Slow startup (>2 minutes)
 
 **Symptoms:**
-- JARVIS takes >120 seconds to start
+- Ironcliw takes >120 seconds to start
 - Loading page stuck at certain percentage
 
 **Solutions:**
@@ -404,19 +404,19 @@ python -c "from backend.platform import get_platform_info; print(get_platform_in
    ```bash
    # .env
    FAST_START=true
-   JARVIS_SKIP_HEAVY_INIT=true
+   Ironcliw_SKIP_HEAVY_INIT=true
    ```
 
 3. **Disable slow components:**
    ```bash
    # .env
-   JARVIS_NEURAL_MESH_ENABLED=false
-   JARVIS_AGI_OS_ENABLED=false
+   Ironcliw_NEURAL_MESH_ENABLED=false
+   Ironcliw_AGI_OS_ENABLED=false
    ```
 
 4. **Use SSD instead of HDD:**
    - Move `.jarvis` directory to SSD
-   - Set `JARVIS_DATA_DIR` in .env
+   - Set `Ironcliw_DATA_DIR` in .env
 
 ---
 
@@ -708,7 +708,7 @@ npm ERR! missing script: build
 ### Issue: Frontend can't connect to backend
 
 **Symptoms:**
-- Frontend shows "Connection Error" or "Not connected to JARVIS"
+- Frontend shows "Connection Error" or "Not connected to Ironcliw"
 - Browser console: `WebSocket connection failed`
 
 **Solutions:**
@@ -741,7 +741,7 @@ npm ERR! missing script: build
 4. **Check Windows Firewall:**
    ```powershell
    # Allow backend port
-   New-NetFirewallRule -DisplayName "JARVIS Backend" -Direction Inbound -LocalPort 8010 -Protocol TCP -Action Allow
+   New-NetFirewallRule -DisplayName "Ironcliw Backend" -Direction Inbound -LocalPort 8010 -Protocol TCP -Action Allow
    ```
 
 ---
@@ -768,13 +768,13 @@ The Windows implementation uses **hash-based detection** (every 10s) instead of 
 2. **Use watchdog for file events (alternative):**
    ```bash
    # .env
-   JARVIS_HOT_RELOAD_METHOD=watchdog  # Uses ReadDirectoryChangesW
+   Ironcliw_HOT_RELOAD_METHOD=watchdog  # Uses ReadDirectoryChangesW
    ```
 
 3. **Disable hot reload in production:**
    ```bash
    # .env
-   JARVIS_DEV_MODE=false
+   Ironcliw_DEV_MODE=false
    ```
 
 ---
@@ -782,19 +782,19 @@ The Windows implementation uses **hash-based detection** (every 10s) instead of 
 ### Issue: Task Scheduler watchdog not working
 
 **Symptoms:**
-- JARVIS doesn't auto-restart after crash
+- Ironcliw doesn't auto-restart after crash
 - Scheduled task not running
 
 **Solutions:**
 
 1. **Verify task exists:**
    ```powershell
-   schtasks /Query /TN "JARVIS\Supervisor"
+   schtasks /Query /TN "Ironcliw\Supervisor"
    ```
 
 2. **Check task status:**
    ```powershell
-   Get-ScheduledTask -TaskPath "\JARVIS\" -TaskName "Supervisor" | Get-ScheduledTaskInfo
+   Get-ScheduledTask -TaskPath "\Ironcliw\" -TaskName "Supervisor" | Get-ScheduledTaskInfo
    ```
 
 3. **Reinstall watchdog:**
@@ -806,12 +806,12 @@ The Windows implementation uses **hash-based detection** (every 10s) instead of 
 
 4. **Run task manually:**
    ```powershell
-   schtasks /Run /TN "JARVIS\Supervisor"
+   schtasks /Run /TN "Ironcliw\Supervisor"
    ```
 
 5. **Check task XML:**
    ```powershell
-   schtasks /Query /TN "JARVIS\Supervisor" /XML
+   schtasks /Query /TN "Ironcliw\Supervisor" /XML
    ```
 
 ---
@@ -823,7 +823,7 @@ The Windows implementation uses **hash-based detection** (every 10s) instead of 
 ```bash
 # .env
 LOG_LEVEL=DEBUG
-JARVIS_VERBOSE=true
+Ironcliw_VERBOSE=true
 ```
 
 ### Check Logs
@@ -944,9 +944,9 @@ python -c "from backend.platform.windows import *; print('All imports OK')"
 1. ✅ Check this troubleshooting guide
 2. ✅ Check [Known Limitations](./known_limitations.md)
 3. ✅ Check [Setup Guide](./setup_guide.md)
-4. ✅ Search [GitHub Issues](https://github.com/drussell23/JARVIS/issues)
-5. ✅ Ask in [GitHub Discussions](https://github.com/drussell23/JARVIS/discussions)
-6. ✅ Open a [new GitHub Issue](https://github.com/drussell23/JARVIS/issues/new)
+4. ✅ Search [GitHub Issues](https://github.com/drussell23/Ironcliw/issues)
+5. ✅ Ask in [GitHub Discussions](https://github.com/drussell23/Ironcliw/discussions)
+6. ✅ Open a [new GitHub Issue](https://github.com/drussell23/Ironcliw/issues/new)
 
 ### Issue Template
 
@@ -956,7 +956,7 @@ When reporting issues, include:
 **Environment:**
 - Windows Version: (run: winver)
 - Python Version: (run: python --version)
-- JARVIS Version: (run: python unified_supervisor.py --version)
+- Ironcliw Version: (run: python unified_supervisor.py --version)
 
 **Error Message:**
 (paste full error traceback)

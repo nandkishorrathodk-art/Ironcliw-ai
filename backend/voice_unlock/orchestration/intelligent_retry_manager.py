@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intelligent Retry Manager - Adaptive Retry Strategy Based on Failure Cause.
 ============================================================================
 
@@ -18,7 +18,7 @@ Per CLAUDE.md:
     noise. Could you try again, maybe speak a bit louder and closer
     to the microphone?"
 
-Author: JARVIS Trinity v81.0 - Intelligent Retry Intelligence
+Author: Ironcliw Trinity v81.0 - Intelligent Retry Intelligence
 """
 
 from __future__ import annotations

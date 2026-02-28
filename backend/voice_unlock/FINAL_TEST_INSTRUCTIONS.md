@@ -1,4 +1,4 @@
-# JARVIS Voice Unlock - Final Test Instructions
+﻿# Ironcliw Voice Unlock - Final Test Instructions
 
 ## Current Status ✅
 1. **Password stored in Keychain** ✅
@@ -12,14 +12,14 @@
 ### Step 1: Verify System is Running
 ```bash
 # Check processes
-ps aux | grep -E "(websocket_server|JARVISVoiceUnlockDaemon)" | grep -v grep
+ps aux | grep -E "(websocket_server|IroncliwVoiceUnlockDaemon)" | grep -v grep
 
 # Check logs
 tail -f /tmp/daemon_test.log
 ```
 
 ### Step 2: Test Voice Detection (Screen Unlocked)
-1. With your screen unlocked, say "Hello JARVIS"
+1. With your screen unlocked, say "Hello Ironcliw"
 2. Check the daemon log to see if it detects any audio
 
 ### Step 3: Test Screen Lock Detection  
@@ -30,9 +30,9 @@ tail -f /tmp/daemon_test.log
 
 ### Step 4: Test Voice Unlock
 1. With screen locked, clearly say one of:
-   - "Hello JARVIS, unlock my Mac"
-   - "JARVIS, this is Derek"
-   - "Open sesame, JARVIS"
+   - "Hello Ironcliw, unlock my Mac"
+   - "Ironcliw, this is Derek"
+   - "Open sesame, Ironcliw"
 
 2. The system should:
    - Detect the wake phrase

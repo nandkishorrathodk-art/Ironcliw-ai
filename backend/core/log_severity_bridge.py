@@ -1,4 +1,4 @@
-# backend/core/log_severity_bridge.py
+﻿# backend/core/log_severity_bridge.py
 """
 Log Severity Bridge - Temporary module for criticality-based logging.
 
@@ -72,7 +72,7 @@ def _normalize_component_name(name: str) -> str:
 
     Examples:
         "jarvis_prime" -> "jarvis-prime"
-        "JARVIS_PRIME" -> "jarvis-prime"
+        "Ironcliw_PRIME" -> "jarvis-prime"
         "Jarvis Prime" -> "jarvis-prime"
     """
     return name.lower().replace("_", "-").replace(" ", "-")

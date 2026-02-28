@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Metrics Collection - Gap #30
 ====================================
 
@@ -9,7 +9,7 @@ Metrics collection and aggregation:
 - Export to various backends
 - Timer utilities
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

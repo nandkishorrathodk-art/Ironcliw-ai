@@ -1,4 +1,4 @@
-# 🎤 Voice Narration Enhancements - God Mode Surveillance
+﻿# 🎤 Voice Narration Enhancements - God Mode Surveillance
 
 ## Status: ✅ COMPLETE AND PRODUCTION-READY
 
@@ -21,7 +21,7 @@ All voice narration enhancements have been successfully implemented in `backend/
 
 **Lines 353-562:** `_build_success_response()` method
 
-JARVIS now adapts responses based on OCR confidence levels:
+Ironcliw now adapts responses based on OCR confidence levels:
 
 #### High Confidence (>90%)
 ```
@@ -68,7 +68,7 @@ Want me to try again with enhanced OCR?"
 
 **Lines 224-280:** `_build_surveillance_start_message()` method
 
-JARVIS adapts initial acknowledgments based on:
+Ironcliw adapts initial acknowledgments based on:
 - **God Mode vs Single Window**
 - **Duration specified vs indefinite**
 - **Time of day** (subdued at night/early morning)
@@ -146,7 +146,7 @@ Want me to keep looking?"
 
 **Lines 635-691:** `_generate_learning_acknowledgment()` method
 
-JARVIS acknowledges when learning new patterns:
+Ironcliw acknowledges when learning new patterns:
 
 #### First App Monitored:
 ```
@@ -171,7 +171,7 @@ well above my average of 88%."
 
 **Lines 566-633:** `_check_milestone()` method
 
-JARVIS celebrates surveillance milestones at **10, 25, 50, 100, 250, 500, 1000** operations:
+Ironcliw celebrates surveillance milestones at **10, 25, 50, 100, 250, 500, 1000** operations:
 
 #### 10th Operation:
 ```
@@ -201,7 +201,7 @@ Fastest detection: 2.3s. You're a surveillance pro!"
 **Lines 63-74:** `__init__()` surveillance stats initialization
 **Lines 504-564:** `_record_surveillance_operation()` method
 
-JARVIS now tracks:
+Ironcliw now tracks:
 - Total operations
 - Successful detections
 - God Mode operation count
@@ -220,7 +220,7 @@ This enables:
 
 ## 🎨 Natural Language Variations
 
-All responses use **random.choice()** to select from multiple variations, ensuring JARVIS never sounds repetitive or robotic.
+All responses use **random.choice()** to select from multiple variations, ensuring Ironcliw never sounds repetitive or robotic.
 
 ### Example - Success Message Variations:
 
@@ -240,7 +240,7 @@ Each category has **3-4 variations** to maintain conversational naturalness.
 
 ## ⏰ Time-Aware Messaging
 
-JARVIS adapts tone based on time of day:
+Ironcliw adapts tone based on time of day:
 
 **Early Morning (before 7 AM) / Late Night (after 10 PM):**
 ```
@@ -292,7 +292,7 @@ This combines:
 ## 🔄 Integration Flow
 
 ```
-User: "JARVIS, watch all Chrome windows for Error"
+User: "Ironcliw, watch all Chrome windows for Error"
     ↓
 IntelligentCommandHandler._execute_surveillance_command()
     ↓
@@ -388,7 +388,7 @@ if FAILED:
 
 ### Before:
 ```
-JARVIS: "Surveillance complete. Trigger detected."
+Ironcliw: "Surveillance complete. Trigger detected."
 ```
 - Generic, robotic
 - No context
@@ -397,7 +397,7 @@ JARVIS: "Surveillance complete. Trigger detected."
 
 ### After:
 ```
-JARVIS: "Found it, Derek! I detected 'Error' in Chrome on Space 3.
+Ironcliw: "Found it, Derek! I detected 'Error' in Chrome on Space 3.
         Confidence: 94%. I was watching 5 Chrome windows in parallel -
         this one triggered first.
 
@@ -449,7 +449,7 @@ JARVIS: "Found it, Derek! I detected 'Error' in Chrome on Space 3.
 
 **User Command:**
 ```
-"JARVIS, watch all Terminal windows for Build Complete"
+"Ironcliw, watch all Terminal windows for Build Complete"
 ```
 
 **Initial Acknowledgment (Dynamic):**
@@ -547,7 +547,7 @@ To test enhanced narration:
 
 1. **Persistent Stats Storage:**
    - Store `surveillance_stats` in ChromaDB for persistence across sessions
-   - Enable: "JARVIS, show my surveillance stats for this month"
+   - Enable: "Ironcliw, show my surveillance stats for this month"
 
 2. **Voice Pattern Learning:**
    - Detect user's preferred verbosity level
@@ -593,6 +593,6 @@ To test enhanced narration:
 ✅ **Performance:** <5ms overhead per operation
 ✅ **Quality:** Robust, async, parallel, intelligent, dynamic, zero hardcoding
 
-**JARVIS now communicates like a sophisticated AI assistant with learning, personality, and context awareness.**
+**Ironcliw now communicates like a sophisticated AI assistant with learning, personality, and context awareness.**
 
 🚀 **Ready for live testing and voice integration!**

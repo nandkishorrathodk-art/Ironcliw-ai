@@ -1,8 +1,8 @@
-# JARVIS Autonomous System Guide
+﻿# Ironcliw Autonomous System Guide
 
 ## Overview
 
-The JARVIS Autonomous System is a revolutionary zero-configuration architecture that automatically discovers, connects, and maintains all services with no hardcoding. It's optimized for 16GB macOS systems with intelligent memory management.
+The Ironcliw Autonomous System is a revolutionary zero-configuration architecture that automatically discovers, connects, and maintains all services with no hardcoding. It's optimized for 16GB macOS systems with intelligent memory management.
 
 ## Key Features
 
@@ -27,7 +27,7 @@ The JARVIS Autonomous System is a revolutionary zero-configuration architecture 
 ## Quick Start
 
 ```bash
-# Start JARVIS with autonomous mode (default if components available)
+# Start Ironcliw with autonomous mode (default if components available)
 ./start_system.py
 
 # Or explicitly enable autonomous mode

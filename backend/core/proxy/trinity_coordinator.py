@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unified Trinity Coordinator - Single Source of Truth for Cross-Repo Coordination
 
 This module solves the root cause of nagging "Prime unavailable" and "degraded mode"
@@ -42,7 +42,7 @@ Architecture:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -95,18 +95,18 @@ class TrinityConfig:
     """Unified configuration for Trinity coordination."""
 
     # State directories
-    STATE_DIR: Final[Path] = Path(os.getenv("JARVIS_STATE_DIR", str(Path.home() / ".jarvis")))
+    STATE_DIR: Final[Path] = Path(os.getenv("Ironcliw_STATE_DIR", str(Path.home() / ".jarvis")))
     TRINITY_DIR: Final[Path] = STATE_DIR / "trinity"
     CROSS_REPO_DIR: Final[Path] = STATE_DIR / "cross_repo"
 
     # Component discovery
-    JARVIS_BODY_PORT: Final[int] = int(os.getenv("JARVIS_BODY_PORT", "8010"))
-    JARVIS_PRIME_PORT: Final[int] = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+    Ironcliw_BODY_PORT: Final[int] = int(os.getenv("Ironcliw_BODY_PORT", "8010"))
+    Ironcliw_PRIME_PORT: Final[int] = int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
     REACTOR_CORE_PORT: Final[int] = int(os.getenv("REACTOR_CORE_PORT", "8082"))
 
     # Paths to repos (for subprocess management)
-    JARVIS_PRIME_PATH: Final[str] = os.getenv(
-        "JARVIS_PRIME_PATH",
+    Ironcliw_PRIME_PATH: Final[str] = os.getenv(
+        "Ironcliw_PRIME_PATH",
         str(Path.home() / "Documents/repos/jarvis-prime")
     )
     REACTOR_CORE_PATH: Final[str] = os.getenv(
@@ -115,19 +115,19 @@ class TrinityConfig:
     )
 
     # Component-specific timeouts (from TrinityOrchestrationConfig)
-    # JARVIS Body (fast startup)
-    BODY_STARTUP_TIMEOUT: Final[float] = float(os.getenv("JARVIS_BODY_STARTUP_TIMEOUT", "30.0"))
-    BODY_HEALTH_TIMEOUT: Final[float] = float(os.getenv("JARVIS_BODY_HEALTH_TIMEOUT", "10.0"))
-    BODY_HEARTBEAT_STALE: Final[float] = float(os.getenv("JARVIS_BODY_HEARTBEAT_STALE", "45.0"))
-    BODY_GRACE_PERIOD: Final[float] = float(os.getenv("JARVIS_BODY_GRACE_PERIOD", "5.0"))
+    # Ironcliw Body (fast startup)
+    BODY_STARTUP_TIMEOUT: Final[float] = float(os.getenv("Ironcliw_BODY_STARTUP_TIMEOUT", "30.0"))
+    BODY_HEALTH_TIMEOUT: Final[float] = float(os.getenv("Ironcliw_BODY_HEALTH_TIMEOUT", "10.0"))
+    BODY_HEARTBEAT_STALE: Final[float] = float(os.getenv("Ironcliw_BODY_HEARTBEAT_STALE", "45.0"))
+    BODY_GRACE_PERIOD: Final[float] = float(os.getenv("Ironcliw_BODY_GRACE_PERIOD", "5.0"))
 
-    # JARVIS Prime (slow - ML model loading)
+    # Ironcliw Prime (slow - ML model loading)
     # v150.0: UNIFIED TIMEOUT - 600s (10 minutes) for heavy model loading
     # Previous: 300s - caused premature timeouts with 70B+ models
-    PRIME_STARTUP_TIMEOUT: Final[float] = float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0"))
-    PRIME_HEALTH_TIMEOUT: Final[float] = float(os.getenv("JARVIS_PRIME_HEALTH_TIMEOUT", "15.0"))
-    PRIME_HEARTBEAT_STALE: Final[float] = float(os.getenv("JARVIS_PRIME_HEARTBEAT_STALE", "120.0"))
-    PRIME_GRACE_PERIOD: Final[float] = float(os.getenv("JARVIS_PRIME_GRACE_PERIOD", "60.0"))
+    PRIME_STARTUP_TIMEOUT: Final[float] = float(os.getenv("Ironcliw_PRIME_STARTUP_TIMEOUT", "600.0"))
+    PRIME_HEALTH_TIMEOUT: Final[float] = float(os.getenv("Ironcliw_PRIME_HEALTH_TIMEOUT", "15.0"))
+    PRIME_HEARTBEAT_STALE: Final[float] = float(os.getenv("Ironcliw_PRIME_HEARTBEAT_STALE", "120.0"))
+    PRIME_GRACE_PERIOD: Final[float] = float(os.getenv("Ironcliw_PRIME_GRACE_PERIOD", "60.0"))
 
     # Reactor Core (medium)
     REACTOR_STARTUP_TIMEOUT: Final[float] = float(os.getenv("REACTOR_STARTUP_TIMEOUT", "120.0"))
@@ -140,14 +140,14 @@ class TrinityConfig:
     NOTIFICATION_COOLDOWN: Final[float] = float(os.getenv("TRINITY_NOTIFICATION_COOLDOWN", "300.0"))
 
     # Degraded mode behavior
-    ALLOW_DEGRADED_MODE: Final[bool] = os.getenv("JARVIS_ALLOW_DEGRADED_MODE", "true").lower() == "true"
-    AUTO_RECOVERY: Final[bool] = os.getenv("JARVIS_AUTO_RECOVERY", "true").lower() == "true"
-    RECOVERY_INTERVAL: Final[float] = float(os.getenv("JARVIS_RECOVERY_INTERVAL", "120.0"))
+    ALLOW_DEGRADED_MODE: Final[bool] = os.getenv("Ironcliw_ALLOW_DEGRADED_MODE", "true").lower() == "true"
+    AUTO_RECOVERY: Final[bool] = os.getenv("Ironcliw_AUTO_RECOVERY", "true").lower() == "true"
+    RECOVERY_INTERVAL: Final[float] = float(os.getenv("Ironcliw_RECOVERY_INTERVAL", "120.0"))
 
     # Process management
-    # v148.0: START_JARVIS_PRIME defaults to true (it's required for inference)
+    # v148.0: START_Ironcliw_PRIME defaults to true (it's required for inference)
     # v148.0: START_REACTOR_CORE defaults to false (optional training component)
-    START_PRIME: Final[bool] = os.getenv("START_JARVIS_PRIME", "true").lower() == "true"
+    START_PRIME: Final[bool] = os.getenv("START_Ironcliw_PRIME", "true").lower() == "true"
     START_REACTOR: Final[bool] = os.getenv("START_REACTOR_CORE", "false").lower() == "true"
 
 
@@ -157,8 +157,8 @@ class TrinityConfig:
 
 class TrinityComponent(Enum):
     """Trinity component identifiers."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     CLOUDSQL_PROXY = "cloudsql_proxy"
 
@@ -206,19 +206,19 @@ class ComponentConfig:
 
     @classmethod
     def for_prime(cls) -> ComponentConfig:
-        """Create config for JARVIS Prime."""
+        """Create config for Ironcliw Prime."""
         return cls(
-            component=TrinityComponent.JARVIS_PRIME,
-            display_name="JARVIS Prime (Mind)",
-            port=TrinityConfig.JARVIS_PRIME_PORT,
-            health_endpoint=f"http://127.0.0.1:{TrinityConfig.JARVIS_PRIME_PORT}/health",
+            component=TrinityComponent.Ironcliw_PRIME,
+            display_name="Ironcliw Prime (Mind)",
+            port=TrinityConfig.Ironcliw_PRIME_PORT,
+            health_endpoint=f"http://127.0.0.1:{TrinityConfig.Ironcliw_PRIME_PORT}/health",
             heartbeat_file=TrinityConfig.TRINITY_DIR / "heartbeats" / "jarvis_prime.json",
             startup_timeout=TrinityConfig.PRIME_STARTUP_TIMEOUT,
             health_timeout=TrinityConfig.PRIME_HEALTH_TIMEOUT,
             heartbeat_stale=TrinityConfig.PRIME_HEARTBEAT_STALE,
             grace_period=TrinityConfig.PRIME_GRACE_PERIOD,
             required=False,
-            repo_path=Path(TrinityConfig.JARVIS_PRIME_PATH) if TrinityConfig.JARVIS_PRIME_PATH else None,
+            repo_path=Path(TrinityConfig.Ironcliw_PRIME_PATH) if TrinityConfig.Ironcliw_PRIME_PATH else None,
             startup_command=["python3", "run_server.py"],
         )
 
@@ -242,12 +242,12 @@ class ComponentConfig:
 
     @classmethod
     def for_body(cls) -> ComponentConfig:
-        """Create config for JARVIS Body."""
+        """Create config for Ironcliw Body."""
         return cls(
-            component=TrinityComponent.JARVIS_BODY,
-            display_name="JARVIS Body (Main)",
-            port=TrinityConfig.JARVIS_BODY_PORT,
-            health_endpoint=f"http://127.0.0.1:{TrinityConfig.JARVIS_BODY_PORT}/health/ready",
+            component=TrinityComponent.Ironcliw_BODY,
+            display_name="Ironcliw Body (Main)",
+            port=TrinityConfig.Ironcliw_BODY_PORT,
+            health_endpoint=f"http://127.0.0.1:{TrinityConfig.Ironcliw_BODY_PORT}/health/ready",
             heartbeat_file=TrinityConfig.TRINITY_DIR / "heartbeats" / "jarvis_body.json",
             startup_timeout=TrinityConfig.BODY_STARTUP_TIMEOUT,
             health_timeout=TrinityConfig.BODY_HEALTH_TIMEOUT,
@@ -749,8 +749,8 @@ class ProcessSupervisor:
                 stderr=asyncio.subprocess.PIPE,
                 env={
                     **os.environ,
-                    "JARVIS_CHILD_PROCESS": "true",
-                    "JARVIS_COMPONENT": config.component.value,
+                    "Ironcliw_CHILD_PROCESS": "true",
+                    "Ironcliw_COMPONENT": config.component.value,
                 },
             )
 
@@ -961,18 +961,18 @@ class UnifiedTrinityCoordinator:
 
     async def _start_external_repos(self) -> None:
         """Start external repo processes."""
-        # Start JARVIS Prime
+        # Start Ironcliw Prime
         if TrinityConfig.START_PRIME:
-            prime_config = self._configs.get(TrinityComponent.JARVIS_PRIME)
+            prime_config = self._configs.get(TrinityComponent.Ironcliw_PRIME)
             if prime_config:
-                self._health_checker.mark_starting(TrinityComponent.JARVIS_PRIME)
+                self._health_checker.mark_starting(TrinityComponent.Ironcliw_PRIME)
                 await self._registry.update_state(
-                    TrinityComponent.JARVIS_PRIME,
+                    TrinityComponent.Ironcliw_PRIME,
                     ComponentState.STARTING,
                 )
                 success = await self._process_supervisor.start_component(prime_config)
                 if not success and not TrinityConfig.ALLOW_DEGRADED_MODE:
-                    raise RuntimeError("Failed to start JARVIS Prime")
+                    raise RuntimeError("Failed to start Ironcliw Prime")
 
         # Start Reactor Core
         if TrinityConfig.START_REACTOR:

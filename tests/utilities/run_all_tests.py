@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Comprehensive Test Runner for JARVIS Multi-Window Intelligence
+Comprehensive Test Runner for Ironcliw Multi-Window Intelligence
 Runs all test suites and generates consolidated reports
 """
 
@@ -40,7 +40,7 @@ class ComprehensiveTestRunner:
         self.start_time = time.time()
         
         print("\n" + "="*60)
-        print("🚀 JARVIS COMPREHENSIVE TEST SUITE")
+        print("🚀 Ironcliw COMPREHENSIVE TEST SUITE")
         print("="*60)
         print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         

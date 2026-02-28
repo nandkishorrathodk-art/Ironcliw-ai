@@ -1,7 +1,7 @@
-#!/bin/bash
-# Quick start script for JARVIS voice system with Picovoice
+﻿#!/bin/bash
+# Quick start script for Ironcliw voice system with Picovoice
 
-echo "🚀 JARVIS Voice System Quick Start"
+echo "🚀 Ironcliw Voice System Quick Start"
 echo "=================================="
 
 # Set environment variables
@@ -11,7 +11,7 @@ export WAKE_WORD_THRESHOLD=0.55
 export CONFIDENCE_THRESHOLD=0.6
 export ENABLE_VAD=true
 export ENABLE_STREAMING=true
-export JARVIS_OPTIMIZATION_LEVEL=balanced
+export Ironcliw_OPTIMIZATION_LEVEL=balanced
 
 echo "✅ Environment variables set"
 

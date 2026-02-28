@@ -1,9 +1,9 @@
--- =============================================================================
--- JARVIS Training Database Schema
+﻿-- =============================================================================
+-- Ironcliw Training Database Schema
 -- =============================================================================
 --
--- SQLite schema for the JARVIS training system. This database stores:
--- - Experiences from JARVIS interactions
+-- SQLite schema for the Ironcliw training system. This database stores:
+-- - Experiences from Ironcliw interactions
 -- - Scraped web content for training
 -- - Learning goals and topics
 -- - Training run history
@@ -27,15 +27,15 @@
 -- =============================================================================
 -- Experiences Table
 -- =============================================================================
--- Records of JARVIS interactions that can be used for training
--- Each row represents a user input -> JARVIS output pair
+-- Records of Ironcliw interactions that can be used for training
+-- Each row represents a user input -> Ironcliw output pair
 
 CREATE TABLE IF NOT EXISTS experiences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp REAL NOT NULL,
     source TEXT NOT NULL,                    -- 'voice', 'text', 'api', 'automation'
     input_text TEXT NOT NULL,                -- User's input
-    output_text TEXT NOT NULL,               -- JARVIS's response
+    output_text TEXT NOT NULL,               -- Ironcliw's response
     context TEXT,                            -- JSON: additional context (screen state, etc.)
     quality_score REAL DEFAULT 0.5,          -- 0.0 to 1.0, based on user feedback
     feedback TEXT,                           -- 'positive', 'negative', 'corrected'
@@ -83,7 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_scraped_used ON scraped_content(used_in_training)
 -- =============================================================================
 -- Learning Goals Table
 -- =============================================================================
--- Topics JARVIS should learn about, either auto-discovered or user-specified
+-- Topics Ironcliw should learn about, either auto-discovered or user-specified
 
 CREATE TABLE IF NOT EXISTS learning_goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS training_runs (
 
     -- Deployment
     gcs_path TEXT,                           -- GCS upload path
-    deployed_to_local INTEGER DEFAULT 0,     -- Deployed to JARVIS-Prime local
+    deployed_to_local INTEGER DEFAULT 0,     -- Deployed to Ironcliw-Prime local
     deployed_to_cloud INTEGER DEFAULT 0,     -- Deployed to Cloud Run
 
     -- Error handling

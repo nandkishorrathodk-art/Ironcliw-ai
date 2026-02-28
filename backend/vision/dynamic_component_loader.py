@@ -1,5 +1,5 @@
-"""
-Dynamic Component Loader for JARVIS Vision System.
+﻿"""
+Dynamic Component Loader for Ironcliw Vision System.
 Automatically switches between Rust and Python implementations based on availability.
 Periodically checks for Rust components and upgrades when available.
 """

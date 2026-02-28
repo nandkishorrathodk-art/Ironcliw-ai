@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 import subprocess
 import sys
 import types
@@ -33,7 +33,7 @@ def test_parser_extracts_navigation_action_for_repo_target():
 
 @pytest.mark.asyncio
 async def test_navigation_executor_opens_repo_remote_url(monkeypatch, tmp_path):
-    repo_path = tmp_path / "JARVIS-AI-Agent"
+    repo_path = tmp_path / "Ironcliw-AI-Agent"
     repo_path.mkdir()
 
     monkeypatch.setattr(
@@ -44,7 +44,7 @@ async def test_navigation_executor_opens_repo_remote_url(monkeypatch, tmp_path):
     monkeypatch.setattr(
         NavigationExecutor,
         "_get_git_remote_url",
-        lambda self, _repo: "https://github.com/drussell23/JARVIS-AI-Agent",
+        lambda self, _repo: "https://github.com/drussell23/Ironcliw-AI-Agent",
     )
 
     calls = []
@@ -70,6 +70,6 @@ async def test_navigation_executor_opens_repo_remote_url(monkeypatch, tmp_path):
     result = await executor.execute(action, context)
 
     assert result["status"] == "success"
-    assert result["destination"] == "https://github.com/drussell23/JARVIS-AI-Agent"
-    assert context.get_variable("last_navigation_url") == "https://github.com/drussell23/JARVIS-AI-Agent"
+    assert result["destination"] == "https://github.com/drussell23/Ironcliw-AI-Agent"
+    assert context.get_variable("last_navigation_url") == "https://github.com/drussell23/Ironcliw-AI-Agent"
     assert any(cmd[:3] == ["open", "-a", "Safari"] for cmd in calls)

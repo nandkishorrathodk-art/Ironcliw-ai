@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Fix profile ownership and speaker recognition."""
 
 import asyncio
@@ -132,7 +132,7 @@ async def fix_profile_ownership():
         print("✅ OWNERSHIP FIXED!")
         print("="*80)
         print("\nDerek J. Russell is now set as the primary device owner.")
-        print("Restart JARVIS to apply changes.")
+        print("Restart Ironcliw to apply changes.")
 
     finally:
         await conn.close()

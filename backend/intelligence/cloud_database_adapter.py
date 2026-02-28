@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Cloud Database Adapter for JARVIS
+Cloud Database Adapter for Ironcliw
 Supports both local SQLite and GCP Cloud SQL (PostgreSQL)
 Seamless switching between local and cloud databases
 
@@ -313,16 +313,16 @@ class DatabaseConfig:
         self._load_from_config()
 
         # Check for explicit Cloud SQL request via environment
-        env_db_type = os.getenv("JARVIS_DB_TYPE", "").lower()
+        env_db_type = os.getenv("Ironcliw_DB_TYPE", "").lower()
         if env_db_type == "cloudsql":
             self._explicit_cloudsql_request = True
 
         # Environment variables can override config file
-        self.connection_name = os.getenv("JARVIS_DB_CONNECTION_NAME", self.connection_name)
-        self.db_host = os.getenv("JARVIS_DB_HOST", self.db_host)
-        self.db_port = int(os.getenv("JARVIS_DB_PORT", str(self.db_port)))
-        self.db_name = os.getenv("JARVIS_DB_NAME", self.db_name)
-        self.db_user = os.getenv("JARVIS_DB_USER", self.db_user)
+        self.connection_name = os.getenv("Ironcliw_DB_CONNECTION_NAME", self.connection_name)
+        self.db_host = os.getenv("Ironcliw_DB_HOST", self.db_host)
+        self.db_port = int(os.getenv("Ironcliw_DB_PORT", str(self.db_port)))
+        self.db_name = os.getenv("Ironcliw_DB_NAME", self.db_name)
+        self.db_user = os.getenv("Ironcliw_DB_USER", self.db_user)
 
         # Track connection name availability
         self._has_connection_name = bool(self.connection_name)
@@ -331,7 +331,7 @@ class DatabaseConfig:
         if SECRET_MANAGER_AVAILABLE:
             self.db_password = get_db_password() or self.db_password
         else:
-            self.db_password = os.getenv("JARVIS_DB_PASSWORD", self.db_password)
+            self.db_password = os.getenv("Ironcliw_DB_PASSWORD", self.db_password)
 
         # Track password availability
         self._has_password = bool(self.db_password)
@@ -1406,7 +1406,7 @@ async def get_database_adapter() -> CloudDatabaseAdapter:
         pass  # Gate not available — proceed with normal init
 
     # ── Initialise adapter (with timeout safety net) ──────────────────
-    _init_timeout = float(os.getenv("JARVIS_DB_ADAPTER_INIT_TIMEOUT", "15.0"))
+    _init_timeout = float(os.getenv("Ironcliw_DB_ADAPTER_INIT_TIMEOUT", "15.0"))
 
     _adapter = CloudDatabaseAdapter()
 

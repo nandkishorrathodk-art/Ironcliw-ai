@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.2: Atomic File Locking - Gap #61
 =====================================
 
@@ -24,7 +24,7 @@ Features:
     - Cross-process coordination
     - Async-compatible wrapper
 
-Author: JARVIS v77.2
+Author: Ironcliw v77.2
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Workflow Pattern Engine - Advanced Pattern Learning for JARVIS Vision System
+Workflow Pattern Engine - Advanced Pattern Learning for Ironcliw Vision System
 Dynamic workflow pattern discovery, formation, and application with zero hardcoding
 Memory allocation: 120MB total
 

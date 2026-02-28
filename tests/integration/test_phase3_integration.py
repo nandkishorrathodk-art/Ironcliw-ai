@@ -1,4 +1,4 @@
-"""
+﻿"""
 Phase 3.0 Integration Tests
 ===========================
 
@@ -135,7 +135,7 @@ class TestSystemHardening:
 
     @pytest.fixture
     def temp_jarvis_home(self, tmp_path):
-        """Create a temporary JARVIS home directory."""
+        """Create a temporary Ironcliw home directory."""
         return tmp_path / ".jarvis"
 
     @pytest.mark.asyncio
@@ -745,13 +745,13 @@ class TestTrinityStateManager:
 
         try:
             # Set values in different namespaces
-            await manager.set("key1", "jarvis_value", StateNamespace.JARVIS_BODY)
-            await manager.set("key1", "prime_value", StateNamespace.JARVIS_PRIME)
+            await manager.set("key1", "jarvis_value", StateNamespace.Ironcliw_BODY)
+            await manager.set("key1", "prime_value", StateNamespace.Ironcliw_PRIME)
             await manager.set("key1", "reactor_value", StateNamespace.REACTOR_CORE)
 
             # Values should be independent
-            v1 = await manager.get("key1", StateNamespace.JARVIS_BODY)
-            v2 = await manager.get("key1", StateNamespace.JARVIS_PRIME)
+            v1 = await manager.get("key1", StateNamespace.Ironcliw_BODY)
+            v2 = await manager.get("key1", StateNamespace.Ironcliw_PRIME)
             v3 = await manager.get("key1", StateNamespace.REACTOR_CORE)
 
             assert v1 == "jarvis_value"

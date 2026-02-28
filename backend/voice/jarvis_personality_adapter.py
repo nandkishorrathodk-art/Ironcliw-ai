@@ -1,5 +1,5 @@
-"""
-JARVIS Personality Adapter for AI Agent
+﻿"""
+Ironcliw Personality Adapter for AI Agent
 Provides compatibility layer for personality-based methods
 """
 
@@ -10,7 +10,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class PersonalityAdapter:
-    """Adapter to provide personality interface for JARVISAgentVoice"""
+    """Adapter to provide personality interface for IroncliwAgentVoice"""
     
     def __init__(self, agent):
         self.agent = agent

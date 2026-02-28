@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Control Center Position Setup Wizard
 Finds and saves the exact position of your Control Center icon
@@ -21,7 +21,7 @@ async def setup_control_center():
     print("🎯 Control Center Position Setup Wizard")
     print("="*70)
     
-    print("\nThis wizard will help JARVIS learn where your Control Center icon is.")
+    print("\nThis wizard will help Ironcliw learn where your Control Center icon is.")
     print("We'll do this in 3 steps:\n")
     
     # Step 1: Show current position
@@ -65,7 +65,7 @@ async def setup_control_center():
         img.save(marked_path)
         
         print(f"  ✅ Screenshot saved: {marked_path}")
-        print(f"  📸 RED circle shows where JARVIS currently clicks")
+        print(f"  📸 RED circle shows where Ironcliw currently clicks")
         
         # Open the image
         subprocess.run(['open', str(marked_path)])
@@ -73,7 +73,7 @@ async def setup_control_center():
     # Step 3: Get correct position
     print(f"\nStep 3: Find the Control Center Icon")
     print(f"  Look at the screenshot that just opened.")
-    print(f"  The RED circle shows where JARVIS currently clicks.")
+    print(f"  The RED circle shows where Ironcliw currently clicks.")
     print(f"")
     
     choice = input("Is the RED circle on the Control Center icon? (y/n): ").lower()
@@ -154,7 +154,7 @@ async def setup_control_center():
     print("="*70)
     print(f"\nNow restart your backend and try:")
     print(f"  'connect to my living room tv'")
-    print(f"\nJARVIS will click at ({final_x}, {final_y}) to open Control Center")
+    print(f"\nIroncliw will click at ({final_x}, {final_y}) to open Control Center")
     print("="*70 + "\n")
 
 

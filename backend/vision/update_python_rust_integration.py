@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Update Python modules to use Rust acceleration dynamically.
 No hardcoding - all configuration is dynamic.
@@ -400,7 +400,7 @@ except ImportError:
             "memory": {
                 "total_system_gb": psutil.virtual_memory().total / (1024**3),
                 "jarvis_allocation_percent": 40,
-                "rust_pool_percent": 50,  # 50% of JARVIS allocation
+                "rust_pool_percent": 50,  # 50% of Ironcliw allocation
                 "enable_zero_copy": RUST_AVAILABLE,
                 "enable_memory_pressure_handling": True
             }

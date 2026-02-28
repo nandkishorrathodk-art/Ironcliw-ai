@@ -1,9 +1,9 @@
-"""
+﻿"""
 v78.0: Atomic Command Queue for Trinity Transport
 =================================================
 
 Provides atomic, race-condition-free command queuing for the file-based
-Trinity transport layer between JARVIS, J-Prime, and Reactor-Core.
+Trinity transport layer between Ironcliw, J-Prime, and Reactor-Core.
 
 Features:
 - Atomic file operations using OS-level locks
@@ -15,7 +15,7 @@ Features:
 - Crash recovery with journal logging
 
 Architecture:
-    JARVIS writes → [Atomic Lock] → Queue File → [Atomic Lock] → J-Prime reads
+    Ironcliw writes → [Atomic Lock] → Queue File → [Atomic Lock] → J-Prime reads
          ↑                                              ↓
          └─────── Reactor-Core reads/writes ────────────┘
 
@@ -42,7 +42,7 @@ Usage:
         process(entry.payload)
         await queue.acknowledge(entry.sequence_id)
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 from __future__ import annotations
@@ -462,7 +462,7 @@ class AtomicCommandQueue:
     """
     Atomic command queue for Trinity transport.
 
-    Provides race-condition-free queuing between JARVIS, J-Prime,
+    Provides race-condition-free queuing between Ironcliw, J-Prime,
     and Reactor-Core using file-based transport with OS-level locks.
 
     Thread-safe and async-compatible. Multiple processes can safely
@@ -1023,9 +1023,9 @@ def get_atomic_queue_sync(queue_name: str) -> Optional[AtomicCommandQueue]:
 
 
 # Standard Trinity queues
-JARVIS_TO_JPRIME = "jarvis_to_jprime"
-JPRIME_TO_JARVIS = "jprime_to_jarvis"
-JARVIS_TO_REACTOR = "jarvis_to_reactor"
-REACTOR_TO_JARVIS = "reactor_to_jarvis"
+Ironcliw_TO_JPRIME = "jarvis_to_jprime"
+JPRIME_TO_Ironcliw = "jprime_to_jarvis"
+Ironcliw_TO_REACTOR = "jarvis_to_reactor"
+REACTOR_TO_Ironcliw = "reactor_to_jarvis"
 JPRIME_TO_REACTOR = "jprime_to_reactor"
 REACTOR_TO_JPRIME = "reactor_to_jprime"

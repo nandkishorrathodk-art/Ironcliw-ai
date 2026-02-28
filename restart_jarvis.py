@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Quick JARVIS Restart Script
+Quick Ironcliw Restart Script
 ===========================
-Ensures JARVIS always runs with the latest code.
+Ensures Ironcliw always runs with the latest code.
 Usage: python restart_jarvis.py
 """
 
@@ -16,11 +16,11 @@ from pathlib import Path
 backend_dir = Path(__file__).parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
-from jarvis_reload_manager import JARVISReloadManager
+from jarvis_reload_manager import IroncliwReloadManager
 
 
 async def restart_jarvis():
-    """Restart JARVIS with latest code"""
+    """Restart Ironcliw with latest code"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(message)s',
@@ -28,10 +28,10 @@ async def restart_jarvis():
     )
 
     print("=" * 60)
-    print("🔄 JARVIS INTELLIGENT RESTART")
+    print("🔄 Ironcliw INTELLIGENT RESTART")
     print("=" * 60)
 
-    manager = JARVISReloadManager()
+    manager = IroncliwReloadManager()
 
     # Always detect code changes
     print("\n📊 Checking for code changes...")
@@ -46,32 +46,32 @@ async def restart_jarvis():
     else:
         print("ℹ️  No code changes detected")
 
-    # Check for existing JARVIS
+    # Check for existing Ironcliw
     existing = await manager.find_jarvis_process()
     if existing:
-        print(f"\n🛑 Stopping existing JARVIS (PID: {existing.pid})...")
+        print(f"\n🛑 Stopping existing Ironcliw (PID: {existing.pid})...")
         await manager.stop_jarvis(force=True)
-        print("✅ Existing JARVIS stopped")
+        print("✅ Existing Ironcliw stopped")
 
-    # Start new JARVIS
-    print(f"\n🚀 Starting JARVIS with latest code...")
+    # Start new Ironcliw
+    print(f"\n🚀 Starting Ironcliw with latest code...")
     success = await manager.start_jarvis()
 
     if success:
-        print(f"✅ JARVIS started successfully!")
+        print(f"✅ Ironcliw started successfully!")
         print(f"📍 Running on port: {manager.config['port']}")
         print(f"🔗 URL: http://localhost:{manager.config['port']}")
-        print("\n💡 JARVIS will auto-reload when you make code changes")
+        print("\n💡 Ironcliw will auto-reload when you make code changes")
         print("Press Ctrl+C to stop")
 
         # Keep monitoring
         try:
             await manager.monitor_loop()
         except KeyboardInterrupt:
-            print("\n👋 Shutting down JARVIS...")
+            print("\n👋 Shutting down Ironcliw...")
             await manager.stop_jarvis()
     else:
-        print("❌ Failed to start JARVIS")
+        print("❌ Failed to start Ironcliw")
         sys.exit(1)
 
 

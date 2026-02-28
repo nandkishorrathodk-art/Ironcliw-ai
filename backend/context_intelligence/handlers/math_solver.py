@@ -1,5 +1,5 @@
-"""
-Math Solver for JARVIS v240.0
+﻿"""
+Math Solver for Ironcliw v240.0
 ==============================
 
 Sympy-based deterministic math solver that intercepts equations before

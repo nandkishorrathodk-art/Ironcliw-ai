@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Diagnose why Weather app doesn't respond to automated clicks"""
 
 import asyncio
@@ -143,5 +143,5 @@ async def diagnose_weather_clicking():
     print("\nRecommendation: Manual selection remains the most reliable method")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(diagnose_weather_clicking())

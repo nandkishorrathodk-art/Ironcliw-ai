@@ -1,5 +1,5 @@
-"""
-v85.0: JARVIS Prime Framework Adapter for Unified Coding Council
+﻿"""
+v85.0: Ironcliw Prime Framework Adapter for Unified Coding Council
 ================================================================
 
 Production-grade adapter with advanced parallel coordination, intelligent
@@ -21,7 +21,7 @@ ADVANCED PATTERNS:
     - Async context managers for resource safety
     - Retry budgets with jittered backoff
 
-Author: JARVIS v85.0
+Author: Ironcliw v85.0
 """
 
 from __future__ import annotations
@@ -163,7 +163,7 @@ class TracingContext:
     """
     v85.0: Distributed tracing context for cross-repo correlation.
 
-    Propagates correlation IDs across JARVIS, J-Prime, and Reactor-Core.
+    Propagates correlation IDs across Ironcliw, J-Prime, and Reactor-Core.
     """
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     trace_id: str = field(default_factory=lambda: str(uuid.uuid4())[:16])
@@ -1886,7 +1886,7 @@ class JPrimeLocalAdapter(JPrimeBaseAdapter):
     ) -> str:
         """Build a context-aware system prompt."""
         prompt_parts = [
-            "You are JARVIS Prime, an expert AI assistant for software development.",
+            "You are Ironcliw Prime, an expert AI assistant for software development.",
             "Provide clear, accurate, and helpful responses.",
         ]
 
@@ -1947,7 +1947,7 @@ class JPrimeAvailabilityChecker:
 
             # Fallback to HTTP health check
             import aiohttp
-            jprime_url = _get_env("JARVIS_PRIME_URL", "http://localhost:8000")
+            jprime_url = _get_env("Ironcliw_PRIME_URL", "http://localhost:8000")
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{jprime_url}/health", timeout=5.0) as response:

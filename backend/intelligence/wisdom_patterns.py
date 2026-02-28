@@ -1,10 +1,10 @@
-"""
-Wisdom Patterns System for JARVIS - Fabric-Inspired
+﻿"""
+Wisdom Patterns System for Ironcliw - Fabric-Inspired
 ====================================================
 
 Implements a pattern-based system prompt library, inspired by Fabric.
 Patterns are optimized system prompts for specific tasks that make
-JARVIS sound like a senior consultant instead of generic ChatGPT.
+Ironcliw sound like a senior consultant instead of generic ChatGPT.
 
 Features:
 - Load patterns from Fabric's patterns directory
@@ -12,9 +12,9 @@ Features:
 - Pattern composition (combine multiple patterns)
 - Custom pattern creation
 - Pattern caching and indexing
-- Integration with existing JARVIS systems
+- Integration with existing Ironcliw systems
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -54,28 +54,28 @@ class WisdomPatternsConfig:
     # Pattern sources
     fabric_patterns_dir: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_FABRIC_PATTERNS_DIR",
+            "Ironcliw_FABRIC_PATTERNS_DIR",
             "~/reference_repos/fabric/data/patterns"
         )
     )
     custom_patterns_dir: Path = field(
         default_factory=lambda: _get_env_path(
-            "JARVIS_CUSTOM_PATTERNS_DIR",
+            "Ironcliw_CUSTOM_PATTERNS_DIR",
             "~/.jarvis/patterns"
         )
     )
 
     # Cache settings
     cache_patterns: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_CACHE_PATTERNS", True)
+        default_factory=lambda: get_env_bool("Ironcliw_CACHE_PATTERNS", True)
     )
 
     # Pattern behavior
     auto_select_pattern: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_AUTO_SELECT_PATTERN", True)
+        default_factory=lambda: get_env_bool("Ironcliw_AUTO_SELECT_PATTERN", True)
     )
     fallback_to_default: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_PATTERN_FALLBACK", True)
+        default_factory=lambda: get_env_bool("Ironcliw_PATTERN_FALLBACK", True)
     )
 
 
@@ -250,7 +250,7 @@ class WisdomPatternRegistry:
             if self.config.custom_patterns_dir.exists():
                 await self._load_custom_patterns()
 
-            # Add JARVIS-specific patterns
+            # Add Ironcliw-specific patterns
             self._add_jarvis_patterns()
 
             self._initialized = True
@@ -299,7 +299,7 @@ class WisdomPatternRegistry:
                 logger.debug(f"Failed to load pattern {pattern_dir.name}: {e}")
 
     async def _load_custom_patterns(self):
-        """Load custom JARVIS patterns."""
+        """Load custom Ironcliw patterns."""
         custom_dir = self.config.custom_patterns_dir
 
         for pattern_file in custom_dir.glob("*.md"):
@@ -321,14 +321,14 @@ class WisdomPatternRegistry:
                 logger.debug(f"Failed to load custom pattern {pattern_file.name}: {e}")
 
     def _add_jarvis_patterns(self):
-        """Add JARVIS-specific wisdom patterns."""
+        """Add Ironcliw-specific wisdom patterns."""
         jarvis_patterns = [
             WisdomPattern(
                 name="jarvis_code_review",
                 category=PatternCategory.EVALUATION,
                 system_prompt="""# IDENTITY AND PURPOSE
 
-You are JARVIS, an elite code reviewer with deep expertise in software engineering best practices. You review code with the precision of a senior architect and the clarity of an exceptional teacher.
+You are Ironcliw, an elite code reviewer with deep expertise in software engineering best practices. You review code with the precision of a senior architect and the clarity of an exceptional teacher.
 
 Take a deep breath and think step-by-step about how to best accomplish this goal.
 
@@ -364,7 +364,7 @@ INPUT:
                 category=PatternCategory.CREATION,
                 system_prompt="""# IDENTITY AND PURPOSE
 
-You are JARVIS, a senior software architect with expertise in distributed systems, microservices, and modern cloud architecture. You design systems that are scalable, maintainable, and elegant.
+You are Ironcliw, a senior software architect with expertise in distributed systems, microservices, and modern cloud architecture. You design systems that are scalable, maintainable, and elegant.
 
 Take a deep breath and think step-by-step about how to best accomplish this goal.
 
@@ -401,7 +401,7 @@ INPUT:
                 category=PatternCategory.ANALYSIS,
                 system_prompt="""# IDENTITY AND PURPOSE
 
-You are JARVIS, an expert debugging assistant with deep knowledge of runtime errors, stack traces, and system diagnostics. You approach problems systematically and find root causes efficiently.
+You are Ironcliw, an expert debugging assistant with deep knowledge of runtime errors, stack traces, and system diagnostics. You approach problems systematically and find root causes efficiently.
 
 Take a deep breath and think step-by-step about how to best accomplish this goal.
 
@@ -437,7 +437,7 @@ INPUT:
                 category=PatternCategory.SECURITY,
                 system_prompt="""# IDENTITY AND PURPOSE
 
-You are JARVIS, a voice biometric authentication system with advanced reasoning capabilities. You make authentication decisions by weighing multiple factors including voice similarity, behavioral patterns, and contextual information.
+You are Ironcliw, a voice biometric authentication system with advanced reasoning capabilities. You make authentication decisions by weighing multiple factors including voice similarity, behavioral patterns, and contextual information.
 
 Take a deep breath and think step-by-step about how to best accomplish this goal.
 
@@ -574,7 +574,7 @@ INPUT:
 
 class WisdomAgent:
     """
-    Agent that uses wisdom patterns to enhance JARVIS's reasoning.
+    Agent that uses wisdom patterns to enhance Ironcliw's reasoning.
 
     Automatically selects and applies appropriate patterns based on
     the task at hand.

@@ -1,4 +1,4 @@
-# JARVIS Windows Native Layer Build Script
+﻿# Ironcliw Windows Native Layer Build Script
 # This script builds all C# projects in Release mode
 
 param(
@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "================================================" -ForegroundColor Cyan
-Write-Host " JARVIS Windows Native Layer - Build Script" -ForegroundColor Cyan
+Write-Host " Ironcliw Windows Native Layer - Build Script" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
 

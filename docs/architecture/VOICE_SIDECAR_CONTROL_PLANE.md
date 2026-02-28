@@ -1,4 +1,4 @@
-# Voice Sidecar Control Plane (Go Observer)
+﻿# Voice Sidecar Control Plane (Go Observer)
 
 ## Scope
 - Go sidecar is **observer-only**.
@@ -35,7 +35,7 @@ Advisories emitted by sidecar:
 Phase 2 (resources):
 - Start sidecar if configured.
 - Wait for sidecar health.
-- Read heavy-load advisory gate and set `JARVIS_BACKEND_MINIMAL=true` when closed.
+- Read heavy-load advisory gate and set `Ironcliw_BACKEND_MINIMAL=true` when closed.
 
 Phase 3 (backend):
 - Re-check heavy-load advisory gate.
@@ -47,16 +47,16 @@ Shutdown:
 
 ## Configuration (No Hardcoded Runtime Paths)
 Primary env vars:
-- `JARVIS_VOICE_SIDECAR_ENABLED`
-- `JARVIS_VOICE_SIDECAR_REQUIRED`
-- `JARVIS_VOICE_SIDECAR_COMMAND`
-- `JARVIS_VOICE_SIDECAR_TRANSPORT` (`http|unix`)
-- `JARVIS_VOICE_SIDECAR_BASE_URL`
-- `JARVIS_VOICE_SIDECAR_SOCKET`
-- `JARVIS_VOICE_SIDECAR_START_TIMEOUT`
-- `JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT`
-- `JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT`
-- `JARVIS_VOICE_SIDECAR_POLL_INTERVAL_MS`
+- `Ironcliw_VOICE_SIDECAR_ENABLED`
+- `Ironcliw_VOICE_SIDECAR_REQUIRED`
+- `Ironcliw_VOICE_SIDECAR_COMMAND`
+- `Ironcliw_VOICE_SIDECAR_TRANSPORT` (`http|unix`)
+- `Ironcliw_VOICE_SIDECAR_BASE_URL`
+- `Ironcliw_VOICE_SIDECAR_SOCKET`
+- `Ironcliw_VOICE_SIDECAR_START_TIMEOUT`
+- `Ironcliw_VOICE_SIDECAR_HEALTH_TIMEOUT`
+- `Ironcliw_VOICE_SIDECAR_CONTROL_TIMEOUT`
+- `Ironcliw_VOICE_SIDECAR_POLL_INTERVAL_MS`
 
 Reference config:
 - `config/voice_sidecar.example.yaml`
@@ -65,15 +65,15 @@ Reference config:
 1. Build and run sidecar observer in standalone mode.
 2. Validate `GET /v1/observer/state`, `GET /healthz`, and `GET /metrics`.
 3. Enable supervisor integration in advisory-only mode:
-   - `JARVIS_VOICE_SIDECAR_ENABLED=true`
-   - `JARVIS_VOICE_SIDECAR_REQUIRED=false`
+   - `Ironcliw_VOICE_SIDECAR_ENABLED=true`
+   - `Ironcliw_VOICE_SIDECAR_REQUIRED=false`
 4. Validate startup with `python3 unified_supervisor.py` and verify mode/recovery signals are visible.
 5. Enable required mode only after burn-in:
-   - `JARVIS_VOICE_SIDECAR_REQUIRED=true`
+   - `Ironcliw_VOICE_SIDECAR_REQUIRED=true`
 
 ## Rollback Plan
 1. Disable sidecar integration:
-   - `JARVIS_VOICE_SIDECAR_ENABLED=false`
+   - `Ironcliw_VOICE_SIDECAR_ENABLED=false`
 2. Restart supervisor (`python3 unified_supervisor.py`).
 3. Confirm native Python startup/recovery path remains healthy.
 4. Keep sidecar binary/config for rapid re-enable.

@@ -1,8 +1,8 @@
-"""
+﻿"""
 ContinuousImprovementEngine v100.0 - Self-Improving Learning Loop
 =================================================================
 
-Advanced continuous improvement system that enables JARVIS to:
+Advanced continuous improvement system that enables Ironcliw to:
 1. Track performance metrics over time across all components
 2. Generate and test improvement hypotheses
 3. Run A/B experiments with automatic rollback
@@ -47,7 +47,7 @@ Architecture:
     │  └────────────────────────────────────────────────────────────┘ │
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -935,7 +935,7 @@ class ContinuousImprovementEngine:
     """
     Main engine for continuous improvement.
 
-    Provides closed-loop learning and A/B testing for JARVIS.
+    Provides closed-loop learning and A/B testing for Ironcliw.
     """
 
     def __init__(self):

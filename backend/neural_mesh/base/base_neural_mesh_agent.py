@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Base Neural Mesh Agent
+﻿"""
+Ironcliw Neural Mesh - Base Neural Mesh Agent
 
 Unified agent interface with automatic Neural Mesh integration.
 Provides:

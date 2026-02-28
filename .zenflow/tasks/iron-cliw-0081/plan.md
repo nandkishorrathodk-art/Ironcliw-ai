@@ -1,4 +1,4 @@
-# Spec and build
+﻿# Spec and build
 
 ## Configuration
 - **Artifacts Path**: {@artifacts_path} → `.zenflow/tasks/{task_id}`
@@ -41,7 +41,7 @@ If you are blocked and need user clarification, mark the current step with `[!]`
 ### [x] Phase 1: Foundation & Platform Abstraction (Week 1-2)
 <!-- chat-id: 1a1af890-dd97-40ed-ba70-0aeeb70bce5c -->
 
-✅ **COMPLETED** - Set up Windows development environment and created the platform abstraction layer that allows JARVIS to detect and use Windows-specific implementations.
+✅ **COMPLETED** - Set up Windows development environment and created the platform abstraction layer that allows Ironcliw to detect and use Windows-specific implementations.
 
 **Tasks:**
 1. Create `backend/platform/` directory structure with base abstractions
@@ -88,7 +88,7 @@ All Phase 1 tasks completed successfully:
    - Added Windows-compatible signal handling (no Unix-only signals on Windows)
    - Fixed venv path detection (Windows uses Scripts/, Unix uses bin/)
    - Added platform detection imports in ZONE 1 with fallback
-   - Set global platform constants (JARVIS_PLATFORM, JARVIS_IS_WINDOWS, etc.)
+   - Set global platform constants (Ironcliw_PLATFORM, Ironcliw_IS_WINDOWS, etc.)
 
 5. ✅ Windows installation automation:
    - `scripts/windows/install_windows.ps1` - Complete PowerShell installation script
@@ -308,7 +308,7 @@ python -c "import jarvis_rust_extensions; print(jarvis_rust_extensions.get_syste
 3. ✅ Update process management (launchd → Task Scheduler) - Added Windows Task Scheduler XML generator
 4. ✅ Modify GCP VM manager (no changes needed, cross-platform) - Verified
 5. ✅ Update loading server for Windows paths - Fixed /tmp/ to tempfile.gettempdir()
-6. ⏸️ Test Trinity startup (JARVIS-Prime + Reactor-Core) - Deferred to Phase 6
+6. ⏸️ Test Trinity startup (Ironcliw-Prime + Reactor-Core) - Deferred to Phase 6
 7. ⏸️ Verify dashboard and status endpoints work - Deferred to Phase 6
 
 **What Was Implemented:**
@@ -323,7 +323,7 @@ python -c "import jarvis_rust_extensions; print(jarvis_rust_extensions.get_syste
 - **macOS**: `_generate_launchd_plist()` → `launchctl load`
 - **Windows**: `_generate_windows_task_xml()` → `schtasks /Create`
 - **Linux**: Systemd stub (not yet implemented, prints instructions)
-- Task name: `JARVIS\Supervisor`
+- Task name: `Ironcliw\Supervisor`
 - Auto-restart on boot and crash events
 
 ✅ **Loading Server Path Fixes**:
@@ -357,7 +357,7 @@ python unified_supervisor.py --status     # ⏸️ Requires full stack
 
 **Known Issues:**
 1. **Logging emoji warnings** - Python's logging module creates StreamHandlers with cp1252 encoding. Workaround: Set `PYTHONIOENCODING=utf-8` or remove emojis from backend logs.
-2. **Trinity coordination not tested** - Requires JARVIS-Prime and Reactor-Core repos.
+2. **Trinity coordination not tested** - Requires Ironcliw-Prime and Reactor-Core repos.
 3. **GCP VM manager not tested** - No Windows-specific changes expected.
 
 **See**: `.zenflow/tasks/iron-cliw-0081/phase5_completion.md` for detailed summary
@@ -384,7 +384,7 @@ python unified_supervisor.py --status     # ⏸️ Requires full stack
 
 ✅ **Platform Detection Integration** (`backend/main.py` lines 506-548):
 - Added platform detection imports at module initialization
-- Created global platform constants: `JARVIS_PLATFORM`, `JARVIS_IS_WINDOWS`, `JARVIS_IS_MACOS`, `JARVIS_IS_LINUX`
+- Created global platform constants: `Ironcliw_PLATFORM`, `Ironcliw_IS_WINDOWS`, `Ironcliw_IS_MACOS`, `Ironcliw_IS_LINUX`
 - Comprehensive fallback if platform module unavailable
 - Platform info logged at startup
 

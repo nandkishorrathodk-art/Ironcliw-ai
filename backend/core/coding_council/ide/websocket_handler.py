@@ -1,8 +1,8 @@
-"""
+﻿"""
 v77.3: IDE WebSocket Handler
 ============================
 
-Real-time bidirectional communication between IDE extension and JARVIS.
+Real-time bidirectional communication between IDE extension and Ironcliw.
 
 Features:
 - Async WebSocket server
@@ -14,7 +14,7 @@ Features:
 - Message compression
 
 Protocol:
-    IDE Extension <--WebSocket--> JARVIS Backend
+    IDE Extension <--WebSocket--> Ironcliw Backend
 
     Messages are JSON with structure:
     {
@@ -23,7 +23,7 @@ Protocol:
         "data": { ... }
     }
 
-Author: JARVIS v77.3
+Author: Ironcliw v77.3
 """
 
 from __future__ import annotations
@@ -401,7 +401,7 @@ class IDEWebSocketHandler:
             await connection.send(WebSocketMessage(
                 type=MessageType.NOTIFICATION,
                 data={
-                    "message": "Connected to JARVIS Coding Council",
+                    "message": "Connected to Ironcliw Coding Council",
                     "session_id": session_id,
                     "capabilities": ["suggestions", "evolution", "trinity_sync"],
                 },

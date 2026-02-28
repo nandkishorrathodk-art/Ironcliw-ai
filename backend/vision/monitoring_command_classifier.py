@@ -1,4 +1,4 @@
-"""
+﻿"""
 Monitoring Command Classifier - Distinguishes between vision queries and monitoring control commands
 Part of Screen Monitoring Activation & macOS Purple Indicator System
 """
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class CommandType(Enum):
-    """Types of commands JARVIS can receive"""
+    """Types of commands Ironcliw can receive"""
     MONITORING_CONTROL = "monitoring_control"  # Start/stop monitoring
     VISION_QUERY = "vision_query"             # Questions about what's on screen
     MONITORING_STATUS = "monitoring_status"    # Queries about monitoring state

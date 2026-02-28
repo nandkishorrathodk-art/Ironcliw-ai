@@ -1,8 +1,8 @@
-# Advanced Adaptive Voice Recognition System
+﻿# Advanced Adaptive Voice Recognition System
 **Zero Hardcoding | NO Environmental Noise Feedback | User-Focused Learning**
 
 ## Overview
-JARVIS now features a completely adaptive voice recognition system that self-optimizes based on **user success patterns only** - with ZERO environmental noise feedback as requested.
+Ironcliw now features a completely adaptive voice recognition system that self-optimizes based on **user success patterns only** - with ZERO environmental noise feedback as requested.
 
 ## Key Features
 
@@ -14,7 +14,7 @@ All voice recognition parameters self-tune based on performance:
 - **Damping**: 0.10 (0.05-0.25 range) - Energy adjustment speed
 - **Energy Ratio**: 1.3 (1.1-2.0 range) - Dynamic threshold multiplier
 - **Phrase Time Limit**: 8s (3-15s range) - Maximum command length
-- **Timeout**: 1s (0.5-3s range) - How fast JARVIS starts listening
+- **Timeout**: 1s (0.5-3s range) - How fast Ironcliw starts listening
 
 Each parameter tracks:
 - Current value
@@ -189,7 +189,7 @@ The system will automatically:
 
 ### Thread Safety
 - Optimization runs in daemon thread
-- Won't prevent JARVIS shutdown
+- Won't prevent Ironcliw shutdown
 - Uses thread-safe parameter updates
 
 ### Performance Impact

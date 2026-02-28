@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Comprehensive test suite for JARVIS weather functionality
+Comprehensive test suite for Ironcliw weather functionality
 Tests the complete flow: open app -> navigate to location -> analyze -> respond
 """
 
@@ -181,11 +181,11 @@ class WeatherTestSuite:
             self._record_result("Weather System", False, "Timeout")
             
     async def test_5_jarvis_integration(self):
-        """Test 5: Does JARVIS handle weather commands correctly?"""
-        print("\n🤖 Test 5: JARVIS Integration")
+        """Test 5: Does Ironcliw handle weather commands correctly?"""
+        print("\n🤖 Test 5: Ironcliw Integration")
         
         try:
-            # Set up app state for JARVIS
+            # Set up app state for Ironcliw
             from types import SimpleNamespace
             from api.jarvis_factory import set_app_state
             
@@ -195,13 +195,13 @@ class WeatherTestSuite:
             )
             set_app_state(app_state)
             
-            # Test JARVIS API
-            from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
+            # Test Ironcliw API
+            from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
             
-            api = JARVISVoiceAPI()
-            command = JARVISCommand(text="What's the weather like today?")
+            api = IroncliwVoiceAPI()
+            command = IroncliwCommand(text="What's the weather like today?")
             
-            print("  🔄 Processing weather command through JARVIS...")
+            print("  🔄 Processing weather command through Ironcliw...")
             
             result = await api.process_command(command)
             
@@ -218,12 +218,12 @@ class WeatherTestSuite:
             assert not any(word in response.lower() for word in ['error', 'failed', 'couldn\'t']), \
                 "Response contains error indicators"
             
-            print("  ✅ JARVIS integration working")
-            self._record_result("JARVIS Integration", True, response[:100])
+            print("  ✅ Ironcliw integration working")
+            self._record_result("Ironcliw Integration", True, response[:100])
             
         except Exception as e:
-            print(f"  ❌ JARVIS integration failed: {e}")
-            self._record_result("JARVIS Integration", False, str(e))
+            print(f"  ❌ Ironcliw integration failed: {e}")
+            self._record_result("Ironcliw Integration", False, str(e))
             
     async def test_6_performance(self):
         """Test 6: Performance benchmarks"""
@@ -317,7 +317,7 @@ class WeatherTestSuite:
 
 async def main():
     """Run all weather tests"""
-    print("🌤️ JARVIS Weather System - Complete Test Suite")
+    print("🌤️ Ironcliw Weather System - Complete Test Suite")
     print("="*60)
     
     suite = WeatherTestSuite()
@@ -356,7 +356,7 @@ async def main():
 
 if __name__ == "__main__":
     # Ensure we're in the right directory
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     
     # Check prerequisites
     if not os.getenv('ANTHROPIC_API_KEY'):

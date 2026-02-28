@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple backend startup script that handles import issues
 """
@@ -17,13 +17,13 @@ os.environ['BACKEND_PORT'] = '8010'  # Set default port to 8010
 import warnings
 warnings.filterwarnings("ignore")
 
-print("🚀 Starting JARVIS Backend...")
+print("🚀 Starting Ironcliw Backend...")
 print("=" * 50)
 
 # Check for API key
 if not os.getenv("ANTHROPIC_API_KEY"):
     print("⚠️  Warning: ANTHROPIC_API_KEY not set")
-    print("   JARVIS will have limited functionality")
+    print("   Ironcliw will have limited functionality")
 else:
     print("✅ Anthropic API key found")
 

@@ -1,6 +1,6 @@
-# Backend - JARVIS API Server
+﻿# Backend - Ironcliw API Server
 
-This directory contains the FastAPI backend server that powers JARVIS with Claude AI integration.
+This directory contains the FastAPI backend server that powers Ironcliw with Claude AI integration.
 
 ## Structure
 
@@ -97,7 +97,7 @@ Core requirements:
 # Test chat endpoint
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"user_input": "Hello JARVIS!"}'
+  -d '{"user_input": "Hello Ironcliw!"}'
 
 # Check health
 curl http://localhost:8000/health
@@ -125,9 +125,9 @@ curl http://localhost:8000/api/voice-unlock/stats
 ```
 
 **Using Postman:**
-1. Import the collection from `postman/collections/JARVIS_API_Collection.postman_collection.json`
-2. Import the environment from `postman/environments/JARVIS_Environment.postman_environment.json`
-3. Select "JARVIS Local Development" environment
+1. Import the collection from `postman/collections/Ironcliw_API_Collection.postman_collection.json`
+2. Import the environment from `postman/environments/Ironcliw_Environment.postman_environment.json`
+3. Select "Ironcliw Local Development" environment
 4. Verify `base_url` is set to `http://localhost:8000`
 5. Start the server: `python backend/main.py`
 6. Wait ~60-90 seconds for full initialization (ML models loading)

@@ -1,4 +1,4 @@
-name: Claude AI PR Analyzer
+﻿name: Claude AI PR Analyzer
 
 on:
   workflow_dispatch:
@@ -397,7 +397,7 @@ jobs:
           Keep response concise since this is primarily documentation.
           Format in clear Markdown with sections and emojis."""
           else:
-              system_prompt = """You are an expert code reviewer and software architect analyzing a pull request for the JARVIS AI Agent project.
+              system_prompt = """You are an expert code reviewer and software architect analyzing a pull request for the Ironcliw AI Agent project.
 
           Your analysis should be:
           - **Comprehensive:** Cover code quality, architecture, security, performance, and best practices

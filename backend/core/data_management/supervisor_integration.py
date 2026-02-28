@@ -1,9 +1,9 @@
-"""
+﻿"""
 Data Management Supervisor Integration v1.0
 ============================================
 
 Provides seamless integration of the Unified Data Management System with the
-JARVIS Trinity Supervisor. Enables single-command initialization and shutdown
+Ironcliw Trinity Supervisor. Enables single-command initialization and shutdown
 of all data management capabilities.
 
 Features:
@@ -84,7 +84,7 @@ class DataManagementSupervisorConfig:
     unhealthy_threshold: int = int(os.getenv("DATA_UNHEALTHY_THRESHOLD", "3"))
 
     # Data paths
-    data_base_path: str = os.getenv("JARVIS_DATA_PATH", "/tmp/jarvis_data")
+    data_base_path: str = os.getenv("Ironcliw_DATA_PATH", "/tmp/jarvis_data")
 
 
 # =============================================================================

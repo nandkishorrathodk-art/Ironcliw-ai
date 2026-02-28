@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test what happens when we import things in the same order as JARVIS
+Test what happens when we import things in the same order as Ironcliw
 """
 import sys
 import os
@@ -11,7 +11,7 @@ print("\n" + "="*80)
 print("TESTING IMPORT ORDER EFFECTS")
 print("="*80 + "\n")
 
-# Import in the same order that might happen in JARVIS
+# Import in the same order that might happen in Ironcliw
 print("1. Importing backend modules...")
 from backend.display.adaptive_control_center_clicker import AdaptiveControlCenterClicker
 print("   - adaptive_control_center_clicker imported")

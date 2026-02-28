@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Debug Vision Navigator - See what JARVIS sees and where it clicks
+Debug Vision Navigator - See what Ironcliw sees and where it clicks
 """
 
 import asyncio
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 async def test_control_center_detection():
-    """Test what JARVIS sees and where it clicks"""
+    """Test what Ironcliw sees and where it clicks"""
     print("\n" + "="*70)
     print("🎯 Vision Navigator Debug - Control Center Detection")
     print("="*70)
@@ -128,7 +128,7 @@ DESCRIPTION: [what you see]"""
     debug_path = temp_path.parent / 'debug_annotated.png'
     debug_image.save(debug_path)
     print(f"\n6. Debug image saved: {debug_path}")
-    print(f"   RED circle = Where JARVIS currently clicks (heuristic)")
+    print(f"   RED circle = Where Ironcliw currently clicks (heuristic)")
     print(f"   GREEN circle = Where Claude Vision sees Control Center")
     
     # Step 5: Recommendations

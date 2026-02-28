@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-macOS System Controller for JARVIS AI Agent
+macOS System Controller for Ironcliw AI Agent
 Provides voice-activated control of macOS environment through natural language commands
 """
 

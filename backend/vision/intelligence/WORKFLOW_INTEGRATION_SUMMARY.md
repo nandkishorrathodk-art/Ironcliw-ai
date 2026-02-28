@@ -1,8 +1,8 @@
-# Workflow Pattern Engine Integration Summary
+﻿# Workflow Pattern Engine Integration Summary
 
 ## Overview
 
-The Workflow Pattern Engine (2.3) has been successfully integrated into the JARVIS Vision Intelligence System. This document summarizes the integration and key features.
+The Workflow Pattern Engine (2.3) has been successfully integrated into the Ironcliw Vision Intelligence System. This document summarizes the integration and key features.
 
 ## Integration Points
 

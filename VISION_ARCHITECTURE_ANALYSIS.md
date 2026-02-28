@@ -1,8 +1,8 @@
-# JARVIS Vision System - Comprehensive Architecture Analysis
+﻿# Ironcliw Vision System - Comprehensive Architecture Analysis
 
 ## Executive Summary
 
-The JARVIS vision system has **significant architectural flaws** causing 20-30 second initialization times and potential memory issues when capturing multiple workspaces. This document provides a complete analysis of the problems, RAM usage, and solutions.
+The Ironcliw vision system has **significant architectural flaws** causing 20-30 second initialization times and potential memory issues when capturing multiple workspaces. This document provides a complete analysis of the problems, RAM usage, and solutions.
 
 ---
 

@@ -1,8 +1,8 @@
-# Unified WebSocket Architecture
+﻿# Unified WebSocket Architecture
 
 ## Overview
 
-The Unified WebSocket System resolves all WebSocket endpoint conflicts in the JARVIS AI Agent by introducing a TypeScript-based router that manages all WebSocket connections through a single, intelligent routing system.
+The Unified WebSocket System resolves all WebSocket endpoint conflicts in the Ironcliw AI Agent by introducing a TypeScript-based router that manages all WebSocket connections through a single, intelligent routing system.
 
 ## Problem Solved
 

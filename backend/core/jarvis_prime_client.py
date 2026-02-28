@@ -1,8 +1,8 @@
-"""
-JARVIS-Prime Intelligent Client - Memory-Aware Hybrid Routing
+﻿"""
+Ironcliw-Prime Intelligent Client - Memory-Aware Hybrid Routing
 ==============================================================
 
-A sophisticated client for JARVIS-Prime (Tier-0 Brain) with:
+A sophisticated client for Ironcliw-Prime (Tier-0 Brain) with:
 - Memory-aware routing (local vs Cloud Run)
 - Multi-tier fallback chain (Local → Cloud Run → Claude API → Gemini API)
 - Circuit breaker pattern for resilience
@@ -29,7 +29,7 @@ Architecture:
     └──────────────────────────────────────────────────────────────┘
 
 Version: 1.0.0
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations
@@ -289,7 +289,7 @@ class RepoMapEnricher:
         # Determine which repos to query
         relevant_repos = metadata.get("relevant_repos", [])
         if not relevant_repos:
-            relevant_repos = ["jarvis"]  # Default to JARVIS
+            relevant_repos = ["jarvis"]  # Default to Ironcliw
 
         if self.enable_cross_repo and len(relevant_repos) < 3:
             # Add adjacent repos for cross-repo context
@@ -414,33 +414,33 @@ You have access to the following codebase structure. Use this to understand:
 
 @dataclass
 class JarvisPrimeConfig:
-    """Configuration for the JARVIS-Prime client."""
+    """Configuration for the Ironcliw-Prime client."""
 
     # Memory thresholds (configurable via env vars)
     memory_threshold_local_gb: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_MEMORY_THRESHOLD_GB", "8.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_MEMORY_THRESHOLD_GB", "8.0"))
     )
     memory_threshold_cloud_gb: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_MEMORY_THRESHOLD_CLOUD_GB", "4.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_MEMORY_THRESHOLD_CLOUD_GB", "4.0"))
     )
 
-    # Local JARVIS-Prime settings
+    # Local Ironcliw-Prime settings
     local_host: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "127.0.0.1")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_HOST", "127.0.0.1")
     )
     local_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
     )
 
     # Cloud Run settings
     cloud_run_url: str = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_PRIME_CLOUD_RUN_URL",
+            "Ironcliw_PRIME_CLOUD_RUN_URL",
             "https://jarvis-prime-dev-888774109345.us-central1.run.app"
         )
     )
     use_cloud_run: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_USE_CLOUD_RUN", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_USE_CLOUD_RUN", "true").lower() == "true"
     )
 
     # Gemini fallback settings
@@ -448,10 +448,10 @@ class JarvisPrimeConfig:
         default_factory=lambda: os.getenv("GEMINI_API_KEY", "")
     )
     gemini_model: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_GEMINI_MODEL", "gemini-1.5-flash")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_GEMINI_MODEL", "gemini-1.5-flash")
     )
     use_gemini_fallback: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_GEMINI_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_GEMINI_FALLBACK", "true").lower() == "true"
     )
 
     # Claude API fallback (preferred over Gemini)
@@ -462,61 +462,61 @@ class JarvisPrimeConfig:
         default_factory=lambda: os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
     )
     use_claude_fallback: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_CLAUDE_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_CLAUDE_FALLBACK", "true").lower() == "true"
     )
     claude_timeout_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_CLAUDE_TIMEOUT_MS", "30000"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_CLAUDE_TIMEOUT_MS", "30000"))
     )
 
     # Timeouts
     local_timeout_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_LOCAL_TIMEOUT_MS", "5000"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_LOCAL_TIMEOUT_MS", "5000"))
     )
     cloud_timeout_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_CLOUD_TIMEOUT_MS", "30000"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_CLOUD_TIMEOUT_MS", "30000"))
     )
     api_timeout_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_API_TIMEOUT_MS", "10000"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_API_TIMEOUT_MS", "10000"))
     )
 
     # Circuit breaker settings
     circuit_breaker_threshold: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_CB_THRESHOLD", "3"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_CB_THRESHOLD", "3"))
     )
     circuit_breaker_timeout_s: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_CB_TIMEOUT_S", "60"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_CB_TIMEOUT_S", "60"))
     )
 
     # Retry settings
     max_retries: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_MAX_RETRIES", "2"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_MAX_RETRIES", "2"))
     )
     retry_delay_ms: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_RETRY_DELAY_MS", "500"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_RETRY_DELAY_MS", "500"))
     )
 
     # Force mode (for testing/override)
     force_mode: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_FORCE_MODE", None)
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_FORCE_MODE", None)
     )
 
     # Repo Map Enrichment settings
     enable_repo_map_enrichment: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_ENABLE_REPO_MAP", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_ENABLE_REPO_MAP", "true").lower() == "true"
     )
     repo_map_max_tokens: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_REPO_MAP_MAX_TOKENS", "2000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_REPO_MAP_MAX_TOKENS", "2000"))
     )
     repo_map_cache_ttl_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_REPO_MAP_CACHE_TTL", "300"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_REPO_MAP_CACHE_TTL", "300"))
     )
     enable_cross_repo_context: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_CROSS_REPO_CONTEXT", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_CROSS_REPO_CONTEXT", "true").lower() == "true"
     )
 
 
 class RoutingMode(str, Enum):
-    """Routing mode for JARVIS-Prime requests."""
+    """Routing mode for Ironcliw-Prime requests."""
     LOCAL = "local"           # Local subprocess (free, fast)
     CLOUD_RUN = "cloud_run"   # Cloud Run (pay-per-use)
     GEMINI_API = "gemini_api" # Gemini API fallback (cheapest)
@@ -695,7 +695,7 @@ class MemoryMonitor:
         self._psutil = None
         self._last_check: Optional[float] = None
         self._cached_available_gb: float = 16.0  # Assume plenty
-        self._cache_ttl_seconds = float(os.getenv("JARVIS_MEMORY_CACHE_TTL", "5.0"))
+        self._cache_ttl_seconds = float(os.getenv("Ironcliw_MEMORY_CACHE_TTL", "5.0"))
 
         # Thread lock for cache updates
         self._lock = threading.Lock()
@@ -755,12 +755,12 @@ class MemoryMonitor:
 
 
 # =============================================================================
-# JARVIS-Prime Client
+# Ironcliw-Prime Client
 # =============================================================================
 
 class JarvisPrimeClient:
     """
-    Intelligent client for JARVIS-Prime with memory-aware routing.
+    Intelligent client for Ironcliw-Prime with memory-aware routing.
 
     Features:
     - Automatic mode selection based on available RAM
@@ -826,7 +826,7 @@ class JarvisPrimeClient:
         self._current_mode: Optional[RoutingMode] = None
         self._mode_change_callbacks: List[Callable[[RoutingMode, RoutingMode, str], Awaitable[None]]] = []
         self._monitoring_task: Optional[asyncio.Task] = None
-        self._monitoring_interval_seconds = float(os.getenv("JARVIS_PRIME_MONITOR_INTERVAL", "30"))
+        self._monitoring_interval_seconds = float(os.getenv("Ironcliw_PRIME_MONITOR_INTERVAL", "30"))
         self._shutdown_event = asyncio.Event()
 
         # Background tasks tracking (prevents garbage collection and logs errors)
@@ -1010,7 +1010,7 @@ class JarvisPrimeClient:
         return status
 
     async def _check_local_health(self) -> HealthStatus:
-        """Check local JARVIS-Prime health."""
+        """Check local Ironcliw-Prime health."""
         client = await self._get_http_client()
         if client is None:
             return HealthStatus(available=False, error="HTTP client not available")
@@ -1038,7 +1038,7 @@ class JarvisPrimeClient:
             return HealthStatus(available=False, error=str(e))
 
     async def _check_cloud_run_health(self) -> HealthStatus:
-        """Check Cloud Run JARVIS-Prime health."""
+        """Check Cloud Run Ironcliw-Prime health."""
         if not self.config.cloud_run_url:
             return HealthStatus(available=False, error="Cloud Run URL not configured")
 
@@ -1598,7 +1598,7 @@ class JarvisPrimeClient:
             messages: List[ChatMessage] = []
             effective_system = (
                 _classification_prefix +
-                (system_prompt or "You are JARVIS, a helpful AI assistant.")
+                (system_prompt or "You are Ironcliw, a helpful AI assistant.")
             )
             messages.append(ChatMessage(role="system", content=effective_system))
             messages.append(ChatMessage(role="user", content=query))
@@ -1753,7 +1753,7 @@ class JarvisPrimeClient:
         max_tokens: int,
         temperature: float,
     ) -> CompletionResponse:
-        """Complete via local JARVIS-Prime."""
+        """Complete via local Ironcliw-Prime."""
         client = await self._get_http_client()
         if client is None:
             return CompletionResponse(success=False, error="HTTP client not available", backend="local")
@@ -1807,7 +1807,7 @@ class JarvisPrimeClient:
         max_tokens: int,
         temperature: float,
     ) -> CompletionResponse:
-        """Complete via Cloud Run JARVIS-Prime."""
+        """Complete via Cloud Run Ironcliw-Prime."""
         if not self.config.cloud_run_url:
             return CompletionResponse(success=False, error="Cloud Run URL not configured", backend="cloud_run")
 
@@ -1972,7 +1972,7 @@ class JarvisPrimeClient:
             self._claude_client = AsyncAnthropic(api_key=self.config.claude_api_key)
 
         # Separate system message from conversation messages
-        system_prompt = "You are JARVIS, a helpful AI assistant."
+        system_prompt = "You are Ironcliw, a helpful AI assistant."
         api_messages = []
         for m in messages:
             if m.role == "system":
@@ -2367,7 +2367,7 @@ _client_lock: threading.Lock = threading.Lock()
 
 def get_jarvis_prime_client() -> JarvisPrimeClient:
     """
-    Get the global JARVIS-Prime client instance (thread-safe).
+    Get the global Ironcliw-Prime client instance (thread-safe).
 
     Uses double-checked locking pattern to ensure:
     1. Thread safety - only one instance is ever created
@@ -2391,7 +2391,7 @@ def get_jarvis_prime_client() -> JarvisPrimeClient:
 
 def set_jarvis_prime_client(client: JarvisPrimeClient):
     """
-    Set the global JARVIS-Prime client instance (thread-safe).
+    Set the global Ironcliw-Prime client instance (thread-safe).
 
     This replaces the existing instance if one exists.
     """
@@ -2403,7 +2403,7 @@ def set_jarvis_prime_client(client: JarvisPrimeClient):
 
 async def create_jarvis_prime_client(config: Optional[JarvisPrimeConfig] = None) -> JarvisPrimeClient:
     """
-    Create and configure a new JARVIS-Prime client (thread-safe).
+    Create and configure a new Ironcliw-Prime client (thread-safe).
 
     This replaces the existing instance if one exists.
     """
@@ -2427,7 +2427,7 @@ JarvisPrimeClientConfig = JarvisPrimeConfig
 
 def decide_jarvis_prime_mode() -> Tuple[str, str, float]:
     """
-    Determine the optimal JARVIS-Prime mode based on current memory.
+    Determine the optimal Ironcliw-Prime mode based on current memory.
 
     Returns:
         Tuple of (mode, reason, available_gb)

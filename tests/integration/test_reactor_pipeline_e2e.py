@@ -1,4 +1,4 @@
-"""
+﻿"""
 End-to-end integration test for the Reactor Core training pipeline.
 
 Requires: Reactor-Core running on port 8090
@@ -34,7 +34,7 @@ class TestReactorPipelineE2E:
                     "event_type": "INTERACTION",
                     "user_input": "What is 2+2?",
                     "assistant_output": "4",
-                    "source": "JARVIS_BODY",
+                    "source": "Ironcliw_BODY",
                     "timestamp": datetime.now().isoformat(),
                     "confidence": 0.95,
                     "task_type": "math_simple",

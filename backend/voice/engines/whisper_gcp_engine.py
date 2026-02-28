@@ -1,4 +1,4 @@
-"""
+﻿"""
 Whisper GCP STT Engine
 Whisper large-v3 running on GCP Spot VM for ultimate accuracy
 Auto-scales based on local RAM availability
@@ -47,7 +47,7 @@ class WhisperGCPEngine(BaseSTTEngine):
             import os
 
             self.gcp_endpoint = os.getenv(
-                "JARVIS_WHISPER_GCP_ENDPOINT",
+                "Ironcliw_WHISPER_GCP_ENDPOINT",
                 "http://localhost:8011/transcribe",  # Fallback to local for testing
             )
 

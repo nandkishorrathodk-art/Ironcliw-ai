@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Complete test runner for backend/main.py on Windows.
 Starts the server, runs tests, then stops it.
@@ -17,7 +17,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 print("=" * 70)
-print("JARVIS Backend Complete Test Suite")
+print("Ironcliw Backend Complete Test Suite")
 print("=" * 70)
 
 # Test 1: Import test

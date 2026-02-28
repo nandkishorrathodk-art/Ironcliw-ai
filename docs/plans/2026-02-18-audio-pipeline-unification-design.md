@@ -1,4 +1,4 @@
-# Audio Pipeline Unification & Enterprise Hardening Design
+﻿# Audio Pipeline Unification & Enterprise Hardening Design
 
 **Date:** 2026-02-18
 **Status:** Approved
@@ -95,7 +95,7 @@ User speaks
         -> VAD -> buffer -> faster-whisper
         -> StreamingTranscriptEvent (partial + final)
      2. BargeInController.on_vad_speech_detected()
-        -> If JARVIS speaking: cancel_event.set() + flush playback
+        -> If Ironcliw speaking: cancel_event.set() + flush playback
   -> ConversationPipeline._listen_for_turn()
      -> Reads from StreamingSTT.get_transcripts()
      -> TurnDetector.on_vad_result() -> "turn_end"
@@ -111,11 +111,11 @@ User speaks
      -> TTS engine (Piper via singleton): sentence -> audio chunks
      -> AudioBus.play_audio(): chunks -> PlaybackRingBuffer -> FullDuplexDevice
         (AEC gets reference signal from playback buffer)
-  -> User hears JARVIS response
+  -> User hears Ironcliw response
 
 Barge-in:
-  User speaks during JARVIS response
-  -> AEC strips JARVIS voice from mic input
+  User speaks during Ironcliw response
+  -> AEC strips Ironcliw voice from mic input
   -> BargeInController detects speech on cleaned signal
   -> cancel_event.set() -> SentenceSplitter stops
   -> AudioBus.flush_playback() -> silence within one frame
@@ -150,7 +150,7 @@ Barge-in:
 
 1. `python3 unified_supervisor.py` boots with AudioBus starting before narrator
 2. ConversationPipeline wires after Intelligence phase
-3. "JARVIS, let's chat" enters conversation mode
+3. "Ironcliw, let's chat" enters conversation mode
 4. Spoken words are transcribed via StreamingSTT
 5. LLM response streams through SentenceSplitter -> TTS -> AudioBus
 6. Barge-in cancels TTS mid-sentence

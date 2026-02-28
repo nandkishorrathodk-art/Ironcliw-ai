@@ -1,5 +1,5 @@
-"""
-Computer Use Refinements for JARVIS - Open Interpreter Inspired
+﻿"""
+Computer Use Refinements for Ironcliw - Open Interpreter Inspired
 ================================================================
 
 Implements refined computer use patterns based on Open Interpreter's
@@ -13,7 +13,7 @@ Features:
 - Refined prompts for mouse/keyboard control
 - Platform-aware system prompts
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -55,73 +55,73 @@ class ComputerUseConfig:
     """Configuration for computer use refinements."""
     # Safety settings
     max_execution_time_ms: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_MAX_EXEC_TIME_MS", 30000)
+        default_factory=lambda: get_env_int("Ironcliw_CU_MAX_EXEC_TIME_MS", 30000)
     )
     exit_on_corner: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_CU_EXIT_ON_CORNER", True)
+        default_factory=lambda: get_env_bool("Ironcliw_CU_EXIT_ON_CORNER", True)
     )
     corner_threshold_px: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_CORNER_THRESHOLD", 10)
+        default_factory=lambda: get_env_int("Ironcliw_CU_CORNER_THRESHOLD", 10)
     )
 
     # Context management
     max_recent_images: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_MAX_RECENT_IMAGES", 5)
+        default_factory=lambda: get_env_int("Ironcliw_CU_MAX_RECENT_IMAGES", 5)
     )
     image_removal_chunk_size: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_IMAGE_CHUNK_SIZE", 5)
+        default_factory=lambda: get_env_int("Ironcliw_CU_IMAGE_CHUNK_SIZE", 5)
     )
 
     # Execution settings
     default_timeout_ms: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_DEFAULT_TIMEOUT", 120000)
+        default_factory=lambda: get_env_int("Ironcliw_CU_DEFAULT_TIMEOUT", 120000)
     )
     retry_attempts: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_RETRY_ATTEMPTS", 3)
+        default_factory=lambda: get_env_int("Ironcliw_CU_RETRY_ATTEMPTS", 3)
     )
     retry_delay_ms: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_RETRY_DELAY_MS", 1000)
+        default_factory=lambda: get_env_int("Ironcliw_CU_RETRY_DELAY_MS", 1000)
     )
 
     # Streaming settings
     stream_chunk_delay_ms: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_STREAM_DELAY_MS", 0)
+        default_factory=lambda: get_env_int("Ironcliw_CU_STREAM_DELAY_MS", 0)
     )
 
     # Safe code execution settings (Open Interpreter pattern)
     sandbox_enabled: bool = field(
-        default_factory=lambda: get_env_bool("JARVIS_CU_SANDBOX_ENABLED", True)
+        default_factory=lambda: get_env_bool("Ironcliw_CU_SANDBOX_ENABLED", True)
     )
     sandbox_max_memory_mb: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_SANDBOX_MAX_MEMORY_MB", 512)
+        default_factory=lambda: get_env_int("Ironcliw_CU_SANDBOX_MAX_MEMORY_MB", 512)
     )
     sandbox_max_cpu_time_sec: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_SANDBOX_MAX_CPU_SEC", 30)
+        default_factory=lambda: get_env_int("Ironcliw_CU_SANDBOX_MAX_CPU_SEC", 30)
     )
 
     # Coordinate extraction settings (Open Interpreter pattern)
     grid_size: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_GRID_SIZE", 10)
+        default_factory=lambda: get_env_int("Ironcliw_CU_GRID_SIZE", 10)
     )
     retina_scale_factor: float = field(
-        default_factory=lambda: get_env_float("JARVIS_CU_RETINA_SCALE", 2.0)
+        default_factory=lambda: get_env_float("Ironcliw_CU_RETINA_SCALE", 2.0)
     )
     coordinate_adjustment_px: int = field(
-        default_factory=lambda: get_env_int("JARVIS_CU_COORD_ADJUST_PX", 10)
+        default_factory=lambda: get_env_int("Ironcliw_CU_COORD_ADJUST_PX", 10)
     )
 
     # Mouse movement settings (Open Interpreter pattern)
     mouse_move_duration_sec: float = field(
-        default_factory=lambda: get_env_float("JARVIS_CU_MOUSE_MOVE_DURATION", 0.2)
+        default_factory=lambda: get_env_float("Ironcliw_CU_MOUSE_MOVE_DURATION", 0.2)
     )
     hover_delay_sec: float = field(
-        default_factory=lambda: get_env_float("JARVIS_CU_HOVER_DELAY", 0.1)
+        default_factory=lambda: get_env_float("Ironcliw_CU_HOVER_DELAY", 0.1)
     )
     post_click_delay_sec: float = field(
-        default_factory=lambda: get_env_float("JARVIS_CU_POST_CLICK_DELAY", 0.5)
+        default_factory=lambda: get_env_float("Ironcliw_CU_POST_CLICK_DELAY", 0.5)
     )
     typing_interval_sec: float = field(
-        default_factory=lambda: get_env_float("JARVIS_CU_TYPING_INTERVAL", 0.05)
+        default_factory=lambda: get_env_float("Ironcliw_CU_TYPING_INTERVAL", 0.05)
     )
 
 
@@ -227,7 +227,7 @@ class SafeCodeExecutor:
     - Resource exhaustion (CPU, memory limits)
 
     This is the "Safe Execute" component from Open Interpreter that prevents
-    JARVIS from accidentally running `rm -rf /`.
+    Ironcliw from accidentally running `rm -rf /`.
     """
 
     # Blocked imports - these are dangerous and should never be executed
@@ -339,7 +339,7 @@ class SafeCodeExecutor:
 
         sandbox_path = str(self._sandbox_dir.resolve())
 
-        return f'''# JARVIS Safe Execution Wrapper
+        return f'''# Ironcliw Safe Execution Wrapper
 # This code runs in a sandboxed environment with restricted file access
 
 import sys
@@ -1045,7 +1045,7 @@ def get_system_prompt() -> str:
     current_date = datetime.today().strftime("%A, %B %d, %Y")
 
     base_prompt = f"""<SYSTEM_CAPABILITY>
-* You are JARVIS, an AI assistant with access to a computer running {current_platform} with internet access.
+* You are Ironcliw, an AI assistant with access to a computer running {current_platform} with internet access.
 * When using your computer function calls, they take a while to run and send back to you. Where possible/feasible, try to chain multiple of these calls all into one function calls request.
 * The current date is {current_date}.
 </SYSTEM_CAPABILITY>"""

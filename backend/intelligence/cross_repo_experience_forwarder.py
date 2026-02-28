@@ -1,8 +1,8 @@
-"""
+﻿"""
 Cross-Repo Experience Forwarder v101.0 - PRODUCTION GRADE
 ==========================================================
 
-Forwards learning experiences from JARVIS to Reactor Core for:
+Forwards learning experiences from Ironcliw to Reactor Core for:
 1. Distributed model training across repos
 2. Experience aggregation at scale
 3. Cross-repo model performance tracking
@@ -21,7 +21,7 @@ FIXED IN v101.0:
 
 Architecture:
     +---------------------------+
-    | JARVIS                     |
+    | Ironcliw                     |
     | +------------------------+ |
     | | ContinuousLearning     | |
     | | Orchestrator           | |
@@ -42,7 +42,7 @@ Architecture:
     | +------------------------+ |
     +---------------------------+
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 101.0.0
 """
 from __future__ import annotations

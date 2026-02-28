@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick test of voice demo with all services running
 """
@@ -25,7 +25,7 @@ class TestWebSocket:
             print(f"   Speak: {speak}")
             
             if speak and text:
-                print(f"   🔊 JARVIS should say: '{text}'")
+                print(f"   🔊 Ironcliw should say: '{text}'")
 
 async def quick_test():
     """Quick test without locking screen"""

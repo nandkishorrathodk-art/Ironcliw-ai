@@ -1,15 +1,15 @@
-# JARVIS Stereoscopic Vision Test
+﻿# Ironcliw Stereoscopic Vision Test
 
 ## What This Tests
 
-This is a **"Stereoscopic Vision Test"** that proves JARVIS has true omnipresent parallel vision across multiple macOS spaces.
+This is a **"Stereoscopic Vision Test"** that proves Ironcliw has true omnipresent parallel vision across multiple macOS spaces.
 
 Instead of testing static text detection (easy), we test **Dynamic State Monitoring** across multiple dimensions:
 
 - **Space 1 (Vertical):** Ball bouncing Top ↕ Bottom - "BOUNCE COUNT: 1, 2, 3..."
 - **Space 2 (Horizontal):** Ball bouncing Left ↔ Right - "BOUNCE COUNT: 1, 2, 3..."
 
-If JARVIS can report both data streams simultaneously without mixing them up, we prove:
+If Ironcliw can report both data streams simultaneously without mixing them up, we prove:
 
 1. ✅ **True Parallel Processing** - Not sequential window switching
 2. ✅ **Stream Identification** - Knows which space is which
@@ -45,7 +45,7 @@ python3 test_stereo_vision.py
 ## Expected Output
 
 ```
-🔬 JARVIS STEREOSCOPIC VISION TEST
+🔬 Ironcliw STEREOSCOPIC VISION TEST
    Dynamic Multi-Space Parallel Surveillance
 
 ✅ Found 2 browser window(s):
@@ -80,17 +80,17 @@ Once installed, the Ferrari Engine will extract and stream actual bounce counts 
 
 ## What Success Looks Like
 
-🎯 **PASS:** JARVIS correctly identifies:
+🎯 **PASS:** Ironcliw correctly identifies:
 - Space 1 shows "STATUS: VERTICAL"
 - Space 2 shows "STATUS: HORIZONTAL"
 - Bounce counts update independently
 - No cross-contamination between streams
 
-❌ **FAIL:** JARVIS mixes up which window is which, or only monitors one at a time
+❌ **FAIL:** Ironcliw mixes up which window is which, or only monitors one at a time
 
 ## The "Stereoscopic" Metaphor
 
-Just like human stereoscopic vision uses two eyes to see depth, this test uses **two parallel Ferrari Engine watchers** to prove JARVIS has true multi-space awareness - he's not "switching focus" between windows, he's genuinely **omnipresent** across your desktop.
+Just like human stereoscopic vision uses two eyes to see depth, this test uses **two parallel Ferrari Engine watchers** to prove Ironcliw has true multi-space awareness - he's not "switching focus" between windows, he's genuinely **omnipresent** across your desktop.
 
 ---
 

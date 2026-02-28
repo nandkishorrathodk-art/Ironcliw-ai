@@ -1,4 +1,4 @@
-"""
+﻿"""
 macOS native voice support using the 'say' command
 Enhanced with voice variations and speech rate optimization
 """
@@ -25,7 +25,7 @@ class MacOSVoice:
         self.primary_voice = self._select_best_voice()
 
         # Speech settings
-        self.rate = 175  # Words per minute (slightly faster for JARVIS)
+        self.rate = 175  # Words per minute (slightly faster for Ironcliw)
         self.pitch_adjustment = 0  # Can be adjusted for effect
 
         # Queue for smooth speech delivery
@@ -84,13 +84,13 @@ class MacOSVoice:
             elif voice in preferred_voices:
                 british_voices.append(voice)
         
-        # Sort to prioritize male voices for JARVIS
+        # Sort to prioritize male voices for Ironcliw
         british_voices.sort(key=lambda v: 0 if v in ['Daniel', 'Oliver'] else 1)
         
         return british_voices
     
     def _select_best_voice(self) -> str:
-        """Select the best available voice for JARVIS"""
+        """Select the best available voice for Ironcliw"""
         # Try British voices first
         if self.british_voices:
             return self.british_voices[0]
@@ -154,7 +154,7 @@ class MacOSVoice:
         # run_coroutine_threadsafe() with the main loop (captured at init),
         # NOT run_until_complete (which fails if the loop is already running).
         _bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
         if _bus_enabled:
             try:
@@ -201,7 +201,7 @@ class MacOSVoice:
             '. ': '. ... ',  # Longer pause after periods
             '? ': '? ... ',  # Pause after questions
             '! ': '! ... ',  # Pause after exclamations
-            'JARVIS': '[[rate -20]]JARVIS[[rate +20]]',  # Slow down for name
+            'Ironcliw': '[[rate -20]]Ironcliw[[rate +20]]',  # Slow down for name
         }
         
         processed = text
@@ -234,7 +234,7 @@ class MacOSVoice:
         
         # AudioBus flush or kill say
         _bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
         if _bus_enabled:
             try:
@@ -355,8 +355,8 @@ if __name__ == "__main__":
     voice.say_and_wait("Hmm, that's an interesting question. Let me consider the possibilities.", mode='thoughtful')
     time.sleep(0.5)
     
-    # Test JARVIS personality
-    print("\n--- JARVIS Personality Test ---")
+    # Test Ironcliw personality
+    print("\n--- Ironcliw Personality Test ---")
     jarvis_phrases = [
         "Welcome home, sir. Shall I prepare the workshop?",
         "The weather is partly cloudy, 72 degrees. Perfect for flying, if I may say so, sir.",

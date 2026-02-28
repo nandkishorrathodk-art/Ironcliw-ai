@@ -1,4 +1,4 @@
-# Google Workspace Startup Integration v6.2 - Neural Mesh Chief of Staff
+﻿# Google Workspace Startup Integration v6.2 - Neural Mesh Chief of Staff
 
 **Version**: 6.2.0
 **Date**: 2025-12-26
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Enhanced JARVIS startup with intelligent voice announcements for Google Workspace Agent v2.0 integration. JARVIS will now speak during Neural Mesh initialization to inform you about Google Workspace capabilities, three-tier waterfall status, and multi-agent coordination.
+Enhanced Ironcliw startup with intelligent voice announcements for Google Workspace Agent v2.0 integration. Ironcliw will now speak during Neural Mesh initialization to inform you about Google Workspace capabilities, three-tier waterfall status, and multi-agent coordination.
 
 This is part of Neural Mesh v9.4 Production upgrade, providing real-time feedback about the distributed intelligence system and your personal Chief of Staff assistant.
 
@@ -20,7 +20,7 @@ This is part of Neural Mesh v9.4 Production upgrade, providing real-time feedbac
 
 **When**: At the beginning of Neural Mesh initialization (~85% overall startup progress)
 
-**JARVIS says**:
+**Ironcliw says**:
 > "Initializing Neural Mesh multi-agent system."
 
 **What's happening**:
@@ -35,7 +35,7 @@ This is part of Neural Mesh v9.4 Production upgrade, providing real-time feedbac
 
 **When**: After coordinator successfully starts (~87% progress)
 
-**JARVIS says**:
+**Ironcliw says**:
 > "Neural Mesh coordinator online."
 
 **What's happening**:
@@ -50,7 +50,7 @@ This is part of Neural Mesh v9.4 Production upgrade, providing real-time feedbac
 
 **When**: After production agents initialize (~89% progress)
 
-**JARVIS says** (if Google Workspace Agent is registered):
+**Ironcliw says** (if Google Workspace Agent is registered):
 > "Google Workspace Agent registered. Gmail, Calendar, and Drive ready."
 
 **OR** (if Google Workspace Agent is NOT registered):
@@ -77,12 +77,12 @@ This is part of Neural Mesh v9.4 Production upgrade, providing real-time feedbac
 
 **When**: After complete Neural Mesh initialization finishes (~91% progress)
 
-**JARVIS says**:
+**Ironcliw says**:
 > "Neural Mesh fully operational. {total_agents} agents coordinated."
 
 **What's happening**:
 - All Neural Mesh components initialized
-- JARVIS Bridge connected (if enabled)
+- Ironcliw Bridge connected (if enabled)
 - Health monitoring active
 - Multi-agent orchestration ready
 - All 60+ agents coordinated and ready for tasks
@@ -98,39 +98,39 @@ This is part of Neural Mesh v9.4 Production upgrade, providing real-time feedbac
 
 ## Example Full Startup Sequence
 
-Here's what you'll hear during a typical JARVIS startup with Google Workspace enabled:
+Here's what you'll hear during a typical Ironcliw startup with Google Workspace enabled:
 
 ```
 [... earlier startup announcements ...]
 
-JARVIS: "Initializing two-tier security architecture."
+Ironcliw: "Initializing two-tier security architecture."
 [3 seconds pass]
 
-JARVIS: "Agentic watchdog armed. Kill switch ready."
+Ironcliw: "Agentic watchdog armed. Kill switch ready."
 [2 seconds pass]
 
-JARVIS: "Voice biometric authentication ready. Visual threat detection enabled."
+Ironcliw: "Voice biometric authentication ready. Visual threat detection enabled."
 [1 second pass]
 
-JARVIS: "Cross-repository integration complete. Intelligence shared across all platforms."
+Ironcliw: "Cross-repository integration complete. Intelligence shared across all platforms."
 [2 seconds pass]
 
-JARVIS: "Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection."
+Ironcliw: "Two-tier security fully operational. I'm protected by voice biometrics and visual threat detection."
 [3 seconds pass]
 
-JARVIS: "Initializing Neural Mesh multi-agent system."
+Ironcliw: "Initializing Neural Mesh multi-agent system."
 [4 seconds pass - Neural Mesh initialization]
 
-JARVIS: "Neural Mesh coordinator online."
+Ironcliw: "Neural Mesh coordinator online."
 [3 seconds pass - agents registering]
 
-JARVIS: "Google Workspace Agent registered. Gmail, Calendar, and Drive ready."
+Ironcliw: "Google Workspace Agent registered. Gmail, Calendar, and Drive ready."
 [2 seconds pass]
 
-JARVIS: "Neural Mesh fully operational. 60 agents coordinated."
+Ironcliw: "Neural Mesh fully operational. 60 agents coordinated."
 [startup continues...]
 
-JARVIS: "JARVIS online. All systems operational."
+Ironcliw: "Ironcliw online. All systems operational."
 ```
 
 **Total Neural Mesh announcement time**: ~15-20 seconds
@@ -311,7 +311,7 @@ if self.config.voice_enabled:
    - Knowledge Graph: Shared semantic memory across all agents
    - Communication Bus: Real-time event-driven messaging (10,000 msg/s capacity)
    - Multi-Agent Orchestration: Complex task decomposition and agent collaboration
-   - JARVIS Bridge: Connects all JARVIS systems (Main, Prime, Reactor Core)
+   - Ironcliw Bridge: Connects all Ironcliw systems (Main, Prime, Reactor Core)
    - Health Monitoring: Continuous health checks and auto-recovery
    - Google Workspace Agent (v2.0 - Chief of Staff):
      * Three-Tier Waterfall: Google API → macOS Local → Computer Use
@@ -332,7 +332,7 @@ Startup Narrator Voice Announcements (v6.2):
 - Intelligent Voice Feedback: Real-time spoken status updates during initialization
 - Security Milestones: Announces two-tier security, VBIA, visual threat detection
 - Neural Mesh Status: Coordinator online, agent registration, Google Workspace ready
-- Cross-Repo Integration: Announces when JARVIS, Prime, and Reactor Core connect
+- Cross-Repo Integration: Announces when Ironcliw, Prime, and Reactor Core connect
 - Adaptive Pacing: 2-3 second intervals, non-blocking, doesn't slow startup
 - Environment-Aware: Dynamic announcements based on visual security settings
 - Configuration: Enable/disable via STARTUP_NARRATOR_VOICE environment variable
@@ -364,8 +364,8 @@ export NEURAL_MESH_PRODUCTION=true
 # Enable production agents (includes Google Workspace)
 export NEURAL_MESH_AGENTS_ENABLED=true
 
-# Enable JARVIS Bridge (cross-system communication)
-export NEURAL_MESH_JARVIS_BRIDGE=true
+# Enable Ironcliw Bridge (cross-system communication)
+export NEURAL_MESH_Ironcliw_BRIDGE=true
 
 # Health monitoring interval (seconds)
 export NEURAL_MESH_HEALTH_INTERVAL=60
@@ -411,7 +411,7 @@ export STARTUP_NARRATOR_RATE=190
 ### Manual Test: Full Startup with Voice
 
 ```bash
-cd /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+cd /Users/djrussell23/Documents/repos/Ironcliw-AI-Agent
 
 # Enable all features
 export STARTUP_NARRATOR_VOICE=true
@@ -420,7 +420,7 @@ export NEURAL_MESH_PRODUCTION=true
 export NEURAL_MESH_AGENTS_ENABLED=true
 export GOOGLE_WORKSPACE_AGENT_ENABLED=true
 
-# Start JARVIS and listen for announcements
+# Start Ironcliw and listen for announcements
 python3 run_supervisor.py
 ```
 
@@ -434,7 +434,7 @@ python3 run_supervisor.py
 7. **"Neural Mesh coordinator online."** ← NEW
 8. **"Google Workspace Agent registered. Gmail, Calendar, and Drive ready."** ← NEW
 9. **"Neural Mesh fully operational. 60 agents coordinated."** ← NEW
-10. "JARVIS online. All systems operational."
+10. "Ironcliw online. All systems operational."
 
 ---
 
@@ -470,23 +470,23 @@ After startup completes, test the three-tier waterfall:
 #### Test Gmail (Tier 1 - Google API)
 ```bash
 # Via natural language
-"Hey JARVIS, check my emails"
-"JARVIS, send an email to john@example.com about the meeting"
+"Hey Ironcliw, check my emails"
+"Ironcliw, send an email to john@example.com about the meeting"
 ```
 
 **Expected**:
-- JARVIS uses Gmail API (primary tier)
+- Ironcliw uses Gmail API (primary tier)
 - Fast, reliable email operations
 - Full Gmail feature access
 
 #### Test Calendar (Tier 1 - Google API)
 ```bash
-"JARVIS, what's on my calendar today?"
+"Ironcliw, what's on my calendar today?"
 "Schedule a meeting tomorrow at 2pm with Sarah"
 ```
 
 **Expected**:
-- JARVIS uses Google Calendar API
+- Ironcliw uses Google Calendar API
 - Creates/reads events seamlessly
 - Full calendar integration
 
@@ -495,11 +495,11 @@ After startup completes, test the three-tier waterfall:
 # Temporarily disable Google API
 export GOOGLE_WORKSPACE_API_ENABLED=false
 
-"JARVIS, check my emails"
+"Ironcliw, check my emails"
 ```
 
 **Expected**:
-- JARVIS falls back to macOS Mail.app via AppleScript
+- Ironcliw falls back to macOS Mail.app via AppleScript
 - Slightly slower but still functional
 - Voice announcement: "Using local Mail application..."
 
@@ -530,7 +530,7 @@ export NEURAL_MESH_PRODUCTION=true
 # Test 'say' command
 say "Testing voice output"
 
-# Restart JARVIS
+# Restart Ironcliw
 python3 run_supervisor.py
 ```
 
@@ -563,7 +563,7 @@ export GOOGLE_WORKSPACE_AGENT_ENABLED=true
 # Ensure credentials are available
 export GOOGLE_WORKSPACE_CREDENTIALS_PATH="$HOME/.jarvis/google_credentials.json"
 
-# Restart JARVIS
+# Restart Ironcliw
 python3 run_supervisor.py
 ```
 
@@ -606,7 +606,7 @@ export STARTUP_NARRATOR_MIN_INTERVAL=2.0
 export STARTUP_NARRATOR_RATE=170  # Slower
 export STARTUP_NARRATOR_RATE=210  # Faster
 
-# Restart JARVIS
+# Restart Ironcliw
 python3 run_supervisor.py
 ```
 
@@ -620,30 +620,30 @@ python3 run_supervisor.py
 
 ```bash
 # Check emails
-"Hey JARVIS, check my emails"
-"JARVIS, do I have any unread emails?"
+"Hey Ironcliw, check my emails"
+"Ironcliw, do I have any unread emails?"
 "Show me emails from John"
 
 # Compose emails
-"JARVIS, compose an email to sarah@example.com about the project update"
+"Ironcliw, compose an email to sarah@example.com about the project update"
 "Draft an email to the team about tomorrow's meeting"
 
 # Send emails
 "Send that email"
-"JARVIS, send the draft email to John"
+"Ironcliw, send the draft email to John"
 ```
 
 #### Calendar Operations
 
 ```bash
 # Check schedule
-"JARVIS, what's on my calendar today?"
+"Ironcliw, what's on my calendar today?"
 "Do I have any meetings this afternoon?"
 "What's my schedule for tomorrow?"
 
 # Schedule meetings
 "Schedule a meeting with Sarah tomorrow at 2pm"
-"JARVIS, add 'Project review' to my calendar for Friday at 10am"
+"Ironcliw, add 'Project review' to my calendar for Friday at 10am"
 "Block out 2 hours tomorrow morning for deep work"
 
 # Modify events
@@ -655,7 +655,7 @@ python3 run_supervisor.py
 
 ```bash
 # Access documents
-"JARVIS, open the project proposal document"
+"Ironcliw, open the project proposal document"
 "Show me the latest version of the budget spreadsheet"
 "Find my presentation about Q4 results"
 
@@ -698,11 +698,11 @@ python3 run_supervisor.py
 - Google Drive access (documents, spreadsheets, presentations)
 - Natural language command parsing
 
-#### 4. JARVIS Bridge
+#### 4. Ironcliw Bridge
 **Purpose**: Cross-system communication
 **Location**: `backend/neural_mesh/jarvis_bridge.py`
 **Responsibilities**:
-- Connect JARVIS Main, Prime, and Reactor Core
+- Connect Ironcliw Main, Prime, and Reactor Core
 - Agent discovery across systems
 - Event streaming between systems
 - Health monitoring of connected systems

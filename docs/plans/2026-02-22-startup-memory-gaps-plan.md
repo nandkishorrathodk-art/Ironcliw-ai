@@ -1,4 +1,4 @@
-# Startup Memory Gap Closure — Implementation Plan
+﻿# Startup Memory Gap Closure — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -223,17 +223,17 @@ With:
                 # Bumped from 0.75-1.5GB to 1.5-2.5GB to account for frontend
                 # (500MB-1.2GB) and Docker (200-500MB) consuming headroom post-load.
                 # Env-var overrides for tuning without code changes.
-                _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_NORMAL", "2.0"))
+                _headroom_gb = float(os.getenv("Ironcliw_MODEL_HEADROOM_NORMAL", "2.0"))
                 _tier = None
                 try:
                     from backend.core.memory_quantizer import MemoryTier
                     _tier = _metrics.tier if '_metrics' in dir() and _metrics else None
                     if _tier in (MemoryTier.ABUNDANT, MemoryTier.OPTIMAL):
-                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_RELAXED", "1.5"))
+                        _headroom_gb = float(os.getenv("Ironcliw_MODEL_HEADROOM_RELAXED", "1.5"))
                     elif _tier == MemoryTier.ELEVATED:
-                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_NORMAL", "2.0"))
+                        _headroom_gb = float(os.getenv("Ironcliw_MODEL_HEADROOM_NORMAL", "2.0"))
                     elif _tier == MemoryTier.CONSTRAINED:
-                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_TIGHT", "2.5"))
+                        _headroom_gb = float(os.getenv("Ironcliw_MODEL_HEADROOM_TIGHT", "2.5"))
 ```
 
 The CRITICAL/EMERGENCY tier block (lines 717-722) stays unchanged — it already refuses to load.
@@ -252,8 +252,8 @@ feat(model): bump headroom margins and add env var overrides
 
 Increased model loading headroom from 0.75-1.5GB to 1.5-2.5GB to
 account for frontend (500MB-1.2GB) and Docker (200-500MB) consuming
-RAM after model load. Now env-var-configurable: JARVIS_MODEL_HEADROOM_RELAXED,
-JARVIS_MODEL_HEADROOM_NORMAL, JARVIS_MODEL_HEADROOM_TIGHT.
+RAM after model load. Now env-var-configurable: Ironcliw_MODEL_HEADROOM_RELAXED,
+Ironcliw_MODEL_HEADROOM_NORMAL, Ironcliw_MODEL_HEADROOM_TIGHT.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
@@ -354,9 +354,9 @@ python3 -c "import py_compile; py_compile.compile('unified_supervisor.py', dorai
 **Step 4: Verify headroom env var works**
 
 ```bash
-JARVIS_MODEL_HEADROOM_RELAXED=3.0 python3 -c "
+Ironcliw_MODEL_HEADROOM_RELAXED=3.0 python3 -c "
 import os
-print(f'Headroom override: {os.getenv(\"JARVIS_MODEL_HEADROOM_RELAXED\")}GB')
+print(f'Headroom override: {os.getenv(\"Ironcliw_MODEL_HEADROOM_RELAXED\")}GB')
 from backend.intelligence.unified_model_serving import UnifiedModelServing
 print('OK')
 "

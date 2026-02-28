@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-ML-Enhanced Audio Manager for JARVIS
+ML-Enhanced Audio Manager for Ironcliw
 Implements advanced machine learning algorithms for audio error mitigation
 and predictive issue detection with self-learning capabilities
 """
@@ -85,7 +85,7 @@ class AudioPatternLearner:
     """Learns patterns from audio events to predict and prevent issues"""
     
     def __init__(self, model_dir: str = None):
-        self.model_dir = Path(model_dir or os.getenv('JARVIS_ML_MODELS', './ml_models'))
+        self.model_dir = Path(model_dir or os.getenv('Ironcliw_ML_MODELS', './ml_models'))
         self.model_dir.mkdir(exist_ok=True)
         
         # ML Models
@@ -347,7 +347,7 @@ class AdaptiveAudioErrorHandler:
         
         # Override with environment variables
         for key in config:
-            env_key = f'JARVIS_AUDIO_{key.upper()}'
+            env_key = f'Ironcliw_AUDIO_{key.upper()}'
             if env_key in os.environ:
                 config[key] = os.environ[env_key]
         

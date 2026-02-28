@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Standalone Voice Demo - Works Without Full JARVIS
+Standalone Voice Demo - Works Without Full Ironcliw
 =================================================
 
 Shows the voice feedback messages that would be spoken
@@ -30,7 +30,7 @@ class MockVoiceWebSocket:
             text = data.get('text', '')
             if text:
                 self.voice_messages.append(text)
-                print(f"\n🔊 JARVIS would say: \"{text}\"")
+                print(f"\n🔊 Ironcliw would say: \"{text}\"")
                 
                 # Simulate speaking time
                 speak_time = len(text) * 0.05  # ~0.05 seconds per character
@@ -43,13 +43,13 @@ async def demo_voice_flow():
     print("\n" + "="*70)
     print("🎭 VOICE FEEDBACK DEMONSTRATION")
     print("="*70)
-    print("\nThis demo shows what JARVIS would say when your screen is locked")
+    print("\nThis demo shows what Ironcliw would say when your screen is locked")
     
     # Simulate locked screen scenario
     print("\n📍 Scenario Setup:")
     print("   • Your Mac screen is LOCKED 🔒")
-    print("   • You say: \"JARVIS, open Safari and search for dogs\"")
-    print("   • Watch what JARVIS says...")
+    print("   • You say: \"Ironcliw, open Safari and search for dogs\"")
+    print("   • Watch what Ironcliw says...")
     
     print("\n" + "-"*50)
     
@@ -82,7 +82,7 @@ async def demo_voice_flow():
     print("="*50)
     
     if websocket.voice_messages:
-        print(f"\n✅ JARVIS would speak {len(websocket.voice_messages)} message(s):")
+        print(f"\n✅ Ironcliw would speak {len(websocket.voice_messages)} message(s):")
         for i, msg in enumerate(websocket.voice_messages, 1):
             print(f"\n{i}. \"{msg}\"")
         
@@ -134,11 +134,11 @@ async def test_various_commands():
         message = f"I see your screen is locked. I'll unlock it now by typing in your password so I can {action}."
         
         print(f"\n📌 Command: \"{cmd}\"")
-        print(f"🔊 JARVIS: \"{message}\"")
+        print(f"🔊 Ironcliw: \"{message}\"")
 
 if __name__ == "__main__":
-    print("🚀 JARVIS Voice Feedback Demo (Standalone)")
-    print("\nThis demo works without JARVIS running")
+    print("🚀 Ironcliw Voice Feedback Demo (Standalone)")
+    print("\nThis demo works without Ironcliw running")
     
     # Run demos
     asyncio.run(demo_voice_flow())
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     
     print("\n\n✅ Demo complete!")
     print("\n📝 To hear actual voice in production:")
-    print("   1. Make sure JARVIS is running (python main.py)")
+    print("   1. Make sure Ironcliw is running (python main.py)")
     print("   2. Lock your screen")
     print("   3. Say a command that needs the screen")
-    print("   4. Listen for JARVIS to speak the feedback")
+    print("   4. Listen for Ironcliw to speak the feedback")

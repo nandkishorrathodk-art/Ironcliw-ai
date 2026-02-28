@@ -1,7 +1,7 @@
-"""
-JARVIS macOS Helper - Phase 1 Real-Time AI OS Layer
+﻿"""
+Ironcliw macOS Helper - Phase 1 Real-Time AI OS Layer
 
-Apple-Compliant macOS Integration for JARVIS AGI OS.
+Apple-Compliant macOS Integration for Ironcliw AGI OS.
 
 This module provides:
 - Real-time macOS event monitoring (NSWorkspace, FSEvents, UserNotifications)
@@ -12,7 +12,7 @@ This module provides:
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────┐
-    │                    JARVIS macOS Helper Layer                        │
+    │                    Ironcliw macOS Helper Layer                        │
     ├─────────────────────────────────────────────────────────────────────┤
     │                                                                     │
     │  ┌─────────────────────────────────────────────────────────────┐    │
@@ -78,13 +78,13 @@ Apple Compliance:
     - No private API usage
 
 Version: 1.0.0
-Author: JARVIS AGI OS Team
+Author: Ironcliw AGI OS Team
 """
 
 from __future__ import annotations
 
 __version__ = "1.0.0"
-__author__ = "JARVIS AGI OS Team"
+__author__ = "Ironcliw AGI OS Team"
 
 # Core exports
 from .event_types import (

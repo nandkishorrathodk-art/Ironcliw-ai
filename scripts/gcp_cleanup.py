@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS GCP Cleanup Script - Standalone Cost Optimization
+Ironcliw GCP Cleanup Script - Standalone Cost Optimization
 =========================================================
 v1.0.0 - Independent Cleanup Edition
 
-Run this script when JARVIS is NOT running to clean up GCP resources
+Run this script when Ironcliw is NOT running to clean up GCP resources
 and reduce costs. Can be run via cron job or manually.
 
 Usage:
@@ -17,10 +17,10 @@ Usage:
 Cost Drivers Addressed:
     1. Artifact Registry (old Docker images) - Can accumulate 50+ GB
     2. Cloud SQL (always running) - ~$10/month baseline
-    3. Orphaned VMs - Should be zero if JARVIS exited cleanly
-    4. Orphaned Cloud Run - Should be zero if JARVIS exited cleanly
+    3. Orphaned VMs - Should be zero if Ironcliw exited cleanly
+    4. Orphaned Cloud Run - Should be zero if Ironcliw exited cleanly
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ class GCPCleanup:
         orphans = []
 
         try:
-            # Check for JARVIS-labeled VMs
+            # Check for Ironcliw-labeled VMs
             result = subprocess.run(
                 [
                     "gcloud", "compute", "instances", "list",
@@ -569,7 +569,7 @@ class GCPCleanup:
 
 def print_cost_report(report: Dict[str, Any]):
     """Print a formatted cost report."""
-    print_header("JARVIS GCP Cost Report")
+    print_header("Ironcliw GCP Cost Report")
 
     print(f"  Project: {report['project_id']}")
     print(f"  Generated: {report['generated_at']}")
@@ -616,7 +616,7 @@ def print_cost_report(report: Dict[str, Any]):
 async def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="JARVIS GCP Cleanup - Reduce cloud costs",
+        description="Ironcliw GCP Cleanup - Reduce cloud costs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -657,7 +657,7 @@ Examples:
 
     # Full cleanup
     if args.all:
-        print_header("JARVIS GCP Full Cleanup")
+        print_header("Ironcliw GCP Full Cleanup")
         results = await cleanup.full_cleanup()
         print_section("Summary")
         print(f"  Estimated savings: ${results['total_savings_estimated_usd']:.2f}/month")

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enhanced Simple Context Handler for JARVIS
+Enhanced Simple Context Handler for Ironcliw
 ==========================================
 
 Provides context-aware command processing with:
@@ -74,7 +74,7 @@ async def _get_owner_name() -> str:
     """Get the device owner's first name from the speaker profile database.
 
     Uses a module-level cache so the DB is only queried once per process lifetime.
-    Falls back to env var JARVIS_OWNER_NAME, then to "Derek".
+    Falls back to env var Ironcliw_OWNER_NAME, then to "Derek".
     """
     global _owner_name_cache
     if _owner_name_cache is not None:
@@ -98,7 +98,7 @@ async def _get_owner_name() -> str:
         logger.debug(f"[ENHANCED CONTEXT] DB owner lookup failed: {e}")
 
     # Fallback: env var → default
-    _owner_name_cache = os.getenv("JARVIS_OWNER_NAME", "Derek")
+    _owner_name_cache = os.getenv("Ironcliw_OWNER_NAME", "Derek")
     logger.info(f"[ENHANCED CONTEXT] Owner from env/default: {_owner_name_cache}")
     return _owner_name_cache
 
@@ -331,7 +331,7 @@ class EnhancedSimpleContextHandler:
 
                         # Brief pause for unlock animation to complete
                         # v265.0: Env-var configurable pause
-                        _post_unlock_pause = float(os.environ.get("JARVIS_POST_UNLOCK_PAUSE", "1.5"))
+                        _post_unlock_pause = float(os.environ.get("Ironcliw_POST_UNLOCK_PAUSE", "1.5"))
                         await asyncio.sleep(_post_unlock_pause)
 
                         # Execute the original command

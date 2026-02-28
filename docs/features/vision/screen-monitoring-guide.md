@@ -1,31 +1,31 @@
-# Screen Monitoring Guide for JARVIS
+﻿# Screen Monitoring Guide for Ironcliw
 
 ## ✅ Screen Monitoring is Working!
 
-JARVIS can now monitor your screen continuously at 30 FPS using advanced video streaming technology.
+Ironcliw can now monitor your screen continuously at 30 FPS using advanced video streaming technology.
 
 ## How to Use Screen Monitoring
 
 ### Starting Monitoring
 Say any of these commands:
-- "Hey JARVIS, start monitoring my screen"
-- "Hey JARVIS, monitor my screen"
-- "Hey JARVIS, enable screen monitoring"
-- "Hey JARVIS, watch my screen"
+- "Hey Ironcliw, start monitoring my screen"
+- "Hey Ironcliw, monitor my screen"
+- "Hey Ironcliw, enable screen monitoring"
+- "Hey Ironcliw, watch my screen"
 
 ### What Happens
 1. **Purple Indicator**: macOS will show a purple recording indicator in your menu bar
-2. **30 FPS Capture**: JARVIS captures your screen at 30 frames per second
+2. **30 FPS Capture**: Ironcliw captures your screen at 30 frames per second
 3. **Real-time Analysis**: Can detect changes and important events
 4. **Swift Technology**: Uses native Swift video capture for best performance
 
 ### Stopping Monitoring
-- "Hey JARVIS, stop monitoring"
-- "Hey JARVIS, stop watching my screen"
-- "Hey JARVIS, disable screen monitoring"
+- "Hey Ironcliw, stop monitoring"
+- "Hey Ironcliw, stop watching my screen"
+- "Hey Ironcliw, disable screen monitoring"
 
 ### Response You'll Get
-When starting monitoring, JARVIS will respond:
+When starting monitoring, Ironcliw will respond:
 > "I have successfully activated direct Swift video capturing for monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm monitoring continuously at 30 FPS and will watch for any changes or important events on your screen until you tell me to stop."
 
 ## Requirements
@@ -40,8 +40,8 @@ When starting monitoring, JARVIS will respond:
 - Check System Preferences → Privacy & Security → Screen Recording
 - Ensure your terminal/IDE has permission enabled
 
-### JARVIS Not Responding?
-- Make sure to use wake word: "Hey JARVIS"
+### Ironcliw Not Responding?
+- Make sure to use wake word: "Hey Ironcliw"
 - Ensure backend is running: `python start_system.py`
 - Check Claude API key is configured
 
@@ -57,12 +57,12 @@ When starting monitoring, JARVIS will respond:
 
 ## Example Usage Session
 ```
-You: "Hey JARVIS, start monitoring my screen"
-JARVIS: *starts monitoring, purple indicator appears*
+You: "Hey Ironcliw, start monitoring my screen"
+Ironcliw: *starts monitoring, purple indicator appears*
 
 You: "What do you see?"
-JARVIS: "I can see you have Visual Studio Code open with Python code..."
+Ironcliw: "I can see you have Visual Studio Code open with Python code..."
 
-You: "Hey JARVIS, stop monitoring"
-JARVIS: "I've stopped monitoring your screen..."
+You: "Hey Ironcliw, stop monitoring"
+Ironcliw: "I've stopped monitoring your screen..."
 ```

@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Test JARVIS Lock Command - Correct Endpoint
+Test Ironcliw Lock Command - Correct Endpoint
 ===========================================
 
-Test if "lock my screen" works through JARVIS using the correct endpoint.
+Test if "lock my screen" works through Ironcliw using the correct endpoint.
 """
 
 import asyncio
@@ -11,8 +11,8 @@ import aiohttp
 import json
 
 async def test_jarvis_lock():
-    """Test lock command through JARVIS"""
-    print("🔐 Testing JARVIS Lock Command")
+    """Test lock command through Ironcliw"""
+    print("🔐 Testing Ironcliw Lock Command")
     print("=" * 50)
     
     url = "http://localhost:8000/api/command"  # Correct endpoint
@@ -25,7 +25,7 @@ async def test_jarvis_lock():
                 "text": "lock my screen",
             }
             
-            print(f"\nSending to JARVIS: '{data['text']}'")
+            print(f"\nSending to Ironcliw: '{data['text']}'")
             print("⚠️  This will lock your screen if it works!")
             
             countdown = 3
@@ -43,7 +43,7 @@ async def test_jarvis_lock():
                 
                 try:
                     result = json.loads(text)
-                    print(f"\nJARVIS Response:")
+                    print(f"\nIroncliw Response:")
                     print(json.dumps(result, indent=2))
                     
                     if result.get('success'):
@@ -57,8 +57,8 @@ async def test_jarvis_lock():
                     print("Could not parse JSON response")
                     
     except aiohttp.ClientConnectorError:
-        print("\n❌ Could not connect to JARVIS on port 8000")
-        print("Make sure JARVIS is running: python main.py")
+        print("\n❌ Could not connect to Ironcliw on port 8000")
+        print("Make sure Ironcliw is running: python main.py")
     except Exception as e:
         print(f"\n❌ Error: {type(e).__name__}: {e}")
 
@@ -83,7 +83,7 @@ async def test_simple_command():
         print(f"\n❌ Error: {e}")
 
 if __name__ == "__main__":
-    print("This test will send 'lock my screen' to JARVIS")
+    print("This test will send 'lock my screen' to Ironcliw")
     print("Your screen WILL LOCK if the command works!")
     
     response = input("\nContinue? (y/N): ")

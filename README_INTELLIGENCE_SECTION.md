@@ -1,6 +1,6 @@
-## 🧠 NEW in v5.0.0: Intelligence Component Manager
+﻿## 🧠 NEW in v5.0.0: Intelligence Component Manager
 
-JARVIS v5.0.0 introduces the **Intelligence Component Manager** — a robust, async, parallel, and intelligent orchestration system that manages all intelligence providers for voice authentication with **zero hardcoding**.
+Ironcliw v5.0.0 introduces the **Intelligence Component Manager** — a robust, async, parallel, and intelligent orchestration system that manages all intelligence providers for voice authentication with **zero hardcoding**.
 
 This system provides multi-factor authentication, RAG (Retrieval-Augmented Generation), RLHF (Reinforcement Learning from Human Feedback), and adaptive learning to dramatically improve authentication accuracy and security.
 
@@ -8,7 +8,7 @@ This system provides multi-factor authentication, RAG (Retrieval-Augmented Gener
 
 ### The Intelligence Architecture: "The Brain"
 
-The Intelligence Component Manager acts as the **"Brain"** of JARVIS, coordinating five specialized intelligence providers that work together to provide secure, context-aware voice authentication.
+The Intelligence Component Manager acts as the **"Brain"** of Ironcliw, coordinating five specialized intelligence providers that work together to provide secure, context-aware voice authentication.
 
 ```mermaid
 graph TD
@@ -403,7 +403,7 @@ Decision: AUTHENTICATE (>85% threshold)
    ├─ Multi-factor: Success (87% > 85%)
    └─ Context saved intelligence: ✅
 
-💬 JARVIS narration:
+💬 Ironcliw narration:
    "Good morning, Derek. Unlocking for you. Your voice sounds a bit
     different today—perhaps tired?—but your patterns match perfectly."
 ```
@@ -581,7 +581,7 @@ scrape_configs:
 ```json
 {
   "dashboard": {
-    "title": "JARVIS Intelligence System",
+    "title": "Ironcliw Intelligence System",
     "panels": [
       {
         "title": "Component Health",
@@ -629,7 +629,7 @@ chmod 755 ~/.jarvis
 chmod 755 ~/.jarvis/intelligence
 
 # Or change data directory
-export JARVIS_DATA_DIR=/tmp/jarvis
+export Ironcliw_DATA_DIR=/tmp/jarvis
 ```
 
 ---
@@ -761,7 +761,7 @@ Complete documentation available:
 #### Component Initialization Flow
 ```
 ┌────────────────────────────────────────────────────────────┐
-│              JARVIS Supervisor Boot                        │
+│              Ironcliw Supervisor Boot                        │
 └────────────────────────────────────────────────────────────┘
                          │
                          ▼

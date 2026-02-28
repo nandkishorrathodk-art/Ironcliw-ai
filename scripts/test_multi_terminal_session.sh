@@ -1,10 +1,10 @@
-#!/bin/bash
+﻿#!/bin/bash
 ###############################################################################
-# Multi-Terminal Session Test Script for JARVIS
+# Multi-Terminal Session Test Script for Ironcliw
 # Tests VMSessionTracker implementation for multi-terminal safety
 #
 # Purpose:
-#   Validates that multiple JARVIS terminals can run simultaneously without
+#   Validates that multiple Ironcliw terminals can run simultaneously without
 #   interfering with each other's GCP VM instances during cleanup.
 #
 # Usage:
@@ -20,7 +20,7 @@
 # Requirements:
 #   - gcloud CLI configured
 #   - GCP_PROJECT_ID environment variable set
-#   - JARVIS repository at /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+#   - Ironcliw repository at /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 ###############################################################################
 
 set -e
@@ -34,7 +34,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_ID="${GCP_PROJECT_ID:-jarvis-473803}"
-REPO_DIR="/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent"
+REPO_DIR="/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent"
 LOG_DIR="/tmp/jarvis_test_logs"
 REGISTRY_FILE="/tmp/jarvis_vm_registry.json"
 
@@ -76,9 +76,9 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check JARVIS repo
+    # Check Ironcliw repo
     if [ ! -f "$REPO_DIR/start_system.py" ]; then
-        log_error "JARVIS repository not found at $REPO_DIR"
+        log_error "Ironcliw repository not found at $REPO_DIR"
         exit 1
     fi
 
@@ -366,7 +366,7 @@ test_stale_session_cleanup() {
 
     cleanup_all
 
-    log_info "Starting JARVIS, then force killing..."
+    log_info "Starting Ironcliw, then force killing..."
     cd "$REPO_DIR"
 
     python3 start_system.py > "$LOG_DIR/terminal1.log" 2>&1 &
@@ -387,7 +387,7 @@ test_stale_session_cleanup() {
         log_warning "Session file does not exist"
     fi
 
-    log_info "Starting new JARVIS session..."
+    log_info "Starting new Ironcliw session..."
     python3 start_system.py > "$LOG_DIR/terminal2.log" 2>&1 &
     local PID2=$!
     log_info "New PID: $PID2"

@@ -1,4 +1,4 @@
-name: Claude AI Documentation Generator
+﻿name: Claude AI Documentation Generator
 
 on:
   workflow_dispatch:
@@ -197,7 +197,7 @@ jobs:
               messages=[
                   {
                       "role": "user",
-                      "content": f"""Enhance this README for JARVIS AI Agent project:
+                      "content": f"""Enhance this README for Ironcliw AI Agent project:
 
           **Current README:**
           ```markdown
@@ -286,7 +286,7 @@ jobs:
               messages=[
                   {
                       "role": "user",
-                      "content": f"""Create API documentation for JARVIS AI Agent:
+                      "content": f"""Create API documentation for Ironcliw AI Agent:
 
           **API Code:**
           {api_code}

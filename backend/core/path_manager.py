@@ -1,9 +1,9 @@
-"""
+﻿"""
 Cross-Platform Path Management
 ===============================
 
 Handles platform-specific path conventions and directory structures.
-Ensures JARVIS data is stored in appropriate locations on each OS.
+Ensures Ironcliw data is stored in appropriate locations on each OS.
 """
 
 import os
@@ -14,11 +14,11 @@ from typing import Optional
 
 class PathManager:
     """
-    Cross-platform path management for JARVIS data directories.
+    Cross-platform path management for Ironcliw data directories.
     
     Follows platform conventions:
     - macOS: ~/.jarvis/
-    - Windows: %LOCALAPPDATA%\\JARVIS\\
+    - Windows: %LOCALAPPDATA%\\Ironcliw\\
     - Linux: ~/.local/share/jarvis/ (XDG compliant)
     """
     
@@ -27,7 +27,7 @@ class PathManager:
         self.home = Path.home()
         
         # Detect environment override
-        env_home = os.getenv("JARVIS_HOME")
+        env_home = os.getenv("Ironcliw_HOME")
         if env_home:
             self._jarvis_home = Path(env_home)
         else:
@@ -37,13 +37,13 @@ class PathManager:
         self._jarvis_home.mkdir(parents=True, exist_ok=True)
     
     def _get_default_jarvis_home(self) -> Path:
-        """Get default JARVIS home directory for current platform."""
+        """Get default Ironcliw home directory for current platform."""
         if self.os == "Windows":
-            # Windows: C:\Users\<user>\AppData\Local\JARVIS
+            # Windows: C:\Users\<user>\AppData\Local\Ironcliw
             local_app_data = os.getenv("LOCALAPPDATA")
             if local_app_data:
-                return Path(local_app_data) / "JARVIS"
-            return self.home / "AppData" / "Local" / "JARVIS"
+                return Path(local_app_data) / "Ironcliw"
+            return self.home / "AppData" / "Local" / "Ironcliw"
         
         elif self.os == "Darwin":
             # macOS: ~/.jarvis
@@ -62,10 +62,10 @@ class PathManager:
     
     def get_jarvis_home(self) -> Path:
         """
-        Get JARVIS home directory.
+        Get Ironcliw home directory.
         
         Returns:
-            Path: Platform-specific JARVIS data directory
+            Path: Platform-specific Ironcliw data directory
         """
         return self._jarvis_home
     
@@ -163,7 +163,7 @@ class PathManager:
             Path: Temp directory
         """
         if self.os == "Windows":
-            temp_dir = Path(os.getenv("TEMP", "")) / "JARVIS"
+            temp_dir = Path(os.getenv("TEMP", "")) / "Ironcliw"
         elif self.os == "Linux":
             temp_dir = Path("/tmp") / f"jarvis-{os.getuid()}"
         else:
@@ -229,7 +229,7 @@ class PathManager:
     
     def get_workspace_file(self, filename: str) -> Path:
         """
-        Get path to file in JARVIS workspace.
+        Get path to file in Ironcliw workspace.
         
         Args:
             filename: Name of file

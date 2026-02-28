@@ -1,7 +1,7 @@
-# ✅ Lock Command is Now Fixed!
+﻿# ✅ Lock Command is Now Fixed!
 
 ## The Problem
-When you said "lock my screen", JARVIS responded:
+When you said "lock my screen", Ironcliw responded:
 > "I couldn't lock the screen, Sir. Not connected to Voice Unlock"
 
 ## The Solution
@@ -31,7 +31,7 @@ if voice_unlock_connector and voice_unlock_connector.connected:
 # Fallback to Context Intelligence
 from context_intelligence.core.unlock_manager import get_unlock_manager
 unlock_manager = get_unlock_manager()
-success, message = await unlock_manager.lock_screen("User command from JARVIS")
+success, message = await unlock_manager.lock_screen("User command from Ironcliw")
 ```
 
 ## How It Works Now
@@ -39,14 +39,14 @@ success, message = await unlock_manager.lock_screen("User command from JARVIS")
 ### Case 1: Voice Unlock Daemon Running
 ```
 You: "lock my screen"
-JARVIS: "Locking your screen now, Sir." (via Voice Unlock)
+Ironcliw: "Locking your screen now, Sir." (via Voice Unlock)
 Result: Screen locks immediately
 ```
 
 ### Case 2: Voice Unlock Daemon NOT Running
 ```
 You: "lock my screen"
-JARVIS: "Screen locked successfully, Sir." (via Context Intelligence)
+Ironcliw: "Screen locked successfully, Sir." (via Context Intelligence)
 Result: Screen locks using AppleScript (Cmd+Ctrl+Q) or pmset
 ```
 

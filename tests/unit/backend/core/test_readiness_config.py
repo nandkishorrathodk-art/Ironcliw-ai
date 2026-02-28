@@ -1,4 +1,4 @@
-"""Tests for readiness configuration module."""
+﻿"""Tests for readiness configuration module."""
 import os
 import pytest
 from unittest.mock import patch
@@ -215,7 +215,7 @@ class TestEnvironmentVariableConfiguration:
         """verification_timeout can be configured via env var."""
         from backend.core.readiness_config import ReadinessConfig, _reset_config
         _reset_config()
-        with patch.dict(os.environ, {"JARVIS_VERIFICATION_TIMEOUT": "120"}):
+        with patch.dict(os.environ, {"Ironcliw_VERIFICATION_TIMEOUT": "120"}):
             config = ReadinessConfig()
             assert config.verification_timeout == 120.0
 
@@ -223,7 +223,7 @@ class TestEnvironmentVariableConfiguration:
         """unhealthy_threshold_failures can be configured via env var."""
         from backend.core.readiness_config import ReadinessConfig, _reset_config
         _reset_config()
-        with patch.dict(os.environ, {"JARVIS_UNHEALTHY_THRESHOLD_FAILURES": "5"}):
+        with patch.dict(os.environ, {"Ironcliw_UNHEALTHY_THRESHOLD_FAILURES": "5"}):
             config = ReadinessConfig()
             assert config.unhealthy_threshold_failures == 5
 
@@ -231,7 +231,7 @@ class TestEnvironmentVariableConfiguration:
         """unhealthy_threshold_seconds can be configured via env var."""
         from backend.core.readiness_config import ReadinessConfig, _reset_config
         _reset_config()
-        with patch.dict(os.environ, {"JARVIS_UNHEALTHY_THRESHOLD_SECONDS": "60"}):
+        with patch.dict(os.environ, {"Ironcliw_UNHEALTHY_THRESHOLD_SECONDS": "60"}):
             config = ReadinessConfig()
             assert config.unhealthy_threshold_seconds == 60.0
 
@@ -239,7 +239,7 @@ class TestEnvironmentVariableConfiguration:
         """revocation_cooldown_seconds can be configured via env var."""
         from backend.core.readiness_config import ReadinessConfig, _reset_config
         _reset_config()
-        with patch.dict(os.environ, {"JARVIS_REVOCATION_COOLDOWN_SECONDS": "10"}):
+        with patch.dict(os.environ, {"Ironcliw_REVOCATION_COOLDOWN_SECONDS": "10"}):
             config = ReadinessConfig()
             assert config.revocation_cooldown_seconds == 10.0
 

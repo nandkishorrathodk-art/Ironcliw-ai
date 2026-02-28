@@ -1,4 +1,4 @@
-# Startup Warning Root Fix — v244.0 Implementation Plan
+﻿# Startup Warning Root Fix — v244.0 Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task.
 
@@ -28,7 +28,7 @@
 ```python
         # v244.0: Integration components
         # - Agentic Watchdog (safety kill-switch for Computer Use)
-        # - Cross-Repo State (JARVIS ↔ Prime ↔ Reactor coordination)
+        # - Cross-Repo State (Ironcliw ↔ Prime ↔ Reactor coordination)
         # - AgenticTaskRunner (agentic execution engine)
         # NOTE: TieredVBIAAdapter and TieredCommandRouter were replaced by
         # J-Prime's Phi classifier (commit 167fcecb). Voice auth uses
@@ -443,7 +443,7 @@ Replace the method body:
             messages: List[ChatMessage] = []
             effective_system = (
                 _classification_prefix +
-                (system_prompt or "You are JARVIS, a helpful AI assistant.")
+                (system_prompt or "You are Ironcliw, a helpful AI assistant.")
             )
             messages.append(ChatMessage(role="system", content=effective_system))
             messages.append(ChatMessage(role="user", content=query))

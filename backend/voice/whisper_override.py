@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Whisper STT Override - Forces JARVIS to use Whisper for transcription
+Whisper STT Override - Forces Ironcliw to use Whisper for transcription
 
 NUMBA CIRCULAR IMPORT FIX:
 - Uses lazy import to avoid numba.core.utils circular import errors
@@ -90,7 +90,7 @@ def get_whisper_stt():
 
 # Monkey-patch the hybrid router to use Whisper
 def patch_jarvis_stt():
-    """Patch JARVIS to use Whisper for all STT"""
+    """Patch Ironcliw to use Whisper for all STT"""
     try:
         # Import the hybrid router
         from backend.voice import hybrid_stt_router
@@ -126,7 +126,7 @@ def patch_jarvis_stt():
 
         # Apply patch
         hybrid_stt_router.HybridSTTRouter.transcribe = whisper_transcribe
-        print("✅ JARVIS patched to use Whisper STT")
+        print("✅ Ironcliw patched to use Whisper STT")
 
     except Exception as e:
         print(f"Failed to patch: {e}")

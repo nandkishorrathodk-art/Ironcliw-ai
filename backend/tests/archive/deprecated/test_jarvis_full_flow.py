@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test full JARVIS flow as frontend does"""
+﻿#!/usr/bin/env python3
+"""Test full Ironcliw flow as frontend does"""
 
 import asyncio
 import websockets
@@ -9,7 +9,7 @@ import httpx
 async def test_full_jarvis_flow():
     """Test the complete flow that frontend uses"""
     
-    print("1️⃣ Checking JARVIS status...")
+    print("1️⃣ Checking Ironcliw status...")
     async with httpx.AsyncClient() as client:
         response = await client.get("http://localhost:8000/voice/jarvis/status")
         status = response.json()

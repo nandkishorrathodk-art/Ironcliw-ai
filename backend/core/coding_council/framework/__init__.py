@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Framework Module - Gaps #8-15
 =====================================
 
@@ -12,7 +12,7 @@ Core framework patterns:
 - Gap #14: Graceful degradation
 - Gap #15: Health checks
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from .timeout_wrapper import (

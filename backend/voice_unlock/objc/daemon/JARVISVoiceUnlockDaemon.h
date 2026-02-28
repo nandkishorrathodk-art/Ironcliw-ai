@@ -1,6 +1,6 @@
-/**
- * JARVISVoiceUnlockDaemon.h
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwVoiceUnlockDaemon.h
+ * Ironcliw Voice Unlock System
  *
  * Main daemon that runs in the background to monitor for voice unlock phrases
  * when the screen is locked. Integrates with macOS Security Framework.
@@ -14,50 +14,50 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // Forward declarations
-@class JARVISVoiceAuthenticator;
-@class JARVISScreenUnlockManager;
-@class JARVISVoiceMonitor;
-@class JARVISPythonBridge;
-@class JARVISPermissionManager;
-@class JARVISWebSocketBridge;
+@class IroncliwVoiceAuthenticator;
+@class IroncliwScreenUnlockManager;
+@class IroncliwVoiceMonitor;
+@class IroncliwPythonBridge;
+@class IroncliwPermissionManager;
+@class IroncliwWebSocketBridge;
 
 // Notification constants
-extern NSString *const JARVISVoiceUnlockStatusChangedNotification;
-extern NSString *const JARVISVoiceUnlockAuthenticationFailedNotification;
-extern NSString *const JARVISVoiceUnlockAuthenticationSucceededNotification;
+extern NSString *const IroncliwVoiceUnlockStatusChangedNotification;
+extern NSString *const IroncliwVoiceUnlockAuthenticationFailedNotification;
+extern NSString *const IroncliwVoiceUnlockAuthenticationSucceededNotification;
 
 // Error domain
-extern NSString *const JARVISVoiceUnlockErrorDomain;
+extern NSString *const IroncliwVoiceUnlockErrorDomain;
 
 // Voice unlock state
-typedef NS_ENUM(NSInteger, JARVISVoiceUnlockState) {
-    JARVISVoiceUnlockStateInactive = 0,
-    JARVISVoiceUnlockStateMonitoring,
-    JARVISVoiceUnlockStateProcessing,
-    JARVISVoiceUnlockStateUnlocking,
-    JARVISVoiceUnlockStateError
+typedef NS_ENUM(NSInteger, IroncliwVoiceUnlockState) {
+    IroncliwVoiceUnlockStateInactive = 0,
+    IroncliwVoiceUnlockStateMonitoring,
+    IroncliwVoiceUnlockStateProcessing,
+    IroncliwVoiceUnlockStateUnlocking,
+    IroncliwVoiceUnlockStateError
 };
 
 // Configuration options
-typedef NS_OPTIONS(NSUInteger, JARVISVoiceUnlockOptions) {
-    JARVISVoiceUnlockOptionNone = 0,
-    JARVISVoiceUnlockOptionEnableLivenessDetection = 1 << 0,
-    JARVISVoiceUnlockOptionEnableAntiSpoofing = 1 << 1,
-    JARVISVoiceUnlockOptionEnableAdaptiveThresholds = 1 << 2,
-    JARVISVoiceUnlockOptionEnableContinuousAuthentication = 1 << 3,
-    JARVISVoiceUnlockOptionEnableDebugLogging = 1 << 4
+typedef NS_OPTIONS(NSUInteger, IroncliwVoiceUnlockOptions) {
+    IroncliwVoiceUnlockOptionNone = 0,
+    IroncliwVoiceUnlockOptionEnableLivenessDetection = 1 << 0,
+    IroncliwVoiceUnlockOptionEnableAntiSpoofing = 1 << 1,
+    IroncliwVoiceUnlockOptionEnableAdaptiveThresholds = 1 << 2,
+    IroncliwVoiceUnlockOptionEnableContinuousAuthentication = 1 << 3,
+    IroncliwVoiceUnlockOptionEnableDebugLogging = 1 << 4
 };
 
 /**
  * Main daemon interface
  */
-@interface JARVISVoiceUnlockDaemon : NSObject
+@interface IroncliwVoiceUnlockDaemon : NSObject
 
 // Singleton instance
 + (instancetype)sharedDaemon;
 
 // Core properties
-@property (nonatomic, readonly) JARVISVoiceUnlockState state;
+@property (nonatomic, readonly) IroncliwVoiceUnlockState state;
 @property (nonatomic, readonly) BOOL isMonitoring;
 @property (nonatomic, readonly) BOOL isScreenLocked;
 @property (nonatomic, readonly) NSString *enrolledUserIdentifier;
@@ -65,7 +65,7 @@ typedef NS_OPTIONS(NSUInteger, JARVISVoiceUnlockOptions) {
 @property (nonatomic, readonly) NSUInteger failedAttemptCount;
 
 // Configuration
-@property (nonatomic, assign) JARVISVoiceUnlockOptions options;
+@property (nonatomic, assign) IroncliwVoiceUnlockOptions options;
 @property (nonatomic, assign) NSTimeInterval authenticationTimeout;
 @property (nonatomic, assign) NSUInteger maxFailedAttempts;
 @property (nonatomic, assign) NSTimeInterval lockoutDuration;

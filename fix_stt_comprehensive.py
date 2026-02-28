@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Comprehensive STT Fix - Force Whisper everywhere
 """
@@ -157,13 +157,13 @@ def patch_all_stt_systems():
     print("• HybridSTTRouter.transcribe() → Whisper")
     print("• get_hybrid_router() → Returns Whisper-patched router")
     print("• VoiceUnlockService._transcribe_audio() → Whisper")
-    print("\n🎤 Test with: 'Hey JARVIS, unlock my screen'")
+    print("\n🎤 Test with: 'Hey Ironcliw, unlock my screen'")
     print("Expected: Proper transcription, NOT '[transcription failed]'")
 
 if __name__ == "__main__":
     patch_all_stt_systems()
 
-    print("\n⏳ Patches applied. Keep this running while using JARVIS.")
+    print("\n⏳ Patches applied. Keep this running while using Ironcliw.")
     print("Press Ctrl+C to exit.")
 
     try:

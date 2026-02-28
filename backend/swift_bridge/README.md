@@ -1,10 +1,10 @@
-# JARVIS Swift Command Classifier
+﻿# Ironcliw Swift Command Classifier
 
 An intelligent command classification system that uses macOS's native NLP capabilities to dynamically route commands between vision and system control - with **zero hardcoding**.
 
 ## 🎯 Purpose
 
-This Swift-based classifier solves the fundamental routing problem in JARVIS:
+This Swift-based classifier solves the fundamental routing problem in Ironcliw:
 - **"close whatsapp"** → Routes to **system control** (executes action)
 - **"what's in whatsapp"** → Routes to **vision analysis** (describes screen)
 
@@ -89,12 +89,12 @@ print(f"Intent: {details['intent']}")  # Output: "close_app"
 await router.provide_feedback("close whatsapp", "system", was_successful=True)
 ```
 
-### Integration with JARVIS
+### Integration with Ironcliw
 
 ```python
 from backend.voice.intelligent_command_handler import integrate_with_jarvis_voice
 
-# Integrate with existing JARVIS voice system
+# Integrate with existing Ironcliw voice system
 intelligent_handler = integrate_with_jarvis_voice(jarvis_voice_instance)
 
 # Now all commands are intelligently routed!
@@ -233,4 +233,4 @@ return analysis.type  // Intelligent decision
 
 ## 📝 License
 
-Part of the JARVIS AI Agent project.
+Part of the Ironcliw AI Agent project.

@@ -1,5 +1,5 @@
-"""
-JARVIS Platform Abstraction Layer - Base Classes
+﻿"""
+Ironcliw Platform Abstraction Layer - Base Classes
 ═══════════════════════════════════════════════════════════════════════════════
 
 This module defines the abstract base classes for all platform-specific implementations.
@@ -15,7 +15,7 @@ Architecture:
     BaseFileWatcher      - File system monitoring
     BaseNotifications    - System notifications
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations
@@ -382,7 +382,7 @@ class BaseNotifications(ABC):
     
     @abstractmethod
     def clear_all_notifications(self) -> bool:
-        """Clear all JARVIS notifications"""
+        """Clear all Ironcliw notifications"""
         pass
 
 

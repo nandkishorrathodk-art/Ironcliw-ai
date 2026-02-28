@@ -1,10 +1,10 @@
-# Silent Desktop Space Detection - Fix Complete
+﻿# Silent Desktop Space Detection - Fix Complete
 
 ## ✅ ISSUE RESOLVED
 
-**Problem**: When asking "What's happening across my desktop spaces?", JARVIS was triggering Mission Control (zoom-out view), making it visually obvious to the user.
+**Problem**: When asking "What's happening across my desktop spaces?", Ironcliw was triggering Mission Control (zoom-out view), making it visually obvious to the user.
 
-**Solution**: JARVIS now uses **Yabai data only** - no Mission Control trigger, completely silent detection.
+**Solution**: Ironcliw now uses **Yabai data only** - no Mission Control trigger, completely silent detection.
 
 ---
 
@@ -97,7 +97,7 @@ Only for **SPECIFIC_DETAIL** queries that need visual content:
 ### Before Fix:
 ```
 User: "What's happening across my desktop spaces?"
-JARVIS:
+Ironcliw:
   1. Triggers Mission Control (⚠️ VISIBLE ZOOM-OUT)
   2. Captures screenshots of all spaces (15-30 seconds)
   3. Sends to Claude Vision for analysis
@@ -110,7 +110,7 @@ Time: 15-30 seconds
 ### After Fix:
 ```
 User: "What's happening across my desktop spaces?"
-JARVIS:
+Ironcliw:
   1. Queries Yabai for space data (✅ SILENT)
   2. Generates response from window metadata
   
@@ -189,7 +189,7 @@ These queries **still use screenshots** (when needed):
 
 ## 🔧 How to Test
 
-1. **Start JARVIS**:
+1. **Start Ironcliw**:
    ```bash
    python start_system.py
    ```

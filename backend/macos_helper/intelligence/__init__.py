@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - Phase 2 Real-Time Intelligence
+﻿"""
+Ironcliw macOS Helper - Phase 2 Real-Time Intelligence
 
 Advanced intelligence layer that transforms raw macOS events into
 actionable insights and proactive suggestions.

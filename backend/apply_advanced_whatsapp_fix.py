@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Apply the Advanced WhatsApp Fix to JARVIS
-This script updates JARVIS to use ML-based routing with zero hardcoding
+Apply the Advanced WhatsApp Fix to Ironcliw
+This script updates Ironcliw to use ML-based routing with zero hardcoding
 """
 
 import os
@@ -10,11 +10,11 @@ import shutil
 from datetime import datetime
 
 def apply_advanced_fix():
-    """Apply the advanced WhatsApp fix to JARVIS"""
+    """Apply the advanced WhatsApp fix to Ironcliw"""
     
-    print("🚀 JARVIS Advanced WhatsApp Fix Installer")
+    print("🚀 Ironcliw Advanced WhatsApp Fix Installer")
     print("=" * 60)
-    print("This will upgrade JARVIS to use ML-based command routing")
+    print("This will upgrade Ironcliw to use ML-based command routing")
     print("with ZERO hardcoding - everything is learned and adaptive!")
     print("=" * 60)
     print()
@@ -51,10 +51,10 @@ def apply_advanced_fix():
 from voice.integrate_advanced_routing import patch_jarvis_voice_agent_advanced
 
 # Then replace the patch line:
-# patch_jarvis_voice_agent(JARVISAgentVoice)
+# patch_jarvis_voice_agent(IroncliwAgentVoice)
 
 # With:
-patch_jarvis_voice_agent_advanced(JARVISAgentVoice)
+patch_jarvis_voice_agent_advanced(IroncliwAgentVoice)
 '''
     
     try:
@@ -74,8 +74,8 @@ patch_jarvis_voice_agent_advanced(JARVISAgentVoice)
                     "from voice.integrate_advanced_routing import patch_jarvis_voice_agent_advanced"
                 )
                 content = content.replace(
-                    "patch_jarvis_voice_agent(JARVISAgentVoice)",
-                    "patch_jarvis_voice_agent_advanced(JARVISAgentVoice)"
+                    "patch_jarvis_voice_agent(IroncliwAgentVoice)",
+                    "patch_jarvis_voice_agent_advanced(IroncliwAgentVoice)"
                 )
             else:
                 # Add new import
@@ -89,14 +89,14 @@ patch_jarvis_voice_agent_advanced(JARVISAgentVoice)
                     )
                 
                 # Add patch after initialization
-                if "JARVISAgentVoice(" in content:
-                    # Find where JARVISAgentVoice is initialized and patch it
+                if "IroncliwAgentVoice(" in content:
+                    # Find where IroncliwAgentVoice is initialized and patch it
                     lines = content.split("\n")
                     for i, line in enumerate(lines):
-                        if "JARVISAgentVoice(" in line and "=" in line:
+                        if "IroncliwAgentVoice(" in line and "=" in line:
                             # Add patch on next line
                             indent = len(line) - len(line.lstrip())
-                            lines.insert(i + 1, " " * indent + "patch_jarvis_voice_agent_advanced(JARVISAgentVoice)")
+                            lines.insert(i + 1, " " * indent + "patch_jarvis_voice_agent_advanced(IroncliwAgentVoice)")
                             break
                     content = "\n".join(lines)
             
@@ -121,10 +121,10 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from voice.integrate_advanced_routing import JARVISAdvancedVoiceAgent
+from voice.integrate_advanced_routing import IroncliwAdvancedVoiceAgent
 
 async def test():
-    agent = JARVISAdvancedVoiceAgent()
+    agent = IroncliwAdvancedVoiceAgent()
     
     print("🧪 Testing Advanced WhatsApp Fix...")
     print()
@@ -175,8 +175,8 @@ if __name__ == "__main__":
     print(f"   Backups saved in: {backup_dir}")
     
     print("\n🎯 Next Steps:")
-    print("   1. Restart JARVIS")
-    print("   2. Try 'Hey JARVIS, open WhatsApp'")
+    print("   1. Restart Ironcliw")
+    print("   2. Try 'Hey Ironcliw, open WhatsApp'")
     print("   3. Watch it work correctly!")
     print("   4. The system learns and improves with use")
     
@@ -192,24 +192,24 @@ def show_manual_instructions():
     print("   Replace:")
     print("   ```python")
     print("   from voice.jarvis_agent_voice_fix import patch_jarvis_voice_agent")
-    print("   patch_jarvis_voice_agent(JARVISAgentVoice)")
+    print("   patch_jarvis_voice_agent(IroncliwAgentVoice)")
     print("   ```")
     print()
     print("   With:")
     print("   ```python")
     print("   from voice.integrate_advanced_routing import patch_jarvis_voice_agent_advanced")
-    print("   patch_jarvis_voice_agent_advanced(JARVISAgentVoice)")
+    print("   patch_jarvis_voice_agent_advanced(IroncliwAgentVoice)")
     print("   ```")
     
-    print("\n2. Restart JARVIS")
+    print("\n2. Restart Ironcliw")
     
-    print("\n3. Test with: 'Hey JARVIS, open WhatsApp'")
+    print("\n3. Test with: 'Hey Ironcliw, open WhatsApp'")
     
     print("\nThat's it! The system will now use ML-based routing.")
 
 if __name__ == "__main__":
-    print("🤖 JARVIS Advanced WhatsApp Fix")
-    print("   Making JARVIS truly intelligent with ML-based routing")
+    print("🤖 Ironcliw Advanced WhatsApp Fix")
+    print("   Making Ironcliw truly intelligent with ML-based routing")
     print()
     
     # Apply the fix
@@ -218,5 +218,5 @@ if __name__ == "__main__":
     if not success:
         show_manual_instructions()
     
-    print("\n✨ Remember: This fix makes JARVIS learn and adapt!")
+    print("\n✨ Remember: This fix makes Ironcliw learn and adapt!")
     print("   No more hardcoded patterns - pure intelligence!")

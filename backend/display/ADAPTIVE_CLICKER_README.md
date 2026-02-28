@@ -1,4 +1,4 @@
-# Adaptive Control Center Clicker
+﻿# Adaptive Control Center Clicker
 
 **Production-grade, self-healing Control Center interaction system for macOS**
 
@@ -81,7 +81,7 @@ brew install tesseract
 pip install pytesseract
 
 # Optional (for Claude Vision)
-# Configure JARVIS Claude Vision analyzer
+# Configure Ironcliw Claude Vision analyzer
 ```
 
 ### Quick Start
@@ -212,7 +212,7 @@ pytest tests/unit/display/test_adaptive_control_center_clicker.py::TestOCRDetect
 ### Integration Tests
 ```bash
 # Enable integration tests (requires macOS with Control Center)
-export JARVIS_INTEGRATION_TESTS=1
+export Ironcliw_INTEGRATION_TESTS=1
 
 # Run integration tests
 pytest tests/integration/test_adaptive_clicker_integration.py -v -m integration
@@ -370,10 +370,10 @@ Avg Test Duration: 3.02s
 ### Environment Variables
 ```bash
 # Enable integration tests
-export JARVIS_INTEGRATION_TESTS=1
+export Ironcliw_INTEGRATION_TESTS=1
 
 # Set test device name
-export JARVIS_TEST_DEVICE="Living Room TV"
+export Ironcliw_TEST_DEVICE="Living Room TV"
 ```
 
 ### Cache Configuration
@@ -568,7 +568,7 @@ python backend/display/verify_adaptive_clicker.py --full
 
 ## 📄 License
 
-Part of the JARVIS AI Agent project.
+Part of the Ironcliw AI Agent project.
 
 ---
 

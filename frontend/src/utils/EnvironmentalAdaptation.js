@@ -1,5 +1,5 @@
-/**
- * 🌍 JARVIS Environmental Adaptation System
+﻿/**
+ * 🌍 Ironcliw Environmental Adaptation System
  *
  * Advanced acoustic analysis and environmental noise handling for robust voice detection
  * in extreme conditions: multiple speakers, TV/radio interference, echo/reverb, noise spikes

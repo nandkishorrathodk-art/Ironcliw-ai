@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 TEST: Voice-Activated God Mode - The Final Wire
 ================================================
 
-This test proves JARVIS can activate God Mode surveillance via voice commands.
+This test proves Ironcliw can activate God Mode surveillance via voice commands.
 
 What This Tests:
 1. Voice Command Parsing - Extract app, trigger, all_spaces from natural language
@@ -17,7 +17,7 @@ Example Commands:
 - "Watch Chrome across all spaces for bouncing ball"
 - "Notify me when Terminal says DONE"
 
-Success = Say "JARVIS, watch all Chrome windows for bouncing balls" → spawns Ferrari Engines immediately
+Success = Say "Ironcliw, watch all Chrome windows for bouncing balls" → spawns Ferrari Engines immediately
 """
 
 import asyncio
@@ -37,8 +37,8 @@ from backend.voice.intelligent_command_handler import IntelligentCommandHandler
 
 
 async def jarvis_speak(message: str, blocking: bool = False):
-    """JARVIS speaks with Daniel's British voice"""
-    print(f"🗣️  JARVIS: {message}")
+    """Ironcliw speaks with Daniel's British voice"""
+    print(f"🗣️  Ironcliw: {message}")
     try:
         proc = await asyncio.create_subprocess_exec(
             "say", "-v", "Daniel", "-r", "200", message,
@@ -56,7 +56,7 @@ async def test_voice_god_mode():
     Test voice-activated God Mode surveillance
     """
     print("\n" + "="*80)
-    print("🎤 JARVIS VOICE-ACTIVATED GOD MODE - THE FINAL WIRE")
+    print("🎤 Ironcliw VOICE-ACTIVATED GOD MODE - THE FINAL WIRE")
     print("   Ears (Voice Handler) → Brain (VisualMonitorAgent)")
     print("="*80)
     print()
@@ -162,7 +162,7 @@ async def test_voice_god_mode():
     print("2. Then run this command:")
     print("   'Watch all Chrome windows for BOUNCE COUNT'")
     print()
-    print("3. JARVIS should:")
+    print("3. Ironcliw should:")
     print("   ✅ Parse the command")
     print("   ✅ Initialize VisualMonitorAgent")
     print("   ✅ Spawn Ferrari Engines for ALL Chrome windows")
@@ -184,7 +184,7 @@ async def test_voice_god_mode():
     #     response, handler_type = await handler.handle_command(test_command)
     #     print()
     #     print("="*80)
-    #     print("RESPONSE FROM JARVIS:")
+    #     print("RESPONSE FROM Ironcliw:")
     #     print("="*80)
     #     print(response)
     #     print()
@@ -225,10 +225,10 @@ async def test_voice_god_mode():
     print()
 
     print("🎯 EXAMPLE COMMANDS YOU CAN NOW USE:")
-    print("   1. 'JARVIS, watch Terminal for Build Complete'")
-    print("   2. 'JARVIS, monitor all Chrome windows for Error'")
-    print("   3. 'JARVIS, watch Chrome across all spaces for bouncing ball'")
-    print("   4. 'JARVIS, notify me when Terminal says DONE'")
+    print("   1. 'Ironcliw, watch Terminal for Build Complete'")
+    print("   2. 'Ironcliw, monitor all Chrome windows for Error'")
+    print("   3. 'Ironcliw, watch Chrome across all spaces for bouncing ball'")
+    print("   4. 'Ironcliw, notify me when Terminal says DONE'")
     print()
 
     await jarvis_speak(

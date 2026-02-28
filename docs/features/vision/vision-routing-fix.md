@@ -1,4 +1,4 @@
-# JARVIS Vision Routing Fix - Complete Solution
+﻿# Ironcliw Vision Routing Fix - Complete Solution
 
 ## 🎯 Problem Summary
 
@@ -151,7 +151,7 @@ Instead of fixed handlers, the system creates handlers dynamically:
 - System will fall back to Python-only mode
 
 ### Still Getting Routing Errors
-1. Restart JARVIS completely
+1. Restart Ironcliw completely
 2. Check API key is set
 3. Verify screen recording permission
 4. Run diagnostic: `python diagnose_vision.py`

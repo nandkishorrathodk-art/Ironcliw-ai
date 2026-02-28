@@ -1,8 +1,8 @@
-# Implementation Summary: Intelligent Multi-Space Vision System
+﻿# Implementation Summary: Intelligent Multi-Space Vision System
 
 ## 🎉 What Was Built
 
-A complete, production-ready intelligent query classification and routing system for JARVIS that:
+A complete, production-ready intelligent query classification and routing system for Ironcliw that:
 
 - ✅ **Eliminates all hardcoded query patterns**
 - ✅ **Uses Claude AI for intelligent classification**
@@ -117,7 +117,7 @@ A complete, production-ready intelligent query classification and routing system
 ### Request Flow
 
 ```
-1. User sends query to JARVIS
+1. User sends query to Ironcliw
    ↓
 2. vision_command_handler.handle_command() receives query
    ↓

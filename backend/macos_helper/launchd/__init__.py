@@ -1,5 +1,5 @@
-"""
-JARVIS macOS Helper - LaunchAgent Configuration
+﻿"""
+Ironcliw macOS Helper - LaunchAgent Configuration
 
 Provides LaunchAgent/LaunchDaemon setup for running the macOS helper
 as a background service that starts on login.

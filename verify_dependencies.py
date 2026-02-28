@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Cross-Platform Dependency Verification Script
+Ironcliw Cross-Platform Dependency Verification Script
 Verifies that all required dependencies are installed for the current platform.
 Version: 1.0.0
 """
@@ -156,7 +156,7 @@ def main():
     system_info = platform.platform()
     python_version = sys.version.split()[0]
     
-    print_header("JARVIS Dependency Verification")
+    print_header("Ironcliw Dependency Verification")
     
     print(f"{Colors.BOLD}Platform:{Colors.RESET} {current_platform}")
     print(f"{Colors.BOLD}System:{Colors.RESET} {system_info}")

@@ -1,4 +1,4 @@
-# Intelligence System Configuration Guide
+﻿# Intelligence System Configuration Guide
 
 **Version:** 5.0.0
 **Component:** Intelligence Component Manager
@@ -454,20 +454,20 @@ export AUTH_FUSION_VETO_THRESHOLD=0.40    # Higher (more secure)
 
 ## Data Storage Configuration
 
-### `JARVIS_DATA_DIR`
+### `Ironcliw_DATA_DIR`
 **Type:** Path
 **Default:** `~/.jarvis`
-**Description:** Root directory for all JARVIS data
+**Description:** Root directory for all Ironcliw data
 
 ```bash
-export JARVIS_DATA_DIR=~/.jarvis              # Default
-export JARVIS_DATA_DIR=/var/lib/jarvis        # System-wide
-export JARVIS_DATA_DIR=/Volumes/Secure/jarvis # Encrypted volume
+export Ironcliw_DATA_DIR=~/.jarvis              # Default
+export Ironcliw_DATA_DIR=/var/lib/jarvis        # System-wide
+export Ironcliw_DATA_DIR=/Volumes/Secure/jarvis # Encrypted volume
 ```
 
 **Directory Structure:**
 ```
-$JARVIS_DATA_DIR/
+$Ironcliw_DATA_DIR/
 ├── intelligence/
 │   ├── network_context.db
 │   ├── pattern_tracker.db
@@ -602,9 +602,9 @@ curl http://localhost:8010/api/intelligence/components/<component_name>
 Set log level for intelligence components:
 
 ```bash
-export JARVIS_LOG_LEVEL=DEBUG  # Verbose intelligence logs
-export JARVIS_LOG_LEVEL=INFO   # Standard logs
-export JARVIS_LOG_LEVEL=WARNING # Minimal logs
+export Ironcliw_LOG_LEVEL=DEBUG  # Verbose intelligence logs
+export Ironcliw_LOG_LEVEL=INFO   # Standard logs
+export Ironcliw_LOG_LEVEL=WARNING # Minimal logs
 ```
 
 Intelligence component logs include:
@@ -685,20 +685,20 @@ export DEVICE_MONITOR_ENABLED=false
 ### Issue: Intelligence components fail to initialize
 
 **Check:**
-1. `JARVIS_DATA_DIR` exists and is writable
-2. No other JARVIS processes holding database locks
+1. `Ironcliw_DATA_DIR` exists and is writable
+2. No other Ironcliw processes holding database locks
 3. Sufficient disk space
 
 **Solution:**
 ```bash
 # Check data directory
-ls -la $JARVIS_DATA_DIR/intelligence/
+ls -la $Ironcliw_DATA_DIR/intelligence/
 
 # Increase timeout
 export INTELLIGENCE_INIT_TIMEOUT=60
 
 # Enable detailed logging
-export JARVIS_LOG_LEVEL=DEBUG
+export Ironcliw_LOG_LEVEL=DEBUG
 ```
 
 ---
@@ -737,7 +737,7 @@ export NETWORK_CACHE_DURATION=60
 export AUTH_FUSION_RISK_ASSESSMENT=false
 
 # Profile with debug logs
-export JARVIS_LOG_LEVEL=DEBUG
+export Ironcliw_LOG_LEVEL=DEBUG
 ```
 
 ---
@@ -750,10 +750,10 @@ export JARVIS_LOG_LEVEL=DEBUG
 
 ```bash
 # Use encrypted volume
-export JARVIS_DATA_DIR=/Volumes/Secure/jarvis
+export Ironcliw_DATA_DIR=/Volumes/Secure/jarvis
 
 # Or use system keychain
-export JARVIS_DATA_DIR=/var/lib/jarvis
+export Ironcliw_DATA_DIR=/var/lib/jarvis
 chmod 700 /var/lib/jarvis
 ```
 
@@ -825,7 +825,7 @@ export NETWORK_UNKNOWN_CONFIDENCE=0.30  # Penalty for unknown networks
 1. Update environment variables (see table above)
 2. Remove old component initialization code
 3. Clear old database schemas: `rm -rf ~/.jarvis/intelligence/*.db`
-4. Restart JARVIS
+4. Restart Ironcliw
 
 ---
 
@@ -858,8 +858,8 @@ export NETWORK_UNKNOWN_CONFIDENCE=0.30  # Penalty for unknown networks
 | `INTELLIGENCE_INIT_TIMEOUT` | Integer | 30 | Init timeout (seconds) |
 | `INTELLIGENCE_PARALLEL_INIT` | Boolean | true | Parallel initialization |
 | `INTELLIGENCE_REQUIRED_COMPONENTS` | CSV | fusion_engine | Required components |
-| `JARVIS_DATA_DIR` | Path | ~/.jarvis | Data directory |
-| `JARVIS_LOG_LEVEL` | String | INFO | Log level |
+| `Ironcliw_DATA_DIR` | Path | ~/.jarvis | Data directory |
+| `Ironcliw_LOG_LEVEL` | String | INFO | Log level |
 | `LEARNING_COORDINATOR_ENABLED` | Boolean | true | Enable RAG + RLHF |
 | `NETWORK_CACHE_DURATION` | Integer | 30 | Cache duration (seconds) |
 | `NETWORK_CONTEXT_ENABLED` | Boolean | true | Enable Network Context |
@@ -879,7 +879,7 @@ export NETWORK_UNKNOWN_CONFIDENCE=0.30  # Penalty for unknown networks
 For issues or questions:
 - **GitHub Issues:** https://github.com/anthropics/jarvis-ai-agent/issues
 - **Documentation:** See `INTEGRATION_SUMMARY_V5.md` and `RAG_RLHF_LEARNING_GUIDE.md`
-- **Logs:** Check `$JARVIS_DATA_DIR/logs/intelligence.log`
+- **Logs:** Check `$Ironcliw_DATA_DIR/logs/intelligence.log`
 
 ---
 

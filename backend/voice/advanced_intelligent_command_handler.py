@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Advanced Intelligent Command Handler with Zero Hardcoding
 Every decision is learned and adaptive - no hardcoded patterns
@@ -355,7 +355,7 @@ class AdvancedIntelligentCommandHandler:
 
         Args:
             command: User's voice command
-            response: JARVIS's response
+            response: Ironcliw's response
             handler_type: Type of handler used (system, vision, conversation, automation)
             classification: Classification result from router
             elapsed: Execution time in seconds

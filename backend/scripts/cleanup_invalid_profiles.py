@@ -106,13 +106,12 @@ async def main():
     args = parser.parse_args()
 
     try:
-        from intelligence.learning_database import JARVISLearningDatabase
+        from intelligence.learning_database import get_learning_database
     except ImportError:
-        logger.error("Could not import JARVISLearningDatabase. Make sure you're running from the backend directory.")
+        logger.error("Could not import get_learning_database. Make sure you're running from the backend directory.")
         sys.exit(1)
 
-    db = JARVISLearningDatabase()
-    await db.initialize()
+    db = await get_learning_database()
 
     try:
         # Find invalid profiles

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Cross-Repo Neural Mesh Bridge v2.0
 ==================================
 
-Integrates JARVIS Prime and Reactor Core as Neural Mesh agents.
+Integrates Ironcliw Prime and Reactor Core as Neural Mesh agents.
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -13,13 +13,13 @@ Architecture:
     │           │                    │                    │           │
     │           ▼                    ▼                    ▼           │
     │  ┌────────────┐       ┌────────────┐       ┌────────────┐      │
-    │  │ JARVIS     │       │ JARVIS     │       │ Reactor    │      │
+    │  │ Ironcliw     │       │ Ironcliw     │       │ Reactor    │      │
     │  │ Agents     │       │ Prime      │       │ Core       │      │
     │  │ (local)    │       │ (remote)   │       │ (remote)   │      │
     │  └────────────┘       └────────────┘       └────────────┘      │
     └─────────────────────────────────────────────────────────────────┘
 
-JARVIS Prime provides:
+Ironcliw Prime provides:
 - Local model inference (Llama, Mistral, etc.)
 - GPU-accelerated processing
 - Cost-effective local alternatives to cloud APIs
@@ -108,7 +108,7 @@ HEARTBEAT_TIMEOUT = float(os.getenv("CROSS_REPO_HEARTBEAT_TIMEOUT", "30.0"))
 HEALTH_CHECK_INTERVAL = float(os.getenv("CROSS_REPO_HEALTH_INTERVAL", "10.0"))
 
 # External repo endpoints
-JARVIS_PRIME_ENDPOINT = os.getenv("JARVIS_PRIME_ENDPOINT", "http://localhost:8001")
+Ironcliw_PRIME_ENDPOINT = os.getenv("Ironcliw_PRIME_ENDPOINT", "http://localhost:8001")
 REACTOR_CORE_ENDPOINT = os.getenv("REACTOR_CORE_ENDPOINT", "http://localhost:8002")
 
 
@@ -123,7 +123,7 @@ class ExternalRepoStatus(Enum):
 
 class ExternalRepoCapability(Enum):
     """Capabilities provided by external repos."""
-    # JARVIS Prime capabilities
+    # Ironcliw Prime capabilities
     LOCAL_INFERENCE = "local_inference"
     LOCAL_LLM = "local_llm"
     GPU_COMPUTE = "gpu_compute"
@@ -210,7 +210,7 @@ class HealthProbeResult:
 
 class CrossRepoNeuralMeshBridge:
     """
-    Bridges external repos (JARVIS Prime, Reactor Core) with Neural Mesh.
+    Bridges external repos (Ironcliw Prime, Reactor Core) with Neural Mesh.
 
     Features:
     - Registers external repos as Neural Mesh agents
@@ -229,7 +229,7 @@ class CrossRepoNeuralMeshBridge:
         self._prime_agent = ExternalRepoAgent(
             repo_name="jarvis_prime",
             agent_id="jarvis_prime_inference",
-            endpoint=JARVIS_PRIME_ENDPOINT,
+            endpoint=Ironcliw_PRIME_ENDPOINT,
             capabilities=[
                 ExternalRepoCapability.LOCAL_INFERENCE.value,
                 ExternalRepoCapability.LOCAL_LLM.value,
@@ -475,7 +475,7 @@ class CrossRepoNeuralMeshBridge:
             return
 
         try:
-            # Register JARVIS Prime if healthy
+            # Register Ironcliw Prime if healthy
             if self._prime_agent.is_healthy():
                 await self._register_single_agent(self._prime_agent)
 
@@ -677,7 +677,7 @@ class CrossRepoNeuralMeshBridge:
     # =========================================================================
 
     def get_prime_agent(self) -> ExternalRepoAgent:
-        """Get JARVIS Prime agent."""
+        """Get Ironcliw Prime agent."""
         return self._prime_agent
 
     def get_reactor_agent(self) -> ExternalRepoAgent:
@@ -685,7 +685,7 @@ class CrossRepoNeuralMeshBridge:
         return self._reactor_agent
 
     def is_prime_available(self) -> bool:
-        """Check if JARVIS Prime is available."""
+        """Check if Ironcliw Prime is available."""
         return self._prime_agent.is_healthy()
 
     def is_reactor_available(self) -> bool:
@@ -707,7 +707,7 @@ class CrossRepoNeuralMeshBridge:
         """Get best external agent for capability."""
         self._metrics.capabilities_queries += 1
 
-        # Check JARVIS Prime first (usually preferred for inference)
+        # Check Ironcliw Prime first (usually preferred for inference)
         if capability in self._prime_agent.capabilities and self._prime_agent.is_healthy():
             return self._prime_agent
 
@@ -723,7 +723,7 @@ class CrossRepoNeuralMeshBridge:
         payload: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """
-        Route task to JARVIS Prime.
+        Route task to Ironcliw Prime.
 
         Uses file-based RPC for cross-repo communication.
         v2.0: Uses circuit breaker and atomic file operations.

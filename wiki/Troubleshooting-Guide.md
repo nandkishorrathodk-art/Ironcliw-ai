@@ -1,6 +1,6 @@
-# Troubleshooting Guide
+﻿# Troubleshooting Guide
 
-Common issues and solutions for JARVIS AI Agent.
+Common issues and solutions for Ironcliw AI Agent.
 
 ---
 
@@ -49,7 +49,7 @@ pip install pyobjc-framework-Quartz==10.1
 
 ### Wake Word Not Detected
 
-**Symptoms:** "Hey JARVIS" not triggering
+**Symptoms:** "Hey Ironcliw" not triggering
 
 **Solutions:**
 1. Check microphone permissions
@@ -247,7 +247,7 @@ curl http://localhost:8010/health | jq '.rate_limits'
 
 ## General Issues
 
-### JARVIS Won't Start
+### Ironcliw Won't Start
 
 **Symptoms:** `start_system.py` fails
 
@@ -302,7 +302,7 @@ python -m http.server 3000
 ---
 
 **For More Help:**
-- Check [GitHub Issues](https://github.com/derekjrussell/JARVIS-AI-Agent/issues)
+- Check [GitHub Issues](https://github.com/derekjrussell/Ironcliw-AI-Agent/issues)
 - Review logs in `backend/logs/`
 - Enable debug mode: `DEBUG=true` in `.env`
 

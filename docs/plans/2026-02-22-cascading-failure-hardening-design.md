@@ -1,4 +1,4 @@
-# Design: Cascading Failure Hardening (Scenarios A + B)
+﻿# Design: Cascading Failure Hardening (Scenarios A + B)
 
 **Date:** 2026-02-22
 **Status:** Approved
@@ -101,15 +101,15 @@ Recovery upward only after `_startup_complete = True`. Implemented as a guard in
 | Phase | Gate Logic |
 |---|---|
 | Phase 2 (Resources) | Call `_reevaluate_startup_mode("phase_2_resources")`. If escalated to `cloud_only`, set capability flags to `deferred` for Docker and local storage. Later phases check flags before assuming resource availability. |
-| Phase 3 (Backend) | Call `_reevaluate_startup_mode("phase_3_backend")`. If RAM critically low + mode is `cloud_first`, set `JARVIS_BACKEND_MINIMAL=true` to load only control-plane services (health, routing, websocket, orchestration). |
+| Phase 3 (Backend) | Call `_reevaluate_startup_mode("phase_3_backend")`. If RAM critically low + mode is `cloud_first`, set `Ironcliw_BACKEND_MINIMAL=true` to load only control-plane services (health, routing, websocket, orchestration). |
 
 ### Capability Flags (Deferred Init)
 
 Instead of silently skipping resources, set environment flags:
 
 ```
-JARVIS_CAPABILITY_DOCKER=deferred     (not "false")
-JARVIS_CAPABILITY_LOCAL_STORAGE=deferred
+Ironcliw_CAPABILITY_DOCKER=deferred     (not "false")
+Ironcliw_CAPABILITY_LOCAL_STORAGE=deferred
 ```
 
 Downstream components branch on these flags. If a deferred capability is later needed, it's initialized on-demand with its own memory check. This prevents silent assumption violations.

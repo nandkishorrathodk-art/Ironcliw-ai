@@ -1,9 +1,9 @@
-"""
+﻿"""
 Unified Resource Management System v1.0
 ========================================
 
-Enterprise-grade resource management for the JARVIS Trinity ecosystem.
-Handles all aspects of resource lifecycle across JARVIS (Body), JARVIS Prime (Mind),
+Enterprise-grade resource management for the Ironcliw Trinity ecosystem.
+Handles all aspects of resource lifecycle across Ironcliw (Body), Ironcliw Prime (Mind),
 and Reactor Core (Learning).
 
 Implements 6 critical resource management patterns:

@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Display-Aware Situational Awareness Intelligence (SAI) for Voice Unlock
 ========================================================================
 
 LangGraph-powered intelligent display detection and adaptive typing strategy
-for JARVIS voice unlock. Handles external displays (especially mirrored 85" Sony TV)
+for Ironcliw voice unlock. Handles external displays (especially mirrored 85" Sony TV)
 with situational awareness.
 
 Features:
@@ -1381,7 +1381,7 @@ class DisplayConnectionMonitor:
 
     async def get_current_tv_awareness(self) -> Dict[str, Any]:
         """
-        Get JARVIS's current awareness of TV connection state.
+        Get Ironcliw's current awareness of TV connection state.
 
         This is a fast query that returns what SAI currently knows about
         the TV connection state.
@@ -1471,7 +1471,7 @@ async def check_tv_connection() -> Dict[str, Any]:
     """
     Convenience function to check TV connection state.
 
-    This can be called from anywhere to get JARVIS's current
+    This can be called from anywhere to get Ironcliw's current
     awareness of whether a TV is connected.
 
     Returns:
@@ -1483,7 +1483,7 @@ async def check_tv_connection() -> Dict[str, Any]:
 
 async def get_tv_awareness() -> Dict[str, Any]:
     """
-    Get JARVIS's current TV awareness state.
+    Get Ironcliw's current TV awareness state.
 
     Returns the most recent known state without forcing a new detection.
     """

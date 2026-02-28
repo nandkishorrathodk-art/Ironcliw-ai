@@ -1,4 +1,4 @@
-# Advanced Core Graphics Window Capture System
+﻿# Advanced Core Graphics Window Capture System
 
 ## Overview
 
@@ -382,9 +382,9 @@ if not result.success:
 - **Cause**: Window minimized or obscured
 - **Solution**: Check `window.on_screen` before capturing
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
-The advanced system is automatically used by JARVIS multi-space capture:
+The advanced system is automatically used by Ironcliw multi-space capture:
 
 ```python
 # In multi_space_capture_engine.py
@@ -490,4 +490,4 @@ AdvancedCGWindowCapture
 
 ## License
 
-Part of the JARVIS AI Assistant system. All configuration is dynamic with zero hardcoding.
+Part of the Ironcliw AI Assistant system. All configuration is dynamic with zero hardcoding.

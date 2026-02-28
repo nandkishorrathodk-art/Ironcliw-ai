@@ -1,12 +1,12 @@
-# JARVIS Voice Unlock with Apple Watch Integration
+﻿# Ironcliw Voice Unlock with Apple Watch Integration
 
 ## Overview
 
-The JARVIS Voice Unlock system now features complete Apple Watch proximity detection integrated with voice authentication. This provides a seamless and secure authentication experience that combines:
+The Ironcliw Voice Unlock system now features complete Apple Watch proximity detection integrated with voice authentication. This provides a seamless and secure authentication experience that combines:
 
 1. **Apple Watch Proximity** - Must be within 3 meters (~10 feet)
 2. **Voice Biometric Authentication** - Your voice must match enrolled profile
-3. **JARVIS Command Processing** - Natural language commands
+3. **Ironcliw Command Processing** - Natural language commands
 4. **Automatic Lock/Unlock** - Based on Apple Watch distance
 
 ## How It Works
@@ -18,9 +18,9 @@ User approaches Mac with Apple Watch
     ↓
 Apple Watch detected (Bluetooth LE)
     ↓
-User says: "Hey JARVIS, unlock my Mac"
+User says: "Hey Ironcliw, unlock my Mac"
     ↓
-JARVIS checks:
+Ironcliw checks:
     ✓ Apple Watch proximity (<3m)
     ✓ Watch is unlocked
     ✓ Voice biometrics match
@@ -44,24 +44,24 @@ System automatically locks
 ## Supported Commands
 
 ### Unlock Commands
-- "Hey JARVIS, unlock my Mac"
-- "JARVIS, this is [name]"
-- "JARVIS, authenticate me"
-- "Open sesame, JARVIS"
+- "Hey Ironcliw, unlock my Mac"
+- "Ironcliw, this is [name]"
+- "Ironcliw, authenticate me"
+- "Open sesame, Ironcliw"
 
 ### Lock Commands
-- "JARVIS, lock my Mac"
-- "JARVIS, activate security"
-- "JARVIS, I'm leaving"
+- "Ironcliw, lock my Mac"
+- "Ironcliw, activate security"
+- "Ironcliw, I'm leaving"
 
 ### Status Commands
-- "JARVIS, what's the status?"
-- "JARVIS, who's logged in?"
-- "JARVIS, am I authenticated?"
+- "Ironcliw, what's the status?"
+- "Ironcliw, who's logged in?"
+- "Ironcliw, am I authenticated?"
 
 ### Management Commands
-- "JARVIS, enroll user [name]"
-- "JARVIS, create voice profile for [name]"
+- "Ironcliw, enroll user [name]"
+- "Ironcliw, create voice profile for [name]"
 
 ## Configuration
 
@@ -98,7 +98,7 @@ anti_spoofing_level: high
    - Automatic pairing management
    - Lock/unlock callbacks
 
-2. **JARVISCommandHandler** (`jarvis_command_handler.py`)
+2. **IroncliwCommandHandler** (`jarvis_command_handler.py`)
    - Natural language command parsing
    - Context-aware responses
    - Command validation
@@ -168,8 +168,8 @@ RSSI_THRESHOLDS = {
 
 ```python
 # User approaches with Apple Watch
-"Hey JARVIS, unlock my Mac"
-→ JARVIS: "Apple Watch detected at 2.5 meters. Welcome back, John."
+"Hey Ironcliw, unlock my Mac"
+→ Ironcliw: "Apple Watch detected at 2.5 meters. Welcome back, John."
 → Mac unlocks
 ```
 
@@ -177,8 +177,8 @@ RSSI_THRESHOLDS = {
 
 ```python
 # Apple Watch not nearby
-"JARVIS, unlock my Mac"
-→ JARVIS: "Authentication failed. Apple Watch not detected nearby."
+"Ironcliw, unlock my Mac"
+→ Ironcliw: "Authentication failed. Apple Watch not detected nearby."
 → Mac remains locked
 ```
 
@@ -187,7 +187,7 @@ RSSI_THRESHOLDS = {
 ```python
 # User walks away
 [Apple Watch distance > 10m]
-→ JARVIS: "System locked. Have a good day."
+→ Ironcliw: "System locked. Have a good day."
 → Mac locks automatically
 ```
 
@@ -283,18 +283,18 @@ system.authenticate_with_voice(require_watch=False)
 detector.pair_watch("watch_id_2")
 ```
 
-## Integration with JARVIS
+## Integration with Ironcliw
 
-The voice unlock system integrates seamlessly with the main JARVIS assistant:
+The voice unlock system integrates seamlessly with the main Ironcliw assistant:
 
 1. **Unified Voice Interface** - Same voice commands
 2. **Shared ML Models** - Efficient resource usage
-3. **Context Awareness** - JARVIS knows lock state
+3. **Context Awareness** - Ironcliw knows lock state
 4. **Automation** - Trigger actions on unlock
 
 Example workflow:
 ```
-"JARVIS, unlock my Mac"
+"Ironcliw, unlock my Mac"
 → Mac unlocks
 → "Welcome back. You have 3 unread emails and 2 calendar reminders."
 ```

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Integration Tests for Neural Mesh Adapters
 
 Tests the IntelligenceEngineAdapter, AutonomyEngineAdapter, VoiceSystemAdapter,
-and JARVISNeuralMeshBridge to ensure proper integration with existing JARVIS systems.
+and IroncliwNeuralMeshBridge to ensure proper integration with existing Ironcliw systems.
 """
 
 import asyncio
@@ -39,7 +39,7 @@ from neural_mesh.adapters.voice_adapter import (
     VoiceCapabilities,
 )
 from neural_mesh.jarvis_bridge import (
-    JARVISNeuralMeshBridge,
+    IroncliwNeuralMeshBridge,
     AgentDiscoveryConfig,
     SystemCategory,
 )
@@ -292,11 +292,11 @@ async def test_autonomy_adapter_chat():
 
     result = await adapter.execute_task({
         "action": "chat",
-        "input": {"message": "Hello JARVIS"},
+        "input": {"message": "Hello Ironcliw"},
     })
 
     assert "response" in result
-    assert "Hello JARVIS" in result["response"]
+    assert "Hello Ironcliw" in result["response"]
 
 
 @pytest.mark.asyncio
@@ -474,18 +474,18 @@ async def test_adapt_agent_auto_detection():
 
 
 # =============================================================================
-# JARVIS Bridge Tests
+# Ironcliw Bridge Tests
 # =============================================================================
 
 @pytest.mark.asyncio
 async def test_bridge_initialization():
-    """Test JARVISNeuralMeshBridge initialization."""
+    """Test IroncliwNeuralMeshBridge initialization."""
     config = AgentDiscoveryConfig(
         enabled_categories={SystemCategory.INTELLIGENCE},
         skip_agents={"intelligence_uae"},  # Skip for faster test
     )
 
-    bridge = JARVISNeuralMeshBridge(config=config)
+    bridge = IroncliwNeuralMeshBridge(config=config)
 
     assert bridge._config == config
     assert not bridge._initialized
@@ -495,7 +495,7 @@ async def test_bridge_initialization():
 @pytest.mark.asyncio
 async def test_bridge_custom_agent_registration():
     """Test registering custom agents with bridge."""
-    bridge = JARVISNeuralMeshBridge(
+    bridge = IroncliwNeuralMeshBridge(
         config=AgentDiscoveryConfig(
             enabled_categories=set(),  # Don't auto-discover
         )
@@ -511,7 +511,7 @@ async def test_bridge_custom_agent_registration():
 @pytest.mark.asyncio
 async def test_bridge_get_agents_by_capability():
     """Test getting agents by capability."""
-    bridge = JARVISNeuralMeshBridge(
+    bridge = IroncliwNeuralMeshBridge(
         config=AgentDiscoveryConfig(enabled_categories=set())
     )
 
@@ -534,7 +534,7 @@ async def test_bridge_get_agents_by_capability():
 @pytest.mark.asyncio
 async def test_bridge_event_callbacks():
     """Test bridge event callbacks."""
-    bridge = JARVISNeuralMeshBridge(
+    bridge = IroncliwNeuralMeshBridge(
         config=AgentDiscoveryConfig(enabled_categories=set())
     )
 

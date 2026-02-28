@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Voice Unlock Integration
 ============================
 
-Quick test script to verify voice unlock is properly integrated with JARVIS.
+Quick test script to verify voice unlock is properly integrated with Ironcliw.
 """
 
 import asyncio
@@ -43,8 +43,8 @@ def print_status(label, status, details=""):
 
 
 def check_health():
-    """Check JARVIS health endpoint"""
-    print_header("Checking JARVIS Health")
+    """Check Ironcliw health endpoint"""
+    print_header("Checking Ironcliw Health")
     
     try:
         response = requests.get(HEALTH_ENDPOINT, timeout=5)
@@ -52,7 +52,7 @@ def check_health():
             data = response.json()
             
             # Check overall health
-            print_status("JARVIS Backend", data.get("status") == "healthy")
+            print_status("Ironcliw Backend", data.get("status") == "healthy")
             
             # Check components
             components = data.get("components", {})
@@ -73,8 +73,8 @@ def check_health():
             return False
             
     except requests.exceptions.ConnectionError:
-        print_status("Backend Connection", False, "Cannot connect to JARVIS backend")
-        print(f"\n{Fore.YELLOW}Make sure JARVIS is running:")
+        print_status("Backend Connection", False, "Cannot connect to Ironcliw backend")
+        print(f"\n{Fore.YELLOW}Make sure Ironcliw is running:")
         print(f"{Fore.YELLOW}  cd backend && python start_system.py{Style.RESET_ALL}")
         return False
     except Exception as e:
@@ -141,7 +141,7 @@ def check_configuration():
             print(f"\n{Fore.CYAN}System Integration:{Style.RESET_ALL}")
             system = config.get("system", {})
             print(f"  Integration mode: {system.get('integration_mode', 'N/A')}")
-            print(f"  JARVIS responses: {system.get('jarvis_responses', 'N/A')}")
+            print(f"  Ironcliw responses: {system.get('jarvis_responses', 'N/A')}")
             
             return True
         else:
@@ -224,15 +224,15 @@ async def test_audio_system():
 
 def main():
     """Run all integration tests"""
-    print_header("JARVIS Voice Unlock Integration Test")
+    print_header("Ironcliw Voice Unlock Integration Test")
     
     # Track test results
     results = []
     
-    # Test 1: Check JARVIS health
-    results.append(("JARVIS Health", check_health()))
+    # Test 1: Check Ironcliw health
+    results.append(("Ironcliw Health", check_health()))
     
-    # Only continue if JARVIS is healthy
+    # Only continue if Ironcliw is healthy
     if results[0][1]:
         # Test 2: Check voice unlock API
         results.append(("Voice Unlock API", check_voice_unlock_api()))
@@ -264,14 +264,14 @@ def main():
     if passed == total:
         print(f"\n{Fore.GREEN}✨ Voice Unlock integration successful!{Style.RESET_ALL}")
         print(f"\n{Fore.CYAN}Next Steps:{Style.RESET_ALL}")
-        print("1. Test enrollment: Say 'Hey JARVIS, enroll my voice'")
-        print("2. Enable monitoring: Say 'Hey JARVIS, enable voice unlock'")
+        print("1. Test enrollment: Say 'Hey Ironcliw, enroll my voice'")
+        print("2. Enable monitoring: Say 'Hey Ironcliw, enable voice unlock'")
         print("3. Test unlock: Lock your screen and say your unlock phrase")
     else:
         print(f"\n{Fore.RED}❌ Some tests failed. Please check the errors above.{Style.RESET_ALL}")
         
-        if not results[0][1]:  # JARVIS not running
-            print(f"\n{Fore.YELLOW}Start JARVIS first:")
+        if not results[0][1]:  # Ironcliw not running
+            print(f"\n{Fore.YELLOW}Start Ironcliw first:")
             print(f"  cd backend && python start_system.py{Style.RESET_ALL}")
     
     return 0 if passed == total else 1

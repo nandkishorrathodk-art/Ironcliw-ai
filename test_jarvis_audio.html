@@ -1,7 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
-    <title>JARVIS Audio Test</title>
+    <title>Ironcliw Audio Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -36,7 +36,7 @@
     </style>
 </head>
 <body>
-    <h1>JARVIS Audio System Test</h1>
+    <h1>Ironcliw Audio System Test</h1>
     
     <div>
         <h2>1. Test Browser TTS</h2>
@@ -45,8 +45,8 @@
     </div>
     
     <div>
-        <h2>2. Test JARVIS WebSocket</h2>
-        <button onclick="connectJarvis()">Connect to JARVIS</button>
+        <h2>2. Test Ironcliw WebSocket</h2>
+        <button onclick="connectJarvis()">Connect to Ironcliw</button>
         <button onclick="sendVisionCommand()">Send Vision Command</button>
     </div>
     
@@ -70,7 +70,7 @@
                 return;
             }
             
-            const text = "Hello, this is JARVIS. Testing speech synthesis.";
+            const text = "Hello, this is Ironcliw. Testing speech synthesis.";
             const utterance = new SpeechSynthesisUtterance(text);
             
             utterance.onstart = () => log('Speech started', 'success');
@@ -93,7 +93,7 @@
             });
         }
         
-        // Connect to JARVIS WebSocket
+        // Connect to Ironcliw WebSocket
         function connectJarvis() {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 log('Already connected', 'error');
@@ -104,7 +104,7 @@
                 ws = new WebSocket('ws://localhost:8010/voice/jarvis/stream');
                 
                 ws.onopen = () => {
-                    log('Connected to JARVIS WebSocket', 'success');
+                    log('Connected to Ironcliw WebSocket', 'success');
                 };
                 
                 ws.onmessage = (event) => {
@@ -116,7 +116,7 @@
                         
                         // Test speaking the response
                         const utterance = new SpeechSynthesisUtterance(data.text);
-                        utterance.onstart = () => log('Speaking JARVIS response', 'success');
+                        utterance.onstart = () => log('Speaking Ironcliw response', 'success');
                         utterance.onend = () => log('Finished speaking', 'success');
                         utterance.onerror = (e) => log(`TTS Error: ${e.error}`, 'error');
                         
@@ -144,7 +144,7 @@
         // Send vision command
         function sendVisionCommand() {
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                log('Not connected to JARVIS', 'error');
+                log('Not connected to Ironcliw', 'error');
                 return;
             }
             

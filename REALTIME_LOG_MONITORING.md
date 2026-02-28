@@ -1,18 +1,18 @@
-# ✅ JARVIS Real-Time Log Monitoring with Voice Alerts - v10.6
+﻿# ✅ Ironcliw Real-Time Log Monitoring with Voice Alerts - v10.6
 
 ## Overview
 
-JARVIS now has an **intelligent real-time log monitoring system** that watches logs as they're written and **proactively announces critical issues via voice**. No more silent failures - JARVIS tells you when something goes wrong!
+Ironcliw now has an **intelligent real-time log monitoring system** that watches logs as they're written and **proactively announces critical issues via voice**. No more silent failures - Ironcliw tells you when something goes wrong!
 
 ---
 
 ## What This Means for You
 
-When you run `python3 run_supervisor.py`, JARVIS now:
+When you run `python3 run_supervisor.py`, Ironcliw now:
 
 1. **Watches all logs in real-time** - Monitors `~/.jarvis/logs/*.jsonl` files as they're written
 2. **Detects error patterns** - Finds repeated errors, error storms, performance degradation
-3. **Announces critical issues via voice** - JARVIS speaks to tell you about important problems
+3. **Announces critical issues via voice** - Ironcliw speaks to tell you about important problems
 4. **Smart throttling** - Won't spam you with announcements (30s minimum between alerts)
 5. **Health monitoring** - Periodic health checks with component status tracking
 
@@ -25,9 +25,9 @@ When you run `python3 run_supervisor.py`, JARVIS now:
 ```
 # Scenario: Database connection keeps failing
 
-[JARVIS writes 3 database connection errors within 5 minutes]
+[Ironcliw writes 3 database connection errors within 5 minutes]
 
-JARVIS (voice): "Critical alert: Connection Error occurred 3 times in 5 minutes:
+Ironcliw (voice): "Critical alert: Connection Error occurred 3 times in 5 minutes:
                  Database connection timeout"
 
 [Console log]:
@@ -50,7 +50,7 @@ JARVIS (voice): "Critical alert: Connection Error occurred 3 times in 5 minutes:
 **What triggered it:**
 - Same error (`ConnectionError`) occurred 3+ times in 5-minute window
 - Exceeds critical threshold (configurable, default: 3)
-- JARVIS automatically detected the pattern and announced it
+- Ironcliw automatically detected the pattern and announced it
 
 ---
 
@@ -59,9 +59,9 @@ JARVIS (voice): "Critical alert: Connection Error occurred 3 times in 5 minutes:
 ```
 # Scenario: Voice authentication getting slower
 
-[JARVIS detects operation times doubling]
+[Ironcliw detects operation times doubling]
 
-JARVIS (voice): "Important notice: Operation voice embedding extraction is getting slower:
+Ironcliw (voice): "Important notice: Operation voice embedding extraction is getting slower:
                  200 milliseconds to 450 milliseconds"
 
 [Console log]:
@@ -93,9 +93,9 @@ JARVIS (voice): "Important notice: Operation voice embedding extraction is getti
 ```
 # Scenario: Database query takes 5+ seconds
 
-[JARVIS detects single very slow operation]
+[Ironcliw detects single very slow operation]
 
-JARVIS (voice): "Important notice: Operation database query took 5,234 milliseconds,
+Ironcliw (voice): "Important notice: Operation database query took 5,234 milliseconds,
                  threshold 5,000 milliseconds"
 
 [Console log]:
@@ -119,7 +119,7 @@ JARVIS (voice): "Important notice: Operation database query took 5,234 milliseco
 **What triggered it:**
 - Single operation exceeded "very slow" threshold (5000ms)
 - Classified as HIGH severity
-- JARVIS announced it immediately
+- Ironcliw announced it immediately
 
 ---
 
@@ -128,9 +128,9 @@ JARVIS (voice): "Important notice: Operation database query took 5,234 milliseco
 ```
 # Scenario: Periodic health check finds problems
 
-[JARVIS runs health check every 60 seconds]
+[Ironcliw runs health check every 60 seconds]
 
-JARVIS (voice): "Health check: 2 components degraded: neural_mesh_coordinator,
+Ironcliw (voice): "Health check: 2 components degraded: neural_mesh_coordinator,
                  reactor_core_integration"
 
 [Console log]:
@@ -165,7 +165,7 @@ JARVIS (voice): "Health check: 2 components degraded: neural_mesh_coordinator,
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Application (JARVIS modules, supervisor, etc.)                 │
+│  Application (Ironcliw modules, supervisor, etc.)                 │
 │  └─> Writes logs → ~/.jarvis/logs/*.jsonl                       │
 └──────────────────────────────────────────────────────────────────┘
                               ↓
@@ -195,7 +195,7 @@ JARVIS (voice): "Health check: 2 components degraded: neural_mesh_coordinator,
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
 │  AsyncVoiceNarrator → UnifiedVoiceOrchestrator                  │
-│  └─> JARVIS speaks: "Critical alert: ..."                       │
+│  └─> Ironcliw speaks: "Critical alert: ..."                       │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -207,22 +207,22 @@ All configuration is via environment variables (optional - defaults work great!)
 
 ```bash
 # Enable/disable log monitoring (default: true)
-export JARVIS_LOG_MONITOR_ENABLED=true
+export Ironcliw_LOG_MONITOR_ENABLED=true
 
 # Polling interval (how often to check logs, default: 2.0 seconds)
-export JARVIS_LOG_MONITOR_POLL_INTERVAL=2.0
+export Ironcliw_LOG_MONITOR_POLL_INTERVAL=2.0
 
 # Critical error threshold (alert if same error >N times, default: 3)
-export JARVIS_LOG_MONITOR_CRITICAL_THRESHOLD=3
+export Ironcliw_LOG_MONITOR_CRITICAL_THRESHOLD=3
 
 # Enable health monitoring (periodic checks, default: true)
-export JARVIS_LOG_MONITOR_HEALTH=true
+export Ironcliw_LOG_MONITOR_HEALTH=true
 
 # Time between voice announcements (prevent spam, default: 30 seconds)
-export JARVIS_LOG_MONITOR_MIN_ALERT_INTERVAL=30.0
+export Ironcliw_LOG_MONITOR_MIN_ALERT_INTERVAL=30.0
 
 # Critical errors always announced (override throttling, default: true)
-export JARVIS_LOG_MONITOR_CRITICAL_ALWAYS=true
+export Ironcliw_LOG_MONITOR_CRITICAL_ALWAYS=true
 ```
 
 ---
@@ -312,7 +312,7 @@ voice_auth_orchestrator: HEALTHY (1 error, recent success)
 
 ## Smart Throttling
 
-To prevent voice announcement spam, JARVIS uses intelligent throttling:
+To prevent voice announcement spam, Ironcliw uses intelligent throttling:
 
 1. **Minimum time between announcements**: 30 seconds (configurable)
 2. **Deduplication**: Same issue signature won't be announced twice
@@ -331,7 +331,7 @@ To prevent voice announcement spam, JARVIS uses intelligent throttling:
 
 ## Health Monitoring
 
-JARVIS runs periodic health checks (every 60 seconds by default):
+Ironcliw runs periodic health checks (every 60 seconds by default):
 
 **What it checks:**
 - Component error counts
@@ -367,7 +367,7 @@ JARVIS runs periodic health checks (every 60 seconds by default):
 
 ## Integration with Startup Narrator
 
-The log monitor integrates seamlessly with JARVIS's startup narrator:
+The log monitor integrates seamlessly with Ironcliw's startup narrator:
 
 **During startup:**
 1. Logging system initializes
@@ -386,7 +386,7 @@ The log monitor integrates seamlessly with JARVIS's startup narrator:
 ...
 
 [If error detected during init]
-JARVIS (voice): "Critical alert: Neural Mesh registration failed: Missing arguments"
+Ironcliw (voice): "Critical alert: Neural Mesh registration failed: Missing arguments"
 ```
 
 ---
@@ -410,7 +410,7 @@ for i in range(3):
         logger.error("Test error", exc_info=True)
 
 # Wait for monitor to detect (polls every 2 seconds)
-# JARVIS should announce: "Critical alert: ConnectionError occurred 3 times..."
+# Ironcliw should announce: "Critical alert: ConnectionError occurred 3 times..."
 ```
 
 ### Trigger a Slow Operation
@@ -428,7 +428,7 @@ async def test_slow_operation():
 # Run it
 asyncio.run(test_slow_operation())
 
-# JARVIS should announce: "Important notice: Operation test_operation took 6000 milliseconds..."
+# Ironcliw should announce: "Important notice: Operation test_operation took 6000 milliseconds..."
 ```
 
 ---
@@ -454,11 +454,11 @@ If you want to disable real-time monitoring:
 
 ```bash
 # Disable completely
-export JARVIS_LOG_MONITOR_ENABLED=false
+export Ironcliw_LOG_MONITOR_ENABLED=false
 
 # Or disable just voice alerts (still logs patterns)
-export JARVIS_LOG_MONITOR_CRITICAL_ALWAYS=false
-export JARVIS_LOG_MONITOR_MIN_ALERT_INTERVAL=999999
+export Ironcliw_LOG_MONITOR_CRITICAL_ALWAYS=false
+export Ironcliw_LOG_MONITOR_MIN_ALERT_INTERVAL=999999
 ```
 
 ---
@@ -467,7 +467,7 @@ export JARVIS_LOG_MONITOR_MIN_ALERT_INTERVAL=999999
 
 **What you get:**
 
-✅ **Proactive error detection** - JARVIS tells you when things go wrong
+✅ **Proactive error detection** - Ironcliw tells you when things go wrong
 ✅ **Real-time voice alerts** - No more silent failures
 ✅ **Intelligent pattern recognition** - Detects repeated errors, performance issues, component degradation
 ✅ **Smart throttling** - Won't spam you with announcements
@@ -477,18 +477,18 @@ export JARVIS_LOG_MONITOR_MIN_ALERT_INTERVAL=999999
 
 **Example scenarios:**
 
-- Database connection failing repeatedly → JARVIS announces it
-- Voice authentication getting slower → JARVIS notices the trend
-- Neural Mesh registration errors → JARVIS alerts you immediately
-- Component health degrading → JARVIS reports it during health check
+- Database connection failing repeatedly → Ironcliw announces it
+- Voice authentication getting slower → Ironcliw notices the trend
+- Neural Mesh registration errors → Ironcliw alerts you immediately
+- Component health degrading → Ironcliw reports it during health check
 
 **Integration:**
 
 ```bash
-# Just run JARVIS normally - monitoring starts automatically!
+# Just run Ironcliw normally - monitoring starts automatically!
 python3 run_supervisor.py
 
-# JARVIS will:
+# Ironcliw will:
 # 1. Start real-time log monitoring
 # 2. Watch all log files in ~/.jarvis/logs/
 # 3. Detect patterns and issues

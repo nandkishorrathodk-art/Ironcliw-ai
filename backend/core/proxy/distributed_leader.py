@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Distributed Proxy Leader Election System v1.0
 ==============================================
@@ -16,19 +16,19 @@ Advanced Features:
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────┐
-    │  JARVIS (run_supervisor.py)                                 │
+    │  Ironcliw (run_supervisor.py)                                 │
     │  ├── Attempts to become LEADER                              │
     │  ├── If successful: manages proxy, writes heartbeat         │
     │  └── If failed: becomes FOLLOWER, monitors leader           │
     ├─────────────────────────────────────────────────────────────┤
-    │  JARVIS-Prime (--follower-mode)                             │
+    │  Ironcliw-Prime (--follower-mode)                             │
     │  └── Reads leader state, skips proxy management             │
     ├─────────────────────────────────────────────────────────────┤
     │  Reactor-Core (--follower-mode)                             │
     │  └── Reads leader state, skips proxy management             │
     └─────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 
@@ -166,7 +166,7 @@ class LeaderIdentity:
         if not self.instance_uuid:
             self.instance_uuid = str(uuid.uuid4())[:8]
         if not self.repo_name:
-            self.repo_name = os.getenv("JARVIS_REPO_NAME", "jarvis")
+            self.repo_name = os.getenv("Ironcliw_REPO_NAME", "jarvis")
 
     @classmethod
     def create(cls, repo_name: Optional[str] = None) -> 'LeaderIdentity':
@@ -176,7 +176,7 @@ class LeaderIdentity:
             pid=os.getpid(),
             start_time=time.time(),
             instance_uuid=str(uuid.uuid4())[:8],
-            repo_name=repo_name or os.getenv("JARVIS_REPO_NAME", "jarvis")
+            repo_name=repo_name or os.getenv("Ironcliw_REPO_NAME", "jarvis")
         )
 
     @property
@@ -791,8 +791,8 @@ class DistributedProxyLeader:
             try:
                 if self.is_leader:
                     await self._write_heartbeat(
-                        proxy_state=os.getenv("JARVIS_PROXY_STATE", "ready"),
-                        proxy_pid=int(os.getenv("JARVIS_PROXY_PID", "0")) or None
+                        proxy_state=os.getenv("Ironcliw_PROXY_STATE", "ready"),
+                        proxy_pid=int(os.getenv("Ironcliw_PROXY_PID", "0")) or None
                     )
 
                 await asyncio.sleep(self._config.heartbeat_interval)

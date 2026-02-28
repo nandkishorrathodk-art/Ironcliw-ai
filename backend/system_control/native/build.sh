@@ -1,8 +1,8 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-# Build script for JARVIS Weather native tool
+# Build script for Ironcliw Weather native tool
 
-echo "Building JARVIS Weather CLI..."
+echo "Building Ironcliw Weather CLI..."
 
 # Check if Swift is available
 if ! command -v swift &> /dev/null; then

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test JARVIS weather functionality end-to-end"""
+﻿#!/usr/bin/env python3
+"""Test Ironcliw weather functionality end-to-end"""
 
 import asyncio
 import subprocess
@@ -8,7 +8,7 @@ import os
 
 async def test_weather_end_to_end():
     """Test the complete weather flow"""
-    print("🌤️ Testing JARVIS Weather System - Full Mode\n")
+    print("🌤️ Testing Ironcliw Weather System - Full Mode\n")
     
     # Step 1: Ensure Weather app is open
     print("1. Opening Weather app...")
@@ -16,7 +16,7 @@ async def test_weather_end_to_end():
     time.sleep(3)
     
     # Step 2: Initialize the system like main.py does
-    print("\n2. Initializing JARVIS components...")
+    print("\n2. Initializing Ironcliw components...")
     
     try:
         # Import and initialize vision
@@ -58,8 +58,8 @@ async def test_weather_end_to_end():
         else:
             print(f"❌ Error: {result.get('error', 'Unknown error')}")
             
-        # Step 4: Test through JARVIS API
-        print("\n\n4. Testing through JARVIS API...")
+        # Step 4: Test through Ironcliw API
+        print("\n\n4. Testing through Ironcliw API...")
         
         # Create a mock app state
         from types import SimpleNamespace
@@ -74,10 +74,10 @@ async def test_weather_end_to_end():
         print("✅ App state configured")
         
         # Now test the API
-        from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
-        api = JARVISVoiceAPI()
+        from api.jarvis_voice_api import IroncliwVoiceAPI, IroncliwCommand
+        api = IroncliwVoiceAPI()
         
-        command = JARVISCommand(text="What's the weather like today?")
+        command = IroncliwCommand(text="What's the weather like today?")
         api_result = await api.process_command(command)
         
         print(f"\nAPI Response:")
@@ -96,12 +96,12 @@ async def test_weather_end_to_end():
     print("\nFor best results:")
     print("1. Ensure Weather app shows 'My Location' in the sidebar")
     print("2. Run the backend server: python main.py")
-    print("3. Ask JARVIS: 'What's the weather today?'")
+    print("3. Ask Ironcliw: 'What's the weather today?'")
 
 
 if __name__ == "__main__":
     # Ensure we're in the right directory
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     
     # Check API key
     if not os.getenv('ANTHROPIC_API_KEY'):

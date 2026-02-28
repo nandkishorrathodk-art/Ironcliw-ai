@@ -1,8 +1,8 @@
-# JARVIS (Cross-Platform Edition)
+﻿# Ironcliw (Cross-Platform Edition)
 
 **The Body of the AGI OS — Windows, Linux, and macOS integration, computer use, action execution, and unified orchestration**
 
-JARVIS is now **truly cross-platform**! Originally designed for macOS, JARVIS has been fully ported to **Windows** and **Linux** with feature parity and enhanced capabilities.
+Ironcliw is now **truly cross-platform**! Originally designed for macOS, Ironcliw has been fully ported to **Windows** and **Linux** with feature parity and enhanced capabilities.
 
 ---
 
@@ -43,13 +43,13 @@ JARVIS is now **truly cross-platform**! Originally designed for macOS, JARVIS ha
 
 ```powershell
 # Clone repository
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Run automated build script
 .\build_windows.bat
 
-# Start JARVIS
+# Start Ironcliw
 .\venv\Scripts\activate
 python unified_supervisor.py
 ```
@@ -62,14 +62,14 @@ python unified_supervisor.py
 
 ```bash
 # Clone repository
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Run automated build script
 chmod +x build_linux.sh
 ./build_linux.sh
 
-# Start JARVIS
+# Start Ironcliw
 source venv/bin/activate
 python3 unified_supervisor.py
 ```
@@ -82,15 +82,15 @@ python3 unified_supervisor.py
 
 ```bash
 # Clone repository
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Create venv and install
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Start JARVIS
+# Start Ironcliw
 python3 unified_supervisor.py
 ```
 
@@ -114,11 +114,11 @@ python3 unified_supervisor.py
 
 ## Architecture Overview
 
-JARVIS uses a **Platform Abstraction Layer (PAL)** to provide unified interfaces across all platforms:
+Ironcliw uses a **Platform Abstraction Layer (PAL)** to provide unified interfaces across all platforms:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   JARVIS Core Layer                         │
+│                   Ironcliw Core Layer                         │
 │         (Unified Supervisor, Backend, Frontend)             │
 └─────────────────────────────────────────────────────────────┘
                            │
@@ -279,8 +279,8 @@ We welcome contributions for all platforms! Priority areas:
 ## Support & Community
 
 - 📖 **Documentation**: `docs/setup/` directory
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/drussell23/JARVIS-AI-Agent/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/drussell23/JARVIS-AI-Agent/discussions)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/drussell23/Ironcliw-AI-Agent/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/drussell23/Ironcliw-AI-Agent/discussions)
 - 📧 **Contact**: See repository maintainers
 
 ---
@@ -299,7 +299,7 @@ We welcome contributions for all platforms! Priority areas:
 - Comprehensive documentation for Windows and Linux
 - Zero native compilation requirement (pure Python!)
 
-**Original JARVIS Team**:
+**Original Ironcliw Team**:
 - macOS implementation and architecture
 - Trinity ecosystem design
 - GCP Golden Image infrastructure

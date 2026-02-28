@@ -1,8 +1,8 @@
-# 🧠 JARVIS Goal Inference & Learning System
+﻿# 🧠 Ironcliw Goal Inference & Learning System
 
 ## Overview
 
-The Goal Inference system enables JARVIS to understand your intentions, learn your patterns, and make intelligent predictive decisions automatically. It combines **PyTorch neural networks**, **ChromaDB embeddings**, and **SQLite** for a powerful, self-improving AI assistant.
+The Goal Inference system enables Ironcliw to understand your intentions, learn your patterns, and make intelligent predictive decisions automatically. It combines **PyTorch neural networks**, **ChromaDB embeddings**, and **SQLite** for a powerful, self-improving AI assistant.
 
 ## 🚀 Quick Start
 
@@ -38,12 +38,12 @@ python start_system.py --goal-preset balanced
 
 ```bash
 # Set preset via environment variable (skips menu)
-export JARVIS_GOAL_PRESET=aggressive
-export JARVIS_GOAL_AUTOMATION=true
+export Ironcliw_GOAL_PRESET=aggressive
+export Ironcliw_GOAL_AUTOMATION=true
 python start_system.py
 
 # Or one-liner (skips menu)
-JARVIS_GOAL_PRESET=learning python start_system.py
+Ironcliw_GOAL_PRESET=learning python start_system.py
 ```
 
 ## 📊 Configuration Presets
@@ -60,7 +60,7 @@ python start_system.py --goal-preset aggressive
 - Pattern Boost: **0.10** (learns faster)
 - Proactive Threshold: **0.75**
 
-**When to use**: When you want JARVIS to be highly proactive and learn quickly from your behavior.
+**When to use**: When you want Ironcliw to be highly proactive and learn quickly from your behavior.
 
 ### 2. **Balanced** ⚖️ (Default)
 **Best for**: Daily use with reliable suggestions
@@ -92,7 +92,7 @@ python start_system.py --goal-preset conservative
 **When to use**: When you want only the most confident predictions and minimal interruptions.
 
 ### 4. **Learning** 📚
-**Best for**: First-time setup or teaching JARVIS new patterns
+**Best for**: First-time setup or teaching Ironcliw new patterns
 
 ```bash
 python start_system.py --goal-preset learning
@@ -143,12 +143,12 @@ python configure_goal_inference.py --interactive
 ## 📈 How It Works
 
 ### 1. **Goal Inference**
-JARVIS observes your actions and context to infer high-level goals:
+Ironcliw observes your actions and context to infer high-level goals:
 
 ```
 You open Calendar + Keynote at 9 AM
   ↓
-JARVIS infers: "meeting_preparation" (confidence: 0.92)
+Ironcliw infers: "meeting_preparation" (confidence: 0.92)
   ↓
 Suggests: Connect to "Living Room TV"
 ```
@@ -163,7 +163,7 @@ Wednesday 9 AM: Connect Living Room TV ✓
   ↓
 Pattern learned! (auto_connect enabled)
   ↓
-Thursday 9 AM: JARVIS connects automatically
+Thursday 9 AM: Ironcliw connects automatically
 ```
 
 ### 3. **Confidence Boosting**
@@ -205,7 +205,7 @@ After success 3: 0.77 (pattern strengthening)
 
 ### Startup Metrics
 
-When JARVIS starts, you'll see:
+When Ironcliw starts, you'll see:
 
 ```
 ✅ Goal Inference + Learning Database loaded
@@ -239,7 +239,7 @@ print(f"Cache hit rate: {metrics['cache_performance']['pattern_cache_hit_rate']:
 **Scenario**: You connect to "Living Room TV" every morning at 9 AM for meetings.
 
 **What happens**:
-1. **Day 1-2**: JARVIS observes and logs the pattern
+1. **Day 1-2**: Ironcliw observes and logs the pattern
 2. **Day 3**: Pattern recognized (frequency: 3)
 3. **Day 4+**: Auto-connect suggestion appears (confidence: 85%)
 
@@ -250,7 +250,7 @@ print(f"Cache hit rate: {metrics['cache_performance']['pattern_cache_hit_rate']:
 **Scenario**: You always open Slack + VS Code + Terminal for coding sessions.
 
 **What happens**:
-1. JARVIS learns the app sequence
+1. Ironcliw learns the app sequence
 2. Infers goal: "development_session"
 3. Suggests: Auto-arrange windows in optimal layout
 
@@ -261,7 +261,7 @@ print(f"Cache hit rate: {metrics['cache_performance']['pattern_cache_hit_rate']:
 **Scenario**: You're working on a presentation and need to share your screen.
 
 **What happens**:
-1. JARVIS detects: Keynote open + Calendar showing meeting in 10 min
+1. Ironcliw detects: Keynote open + Calendar showing meeting in 10 min
 2. Infers goal: "presentation_preparation" (confidence: 0.92)
 3. Suggests: Connect to display + Enable Do Not Disturb
 
@@ -297,7 +297,7 @@ python learning_database.py
 
 Expected output:
 ```
-🗄️ Testing Advanced JARVIS Learning Database
+🗄️ Testing Advanced Ironcliw Learning Database
 ============================================================
 ✅ Stored goal: goal_1234567890_abc123
 ✅ Queued 5 goals for batch insert
@@ -444,7 +444,7 @@ for pattern in patterns:
 ## 🎓 Best Practices
 
 1. **Start with `learning` preset** for the first week
-2. **Switch to `balanced`** after JARVIS has learned your routines
+2. **Switch to `balanced`** after Ironcliw has learned your routines
 3. **Use `aggressive`** only if you want maximum automation
 4. **Review metrics** weekly to see learning progress
 5. **Clear old patterns** monthly to keep database lean
@@ -460,7 +460,7 @@ The Goal Inference system is designed to be extensible:
 
 ## 📄 License
 
-Part of the JARVIS AI Assistant project.
+Part of the Ironcliw AI Assistant project.
 
 ---
 

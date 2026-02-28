@@ -1,4 +1,4 @@
-# Enterprise Async & Resilience Hardening Implementation Plan
+﻿# Enterprise Async & Resilience Hardening Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -15,7 +15,7 @@
 **Files:**
 - Create: `backend/core/coordination_flags.py`
 
-**Context:** `JARVIS_INVINCIBLE_NODE_BOOTING` env var is set at 1 location and manually cleared at 7 locations via `os.environ.pop()`. Missing any clear path leaves the flag stuck. A context manager guarantees cleanup.
+**Context:** `Ironcliw_INVINCIBLE_NODE_BOOTING` env var is set at 1 location and manually cleared at 7 locations via `os.environ.pop()`. Missing any clear path leaves the flag stuck. A context manager guarantees cleanup.
 
 **Step 1: Create the coordination_flags module**
 
@@ -43,7 +43,7 @@ async def coordination_flag(name: str, value: str = "true"):
     Guaranteed cleanup via finally — no manual pop() in each exception path.
 
     Usage:
-        async with coordination_flag("JARVIS_INVINCIBLE_NODE_BOOTING"):
+        async with coordination_flag("Ironcliw_INVINCIBLE_NODE_BOOTING"):
             result = await boot_invincible_node()
         # Flag automatically cleared on success, error, timeout, or cancellation
     """
@@ -142,7 +142,7 @@ git commit -m "feat: add shielded_wait_for() utility to prevent task cancellatio
 **Files:**
 - Modify: `unified_supervisor.py` (~lines 62452-62616)
 
-**Context:** `JARVIS_INVINCIBLE_NODE_BOOTING` is set at line 62625 and manually cleared at 7 locations. We replace this with `async with coordination_flag(...)` that wraps the entire boot logic. The flag is set at the `async with` entry and automatically cleared on any exit path.
+**Context:** `Ironcliw_INVINCIBLE_NODE_BOOTING` is set at line 62625 and manually cleared at 7 locations. We replace this with `async with coordination_flag(...)` that wraps the entire boot logic. The flag is set at the `async with` entry and automatically cleared on any exit path.
 
 **Step 1: Read the current code block**
 
@@ -162,17 +162,17 @@ Replace the pattern. The key transformation is:
 
 ```python
 # BEFORE (7 manual clear points):
-os.environ["JARVIS_INVINCIBLE_NODE_BOOTING"] = "true"
+os.environ["Ironcliw_INVINCIBLE_NODE_BOOTING"] = "true"
 # ... 160 lines of code with 7 os.environ.pop() calls ...
 
 # AFTER (single context manager):
 from backend.core.coordination_flags import coordination_flag
 
-async with coordination_flag("JARVIS_INVINCIBLE_NODE_BOOTING"):
+async with coordination_flag("Ironcliw_INVINCIBLE_NODE_BOOTING"):
     # ... same logic but WITHOUT any os.environ.pop() calls ...
 ```
 
-Remove ALL 7 `os.environ.pop("JARVIS_INVINCIBLE_NODE_BOOTING", None)` lines. The context manager handles cleanup.
+Remove ALL 7 `os.environ.pop("Ironcliw_INVINCIBLE_NODE_BOOTING", None)` lines. The context manager handles cleanup.
 
 **Important:** The CancelledError handler at line 62456 must still `raise` after cleanup — the context manager's `finally` runs before the re-raise, so this works correctly.
 

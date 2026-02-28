@@ -1,4 +1,4 @@
-"""
+﻿"""
 OCR Adapter for Follow-Up System
 Provides unified interface for OCR text extraction.
 
@@ -136,7 +136,7 @@ def _resolve_snapshot_path(snapshot_id: str) -> Optional[Path]:
 
     # Try common snapshot directories
     common_dirs = [
-        Path.home() / "Library" / "Application Support" / "JARVIS" / "screenshots",
+        Path.home() / "Library" / "Application Support" / "Ironcliw" / "screenshots",
         Path.home() / ".jarvis" / "screenshots",
         Path("/tmp") / "jarvis_screenshots",
         Path.cwd() / "screenshots",

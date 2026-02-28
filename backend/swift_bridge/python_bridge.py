@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
-"""Python-Swift Bridge for JARVIS Command Classifier.
+﻿#!/usr/bin/env python3
+"""Python-Swift Bridge for Ironcliw Command Classifier.
 
 This module provides seamless integration between Python and Swift classifier
 components, enabling high-performance natural language processing for command
-classification in the JARVIS system.
+classification in the Ironcliw system.
 
 The module includes:
 - SwiftCommandClassifier: Direct interface to Swift-based ML classifier

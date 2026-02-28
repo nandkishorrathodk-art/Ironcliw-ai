@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Voice Unlock Integration
+Ironcliw Voice Unlock Integration
 ==============================
 
-Main entry point for JARVIS voice unlock system with ML optimization.
+Main entry point for Ironcliw voice unlock system with ML optimization.
 
 Enhanced Features (v2.0):
 - Multi-factor authentication fusion
@@ -37,9 +37,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class JARVISVoiceUnlock:
+class IroncliwVoiceUnlock:
     """
-    JARVIS Voice Unlock service with ML optimization
+    Ironcliw Voice Unlock service with ML optimization
     """
     
     def __init__(self):
@@ -48,8 +48,8 @@ class JARVISVoiceUnlock:
         self.running = False
         
     async def start(self):
-        """Start JARVIS voice unlock service"""
-        logger.info("🚀 Starting JARVIS Voice Unlock System...")
+        """Start Ironcliw voice unlock service"""
+        logger.info("🚀 Starting Ironcliw Voice Unlock System...")
         
         # Show configuration
         logger.info(f"Configuration:")
@@ -66,7 +66,7 @@ class JARVISVoiceUnlock:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         
-        logger.info("✅ JARVIS Voice Unlock is active")
+        logger.info("✅ Ironcliw Voice Unlock is active")
         
         # Show initial status
         status = self.system.get_status()
@@ -103,8 +103,8 @@ class JARVISVoiceUnlock:
         self.running = False
         
     async def stop(self):
-        """Stop JARVIS voice unlock service"""
-        logger.info("🛑 Stopping JARVIS Voice Unlock System...")
+        """Stop Ironcliw voice unlock service"""
+        logger.info("🛑 Stopping Ironcliw Voice Unlock System...")
         
         if self.system:
             # Get final report
@@ -125,7 +125,7 @@ class JARVISVoiceUnlock:
             await self.system.stop()
             
         self.running = False
-        logger.info("✅ JARVIS Voice Unlock stopped")
+        logger.info("✅ Ironcliw Voice Unlock stopped")
         
     async def enroll_user(self, user_id: str):
         """Interactive user enrollment"""
@@ -337,7 +337,7 @@ class JARVISVoiceUnlock:
         status = self.system.get_status()
         ml_report = self.system.ml_system.get_performance_report()
         
-        print("\n📊 JARVIS Voice Unlock Status")
+        print("\n📊 Ironcliw Voice Unlock Status")
         print("=" * 50)
         print(f"System State:")
         print(f"   Active: {status['is_active']}")
@@ -366,14 +366,14 @@ class JARVISVoiceUnlock:
 # CLI Commands
 @click.group()
 def cli():
-    """JARVIS Voice Unlock System CLI"""
+    """Ironcliw Voice Unlock System CLI"""
     pass
 
 
 @cli.command()
 def start():
-    """Start JARVIS voice unlock service"""
-    service = JARVISVoiceUnlock()
+    """Start Ironcliw voice unlock service"""
+    service = IroncliwVoiceUnlock()
     
     async def run():
         try:
@@ -390,7 +390,7 @@ def start():
 @click.argument('user_id')
 def enroll(user_id: str):
     """Enroll a new user"""
-    service = JARVISVoiceUnlock()
+    service = IroncliwVoiceUnlock()
     
     async def run():
         try:
@@ -406,7 +406,7 @@ def enroll(user_id: str):
 @click.option('--user', '-u', help='User ID to test (optional)')
 def test(user: Optional[str]):
     """Test voice authentication (basic)"""
-    service = JARVISVoiceUnlock()
+    service = IroncliwVoiceUnlock()
 
     async def run():
         try:
@@ -425,7 +425,7 @@ def test(user: Optional[str]):
 @click.option('--no-adaptive', is_flag=True, help='Disable adaptive retry reasoning')
 def test_enhanced(user: Optional[str], watch: bool, attempts: int, no_adaptive: bool):
     """Test enhanced voice authentication (v2.0 with multi-factor fusion)"""
-    service = JARVISVoiceUnlock()
+    service = IroncliwVoiceUnlock()
 
     async def run():
         try:
@@ -446,7 +446,7 @@ def test_enhanced(user: Optional[str], watch: bool, attempts: int, no_adaptive: 
 @click.option('--limit', '-l', default=10, help='Number of recent attempts to show')
 def history(limit: int):
     """Show recent authentication attempts"""
-    service = JARVISVoiceUnlock()
+    service = IroncliwVoiceUnlock()
 
     async def run():
         try:
@@ -461,7 +461,7 @@ def history(limit: int):
 @cli.command()
 def status():
     """Show system status"""
-    service = JARVISVoiceUnlock()
+    service = IroncliwVoiceUnlock()
     
     async def run():
         service.system = await create_voice_unlock_system()
@@ -476,7 +476,7 @@ def configure():
     """Interactive configuration"""
     config = get_config()
     
-    print("\n⚙️  JARVIS Voice Unlock Configuration")
+    print("\n⚙️  Ironcliw Voice Unlock Configuration")
     print("=" * 50)
     
     # Memory settings

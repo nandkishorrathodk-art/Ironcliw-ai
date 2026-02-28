@@ -1,13 +1,13 @@
-# GlobalSessionManager - Always-Available Session Tracking
+﻿# GlobalSessionManager - Always-Available Session Tracking
 
 > **Version:** 1.0.0
 > **Added in:** v17.9.7
 > **Location:** `start_system.py:1449-1941`
-> **Author:** JARVIS Development Team
+> **Author:** Ironcliw Development Team
 
 ## Overview
 
-`GlobalSessionManager` is a **thread-safe singleton** that provides guaranteed session tracking availability throughout the JARVIS application lifecycle. It solves the critical problem of session tracking being unavailable during cleanup when the hybrid coordinator fails to initialize or is unavailable.
+`GlobalSessionManager` is a **thread-safe singleton** that provides guaranteed session tracking availability throughout the Ironcliw application lifecycle. It solves the critical problem of session tracking being unavailable during cleanup when the hybrid coordinator fails to initialize or is unavailable.
 
 ## Table of Contents
 
@@ -382,12 +382,12 @@ def cleanup_gcp_vms():
 
 ```python
 async def monitor_sessions():
-    """Monitor all active JARVIS sessions."""
+    """Monitor all active Ironcliw sessions."""
     session_mgr = get_session_manager()
 
     sessions = await session_mgr.get_all_active_sessions()
 
-    print(f"Active JARVIS Sessions: {len(sessions)}")
+    print(f"Active Ironcliw Sessions: {len(sessions)}")
     for sid, data in sessions.items():
         is_me = "* " if sid == session_mgr.session_id else "  "
         vm_status = data.get("vm_id", "no VM")
@@ -467,7 +467,7 @@ async def monitor_sessions():
 
 ### The Problem
 
-Running JARVIS in multiple terminals can cause conflicts:
+Running Ironcliw in multiple terminals can cause conflicts:
 - Both sessions might try to manage the same VM
 - Cleanup in one terminal might delete another session's VM
 - Session files could be overwritten
@@ -476,7 +476,7 @@ Running JARVIS in multiple terminals can cause conflicts:
 
 The `GlobalSessionManager` uses multiple layers of validation:
 
-1. **Session ID**: UUID unique to each JARVIS instance
+1. **Session ID**: UUID unique to each Ironcliw instance
 2. **Process ID**: Ensures file belongs to correct process
 3. **Hostname**: Prevents cross-machine conflicts
 4. **Staleness Check**: Sessions older than 12 hours are ignored

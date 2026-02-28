@@ -1,14 +1,14 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Debug Voice Unlock System
 
-echo "🔍 JARVIS Voice Unlock Debug Mode"
+echo "🔍 Ironcliw Voice Unlock Debug Mode"
 echo "================================="
 echo
 
 # Clean up any existing processes
 echo "🧹 Cleaning up existing processes..."
 pkill -f websocket_server.py
-pkill -f JARVISVoiceUnlockDaemon
+pkill -f IroncliwVoiceUnlockDaemon
 sleep 2
 
 # Start WebSocket server with logging
@@ -46,7 +46,7 @@ DAEMON_LOG="/tmp/daemon_debug.log"
 echo "Log file: $DAEMON_LOG"
 
 # Run daemon directly to see output
-./objc/bin/JARVISVoiceUnlockDaemon > "$DAEMON_LOG" 2>&1 &
+./objc/bin/IroncliwVoiceUnlockDaemon > "$DAEMON_LOG" 2>&1 &
 DAEMON_PID=$!
 echo "Daemon PID: $DAEMON_PID"
 
@@ -83,7 +83,7 @@ cleanup() {
     kill $DAEMON_PID 2>/dev/null
     kill $WEBSOCKET_PID 2>/dev/null
     pkill -f websocket_server.py
-    pkill -f JARVISVoiceUnlockDaemon
+    pkill -f IroncliwVoiceUnlockDaemon
     echo "✅ Cleanup complete"
     exit 0
 }

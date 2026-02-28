@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Multi-Space Monitor for JARVIS Vision System
+Multi-Space Monitor for Ironcliw Vision System
 Implements proactive monitoring of workspace changes and cross-space activities
 According to PRD Phase 3 requirements
 """

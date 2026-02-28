@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test script for Predictive Pre-computation Engine
 Demonstrates Markov chain prediction and speculative execution
@@ -610,7 +610,7 @@ def visualize_results(accuracy_history: List[float], cache_tests: List[Dict],
 async def main():
     """Main test runner"""
     print("=" * 60)
-    print("JARVIS Vision - Predictive Pre-computation Engine Test Suite")
+    print("Ironcliw Vision - Predictive Pre-computation Engine Test Suite")
     print("=" * 60)
     
     # Run all tests

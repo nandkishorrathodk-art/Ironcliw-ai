@@ -1,10 +1,10 @@
-# =============================================================================
-# JARVIS AI Agent - Unified Docker Compose Configuration v9.4
+﻿# =============================================================================
+# Ironcliw AI Agent - Unified Docker Compose Configuration v9.4
 # =============================================================================
 #
 # Multi-Repo Integration Stack connecting:
-# - JARVIS-AI-Agent: Main FastAPI server with Neural Mesh
-# - JARVIS-Prime: Local LLM inference (from jarvis-prime repo)
+# - Ironcliw-AI-Agent: Main FastAPI server with Neural Mesh
+# - Ironcliw-Prime: Local LLM inference (from jarvis-prime repo)
 # - Reactor-Core: Training pipeline (from reactor-core repo)
 #
 # Services:
@@ -19,7 +19,7 @@
 #
 # Profiles:
 #   default       - Backend, Frontend, Training, Redis, ChromaDB
-#   local-llm     - Add local JARVIS-Prime inference
+#   local-llm     - Add local Ironcliw-Prime inference
 #   cloud-llm     - Add Cloud Run inference proxy
 #   full-training - Add Reactor-Core training pipeline
 #   all           - Everything enabled
@@ -91,13 +91,13 @@ volumes:
 # =============================================================================
 services:
   # ---------------------------------------------------------------------------
-  # JARVIS Backend - Main API Server
+  # Ironcliw Backend - Main API Server
   # ---------------------------------------------------------------------------
   jarvis-backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
-    image: jarvis-backend:${JARVIS_VERSION:-9.4.0}
+    image: jarvis-backend:${Ironcliw_VERSION:-9.4.0}
     container_name: jarvis-backend
     hostname: jarvis-backend
     restart: unless-stopped
@@ -108,31 +108,31 @@ services:
 
     # Ports
     ports:
-      - "${JARVIS_API_PORT:-8010}:8010"
-      - "${JARVIS_LOADING_PORT:-8011}:8011"
+      - "${Ironcliw_API_PORT:-8010}:8010"
+      - "${Ironcliw_LOADING_PORT:-8011}:8011"
 
     # Environment
     environment:
       # Core
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app:/app/backend
-      - JARVIS_DOCKER=true
-      - JARVIS_ENV=${JARVIS_ENV:-production}
+      - Ironcliw_DOCKER=true
+      - Ironcliw_ENV=${Ironcliw_ENV:-production}
 
       # Paths
-      - JARVIS_DATA_DIR=/app/data
-      - JARVIS_MODELS_DIR=/app/models
-      - JARVIS_LOGS_DIR=/app/data/logs
-      - JARVIS_TRAINING_DB=/app/data/training_db/jarvis_training.db
+      - Ironcliw_DATA_DIR=/app/data
+      - Ironcliw_MODELS_DIR=/app/models
+      - Ironcliw_LOGS_DIR=/app/data/logs
+      - Ironcliw_TRAINING_DB=/app/data/training_db/jarvis_training.db
 
       # API Keys (from .env)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
 
-      # JARVIS Prime
-      - JARVIS_PRIME_URL=http://jarvis-prime:8012
-      - JARVIS_PRIME_CLOUD_RUN_URL=${JARVIS_PRIME_CLOUD_RUN_URL:-}
+      # Ironcliw Prime
+      - Ironcliw_PRIME_URL=http://jarvis-prime:8012
+      - Ironcliw_PRIME_CLOUD_RUN_URL=${Ironcliw_PRIME_CLOUD_RUN_URL:-}
 
       # Redis
       - REDIS_URL=redis://redis:6379/0
@@ -186,20 +186,20 @@ services:
           memory: 2G
 
   # ---------------------------------------------------------------------------
-  # JARVIS Frontend - React Web Interface
+  # Ironcliw Frontend - React Web Interface
   # ---------------------------------------------------------------------------
   jarvis-frontend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.frontend
-    image: jarvis-frontend:${JARVIS_VERSION:-9.4.0}
+    image: jarvis-frontend:${Ironcliw_VERSION:-9.4.0}
     container_name: jarvis-frontend
     hostname: jarvis-frontend
     restart: unless-stopped
 
     # Ports
     ports:
-      - "${JARVIS_FRONTEND_PORT:-3000}:80"
+      - "${Ironcliw_FRONTEND_PORT:-3000}:80"
 
     # Dependencies
     depends_on:
@@ -227,13 +227,13 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # JARVIS Training Engine - Continuous Learning
+  # Ironcliw Training Engine - Continuous Learning
   # ---------------------------------------------------------------------------
   jarvis-training:
     build:
       context: ..
       dockerfile: docker/Dockerfile.training
-    image: jarvis-training:${JARVIS_VERSION:-9.4.0}
+    image: jarvis-training:${Ironcliw_VERSION:-9.4.0}
     container_name: jarvis-training
     hostname: jarvis-training
     restart: unless-stopped
@@ -246,16 +246,16 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app:/app/backend
-      - JARVIS_DOCKER=true
+      - Ironcliw_DOCKER=true
 
       # Database
-      - JARVIS_TRAINING_DB=/app/data/training_db/jarvis_training.db
+      - Ironcliw_TRAINING_DB=/app/data/training_db/jarvis_training.db
 
       # Training
-      - JARVIS_TRAINING_ENABLED=${TRAINING_ENABLED:-true}
-      - JARVIS_TRAINING_SCHEDULE=${TRAINING_SCHEDULE:-03:00}
-      - JARVIS_TRAINING_MIN_EXPERIENCES=${TRAINING_MIN_EXPERIENCES:-100}
-      - JARVIS_TRAINING_COOLDOWN_HOURS=${TRAINING_COOLDOWN_HOURS:-24}
+      - Ironcliw_TRAINING_ENABLED=${TRAINING_ENABLED:-true}
+      - Ironcliw_TRAINING_SCHEDULE=${TRAINING_SCHEDULE:-03:00}
+      - Ironcliw_TRAINING_MIN_EXPERIENCES=${TRAINING_MIN_EXPERIENCES:-100}
+      - Ironcliw_TRAINING_COOLDOWN_HOURS=${TRAINING_COOLDOWN_HOURS:-24}
 
       # Scraping
       - CONTINUOUS_SCRAPING_ENABLED=${CONTINUOUS_SCRAPING_ENABLED:-true}
@@ -263,7 +263,7 @@ services:
       - CONTINUOUS_SCRAPING_MAX_PAGES=${SCRAPING_MAX_PAGES:-50}
 
       # Models
-      - JARVIS_MODELS_DIR=/app/models
+      - Ironcliw_MODELS_DIR=/app/models
       - GGUF_EXPORT_ENABLED=${GGUF_EXPORT_ENABLED:-true}
       - GGUF_QUANTIZATION=${GGUF_QUANTIZATION:-q4_k_m}
 
@@ -295,13 +295,13 @@ services:
           memory: ${TRAINING_MEMORY_LIMIT:-4G}
 
   # ---------------------------------------------------------------------------
-  # JARVIS Prime - Local LLM Inference (from jarvis-prime repo)
+  # Ironcliw Prime - Local LLM Inference (from jarvis-prime repo)
   # ---------------------------------------------------------------------------
   jarvis-prime:
     build:
-      context: ${JARVIS_PRIME_PATH:-../../jarvis-prime}
+      context: ${Ironcliw_PRIME_PATH:-../../jarvis-prime}
       dockerfile: Dockerfile
-    image: jarvis-prime:${JARVIS_VERSION:-9.4.0}
+    image: jarvis-prime:${Ironcliw_VERSION:-9.4.0}
     container_name: jarvis-prime
     hostname: jarvis-prime
     restart: unless-stopped
@@ -311,18 +311,18 @@ services:
 
     # Ports
     ports:
-      - "${JARVIS_PRIME_PORT:-8012}:8000"
+      - "${Ironcliw_PRIME_PORT:-8012}:8000"
 
     # Environment
     environment:
       - PYTHONUNBUFFERED=1
-      - JARVIS_PRIME_HOST=0.0.0.0
-      - JARVIS_PRIME_PORT=8000
+      - Ironcliw_PRIME_HOST=0.0.0.0
+      - Ironcliw_PRIME_PORT=8000
       - MODEL_PATH=/models/current/jarvis-prime-latest.gguf
       - CONTEXT_SIZE=${PRIME_CONTEXT_SIZE:-4096}
       - N_GPU_LAYERS=${PRIME_GPU_LAYERS:-0}
       - N_THREADS=${PRIME_THREADS:-4}
-      - ENVIRONMENT=${JARVIS_ENV:-production}
+      - ENVIRONMENT=${Ironcliw_ENV:-production}
 
       # Redis for caching
       - REDIS_URL=redis://redis:6379/1
@@ -365,7 +365,7 @@ services:
           memory: 4G
 
   # ---------------------------------------------------------------------------
-  # JARVIS Prime Cloud Proxy - Cloud Run Inference (optional)
+  # Ironcliw Prime Cloud Proxy - Cloud Run Inference (optional)
   # ---------------------------------------------------------------------------
   jarvis-prime-cloud:
     image: nginx:alpine
@@ -378,7 +378,7 @@ services:
 
     # Ports
     ports:
-      - "${JARVIS_PRIME_CLOUD_PORT:-8013}:80"
+      - "${Ironcliw_PRIME_CLOUD_PORT:-8013}:80"
 
     # Config mounted from custom nginx conf
     volumes:
@@ -386,7 +386,7 @@ services:
 
     # Environment (for envsubst)
     environment:
-      - CLOUD_RUN_URL=${JARVIS_PRIME_CLOUD_RUN_URL:-https://jarvis-prime-dev.run.app}
+      - CLOUD_RUN_URL=${Ironcliw_PRIME_CLOUD_RUN_URL:-https://jarvis-prime-dev.run.app}
 
     # Network
     networks:
@@ -407,7 +407,7 @@ services:
     build:
       context: ${REACTOR_CORE_PATH:-../../reactor-core}
       dockerfile: docker/Dockerfile
-    image: reactor-core:${JARVIS_VERSION:-9.4.0}
+    image: reactor-core:${Ironcliw_VERSION:-9.4.0}
     container_name: reactor-core
     hostname: reactor-core
     restart: unless-stopped
@@ -425,7 +425,7 @@ services:
       - PYTHONPATH=/app
       - REACTOR_HOST=0.0.0.0
       - REACTOR_PORT=8020
-      - ENVIRONMENT=${JARVIS_ENV:-production}
+      - ENVIRONMENT=${Ironcliw_ENV:-production}
 
       # Training config
       - BASE_MODEL=${BASE_MODEL:-meta-llama/Llama-3.2-3B}
@@ -435,9 +435,9 @@ services:
       # Database
       - TRAINING_DB_PATH=/data/training_db/jarvis_training.db
 
-      # Integration with JARVIS
-      - JARVIS_API_URL=http://jarvis-backend:8010
-      - JARVIS_MODELS_DIR=/models
+      # Integration with Ironcliw
+      - Ironcliw_API_URL=http://jarvis-backend:8010
+      - Ironcliw_MODELS_DIR=/models
 
       # GCS
       - GCS_BUCKET=${GCS_BUCKET:-}
@@ -576,7 +576,7 @@ services:
 # x-common-labels - Shared labels for all services
 # =============================================================================
 x-common-labels: &common-labels
-  app.jarvis.version: "${JARVIS_VERSION:-9.4.0}"
+  app.jarvis.version: "${Ironcliw_VERSION:-9.4.0}"
   app.jarvis.component: "jarvis-stack"
   app.jarvis.managed-by: "docker-compose"
 

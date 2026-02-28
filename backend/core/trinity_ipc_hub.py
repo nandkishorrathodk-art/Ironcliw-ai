@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity IPC Hub v4.0 - Enterprise-Grade Cross-Repository Communication
 ========================================================================
 
 Comprehensive Inter-Process Communication hub addressing ALL 10 communication
-gaps in the Trinity Ecosystem (JARVIS Body, J-Prime, Reactor-Core).
+gaps in the Trinity Ecosystem (Ironcliw Body, J-Prime, Reactor-Core).
 
 GAPS ADDRESSED:
 1. Direct Body → Reactor Command Channel
@@ -35,7 +35,7 @@ Architecture:
     ├───────────────────────────────────────────────────────────────────────────┤
     │                                                                           │
     │   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐              │
-    │   │   JARVIS    │◄────►│  IPC HUB    │◄────►│  J-PRIME    │              │
+    │   │   Ironcliw    │◄────►│  IPC HUB    │◄────►│  J-PRIME    │              │
     │   │   (Body)    │      │             │      │   (Brain)   │              │
     │   └─────────────┘      │  ┌───────┐  │      └─────────────┘              │
     │         ▲              │  │Message│  │              ▲                     │
@@ -100,7 +100,7 @@ Usage:
     # Gap 10: Reliable queue
     await hub.queue.enqueue("training_job", job_config, delivery="exactly_once")
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 4.0.0
 """
 
@@ -197,8 +197,8 @@ class MessagePriority(IntEnum):
 
 class ServiceType(str, Enum):
     """Trinity service types."""
-    JARVIS_BODY = "jarvis-body"
-    JARVIS_PRIME = "jarvis-prime"
+    Ironcliw_BODY = "jarvis-body"
+    Ironcliw_PRIME = "jarvis-prime"
     REACTOR_CORE = "reactor-core"
 
 
@@ -229,10 +229,10 @@ class TrinityIPCConfig:
 
     # Service endpoints (discovered via registry, these are fallbacks)
     jarvis_body_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_BODY_PORT", "5001"))
+        default_factory=lambda: int(os.getenv("Ironcliw_BODY_PORT", "5001"))
     )
     jarvis_prime_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8000"))
     )
     reactor_core_port: int = field(
         default_factory=lambda: int(os.getenv("REACTOR_CORE_PORT", "8090"))
@@ -591,7 +591,7 @@ class ReactorCommandChannel:
         command = CommandMessage(
             command="start_training",
             payload=job_config,
-            source=ServiceType.JARVIS_BODY,
+            source=ServiceType.Ironcliw_BODY,
             target=ServiceType.REACTOR_CORE,
             priority=priority,
             requires_ack=True
@@ -604,7 +604,7 @@ class ReactorCommandChannel:
         command = CommandMessage(
             command="get_training_status",
             payload={"job_id": job_id},
-            source=ServiceType.JARVIS_BODY,
+            source=ServiceType.Ironcliw_BODY,
             target=ServiceType.REACTOR_CORE
         )
 
@@ -615,7 +615,7 @@ class ReactorCommandChannel:
         command = CommandMessage(
             command="cancel_training",
             payload={"job_id": job_id},
-            source=ServiceType.JARVIS_BODY,
+            source=ServiceType.Ironcliw_BODY,
             target=ServiceType.REACTOR_CORE,
             priority=MessagePriority.HIGH
         )
@@ -631,7 +631,7 @@ class ReactorCommandChannel:
         command = CommandMessage(
             command="list_models",
             payload={"model_type": model_type},
-            source=ServiceType.JARVIS_BODY,
+            source=ServiceType.Ironcliw_BODY,
             target=ServiceType.REACTOR_CORE
         )
 
@@ -643,7 +643,7 @@ class ReactorCommandChannel:
         command = CommandMessage(
             command="get_gpu_status",
             payload={},
-            source=ServiceType.JARVIS_BODY,
+            source=ServiceType.Ironcliw_BODY,
             target=ServiceType.REACTOR_CORE
         )
 
@@ -793,7 +793,7 @@ class FeedbackChannel:
             metrics=metrics,
             sample_count=sample_count,
             context=context or {},
-            source=ServiceType.JARVIS_PRIME,
+            source=ServiceType.Ironcliw_PRIME,
             target=ServiceType.REACTOR_CORE
         )
 
@@ -816,7 +816,7 @@ class FeedbackChannel:
                 "error_message": error_message,
                 "input_sample": input_sample
             },
-            source=ServiceType.JARVIS_PRIME,
+            source=ServiceType.Ironcliw_PRIME,
             target=ServiceType.REACTOR_CORE,
             priority=MessagePriority.HIGH
         )
@@ -839,7 +839,7 @@ class FeedbackChannel:
                 "pattern_type": pattern_type,
                 "details": details or {}
             },
-            source=ServiceType.JARVIS_PRIME,
+            source=ServiceType.Ironcliw_PRIME,
             target=ServiceType.REACTOR_CORE
         )
 
@@ -1007,7 +1007,7 @@ class TrainingDataPipeline:
             message = TrainingDataMessage(
                 interactions=interactions,
                 model_type=model_type,
-                source=ServiceType.JARVIS_BODY,
+                source=ServiceType.Ironcliw_BODY,
                 target=ServiceType.REACTOR_CORE
             )
             await self.hub.bus.send(message)
@@ -1249,8 +1249,8 @@ class CrossRepoQueryInterface:
         """Get unified system state across all repos."""
         # Query all repos in parallel
         tasks = [
-            self.query("get_state", target=ServiceType.JARVIS_BODY),
-            self.query("get_state", target=ServiceType.JARVIS_PRIME),
+            self.query("get_state", target=ServiceType.Ironcliw_BODY),
+            self.query("get_state", target=ServiceType.Ironcliw_PRIME),
             self.query("get_state", target=ServiceType.REACTOR_CORE),
         ]
 
@@ -1275,7 +1275,7 @@ class CrossRepoQueryInterface:
         prime_metrics = await self.query(
             "model_metrics",
             {"model_id": model_id},
-            target=ServiceType.JARVIS_PRIME
+            target=ServiceType.Ironcliw_PRIME
         )
 
         reactor_metrics = await self.query(

@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.4: Unified Trinity Configuration System
 ============================================
 
@@ -14,7 +14,7 @@ and provides:
 - Type-safe access with dataclasses
 - Hot-reload capability
 
-Author: JARVIS v77.4
+Author: Ironcliw v77.4
 Version: 1.0.0
 """
 
@@ -150,7 +150,7 @@ class ConfigDiscovery:
         3. Common development locations
         4. Git worktree discovery
         """
-        # Get current file's location to find JARVIS repo
+        # Get current file's location to find Ironcliw repo
         current_file = Path(__file__).resolve()
         jarvis_root = self._find_repo_root(current_file)
 
@@ -167,7 +167,7 @@ class ConfigDiscovery:
 
         # Check environment variables first
         env_mappings = {
-            "jarvis": "JARVIS_REPO",
+            "jarvis": "Ironcliw_REPO",
             "j_prime": "J_PRIME_REPO",
             "reactor_core": "REACTOR_CORE_REPO",
         }

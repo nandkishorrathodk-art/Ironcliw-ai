@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Complete browser automation flow test
 Demonstrates advanced browser control without hardcoding
@@ -15,7 +15,7 @@ from api.unified_command_processor import get_unified_processor
 async def test_complete_flow():
     processor = get_unified_processor()
     
-    print("JARVIS Complete Browser Automation Demo")
+    print("Ironcliw Complete Browser Automation Demo")
     print("=" * 50)
     
     # Complete conversation flow
@@ -34,7 +34,7 @@ async def test_complete_flow():
     for i, (command, delay) in enumerate(commands):
         print(f"\n[Step {i+1}] You: {command}")
         result = await processor.process_command(command)
-        print(f"JARVIS: {result.get('response')}")
+        print(f"Ironcliw: {result.get('response')}")
         
         if not result.get('success'):
             print(f"⚠️  Error: {result.get('error', 'Command failed')}")

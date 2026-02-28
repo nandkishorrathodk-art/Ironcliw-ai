@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Suite for Cross-Space Intelligence System
 ==============================================
 
@@ -265,7 +265,7 @@ async def test_cross_space_query():
     print("Query: 'What's the error?'\n")
     result = await intelligence.answer_workspace_query("what's the error?", current_space_id=2)
 
-    print(f"🤖 JARVIS Response:\n{result['response']}\n")
+    print(f"🤖 Ironcliw Response:\n{result['response']}\n")
 
     # Check if error was found (case-insensitive)
     success = result.get("found", False) and "filenotfounderror" in result["response"].lower()
@@ -326,7 +326,7 @@ async def test_multi_source_synthesis():
     result = await intelligence.answer_workspace_query("what am i working on?", current_space_id=1)
 
     print(f"Query: 'What am I working on?'\n")
-    print(f"🤖 JARVIS Response:\n{result['response']}\n")
+    print(f"🤖 Ironcliw Response:\n{result['response']}\n")
 
     # Check if response synthesizes information
     success = (

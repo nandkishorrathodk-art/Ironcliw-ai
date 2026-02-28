@@ -1,4 +1,4 @@
-"""
+﻿"""
 AudioBus + Acoustic Echo Cancellation (Layer 0)
 =================================================
 
@@ -188,7 +188,7 @@ class AcousticEchoCanceller:
         ref_fft = np.fft.rfft(ref, n=n_fft)
 
         # Estimate echo magnitude and subtract
-        alpha = float(os.getenv("JARVIS_AEC_ALPHA", "1.0"))
+        alpha = float(os.getenv("Ironcliw_AEC_ALPHA", "1.0"))
         mic_mag = np.abs(mic_fft)
         ref_mag = np.abs(ref_fft) * alpha
 
@@ -232,11 +232,11 @@ class LocalSpeakerSink(AudioSink):
         self._resampler = resampler
         self._edge_fade_ms = max(
             0.0,
-            float(os.getenv("JARVIS_AUDIO_EDGE_FADE_MS", "6.0")),
+            float(os.getenv("Ironcliw_AUDIO_EDGE_FADE_MS", "6.0")),
         )
         self._output_headroom = min(
             1.0,
-            max(0.1, float(os.getenv("JARVIS_AUDIO_OUTPUT_HEADROOM", "0.98"))),
+            max(0.1, float(os.getenv("Ironcliw_AUDIO_OUTPUT_HEADROOM", "0.98"))),
         )
 
     def _condition_audio(self, audio: np.ndarray) -> np.ndarray:

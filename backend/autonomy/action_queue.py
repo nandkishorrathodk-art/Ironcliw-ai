@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Autonomous Action Queue System for JARVIS
+Autonomous Action Queue System for Ironcliw
 
 This module provides a priority-based queue system for managing autonomous actions
 with safety controls, retry logic, and comprehensive monitoring. The queue processes

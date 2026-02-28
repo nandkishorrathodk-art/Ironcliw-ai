@@ -1,4 +1,4 @@
-# Vision "Can You See My Screen?" Performance Fix - Summary
+﻿# Vision "Can You See My Screen?" Performance Fix - Summary
 
 ## Problem
 Asking "can you see my screen?" took **10-20+ seconds** or got stuck indefinitely.
@@ -67,4 +67,4 @@ Target: **<10 seconds** (pass: <15 seconds)
 3. Created `test_vision_performance.py` - Performance test
 
 ## Next Steps
-Try asking JARVIS "can you see my screen?" - should respond in **4-10 seconds** now!
+Try asking Ironcliw "can you see my screen?" - should respond in **4-10 seconds** now!

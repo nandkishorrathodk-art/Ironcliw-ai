@@ -1,7 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
-    <title>Clear JARVIS Cache</title>
+    <title>Clear Ironcliw Cache</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -30,7 +30,7 @@
     </style>
 </head>
 <body>
-    <h1>JARVIS Cache Manager</h1>
+    <h1>Ironcliw Cache Manager</h1>
     <button onclick="clearCache()">Clear Config Cache</button>
     <button onclick="showCache()">Show Cached Config</button>
     
@@ -41,7 +41,7 @@
         function clearCache() {
             localStorage.removeItem('jarvis_dynamic_config');
             document.getElementById('cache-display').textContent = 'Cache cleared!';
-            alert('JARVIS config cache has been cleared!');
+            alert('Ironcliw config cache has been cleared!');
         }
         
         function showCache() {

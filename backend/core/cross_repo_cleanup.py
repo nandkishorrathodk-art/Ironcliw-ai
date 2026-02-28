@@ -1,9 +1,9 @@
-"""
-Cross-Repo Cleanup Coordinator v1.0 - Unified Resource Management Across JARVIS Ecosystem
+﻿"""
+Cross-Repo Cleanup Coordinator v1.0 - Unified Resource Management Across Ironcliw Ecosystem
 ===========================================================================================
 
-This module provides centralized cleanup coordination across the JARVIS ecosystem:
-- JARVIS (main AI agent)
+This module provides centralized cleanup coordination across the Ironcliw ecosystem:
+- Ironcliw (main AI agent)
 - jarvis-prime (local LLM inference)
 - reactor-core (training pipeline)
 
@@ -27,7 +27,7 @@ SOLUTION:
     4. Emergency cleanup scans for and removes orphaned resources
 
 Usage:
-    # In any JARVIS repo:
+    # In any Ironcliw repo:
     from backend.core.cross_repo_cleanup import (
         register_resource,
         unregister_resource,
@@ -40,7 +40,7 @@ Usage:
     # Cleanup during shutdown
     await cleanup_all_resources()
 
-Author: JARVIS System  
+Author: Ironcliw System  
 Version: 1.0.0
 """
 
@@ -67,13 +67,13 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-JARVIS_HOME = Path.home() / ".jarvis"
-REGISTRY_FILE = JARVIS_HOME / "resource_registry.json"
+Ironcliw_HOME = Path.home() / ".jarvis"
+REGISTRY_FILE = Ironcliw_HOME / "resource_registry.json"
 CLEANUP_SOCKET = "/tmp/jarvis_cleanup_coordinator.sock"
-REGISTRY_LOCK_FILE = JARVIS_HOME / "resource_registry.lock"
-CLEANUP_TIMEOUT = float(os.getenv("JARVIS_CLEANUP_TIMEOUT", "10.0"))
+REGISTRY_LOCK_FILE = Ironcliw_HOME / "resource_registry.lock"
+CLEANUP_TIMEOUT = float(os.getenv("Ironcliw_CLEANUP_TIMEOUT", "10.0"))
 
-# Known JARVIS repos
+# Known Ironcliw repos
 KNOWN_REPOS = ["jarvis", "jarvis-prime", "reactor-core"]
 
 # Resource types that need special cleanup
@@ -370,10 +370,10 @@ class ResourceRegistry:
 
 class CrossRepoCleanupCoordinator:
     """
-    Coordinates cleanup across the JARVIS ecosystem.
+    Coordinates cleanup across the Ironcliw ecosystem.
     
     Features:
-    - Tracks resources across all JARVIS repos
+    - Tracks resources across all Ironcliw repos
     - Provides unified cleanup protocol
     - Handles orphaned resources from crashed processes
     - Supports both sync and async cleanup
@@ -410,7 +410,7 @@ class CrossRepoCleanupCoordinator:
         logger.info(f"[CrossRepoCleanup] Initialized for repo: {self._repo_name}")
     
     def _detect_repo_name(self) -> str:
-        """Auto-detect which JARVIS repo we're running in."""
+        """Auto-detect which Ironcliw repo we're running in."""
         cwd = Path.cwd()
         script_path = Path(__file__).resolve()
         

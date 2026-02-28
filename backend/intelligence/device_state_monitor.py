@@ -1,4 +1,4 @@
-"""
+﻿"""
 Device State Monitor - Physical State Intelligence for Voice Authentication
 
 Tracks physical device state to add contextual intelligence for multi-factor
@@ -15,7 +15,7 @@ Part of the multi-factor authentication system integrating with:
 - Situational Awareness Intelligence (SAI)
 - Contextual Awareness Intelligence (CAI)
 
-Author: JARVIS AI Agent
+Author: Ironcliw AI Agent
 Version: 5.0.0
 """
 
@@ -144,8 +144,8 @@ class DeviceStateMonitor:
         self.config = config or DeviceStateConfig.from_env()
 
         # Determine storage directory
-        if os.getenv('JARVIS_DATA_DIR'):
-            self.data_dir = Path(os.getenv('JARVIS_DATA_DIR')) / 'intelligence'
+        if os.getenv('Ironcliw_DATA_DIR'):
+            self.data_dir = Path(os.getenv('Ironcliw_DATA_DIR')) / 'intelligence'
         else:
             self.data_dir = Path.home() / '.jarvis' / 'intelligence'
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -848,7 +848,7 @@ if __name__ == "__main__":
         monitor = await get_device_monitor()
 
         print("\n" + "="*80)
-        print("JARVIS Device State Monitor - Test")
+        print("Ironcliw Device State Monitor - Test")
         print("="*80 + "\n")
 
         # Get current context

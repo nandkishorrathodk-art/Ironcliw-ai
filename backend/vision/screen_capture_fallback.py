@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Enhanced screen capture with optional Claude Vision intelligence
 This is where your revolutionary insight comes to life!
@@ -132,7 +132,7 @@ def analyze_with_claude_vision(screenshot_array,
         client = Anthropic(api_key=api_key)
         
         # Build intelligent prompt
-        prompt = f"""You are JARVIS, an AI assistant with vision capabilities.
+        prompt = f"""You are Ironcliw, an AI assistant with vision capabilities.
         Analyze this screenshot and answer: {query}
         
         Be specific, helpful, and focus on what's most relevant to the user's question.

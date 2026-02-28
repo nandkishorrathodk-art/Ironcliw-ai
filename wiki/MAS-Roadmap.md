@@ -1,12 +1,12 @@
-# Multi-Agent System (MAS) Roadmap
+﻿# Multi-Agent System (MAS) Roadmap
 
-Future development roadmap for JARVIS Multi-Agent System expansion.
+Future development roadmap for Ironcliw Multi-Agent System expansion.
 
 ---
 
 ## Overview
 
-JARVIS currently implements a **60+ agent hierarchical system**. This roadmap outlines the evolution to a full **Neural Mesh Architecture** with advanced multi-agent coordination and autonomous capabilities.
+Ironcliw currently implements a **60+ agent hierarchical system**. This roadmap outlines the evolution to a full **Neural Mesh Architecture** with advanced multi-agent coordination and autonomous capabilities.
 
 ---
 
@@ -349,7 +349,7 @@ JARVIS currently implements a **60+ agent hierarchical system**. This roadmap ou
 
 ## Conclusion
 
-The JARVIS MAS roadmap represents a **12-month journey** from intelligent hybrid architecture to fully autonomous AI assistant. Each phase builds upon the last, creating a robust, scalable, and intelligent system.
+The Ironcliw MAS roadmap represents a **12-month journey** from intelligent hybrid architecture to fully autonomous AI assistant. Each phase builds upon the last, creating a robust, scalable, and intelligent system.
 
 **Current Progress:** Phase 2.5 Complete (40% overall)
 **Next Milestone:** Phase 3 (ML Models, Q1 2025)
@@ -359,8 +359,8 @@ The JARVIS MAS roadmap represents a **12-month journey** from intelligent hybrid
 
 **Related Documentation:**
 - [Architecture & Design](Architecture-&-Design.md) - Current architecture
-- [JARVIS_MULTI_AGENT_SYSTEM_DOCUMENTATION.md](../JARVIS_MULTI_AGENT_SYSTEM_DOCUMENTATION.md) - MAS details
-- [JARVIS_NEURAL_MESH_ARCHITECTURE.md](../JARVIS_NEURAL_MESH_ARCHITECTURE.md) - Neural mesh vision
+- [Ironcliw_MULTI_AGENT_SYSTEM_DOCUMENTATION.md](../Ironcliw_MULTI_AGENT_SYSTEM_DOCUMENTATION.md) - MAS details
+- [Ironcliw_NEURAL_MESH_ARCHITECTURE.md](../Ironcliw_NEURAL_MESH_ARCHITECTURE.md) - Neural mesh vision
 
 ---
 

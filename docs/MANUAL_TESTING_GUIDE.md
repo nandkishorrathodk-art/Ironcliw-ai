@@ -1,6 +1,6 @@
-# Manual Testing Guide: Feedback Learning & Command Safety
+﻿# Manual Testing Guide: Feedback Learning & Command Safety
 
-**How to verify the systems work when running JARVIS**
+**How to verify the systems work when running Ironcliw**
 
 ---
 
@@ -20,7 +20,7 @@ python -m backend.examples.live_feedback_test
 ✓ Terminal Intelligence: PASSED
 ✓ Persistence: PASSED
 ✓ Integration: PASSED
-ℹ Live Jarvis: SKIPPED (JARVIS not running)
+ℹ Live Jarvis: SKIPPED (Ironcliw not running)
 
 Results: 5/6 passed, 0 failed, 1 skipped
 ✨ SUCCESS! All tests passed!
@@ -217,40 +217,40 @@ Suggestions: 1
 
 ---
 
-## Test with Live JARVIS
+## Test with Live Ironcliw
 
 ### Prerequisites
-1. JARVIS must be running
+1. Ironcliw must be running
 2. Vision system must be enabled
 3. Terminal monitoring must be active
 
 ### Scenario 1: Terminal Error Detection & Fix
 
-#### Step 1: Start JARVIS
+#### Step 1: Start Ironcliw
 ```bash
 # In terminal 1
-cd /path/to/JARVIS-AI-Agent
+cd /path/to/Ironcliw-AI-Agent
 python backend/main.py
 ```
 
 #### Step 2: Trigger a Terminal Error
 ```bash
-# In terminal 2 (make sure JARVIS can see it)
+# In terminal 2 (make sure Ironcliw can see it)
 cd /tmp
 python -c "import nonexistent_module"
 ```
 
-**Expected JARVIS behavior:**
-1. JARVIS detects the terminal error via OCR
+**Expected Ironcliw behavior:**
+1. Ironcliw detects the terminal error via OCR
 2. Creates a pending question context
 3. May proactively say: "I noticed an error in your terminal. Would you like me to analyze it?"
 
-#### Step 3: Respond to JARVIS
+#### Step 3: Respond to Ironcliw
 ```
 You: "yes" or "what does it say?"
 ```
 
-**Expected JARVIS response:**
+**Expected Ironcliw response:**
 ```
 I found a ModuleNotFoundError in your terminal.
 
@@ -284,7 +284,7 @@ cat ~/.jarvis/learning/feedback.json | python -m json.tool | tail -30
 #### Repeat Error Detection 5+ Times
 
 1. Trigger terminal error
-2. JARVIS asks if you want help
+2. Ironcliw asks if you want help
 3. You say: "no" or "not now"
 4. Repeat 5-7 times
 
@@ -331,11 +331,11 @@ Adjusted importance: 0.00
 
 ### Scenario 3: Command Safety in Action
 
-If JARVIS ever suggests running a command:
+If Ironcliw ever suggests running a command:
 
 #### Monitor Safety Classification
 ```bash
-# Watch JARVIS logs
+# Watch Ironcliw logs
 tail -f backend/logs/jarvis.log | grep -E "(SAFETY|COMMAND)"
 ```
 
@@ -348,7 +348,7 @@ tail -f backend/logs/jarvis.log | grep -E "(SAFETY|COMMAND)"
 
 #### Check for Safety Warnings
 
-If JARVIS suggests a RED tier command, you should see:
+If Ironcliw suggests a RED tier command, you should see:
 ```
 ⚠️ Warning: This command is potentially destructive!
 Impact: [description of what it will do]
@@ -406,7 +406,7 @@ mkdir -p ~/.jarvis/learning/
 python -m backend.examples.live_feedback_test
 ```
 
-### Issue: JARVIS doesn't detect terminal errors
+### Issue: Ironcliw doesn't detect terminal errors
 
 **Check:**
 1. Is vision system enabled?
@@ -414,7 +414,7 @@ python -m backend.examples.live_feedback_test
 3. Is OCR working?
 
 ```bash
-# Check JARVIS logs
+# Check Ironcliw logs
 tail -f backend/logs/jarvis.log | grep -i "vision\|ocr\|terminal"
 ```
 
@@ -468,7 +468,7 @@ print(f"Risk categories: {[r.value for r in result.risk_categories]}")
 4. **Integration:**
    - Live test passes (5/6 or 6/6)
    - Demo runs without errors
-   - Feedback persists across JARVIS restarts
+   - Feedback persists across Ironcliw restarts
 
 ---
 

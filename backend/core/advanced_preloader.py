@@ -1,4 +1,4 @@
-"""
+﻿"""
 Advanced ML-Based Component Preloader
 ======================================
 
@@ -18,7 +18,7 @@ Performance:
 - Prediction latency: <1ms (CoreML Neural Engine)
 - Memory overhead: <200MB
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 Date: 2025-10-05
 """

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Cross-Space Context Awareness System
 Analyzes relationships and context across multiple desktop spaces
@@ -280,7 +280,7 @@ class CrossSpaceContextAnalyzer:
             title = window.get('kCGWindowName', '').lower()
 
             if 'jarvis' in title:
-                return 'Working on JARVIS AI system'
+                return 'Working on Ironcliw AI system'
             elif '.py' in title:
                 return f'Python development: {title.split("/")[-1] if "/" in title else title}'
             elif 'terminal' in title or 'iterm' in title:
@@ -354,7 +354,7 @@ class CrossSpaceContextAnalyzer:
 
         # Add specific app context
         if 'jarvis' in ' '.join(apps).lower():
-            base += ' (JARVIS AI development)'
+            base += ' (Ironcliw AI development)'
         elif 'code' in ' '.join(apps).lower() or 'cursor' in ' '.join(apps).lower():
             base += ' (active coding session)'
 

@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Startup Progress WebSocket API v2.0
 ===================================
 
-Real-time broadcast of JARVIS startup/restart progress to loading page.
+Real-time broadcast of Ironcliw startup/restart progress to loading page.
 NOW INTEGRATED with UnifiedStartupProgressHub for synchronized state.
 
 This API no longer maintains its own progress state - it delegates

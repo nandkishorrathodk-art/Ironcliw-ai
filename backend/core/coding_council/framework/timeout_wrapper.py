@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Timeout Wrapper - Gap #8
 ================================
 
@@ -9,7 +9,7 @@ Comprehensive timeout management:
 - Progress-aware timeouts
 - Graceful timeout handling
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

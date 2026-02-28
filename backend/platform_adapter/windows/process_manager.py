@@ -1,5 +1,5 @@
-"""
-JARVIS Windows Process Manager
+﻿"""
+Ironcliw Windows Process Manager
 ═══════════════════════════════════════════════════════════════════════════════
 
 Windows process management using Task Scheduler and WMI.
@@ -18,7 +18,7 @@ Windows Process Management:
 
 Replaces macOS launchd with Windows Task Scheduler.
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0 (Windows Port)
 """
 from __future__ import annotations
@@ -229,12 +229,12 @@ class WindowsProcessManager(BaseProcessManager):
     def schedule_startup(self, command: str, name: str) -> bool:
         """Schedule process to start on system boot using Task Scheduler"""
         try:
-            task_name = f"JARVIS_{name}"
+            task_name = f"Ironcliw_{name}"
             
             xml_content = f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>JARVIS startup task: {name}</Description>
+    <Description>Ironcliw startup task: {name}</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -288,7 +288,7 @@ class WindowsProcessManager(BaseProcessManager):
     def unschedule_startup(self, name: str) -> bool:
         """Remove from startup schedule"""
         try:
-            task_name = f"JARVIS_{name}"
+            task_name = f"Ironcliw_{name}"
             
             result = subprocess.run(
                 ['schtasks', '/Delete', '/TN', task_name, '/F'],

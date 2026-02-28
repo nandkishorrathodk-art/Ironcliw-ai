@@ -1,10 +1,10 @@
-"""
+﻿"""
 Cross-Repository Data Bridge v1.0
 =================================
 
-Provides seamless data synchronization and streaming across the JARVIS Trinity:
-- JARVIS (Body) - Execution and interaction data
-- JARVIS Prime (Mind) - Reasoning and planning data
+Provides seamless data synchronization and streaming across the Ironcliw Trinity:
+- Ironcliw (Body) - Execution and interaction data
+- Ironcliw Prime (Mind) - Reasoning and planning data
 - Reactor Core (Learning) - Training and model data
 
 Features:
@@ -62,10 +62,10 @@ DataT = TypeVar("DataT", bound="CrossRepoDataPacket")
 
 class DataFlowDirection(Enum):
     """Direction of data flow between repos."""
-    JARVIS_TO_PRIME = "jarvis_to_prime"
-    PRIME_TO_JARVIS = "prime_to_jarvis"
-    JARVIS_TO_REACTOR = "jarvis_to_reactor"
-    REACTOR_TO_JARVIS = "reactor_to_jarvis"
+    Ironcliw_TO_PRIME = "jarvis_to_prime"
+    PRIME_TO_Ironcliw = "prime_to_jarvis"
+    Ironcliw_TO_REACTOR = "jarvis_to_reactor"
+    REACTOR_TO_Ironcliw = "reactor_to_jarvis"
     PRIME_TO_REACTOR = "prime_to_reactor"
     REACTOR_TO_PRIME = "reactor_to_prime"
     BROADCAST = "broadcast"  # All repos
@@ -229,7 +229,7 @@ class CrossRepoDataPacket:
     # Source and destination
     source_repo: str = "jarvis"
     target_repo: str = "prime"
-    direction: DataFlowDirection = DataFlowDirection.JARVIS_TO_PRIME
+    direction: DataFlowDirection = DataFlowDirection.Ironcliw_TO_PRIME
 
     # Data
     data_type: str = "generic"
@@ -788,7 +788,7 @@ class CrossRepoDataBridge:
 
     def __init__(self, config: Optional[CrossRepoDataConfig] = None):
         self.config = config or CrossRepoDataConfig()
-        self._node_id = os.getenv("JARVIS_NODE_ID", f"node_{uuid.uuid4().hex[:8]}")
+        self._node_id = os.getenv("Ironcliw_NODE_ID", f"node_{uuid.uuid4().hex[:8]}")
 
         # Queues
         self._outbound_queue = PriorityDataQueue(self.config.max_queue_size)

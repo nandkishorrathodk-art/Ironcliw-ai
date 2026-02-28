@@ -1,10 +1,10 @@
-"""
-JARVIS Prime Client - Cognitive Mind Integration.
+﻿"""
+Ironcliw Prime Client - Cognitive Mind Integration.
 ==================================================
 
 v84.0 - Advanced Trinity Integration with Intelligent Routing
 
-Provides robust communication with JARVIS Prime (the cognitive mind
+Provides robust communication with Ironcliw Prime (the cognitive mind
 of the Trinity architecture).
 
 Features:
@@ -29,7 +29,7 @@ API Compatibility:
         POST /api/inference          - Run inference
         GET  /api/health             - Health check
 
-Author: JARVIS Trinity v84.0
+Author: Ironcliw Trinity v84.0
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ async def _get_ultra_coordinator() -> Optional[Any]:
     global _ultra_coordinator, _ultra_coord_lock
 
     # Skip if disabled
-    if os.getenv("JARVIS_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
+    if os.getenv("Ironcliw_ENABLE_ULTRA_COORD", "true").lower() not in ("true", "1", "yes"):
         return None
 
     if _ultra_coordinator is not None:
@@ -81,10 +81,10 @@ async def _get_ultra_coordinator() -> Optional[Any]:
         try:
             from backend.core.trinity_integrator import get_ultra_coordinator
             _ultra_coordinator = await get_ultra_coordinator()
-            logger.info("[JARVISPrime] v88.0 Ultra coordinator initialized")
+            logger.info("[IroncliwPrime] v88.0 Ultra coordinator initialized")
             return _ultra_coordinator
         except Exception as e:
-            logger.debug(f"[JARVISPrime] v88.0 Ultra coordinator not available: {e}")
+            logger.debug(f"[IroncliwPrime] v88.0 Ultra coordinator not available: {e}")
             return None
 
 # Import base client components
@@ -192,14 +192,14 @@ class InferenceSemanticCache:
         Initialize the inference cache.
         
         Args:
-            max_entries: Max cache entries (default: JARVIS_INFERENCE_CACHE_SIZE or 1000)
-            ttl_seconds: Entry TTL in seconds (default: JARVIS_INFERENCE_CACHE_TTL or 3600)
-            enabled: Enable caching (default: JARVIS_INFERENCE_CACHE_ENABLED or True)
+            max_entries: Max cache entries (default: Ironcliw_INFERENCE_CACHE_SIZE or 1000)
+            ttl_seconds: Entry TTL in seconds (default: Ironcliw_INFERENCE_CACHE_TTL or 3600)
+            enabled: Enable caching (default: Ironcliw_INFERENCE_CACHE_ENABLED or True)
             persist_path: Optional path for cache persistence
         """
-        self.max_entries = max_entries or _env_int("JARVIS_INFERENCE_CACHE_SIZE", 1000)
-        self.ttl_seconds = ttl_seconds or _env_float("JARVIS_INFERENCE_CACHE_TTL", 3600.0)
-        self.enabled = enabled if enabled is not None else _env_bool("JARVIS_INFERENCE_CACHE_ENABLED", True)
+        self.max_entries = max_entries or _env_int("Ironcliw_INFERENCE_CACHE_SIZE", 1000)
+        self.ttl_seconds = ttl_seconds or _env_float("Ironcliw_INFERENCE_CACHE_TTL", 3600.0)
+        self.enabled = enabled if enabled is not None else _env_bool("Ironcliw_INFERENCE_CACHE_ENABLED", True)
         self.persist_path = persist_path
         
         # LRU cache using dict (Python 3.7+ maintains insertion order)
@@ -417,7 +417,7 @@ async def get_inference_cache() -> InferenceSemanticCache:
     async with _inference_cache_lock:
         if _inference_cache is None:
             persist_path = None
-            if _env_bool("JARVIS_INFERENCE_CACHE_PERSIST", True):
+            if _env_bool("Ironcliw_INFERENCE_CACHE_PERSIST", True):
                 persist_path = Path.home() / ".jarvis" / "cache" / "inference_cache.json"
             _inference_cache = InferenceSemanticCache(persist_path=persist_path)
         return _inference_cache
@@ -431,7 +431,7 @@ class ServiceDiscoveryMethod(Enum):
     """Methods for discovering J-Prime service."""
     HEARTBEAT_FILE = auto()  # Read from ~/.jarvis/trinity/components/jarvis_prime.json
     HTTP_PROBE = auto()       # Probe known ports
-    ENVIRONMENT = auto()      # From JARVIS_PRIME_URL
+    ENVIRONMENT = auto()      # From Ironcliw_PRIME_URL
     MULTICAST = auto()        # Future: mDNS/Bonjour
 
 
@@ -469,7 +469,7 @@ class IntelligentServiceDiscovery:
     # Known ports to probe (ordered by preference)
     # v192.2: Changed default from 8000 to 8001 to avoid conflict with unified_supervisor
     PROBE_PORTS: List[int] = [
-        int(os.getenv("JARVIS_PRIME_PORT", "8001")),  # Default/configured
+        int(os.getenv("Ironcliw_PRIME_PORT", "8001")),  # Default/configured
         8001,  # Standard J-Prime port (v192.2)
         8002,  # First fallback
         8003,  # v228.0: Extended fallback range
@@ -491,7 +491,7 @@ class IntelligentServiceDiscovery:
         self._discovery_lock = asyncio.Lock()
         self._last_discovery_time: float = 0.0
         self._discovery_interval: float = float(os.getenv(
-            "JARVIS_PRIME_DISCOVERY_INTERVAL", "30.0"
+            "Ironcliw_PRIME_DISCOVERY_INTERVAL", "30.0"
         ))
 
         # Trinity directory for heartbeat files
@@ -502,15 +502,15 @@ class IntelligentServiceDiscovery:
 
         # v134.0: Auto-recovery settings
         self._auto_recovery_enabled = os.getenv(
-            "JARVIS_PRIME_AUTO_RECOVERY", "true"
+            "Ironcliw_PRIME_AUTO_RECOVERY", "true"
         ).lower() in ("true", "1", "yes")
         self._last_recovery_attempt: float = 0.0
         self._recovery_cooldown: float = float(os.getenv(
-            "JARVIS_PRIME_RECOVERY_COOLDOWN", "60.0"  # Don't retry recovery within 60s
+            "Ironcliw_PRIME_RECOVERY_COOLDOWN", "60.0"  # Don't retry recovery within 60s
         ))
         self._consecutive_failures: int = 0
         self._max_consecutive_failures: int = int(os.getenv(
-            "JARVIS_PRIME_MAX_FAILURES_BEFORE_RECOVERY", "3"
+            "Ironcliw_PRIME_MAX_FAILURES_BEFORE_RECOVERY", "3"
         ))
         self._startup_callback: Optional[Callable[[], Awaitable[bool]]] = None
 
@@ -667,8 +667,8 @@ class IntelligentServiceDiscovery:
             return None
 
     async def _discover_from_environment(self) -> Optional[DiscoveredService]:
-        """Discover from JARVIS_PRIME_URL environment variable."""
-        url = os.getenv("JARVIS_PRIME_URL")
+        """Discover from Ironcliw_PRIME_URL environment variable."""
+        url = os.getenv("Ironcliw_PRIME_URL")
         if not url:
             return None
 
@@ -744,7 +744,7 @@ class IntelligentServiceDiscovery:
         # Get unique ports to probe
         # v192.2: Changed default from 8000 to 8001
         probe_ports = list(dict.fromkeys([
-            int(os.getenv("JARVIS_PRIME_PORT", "8001")),
+            int(os.getenv("Ironcliw_PRIME_PORT", "8001")),
             8001, 8000, 8002, 11434
         ]))
 
@@ -963,7 +963,7 @@ class InferenceResponse:
 
 @dataclass
 class CognitiveTask:
-    """A cognitive task to delegate to JARVIS Prime."""
+    """A cognitive task to delegate to Ironcliw Prime."""
     task_id: str
     task_type: CognitiveTaskType
     description: str
@@ -1010,82 +1010,82 @@ class ModelInfo:
 
 
 # =============================================================================
-# JARVIS Prime Client Configuration
+# Ironcliw Prime Client Configuration
 # =============================================================================
 
 @dataclass
-class JARVISPrimeConfig(ClientConfig):
+class IroncliwPrimeConfig(ClientConfig):
     """
-    v84.0: Configuration for JARVIS Prime client.
+    v84.0: Configuration for Ironcliw Prime client.
     v192.2: Changed default port from 8000 to 8001 to avoid conflicts.
 
     NOTE: base_url defaults to port 8001 (J-Prime standard port).
-    Set JARVIS_PRIME_URL environment variable to override.
+    Set Ironcliw_PRIME_URL environment variable to override.
     """
     name: str = "jarvis_prime"
     # v192.2: Changed from 8000 to 8001 to avoid conflict with jarvis-body
     base_url: str = field(default_factory=lambda: _env_str(
-        "JARVIS_PRIME_URL", "http://localhost:8001"
+        "Ironcliw_PRIME_URL", "http://localhost:8001"
     ))
     timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_PRIME_TIMEOUT", 60.0
+        "Ironcliw_PRIME_TIMEOUT", 60.0
     ))
     # Inference settings
     default_max_tokens: int = field(default_factory=lambda: _env_int(
-        "JARVIS_PRIME_DEFAULT_MAX_TOKENS", 1024
+        "Ironcliw_PRIME_DEFAULT_MAX_TOKENS", 1024
     ))
     default_temperature: float = field(default_factory=lambda: _env_float(
-        "JARVIS_PRIME_DEFAULT_TEMPERATURE", 0.7
+        "Ironcliw_PRIME_DEFAULT_TEMPERATURE", 0.7
     ))
     default_top_p: float = field(default_factory=lambda: _env_float(
-        "JARVIS_PRIME_DEFAULT_TOP_P", 0.9
+        "Ironcliw_PRIME_DEFAULT_TOP_P", 0.9
     ))
     # Streaming
     stream_buffer_size: int = field(default_factory=lambda: _env_int(
-        "JARVIS_PRIME_STREAM_BUFFER", 16
+        "Ironcliw_PRIME_STREAM_BUFFER", 16
     ))
     # Model swap
     model_swap_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_PRIME_SWAP_TIMEOUT", 120.0
+        "Ironcliw_PRIME_SWAP_TIMEOUT", 120.0
     ))
     # v84.0: Service discovery settings
     enable_discovery: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_PRIME_ENABLE_DISCOVERY", True
+        "Ironcliw_PRIME_ENABLE_DISCOVERY", True
     ))
     discovery_interval: float = field(default_factory=lambda: _env_float(
-        "JARVIS_PRIME_DISCOVERY_INTERVAL", 30.0
+        "Ironcliw_PRIME_DISCOVERY_INTERVAL", 30.0
     ))
     # v84.0: API format preference
     api_format: str = field(default_factory=lambda: _env_str(
-        "JARVIS_PRIME_API_FORMAT", "auto"  # "auto", "openai", "custom"
+        "Ironcliw_PRIME_API_FORMAT", "auto"  # "auto", "openai", "custom"
     ))
     # Fallback
     fallback_to_cloud: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_PRIME_FALLBACK_TO_CLOUD", True
+        "Ironcliw_PRIME_FALLBACK_TO_CLOUD", True
     ))
     cloud_api_url: str = field(default_factory=lambda: _env_str(
-        "JARVIS_PRIME_CLOUD_URL", ""
+        "Ironcliw_PRIME_CLOUD_URL", ""
     ))
     # v84.0: Connection pool settings
     pool_size: int = field(default_factory=lambda: _env_int(
-        "JARVIS_PRIME_POOL_SIZE", 3
+        "Ironcliw_PRIME_POOL_SIZE", 3
     ))
     # v84.0: Retry settings
     max_retries: int = field(default_factory=lambda: _env_int(
-        "JARVIS_PRIME_MAX_RETRIES", 3
+        "Ironcliw_PRIME_MAX_RETRIES", 3
     ))
     retry_base_delay: float = field(default_factory=lambda: _env_float(
-        "JARVIS_PRIME_RETRY_DELAY", 0.5
+        "Ironcliw_PRIME_RETRY_DELAY", 0.5
     ))
 
 
 # =============================================================================
-# JARVIS Prime Client
+# Ironcliw Prime Client
 # =============================================================================
 
-class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
+class IroncliwPrimeClient(TrinityBaseClient[Dict[str, Any]]):
     """
-    v84.0: Advanced client for JARVIS Prime (cognitive mind).
+    v84.0: Advanced client for Ironcliw Prime (cognitive mind).
 
     Features:
     - Intelligent service discovery with fallback
@@ -1100,11 +1100,11 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
 
     def __init__(
         self,
-        config: Optional[JARVISPrimeConfig] = None,
+        config: Optional[IroncliwPrimeConfig] = None,
         circuit_config: Optional[CircuitBreakerConfig] = None,
         retry_config: Optional[RetryConfig] = None,
     ):
-        self._prime_config = config or JARVISPrimeConfig()
+        self._prime_config = config or IroncliwPrimeConfig()
 
         super().__init__(
             config=self._prime_config,
@@ -1130,7 +1130,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         self._session = None
 
         logger.info(
-            f"[JARVISPrime] Client initialized (discovery={'enabled' if self._prime_config.enable_discovery else 'disabled'})"
+            f"[IroncliwPrime] Client initialized (discovery={'enabled' if self._prime_config.enable_discovery else 'disabled'})"
         )
 
     async def _get_session(self):
@@ -1149,7 +1149,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                     timeout=aiohttp.ClientTimeout(total=self._prime_config.timeout)
                 )
             except ImportError:
-                logger.warning("[JARVISPrime] aiohttp not available")
+                logger.warning("[IroncliwPrime] aiohttp not available")
                 raise
         return self._session
 
@@ -1160,19 +1160,19 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                 Invincible Node is active so clients route to cloud VM.
 
         Priority:
-        1. Hollow client mode (JARVIS_HOLLOW_CLIENT_ACTIVE=true) - always use current env URL
+        1. Hollow client mode (Ironcliw_HOLLOW_CLIENT_ACTIVE=true) - always use current env URL
         2. Discovered service (if enabled and healthy)
-        3. Environment variable JARVIS_PRIME_URL (re-read at request time)
+        3. Environment variable Ironcliw_PRIME_URL (re-read at request time)
         4. Config base_url (fallback)
         """
         # v219.0: ROOT CAUSE FIX - When hollow client is active, always read from env
         # This ensures that when Invincible Node becomes ready, we use the cloud URL
-        hollow_client_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "").lower() == "true"
+        hollow_client_active = os.environ.get("Ironcliw_HOLLOW_CLIENT_ACTIVE", "").lower() == "true"
         if hollow_client_active:
             # In hollow client mode, ALWAYS use the current env URL (set by unified_supervisor)
-            hollow_url = os.environ.get("JARVIS_PRIME_URL", "")
+            hollow_url = os.environ.get("Ironcliw_PRIME_URL", "")
             if hollow_url:
-                logger.debug(f"[JARVISPrime] v219.0 Hollow client active, using: {hollow_url}")
+                logger.debug(f"[IroncliwPrime] v219.0 Hollow client active, using: {hollow_url}")
                 return hollow_url
         
         # Standard discovery flow
@@ -1184,16 +1184,16 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                 return service.url
 
         # v219.0: Also check env at request time (not just at init) for dynamic URL updates
-        env_url = os.environ.get("JARVIS_PRIME_URL", "")
+        env_url = os.environ.get("Ironcliw_PRIME_URL", "")
         if env_url and env_url != self._prime_config.base_url:
-            logger.debug(f"[JARVISPrime] v219.0 Using updated env URL: {env_url}")
+            logger.debug(f"[IroncliwPrime] v219.0 Using updated env URL: {env_url}")
             return env_url
 
         return self._prime_config.base_url
 
     async def _health_check(self) -> bool:
         """
-        Check if JARVIS Prime is healthy with robust error reporting.
+        Check if Ironcliw Prime is healthy with robust error reporting.
 
         v89.0: Enhanced with:
         - Configurable timeout via PRIME_HEALTH_CHECK_TIMEOUT env var
@@ -1207,7 +1207,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         try:
             import aiohttp
         except ImportError:
-            logger.warning("[JARVISPrime] aiohttp not installed - health check skipped")
+            logger.warning("[IroncliwPrime] aiohttp not installed - health check skipped")
             return False
 
         try:
@@ -1230,32 +1230,32 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                         timeout=aiohttp.ClientTimeout(total=health_timeout)
                     ) as response:
                         if response.status == 200:
-                            logger.debug(f"[JARVISPrime] Health check passed: {endpoint}")
+                            logger.debug(f"[IroncliwPrime] Health check passed: {endpoint}")
                             return True
                         else:
                             logger.debug(
-                                f"[JARVISPrime] Health check {endpoint}: status {response.status}"
+                                f"[IroncliwPrime] Health check {endpoint}: status {response.status}"
                             )
                 except aiohttp.ClientConnectorError as e:
                     # Connection refused, host unreachable, etc.
                     last_error = f"Connection error: {e}"
-                    logger.debug(f"[JARVISPrime] Health check {endpoint}: {last_error}")
+                    logger.debug(f"[IroncliwPrime] Health check {endpoint}: {last_error}")
                 except asyncio.TimeoutError:
                     last_error = f"Timeout after {health_timeout}s"
-                    logger.debug(f"[JARVISPrime] Health check {endpoint}: {last_error}")
+                    logger.debug(f"[IroncliwPrime] Health check {endpoint}: {last_error}")
                 except Exception as e:
                     last_error = str(e)
-                    logger.debug(f"[JARVISPrime] Health check {endpoint}: {last_error}")
+                    logger.debug(f"[IroncliwPrime] Health check {endpoint}: {last_error}")
 
             # v89.0: Log the actual failure reason instead of silent return
             if last_error:
                 logger.warning(
-                    f"[JARVISPrime] All health endpoints failed at {base_url}: {last_error}"
+                    f"[IroncliwPrime] All health endpoints failed at {base_url}: {last_error}"
                 )
             return False
 
         except Exception as e:
-            logger.warning(f"[JARVISPrime] Health check setup failed: {e}")
+            logger.warning(f"[IroncliwPrime] Health check setup failed: {e}")
             return False
 
     async def _execute_request(
@@ -1276,7 +1276,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         # v88.0: Use ultra coordinator protection if available
         ultra_coord = await _get_ultra_coordinator()
         if ultra_coord:
-            timeout = float(os.getenv("JARVIS_PRIME_REQUEST_TIMEOUT", "60.0"))
+            timeout = float(os.getenv("Ironcliw_PRIME_REQUEST_TIMEOUT", "60.0"))
             success, result, metadata = await ultra_coord.execute_with_protection(
                 component="jarvis_prime",
                 operation=lambda: self._execute_request_internal(operation, payload),
@@ -1287,7 +1287,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
             elif not success:
                 error_msg = metadata.get("error", "Unknown protection error")
                 if metadata.get("circuit_open"):
-                    logger.warning(f"[JARVISPrime] v88.0 Circuit breaker open: {error_msg}")
+                    logger.warning(f"[IroncliwPrime] v88.0 Circuit breaker open: {error_msg}")
                     _service_discovery.invalidate()
                 raise RuntimeError(f"[v88.0] Protected request failed: {error_msg}")
 
@@ -1373,10 +1373,10 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                     delay = self._prime_config.retry_base_delay * (2 ** attempt)
                     jitter = delay * 0.1 * random.random()
                     await asyncio.sleep(delay + jitter)
-                    logger.debug(f"[JARVISPrime] Retry {attempt + 1}: {e}")
+                    logger.debug(f"[IroncliwPrime] Retry {attempt + 1}: {e}")
 
         # All retries failed
-        logger.warning(f"[JARVISPrime] Request failed after {self._prime_config.max_retries} retries: {last_error}")
+        logger.warning(f"[IroncliwPrime] Request failed after {self._prime_config.max_retries} retries: {last_error}")
         _service_discovery.invalidate()  # Mark service as unhealthy
         raise last_error
 
@@ -1450,7 +1450,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         use_cache: bool = True,
     ) -> Optional[InferenceResponse]:
         """
-        Run inference on JARVIS Prime.
+        Run inference on Ironcliw Prime.
         
         v220.0: Now supports semantic caching. If a cached result exists for
         the same prompt/system_prompt/model combination, it's returned instantly
@@ -1477,7 +1477,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
             cache = await get_inference_cache()
             cached_result = await cache.get(prompt, system_prompt, model_name)
             if cached_result:
-                logger.debug(f"[JARVISPrime] Cache HIT for prompt: {prompt[:50]}...")
+                logger.debug(f"[IroncliwPrime] Cache HIT for prompt: {prompt[:50]}...")
                 self._total_inferences += 1
                 return InferenceResponse(
                     text=cached_result["text"],
@@ -1538,7 +1538,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         system_prompt: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """
-        Stream inference tokens from JARVIS Prime.
+        Stream inference tokens from Ironcliw Prime.
 
         Yields:
             Token strings as they're generated
@@ -1568,7 +1568,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                         yield chunk.decode("utf-8")
 
         except Exception as e:
-            logger.warning(f"[JARVISPrime] Stream error: {e}")
+            logger.warning(f"[IroncliwPrime] Stream error: {e}")
 
     async def _cloud_inference(
         self,
@@ -1595,7 +1595,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
                     )
 
         except Exception as e:
-            logger.warning(f"[JARVISPrime] Cloud fallback failed: {e}")
+            logger.warning(f"[IroncliwPrime] Cloud fallback failed: {e}")
 
         return None
 
@@ -1666,20 +1666,20 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
 
                 if response.status == 200 and result.get("success"):
                     logger.info(
-                        f"[JARVISPrime] Model swap SUCCESS: "
+                        f"[IroncliwPrime] Model swap SUCCESS: "
                         f"{result.get('old_version')} → {result.get('new_version')}"
                     )
                     # Update model info
                     await self.get_model_status()
                 else:
                     logger.warning(
-                        f"[JARVISPrime] Model swap FAILED: {result.get('error')}"
+                        f"[IroncliwPrime] Model swap FAILED: {result.get('error')}"
                     )
 
                 return result
 
         except Exception as e:
-            logger.error(f"[JARVISPrime] Model swap error: {e}")
+            logger.error(f"[IroncliwPrime] Model swap error: {e}")
             return {"success": False, "error": str(e)}
 
         finally:
@@ -1694,7 +1694,7 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
         task: CognitiveTask,
     ) -> Optional[CognitiveResult]:
         """
-        Delegate a cognitive task to JARVIS Prime.
+        Delegate a cognitive task to Ironcliw Prime.
 
         Args:
             task: Cognitive task to delegate
@@ -1824,14 +1824,14 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
 # Singleton Access
 # =============================================================================
 
-_client: Optional[JARVISPrimeClient] = None
+_client: Optional[IroncliwPrimeClient] = None
 _client_lock: Optional[asyncio.Lock] = None  # v90.0: Lazy lock initialization
 
 
 async def get_jarvis_prime_client(
-    config: Optional[JARVISPrimeConfig] = None,
-) -> JARVISPrimeClient:
-    """Get or create the singleton JARVIS Prime client."""
+    config: Optional[IroncliwPrimeConfig] = None,
+) -> IroncliwPrimeClient:
+    """Get or create the singleton Ironcliw Prime client."""
     global _client, _client_lock
 
     # v90.0: Lazy lock creation to avoid "no event loop" errors at module load
@@ -1840,13 +1840,13 @@ async def get_jarvis_prime_client(
 
     async with _client_lock:
         if _client is None:
-            _client = JARVISPrimeClient(config)
+            _client = IroncliwPrimeClient(config)
             await _client.connect()
         return _client
 
 
 async def close_jarvis_prime_client() -> None:
-    """Close the JARVIS Prime client."""
+    """Close the Ironcliw Prime client."""
     global _client
 
     if _client:
@@ -1895,9 +1895,9 @@ __all__ = [
     "CognitiveResult",
     "ModelInfo",
     # Config
-    "JARVISPrimeConfig",
+    "IroncliwPrimeConfig",
     # Client
-    "JARVISPrimeClient",
+    "IroncliwPrimeClient",
     # Access
     "get_jarvis_prime_client",
     "close_jarvis_prime_client",

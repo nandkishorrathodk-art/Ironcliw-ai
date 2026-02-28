@@ -1,8 +1,8 @@
-# Display Connection Fix - Complete Documentation
+﻿# Display Connection Fix - Complete Documentation
 
 ## Executive Summary
 
-**Problem**: JARVIS was unable to connect to "Living Room TV" when commanded. The system appeared to be sending doubled coordinates (e.g., 2475, 15 instead of 1235, 10) and was timing out after 30 seconds.
+**Problem**: Ironcliw was unable to connect to "Living Room TV" when commanded. The system appeared to be sending doubled coordinates (e.g., 2475, 15 instead of 1235, 10) and was timing out after 30 seconds.
 
 **Root Causes Identified**:
 1. **Async/Sync Deadlock** (Primary issue)
@@ -472,7 +472,7 @@ python test_pyautogui_doubling.py
 
 ---
 
-### Test #2: JARVIS Integration (Before Fix)
+### Test #2: Ironcliw Integration (Before Fix)
 ```
 User: "living room tv"
 Result: "Stage processing timed out after 30.0s"
@@ -490,7 +490,7 @@ Result: "Stage processing timed out after 30.0s"
 
 ---
 
-### Test #3: JARVIS Integration (After Fix)
+### Test #3: Ironcliw Integration (After Fix)
 ```
 User: "living room tv"
 Result: ✅ Connected successfully!
@@ -553,17 +553,17 @@ Result: ✅ Connected successfully!
 
 ### Files to Remove (After Confirming Stability)
 
-1. `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/pyautogui_intercept.py`
+1. `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/pyautogui_intercept.py`
    - Only needed for debugging
    - Adds overhead to every mouse operation
 
-2. `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/debug_jarvis_coordinates.py`
+2. `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/debug_jarvis_coordinates.py`
    - Diagnostic script, no longer needed
 
-3. `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/diagnose_coordinate_doubling.py`
+3. `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/diagnose_coordinate_doubling.py`
    - Diagnostic script, no longer needed
 
-4. `/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/test_pyautogui_doubling.py`
+4. `/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/test_pyautogui_doubling.py`
    - Test script, can keep for future debugging
 
 5. Remove from `main.py` (lines 163-171):

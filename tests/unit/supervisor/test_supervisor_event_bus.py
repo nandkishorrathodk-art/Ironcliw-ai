@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for SupervisorEventBus, SupervisorEvent, and get_event_bus.
 
 Source under test: unified_supervisor.py starting at line 5940.
@@ -155,7 +155,7 @@ class TestSupervisorEventBus:
 
     def test_singleton_pattern(self, monkeypatch):
         """Two instantiations return the same object."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
         from unified_supervisor import SupervisorEventBus
         _reset_singletons()
 
@@ -238,8 +238,8 @@ class TestSupervisorEventBus:
         assert received[0].message == "async delivery"
 
     def test_emit_disabled_no_delivery(self, monkeypatch):
-        """When JARVIS_EVENT_BUS_ENABLED=false, emit() is a no-op."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "false")
+        """When Ironcliw_EVENT_BUS_ENABLED=false, emit() is a no-op."""
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "false")
         from unified_supervisor import SupervisorEventBus
         _reset_singletons()
 
@@ -255,8 +255,8 @@ class TestSupervisorEventBus:
 
     async def test_backpressure_drops_oldest(self, monkeypatch):
         """When the queue is full, the oldest event is dropped to make room."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "3")
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "3")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
         import unified_supervisor
         monkeypatch.setattr(unified_supervisor, "create_safe_task", asyncio.create_task)
@@ -296,8 +296,8 @@ class TestSupervisorEventBus:
 
     async def test_dropped_count_accurate(self, monkeypatch):
         """dropped_count reflects the exact number of overflow drops."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "2")
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "2")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
         import unified_supervisor
         monkeypatch.setattr(unified_supervisor, "create_safe_task", asyncio.create_task)
@@ -372,8 +372,8 @@ class TestSupervisorEventBus:
 
     async def test_start_idempotent(self, monkeypatch):
         """Calling start() twice does not create a second consumer task."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "10")
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "10")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
         import unified_supervisor
         monkeypatch.setattr(unified_supervisor, "create_safe_task", asyncio.create_task)
@@ -395,8 +395,8 @@ class TestSupervisorEventBus:
 
     async def test_stop_drains_queue(self, monkeypatch):
         """stop() delivers remaining queued events before returning."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "10")
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "10")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
 
         import unified_supervisor
         monkeypatch.setattr(unified_supervisor, "create_safe_task", asyncio.create_task)
@@ -465,7 +465,7 @@ class TestGetEventBus:
 
     def test_returns_singleton(self, monkeypatch):
         """get_event_bus() returns the same instance on repeated calls."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
         _reset_singletons()
 
         try:
@@ -479,7 +479,7 @@ class TestGetEventBus:
 
     def test_module_cache_reset(self, monkeypatch):
         """After resetting _supervisor_event_bus, get_event_bus creates new."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
         _reset_singletons()
 
         try:
@@ -499,7 +499,7 @@ class TestGetEventBus:
 
     def test_get_event_bus_returns_event_bus_type(self, monkeypatch):
         """get_event_bus() returns a SupervisorEventBus instance."""
-        monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+        monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
         _reset_singletons()
 
         try:

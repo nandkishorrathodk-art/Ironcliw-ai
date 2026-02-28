@@ -1,11 +1,11 @@
-#!/bin/bash
-# Start JARVIS Backend Server
+﻿#!/bin/bash
+# Start Ironcliw Backend Server
 
-echo "🚀 Starting JARVIS Backend Server..."
+echo "🚀 Starting Ironcliw Backend Server..."
 echo "=================================="
 
 # Change to backend directory
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend
 
 # Activate virtual environment if it exists
 if [ -d "venv" ]; then
@@ -14,10 +14,10 @@ if [ -d "venv" ]; then
 fi
 
 # Set environment variables
-export PYTHONPATH=/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend:$PYTHONPATH
+export PYTHONPATH=/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend:$PYTHONPATH
 
 # Start the backend server
 echo "🎯 Starting backend on port 8010..."
 python main.py
 
-echo "✅ JARVIS Backend is running!"
+echo "✅ Ironcliw Backend is running!"

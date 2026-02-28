@@ -1,4 +1,4 @@
-# Feedback Learning Loop & Command Safety Classification
+﻿# Feedback Learning Loop & Command Safety Classification
 
 **Version:** 1.0
 **Date:** October 10, 2025
@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document describes the **Feedback Learning Loop** and **Command Safety Classification** systems that implement the "Invisible Assistant" UX philosophy for JARVIS.
+This document describes the **Feedback Learning Loop** and **Command Safety Classification** systems that implement the "Invisible Assistant" UX philosophy for Ironcliw.
 
 ## Architecture
 
@@ -547,16 +547,16 @@ backend/vision/handlers/follow_up_plugin.py
 
 ```bash
 # Feedback loop storage location
-export JARVIS_LEARNING_PATH="$HOME/.jarvis/learning/feedback.json"
+export Ironcliw_LEARNING_PATH="$HOME/.jarvis/learning/feedback.json"
 
 # Maximum feedback history size
-export JARVIS_MAX_FEEDBACK_HISTORY=1000
+export Ironcliw_MAX_FEEDBACK_HISTORY=1000
 
 # Minimum confidence for learned patterns
-export JARVIS_MIN_PATTERN_CONFIDENCE=0.75
+export Ironcliw_MIN_PATTERN_CONFIDENCE=0.75
 
 # Enable/disable timing intelligence
-export JARVIS_TIMING_LEARNING_ENABLED=true
+export Ironcliw_TIMING_LEARNING_ENABLED=true
 ```
 
 ---
@@ -579,7 +579,7 @@ All learning data is stored in `~/.jarvis/learning/feedback.json`:
 
 ### Transparency
 
-Users can see exactly what JARVIS has learned:
+Users can see exactly what Ironcliw has learned:
 
 ```python
 insights = loop.get_pattern_insights(NotificationPattern.TERMINAL_ERROR)
@@ -624,7 +624,7 @@ This implementation aligns with the "Invisible Assistant" UX philosophy:
 ✅ **Context over commands**: Understands terminal state, not just text
 ✅ **Assistance over intrusion**: Adapts to user preferences, reduces noise
 ✅ **Privacy by design**: All learning is local, user has full control
-✅ **Trust through transparency**: User can see what JARVIS learned
+✅ **Trust through transparency**: User can see what Ironcliw learned
 
 ---
 

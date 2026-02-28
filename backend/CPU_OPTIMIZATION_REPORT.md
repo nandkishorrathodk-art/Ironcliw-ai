@@ -1,8 +1,8 @@
-# JARVIS CPU Optimization Report
+﻿# Ironcliw CPU Optimization Report
 
 ## Executive Summary
 
-Applied multiple CPU optimization strategies to reduce JARVIS continuous learning from 97% CPU usage to target of 25%.
+Applied multiple CPU optimization strategies to reduce Ironcliw continuous learning from 97% CPU usage to target of 25%.
 
 ### Results
 

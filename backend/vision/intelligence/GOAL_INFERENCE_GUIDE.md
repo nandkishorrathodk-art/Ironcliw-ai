@@ -1,8 +1,8 @@
-# Goal Inference System Guide
+﻿# Goal Inference System Guide
 
 ## Overview
 
-The Goal Inference System is part of the Intelligent Understanding System (IUS) for JARVIS Vision. It understands user objectives beyond immediate actions by analyzing context, patterns, and temporal information to infer what the user is trying to accomplish.
+The Goal Inference System is part of the Intelligent Understanding System (IUS) for Ironcliw Vision. It understands user objectives beyond immediate actions by analyzing context, patterns, and temporal information to infer what the user is trying to accomplish.
 
 ## Goal Hierarchy
 

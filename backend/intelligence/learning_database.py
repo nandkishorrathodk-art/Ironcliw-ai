@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Advanced Learning Database System for JARVIS Goal Inference
+Advanced Learning Database System for Ironcliw Goal Inference
 Hybrid architecture: SQLite (structured) + ChromaDB (embeddings) + Async + ML-powered insights
 """
 
@@ -2389,9 +2389,9 @@ class PatternMatcher:
             return 0.0
 
 
-class JARVISLearningDatabase:
+class IroncliwLearningDatabase:
     """
-    Advanced hybrid database system for JARVIS learning
+    Advanced hybrid database system for Ironcliw learning
     - Async SQLite: Structured data with connection pooling
     - ChromaDB: Embeddings and semantic search
     - Adaptive caching: Smart LRU with TTL
@@ -2481,7 +2481,7 @@ class JARVISLearningDatabase:
         self._learning_orchestrator = None
         self._orchestrator_enabled = self.config.get("enable_learning_orchestrator", True)
 
-        logger.info(f"Advanced JARVIS Learning Database initializing at {self.db_dir}")
+        logger.info(f"Advanced Ironcliw Learning Database initializing at {self.db_dir}")
 
     def _schedule_background_task(self, name: str, coro: "Awaitable[Any]") -> None:
         """
@@ -3172,7 +3172,7 @@ class JARVISLearningDatabase:
             """
             )
 
-            # Proactive suggestions (what JARVIS should suggest)
+            # Proactive suggestions (what Ironcliw should suggest)
             await cursor.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS proactive_suggestions (
@@ -3192,7 +3192,7 @@ class JARVISLearningDatabase:
             """
             )
 
-            # Conversation history (ALL user-JARVIS interactions for learning)
+            # Conversation history (ALL user-Ironcliw interactions for learning)
             await cursor.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS conversation_history (
@@ -3250,7 +3250,7 @@ class JARVISLearningDatabase:
             """
             )
 
-            # Learning from corrections (when user corrects JARVIS)
+            # Learning from corrections (when user corrects Ironcliw)
             await cursor.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS interaction_corrections (
@@ -3791,11 +3791,11 @@ class JARVISLearningDatabase:
                 pass  # Telemetry module not available or already disabled
 
             chroma_tenant = (
-                os.environ.get("JARVIS_CHROMADB_TENANT", "default_tenant").strip()
+                os.environ.get("Ironcliw_CHROMADB_TENANT", "default_tenant").strip()
                 or "default_tenant"
             )
             chroma_database = (
-                os.environ.get("JARVIS_CHROMADB_DATABASE", "default_database").strip()
+                os.environ.get("Ironcliw_CHROMADB_DATABASE", "default_database").strip()
                 or "default_database"
             )
 
@@ -3964,14 +3964,14 @@ class JARVISLearningDatabase:
 
             if ROBUST_FILE_LOCK_AVAILABLE:
                 lock_name = os.environ.get(
-                    "JARVIS_CHROMADB_INIT_LOCK_NAME",
+                    "Ironcliw_CHROMADB_INIT_LOCK_NAME",
                     "learning_chromadb_init",
                 )
                 lock_timeout = float(
-                    os.environ.get("JARVIS_CHROMADB_INIT_LOCK_TIMEOUT", "30.0")
+                    os.environ.get("Ironcliw_CHROMADB_INIT_LOCK_TIMEOUT", "30.0")
                 )
                 lock_source = os.environ.get(
-                    "JARVIS_CHROMADB_LOCK_SOURCE",
+                    "Ironcliw_CHROMADB_LOCK_SOURCE",
                     "learning_database",
                 )
                 chroma_lock = RobustFileLock(lock_name, source=lock_source)
@@ -4316,13 +4316,13 @@ class JARVISLearningDatabase:
         context: Optional[Dict[str, Any]] = None,
     ) -> int:
         """
-        Record every user-JARVIS interaction for learning and improvement.
+        Record every user-Ironcliw interaction for learning and improvement.
 
         Args:
             user_query: What the user said/typed
-            jarvis_response: How JARVIS responded
+            jarvis_response: How Ironcliw responded
             response_type: Type of response (command, conversation, error, etc.)
-            confidence_score: JARVIS's confidence in the response (0-1)
+            confidence_score: Ironcliw's confidence in the response (0-1)
             execution_time_ms: How long it took to respond
             success: Whether the response was successful
             session_id: Unique session identifier
@@ -4513,7 +4513,7 @@ class JARVISLearningDatabase:
         user_explanation: Optional[str] = None,
     ) -> int:
         """
-        Record when user corrects JARVIS's response (critical for learning!).
+        Record when user corrects Ironcliw's response (critical for learning!).
 
         Args:
             interaction_id: ID of the original interaction
@@ -4617,7 +4617,7 @@ class JARVISLearningDatabase:
         feedback_score: Optional[int] = None,
     ) -> bool:
         """
-        Record user feedback on JARVIS's response (thumbs up/down, rating, comment).
+        Record user feedback on Ironcliw's response (thumbs up/down, rating, comment).
 
         Args:
             interaction_id: ID of the interaction
@@ -4883,7 +4883,7 @@ class JARVISLearningDatabase:
         correction_method: str = "user_correction",
     ) -> int:
         """
-        Record when JARVIS mishears - critical for learning!
+        Record when Ironcliw mishears - critical for learning!
         This trains the acoustic model to handle Derek's accent better.
         """
         try:
@@ -7962,10 +7962,20 @@ class JARVISLearningDatabase:
                             logger.error(
                                 f"❌ Profile '{profile['speaker_name']}' contains INVALID embedding! "
                                 f"NaN values: {nan_count}, Inf values: {inf_count}. "
-                                f"Profile will be SKIPPED - re-enrollment required."
+                                f"Auto-clearing from DB - re-enrollment required."
                             )
                             profile["embedding"] = None
-                            profile["voiceprint_embedding"] = None  # Mark as invalid
+                            profile["voiceprint_embedding"] = None
+                            try:
+                                async with self.db.adapter.connection() as db:
+                                    await db.execute(
+                                        "UPDATE speaker_profiles SET voiceprint_embedding = NULL WHERE speaker_name = ?",
+                                        (profile["speaker_name"],)
+                                    )
+                                    await db.commit()
+                                logger.info(f"🔧 Cleared invalid embedding for '{profile['speaker_name']}' from DB")
+                            except Exception as _repair_err:
+                                logger.debug(f"Could not auto-clear NaN embedding: {_repair_err}")
                             continue
 
                         # Validate embedding dimension (ECAPA-TDNN produces 192 dims)
@@ -8974,8 +8984,8 @@ class CrossRepoSync:
     Intelligent cross-repository database synchronization.
 
     Syncs learning data between:
-    - JARVIS (main system)
-    - JARVIS Prime (advanced model server)
+    - Ironcliw (main system)
+    - Ironcliw Prime (advanced model server)
     - Reactor Core (multi-agent orchestration)
 
     Features:
@@ -8986,12 +8996,12 @@ class CrossRepoSync:
     - Zero hardcoding - dynamic repo detection
     """
 
-    def __init__(self, jarvis_db: "JARVISLearningDatabase"):
+    def __init__(self, jarvis_db: "IroncliwLearningDatabase"):
         """
         Initialize cross-repo sync.
 
         Args:
-            jarvis_db: Main JARVIS learning database instance
+            jarvis_db: Main Ironcliw learning database instance
         """
         self.jarvis_db = jarvis_db
         self.logger = logging.getLogger(__name__)
@@ -9011,17 +9021,17 @@ class CrossRepoSync:
         """
         repos = {}
 
-        # Try to detect JARVIS Prime
+        # Try to detect Ironcliw Prime
         try:
-            from core.jarvis_prime_client import JARVISPrimeClient
+            from core.jarvis_prime_client import IroncliwPrimeClient
             repos['jarvis_prime'] = {
-                'client': JARVISPrimeClient(),
+                'client': IroncliwPrimeClient(),
                 'available': True,
                 'type': 'http_api'
             }
-            self.logger.info("✅ Detected JARVIS Prime integration")
+            self.logger.info("✅ Detected Ironcliw Prime integration")
         except (ImportError, Exception) as e:
-            self.logger.debug(f"JARVIS Prime not available: {e}")
+            self.logger.debug(f"Ironcliw Prime not available: {e}")
 
         # Try to detect Reactor Core
         try:
@@ -9107,7 +9117,7 @@ class CrossRepoSync:
         try:
             client = repo_info['client']
 
-            # Get recent learning data from JARVIS
+            # Get recent learning data from Ironcliw
             recent_data = await self._get_recent_learning_data()
 
             # Send to repo (method depends on repo type)
@@ -9124,7 +9134,7 @@ class CrossRepoSync:
 
     async def _get_recent_learning_data(self, since_seconds: int = 3600) -> Dict[str, List]:
         """
-        Get recent learning data from JARVIS database.
+        Get recent learning data from Ironcliw database.
 
         Args:
             since_seconds: Get data from last N seconds (default: 1 hour)
@@ -9174,10 +9184,10 @@ class CrossRepoSync:
 
     async def _sync_to_jarvis_prime(self, client, data: Dict):
         """
-        Sync learning data to JARVIS Prime.
+        Sync learning data to Ironcliw Prime.
 
         Args:
-            client: JARVIS Prime client instance
+            client: Ironcliw Prime client instance
             data: Learning data to sync
         """
         # Check if client has sync method
@@ -9333,7 +9343,7 @@ _db_lock = LazyAsyncLock()  # v100.1: Lazy initialization to avoid "no running e
 _cross_repo_sync = None
 
 
-async def _singleton_instance_has_healthy_connection(db_instance: "JARVISLearningDatabase") -> bool:
+async def _singleton_instance_has_healthy_connection(db_instance: "IroncliwLearningDatabase") -> bool:
     """
     Validate that the singleton instance is initialized and can execute a basic query.
 
@@ -9376,7 +9386,7 @@ async def _singleton_instance_has_healthy_connection(db_instance: "JARVISLearnin
 async def get_learning_database(
     config: Optional[Dict] = None,
     fast_mode: bool = False,
-) -> JARVISLearningDatabase:
+) -> IroncliwLearningDatabase:
     """Get or create the global async learning database.
 
     v226.0: Self-healing singleton. If a previous initialization failed
@@ -9424,7 +9434,7 @@ async def get_learning_database(
             pass  # Gate not available — use caller's fast_mode preference
 
     # ── v265.1: Configurable init timeout safety net ──────────────────
-    _init_timeout = float(os.environ.get("JARVIS_LEARNING_DB_INIT_TIMEOUT", "15.0"))
+    _init_timeout = float(os.environ.get("Ironcliw_LEARNING_DB_INIT_TIMEOUT", "15.0"))
 
     async with _db_lock:
         # Fast path: already initialized and healthy
@@ -9456,7 +9466,7 @@ async def get_learning_database(
             _db_instance = None
 
         # Create and initialize fresh instance
-        _db_instance = JARVISLearningDatabase(config=config)
+        _db_instance = IroncliwLearningDatabase(config=config)
         _db_instance._singleton_managed = True
         try:
             await asyncio.wait_for(
@@ -9475,7 +9485,7 @@ async def get_learning_database(
                     await _db_instance.close(force=True)
             except BaseException:
                 pass
-            _db_instance = JARVISLearningDatabase(config=config)
+            _db_instance = IroncliwLearningDatabase(config=config)
             _db_instance._singleton_managed = True
             try:
                 await asyncio.wait_for(
@@ -9546,7 +9556,7 @@ async def close_learning_database():
 
 async def test_database():
     """Test the advanced learning database"""
-    print("🗄️ Testing Advanced JARVIS Learning Database")
+    print("🗄️ Testing Advanced Ironcliw Learning Database")
     print("=" * 60)
 
     db = await get_learning_database()

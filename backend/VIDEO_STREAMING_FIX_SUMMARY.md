@@ -1,7 +1,7 @@
-# 🎥 Video Streaming Fix Summary
+﻿# 🎥 Video Streaming Fix Summary
 
 ## Problem
-When you said "start monitoring my screen", JARVIS responded with:
+When you said "start monitoring my screen", Ironcliw responded with:
 > "I encountered an issue starting video streaming: Failed to start video streaming. Please check that screen recording permissions are enabled in System Preferences."
 
 ## Root Cause
@@ -34,16 +34,16 @@ This ensures that `from vision.claude_vision_analyzer_main import ClaudeVisionAn
 
 ### Quick Test
 ```bash
-# From JARVIS root directory
+# From Ironcliw root directory
 python backend/test_video_permissions.py
 ```
 
 ### Full Test Through Chat
-1. Start JARVIS: `python start_system.py`
+1. Start Ironcliw: `python start_system.py`
 2. Open http://localhost:3000
-3. Say: "Hey JARVIS, start monitoring my screen"
+3. Say: "Hey Ironcliw, start monitoring my screen"
 4. Purple indicator should appear
-5. Say: "Hey JARVIS, stop monitoring"
+5. Say: "Hey Ironcliw, stop monitoring"
 6. Purple indicator should disappear
 
 ## Additional Improvements Made
@@ -60,6 +60,6 @@ python backend/test_video_permissions.py
 - Video streaming starts successfully
 - Purple indicator appears
 - Monitoring can be stopped on command
-- All integrated with JARVIS voice commands
+- All integrated with Ironcliw voice commands
 
 The issue was simply a Python import path problem - the permissions and video capture were working fine all along!

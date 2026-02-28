@@ -1,5 +1,5 @@
-"""
-Weather Bridge for JARVIS
+﻿"""
+Weather Bridge for Ironcliw
 Provides intelligent weather data using macOS WeatherKit or fallback to APIs
 """
 

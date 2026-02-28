@@ -1,4 +1,4 @@
-# 🚀 Quick Start Guide - Claude AI Workflows
+﻿# 🚀 Quick Start Guide - Claude AI Workflows
 
 **Get your AI-powered CI/CD up and running in 5 minutes**
 
@@ -59,7 +59,7 @@ gh secret set ANTHROPIC_API_KEY --body 'your-api-key-here'
 
 ```bash
 # Navigate to your repo
-cd /path/to/JARVIS-AI-Agent
+cd /path/to/Ironcliw-AI-Agent
 
 # Set secret
 echo "your-api-key-here" | gh secret set ANTHROPIC_API_KEY

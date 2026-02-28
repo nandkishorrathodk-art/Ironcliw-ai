@@ -1,5 +1,5 @@
-"""
-Self-Healing Restart Manager for JARVIS Loading Server v212.0
+﻿"""
+Self-Healing Restart Manager for Ironcliw Loading Server v212.0
 ==============================================================
 
 Auto-recovery system for loading server crashes.
@@ -21,7 +21,7 @@ Usage:
     # ... run server ...
     await manager.stop_watchdog()
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

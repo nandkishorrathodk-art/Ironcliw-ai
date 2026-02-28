@@ -1,20 +1,20 @@
-"""
+﻿"""
 Reactor-Core Integration Module v1.0.0
 ======================================
 
-Connects JARVIS-AI-Agent with reactor-core for:
-- Experience ingestion via JARVISConnector
+Connects Ironcliw-AI-Agent with reactor-core for:
+- Experience ingestion via IroncliwConnector
 - Web documentation scraping via SafeScoutOrchestrator
-- JARVIS-Prime integration via PrimeConnector
+- Ironcliw-Prime integration via PrimeConnector
 - Training pipeline orchestration
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
-    │                    JARVIS ↔ Reactor-Core Integration                    │
+    │                    Ironcliw ↔ Reactor-Core Integration                    │
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                         │
     │  ┌─────────────────────────────────────────────────────────────────┐   │
-    │  │                     JARVIS-AI-Agent                              │   │
+    │  │                     Ironcliw-AI-Agent                              │   │
     │  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │   │
     │  │  │ Voice Handler │  │ Agentic Runner│  │ Data Flywheel │       │   │
     │  │  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘       │   │
@@ -30,7 +30,7 @@ Architecture:
     │  ┌─────────────────────────────┼─────────────────────────────────────┐ │
     │  │                     reactor-core                                   │ │
     │  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐         │ │
-    │  │  │JARVISConnector│  │  SafeScout    │  │PrimeConnector │         │ │
+    │  │  │IroncliwConnector│  │  SafeScout    │  │PrimeConnector │         │ │
     │  │  │(Experience)   │  │  (Web Docs)   │  │ (Real-time)   │         │ │
     │  │  └───────────────┘  └───────────────┘  └───────────────┘         │ │
     │  └───────────────────────────────────────────────────────────────────┘ │
@@ -41,7 +41,7 @@ Architecture:
     │                    └───────────────────────┘                           │
     └─────────────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 
@@ -146,20 +146,20 @@ class ReactorCoreConfig:
     )
     jarvis_prime_path: Path = field(
         default_factory=lambda: Path(os.getenv(
-            "JARVIS_PRIME_PATH",
+            "Ironcliw_PRIME_PATH",
             Path.home() / "Documents" / "repos" / "jarvis-prime"
         ))
     )
 
-    # JARVIS Connector settings
+    # Ironcliw Connector settings
     jarvis_connector_enabled: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_CONNECTOR_ENABLED", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_CONNECTOR_ENABLED", "true").lower() == "true"
     )
     experience_lookback_hours: int = field(
         default_factory=lambda: int(os.getenv("EXPERIENCE_LOOKBACK_HOURS", "168"))  # 1 week
     )
     enable_file_watching: bool = field(
-        default_factory=lambda: os.getenv("JARVIS_FILE_WATCHING", "true").lower() == "true"
+        default_factory=lambda: os.getenv("Ironcliw_FILE_WATCHING", "true").lower() == "true"
     )
 
     # Safe Scout settings
@@ -184,16 +184,16 @@ class ReactorCoreConfig:
         default_factory=lambda: os.getenv("PRIME_CONNECTOR_ENABLED", "true").lower() == "true"
     )
     prime_host: str = field(
-        default_factory=lambda: os.getenv("JARVIS_PRIME_HOST", "localhost")
+        default_factory=lambda: os.getenv("Ironcliw_PRIME_HOST", "localhost")
     )
     prime_port: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_PRIME_PORT", "8002"))
+        default_factory=lambda: int(os.getenv("Ironcliw_PRIME_PORT", "8002"))
     )
     prime_port_candidates: List[int] = field(
         default_factory=lambda: _parse_int_list_env(
-            "JARVIS_PRIME_PORT_CANDIDATES",
+            "Ironcliw_PRIME_PORT_CANDIDATES",
             [
-                int(os.getenv("JARVIS_PRIME_PORT", "8002")),
+                int(os.getenv("Ironcliw_PRIME_PORT", "8002")),
                 8000,
                 8001,
                 8002,
@@ -205,24 +205,24 @@ class ReactorCoreConfig:
     )
     prime_websocket_paths: List[str] = field(
         default_factory=lambda: _parse_path_list_env(
-            "JARVIS_PRIME_WEBSOCKET_PATHS",
+            "Ironcliw_PRIME_WEBSOCKET_PATHS",
             ["/ws/events"],
         )
     )
     prime_health_paths: List[str] = field(
         default_factory=lambda: _parse_path_list_env(
-            "JARVIS_PRIME_HEALTH_PATHS",
+            "Ironcliw_PRIME_HEALTH_PATHS",
             ["/health"],
         )
     )
     prime_event_poll_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_EVENT_POLL_INTERVAL", "5.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_EVENT_POLL_INTERVAL", "5.0"))
     )
     prime_event_probe_timeout: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_EVENT_PROBE_TIMEOUT", "3.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_EVENT_PROBE_TIMEOUT", "3.0"))
     )
     prime_transport_reprobe_interval: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_TRANSPORT_REPROBE_INTERVAL", "30.0"))
+        default_factory=lambda: float(os.getenv("Ironcliw_PRIME_TRANSPORT_REPROBE_INTERVAL", "30.0"))
     )
 
     # Training pipeline settings
@@ -246,9 +246,9 @@ class ReactorCoreIntegration:
     Unified integration point for reactor-core components.
 
     Provides lazy loading and async access to:
-    - JARVISConnector: Experience ingestion from JARVIS logs
+    - IroncliwConnector: Experience ingestion from Ironcliw logs
     - SafeScoutOrchestrator: Web documentation scraping
-    - PrimeConnector: Real-time JARVIS-Prime integration
+    - PrimeConnector: Real-time Ironcliw-Prime integration
     - NightShiftPipeline: Training orchestration
     """
 
@@ -281,7 +281,7 @@ class ReactorCoreIntegration:
             sys.path.insert(0, reactor_path)
             logger.debug(f"[ReactorCore] Added to path: {reactor_path}")
 
-        # Initialize JARVIS Connector
+        # Initialize Ironcliw Connector
         if self.config.jarvis_connector_enabled:
             await self._init_jarvis_connector()
 
@@ -385,28 +385,28 @@ class ReactorCoreIntegration:
         return None
 
     async def _init_jarvis_connector(self) -> None:
-        """Initialize JARVIS Connector for experience ingestion."""
+        """Initialize Ironcliw Connector for experience ingestion."""
         try:
             from reactor_core.integration.jarvis_connector import (
-                JARVISConnector,
-                JARVISConnectorConfig,
+                IroncliwConnector,
+                IroncliwConnectorConfig,
             )
 
-            jarvis_repo = Path(__file__).parent.parent.parent  # JARVIS-AI-Agent root
+            jarvis_repo = Path(__file__).parent.parent.parent  # Ironcliw-AI-Agent root
 
-            self._jarvis_connector = JARVISConnector(
-                JARVISConnectorConfig(
+            self._jarvis_connector = IroncliwConnector(
+                IroncliwConnectorConfig(
                     jarvis_repo_path=jarvis_repo,
                     lookback_hours=self.config.experience_lookback_hours,
                     enable_file_watching=self.config.enable_file_watching,
                 )
             )
-            logger.info("[ReactorCore] ✓ JARVISConnector initialized")
+            logger.info("[ReactorCore] ✓ IroncliwConnector initialized")
 
         except ImportError as e:
-            logger.warning(f"[ReactorCore] JARVISConnector not available: {e}")
+            logger.warning(f"[ReactorCore] IroncliwConnector not available: {e}")
         except Exception as e:
-            logger.error(f"[ReactorCore] JARVISConnector init failed: {e}")
+            logger.error(f"[ReactorCore] IroncliwConnector init failed: {e}")
 
     async def _init_scout(self) -> None:
         """Initialize Safe Scout for web documentation scraping."""
@@ -433,7 +433,7 @@ class ReactorCoreIntegration:
             logger.error(f"[ReactorCore] SafeScout init failed: {e}")
 
     async def _init_prime_connector(self) -> None:
-        """Initialize Prime Connector for JARVIS-Prime integration."""
+        """Initialize Prime Connector for Ironcliw-Prime integration."""
         try:
             from reactor_core.integration.prime_connector import (
                 PrimeConnector,
@@ -472,7 +472,7 @@ class ReactorCoreIntegration:
         limit: int = 1000
     ) -> List[Dict[str, Any]]:
         """
-        Get recent experiences from JARVIS logs.
+        Get recent experiences from Ironcliw logs.
 
         Args:
             hours: How many hours back to look
@@ -482,7 +482,7 @@ class ReactorCoreIntegration:
             List of experience dictionaries
         """
         if not self._jarvis_connector:
-            logger.warning("[ReactorCore] JARVIS Connector not available")
+            logger.warning("[ReactorCore] Ironcliw Connector not available")
             return []
 
         try:
@@ -511,7 +511,7 @@ class ReactorCoreIntegration:
 
     async def get_corrections(self, hours: int = 168) -> List[Dict[str, Any]]:
         """
-        Get correction events (user fixing JARVIS mistakes).
+        Get correction events (user fixing Ironcliw mistakes).
 
         Args:
             hours: How many hours back to look
@@ -539,13 +539,13 @@ class ReactorCoreIntegration:
 
     async def stream_experiences(self) -> AsyncIterator[Dict[str, Any]]:
         """
-        Stream experiences in real-time from JARVIS logs.
+        Stream experiences in real-time from Ironcliw logs.
 
         Yields:
             Experience dictionaries as they occur
         """
         if not self._jarvis_connector:
-            logger.warning("[ReactorCore] JARVIS Connector not available for streaming")
+            logger.warning("[ReactorCore] Ironcliw Connector not available for streaming")
             return
 
         try:
@@ -637,12 +637,12 @@ class ReactorCoreIntegration:
             return False
 
     # =========================================================================
-    # JARVIS-Prime Integration
+    # Ironcliw-Prime Integration
     # =========================================================================
 
     async def check_prime_health(self) -> Dict[str, Any]:
         """
-        Check JARVIS-Prime health status.
+        Check Ironcliw-Prime health status.
 
         Returns:
             Health status dictionary
@@ -666,7 +666,7 @@ class ReactorCoreIntegration:
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Get recent interactions from JARVIS-Prime.
+        Get recent interactions from Ironcliw-Prime.
 
         Args:
             hours: How many hours back to look
@@ -690,7 +690,7 @@ class ReactorCoreIntegration:
 
     async def stream_prime_events(self) -> AsyncIterator[Dict[str, Any]]:
         """
-        Stream real-time events from JARVIS-Prime via WebSocket.
+        Stream real-time events from Ironcliw-Prime via WebSocket.
 
         Yields:
             Event dictionaries as they occur
@@ -778,14 +778,14 @@ class ReactorCoreIntegration:
             if sources:
                 source_map = {
                     "scout": DataSource.SCOUT,
-                    "jarvis": DataSource.JARVIS_EXPERIENCE,
+                    "jarvis": DataSource.Ironcliw_EXPERIENCE,
                     "prime": DataSource.PRIME_INTERACTION,
                 }
                 for s in sources:
                     if s in source_map:
                         enabled_sources.add(source_map[s])
             else:
-                enabled_sources = {DataSource.SCOUT, DataSource.JARVIS_EXPERIENCE}
+                enabled_sources = {DataSource.SCOUT, DataSource.Ironcliw_EXPERIENCE}
 
             config = PipelineConfig(
                 enabled_sources=enabled_sources,
@@ -860,26 +860,26 @@ class ReactorCoreIntegration:
 
 
 # =============================================================================
-# JARVIS-Prime Neural Mesh Bridge
+# Ironcliw-Prime Neural Mesh Bridge
 # =============================================================================
 
 class PrimeNeuralMeshBridge:
     """
-    Bridge connecting JARVIS-Prime events to the Neural Mesh.
+    Bridge connecting Ironcliw-Prime events to the Neural Mesh.
 
     This bridge:
-    - Listens to JARVIS-Prime model events (hot-swap, routing, telemetry)
+    - Listens to Ironcliw-Prime model events (hot-swap, routing, telemetry)
     - Translates events to AgentMessage format
     - Publishes to the Neural Mesh communication bus
-    - Enables distributed intelligence across the JARVIS ecosystem
+    - Enables distributed intelligence across the Ironcliw ecosystem
 
     Architecture:
         ┌────────────────────────────────────────────────────────────────┐
-        │                  JARVIS-Prime Neural Mesh Bridge               │
+        │                  Ironcliw-Prime Neural Mesh Bridge               │
         ├────────────────────────────────────────────────────────────────┤
         │                                                                │
         │  ┌──────────────────┐     ┌──────────────────┐                 │
-        │  │  JARVIS-Prime    │────►│  Event Translator │                │
+        │  │  Ironcliw-Prime    │────►│  Event Translator │                │
         │  │  (Model Events)  │     │  (Prime→AgentMsg) │                │
         │  └──────────────────┘     └────────┬─────────┘                 │
         │                                     │                          │
@@ -925,7 +925,7 @@ class PrimeNeuralMeshBridge:
         # Initialize communication bus connection
         await self._init_communication_bus()
 
-        # Initialize JARVIS-Prime client
+        # Initialize Ironcliw-Prime client
         await self._init_prime_client()
 
         self._initialized = True
@@ -941,7 +941,7 @@ class PrimeNeuralMeshBridge:
         how the module is run (as package vs script).
         """
         import_attempts = [
-            # Try backend-prefixed import first (when running from JARVIS-AI-Agent root)
+            # Try backend-prefixed import first (when running from Ironcliw-AI-Agent root)
             ("backend.neural_mesh.communication.agent_communication_bus", "get_communication_bus"),
             # Try direct import (when backend is in PYTHONPATH)
             ("neural_mesh.communication.agent_communication_bus", "get_communication_bus"),
@@ -982,19 +982,19 @@ class PrimeNeuralMeshBridge:
         return FallbackCommunicationBus()
 
     async def _init_prime_client(self) -> None:
-        """Initialize JARVIS-Prime client connection."""
+        """Initialize Ironcliw-Prime client connection."""
         try:
             from core.jarvis_prime_client import get_jarvis_prime_client
             # get_jarvis_prime_client() is a sync function that returns a singleton
             self._prime_client = get_jarvis_prime_client()
-            logger.info("[PrimeNeuralMesh] ✓ Connected to JARVIS-Prime client")
+            logger.info("[PrimeNeuralMesh] ✓ Connected to Ironcliw-Prime client")
         except ImportError:
-            logger.warning("[PrimeNeuralMesh] JARVIS-Prime client not available")
+            logger.warning("[PrimeNeuralMesh] Ironcliw-Prime client not available")
         except Exception as e:
             logger.error(f"[PrimeNeuralMesh] Prime client init failed: {e}")
 
     async def start_event_stream(self) -> None:
-        """Start streaming events from JARVIS-Prime to Neural Mesh."""
+        """Start streaming events from Ironcliw-Prime to Neural Mesh."""
         if not self._initialized:
             await self.initialize()
 
@@ -1008,7 +1008,7 @@ class PrimeNeuralMeshBridge:
         return _unique_ints([self.config.prime_port] + list(self.config.prime_port_candidates))
 
     def _ws_url_base_candidates(self) -> List[str]:
-        scheme = "wss" if os.getenv("JARVIS_PRIME_SSL", "false").lower() == "true" else "ws"
+        scheme = "wss" if os.getenv("Ironcliw_PRIME_SSL", "false").lower() == "true" else "ws"
         candidates: List[str] = []
         for port in self._ordered_prime_ports():
             for path in self.config.prime_websocket_paths:
@@ -1016,7 +1016,7 @@ class PrimeNeuralMeshBridge:
         return candidates
 
     def _health_url_base_candidates(self) -> List[str]:
-        scheme = "https" if os.getenv("JARVIS_PRIME_SSL", "false").lower() == "true" else "http"
+        scheme = "https" if os.getenv("Ironcliw_PRIME_SSL", "false").lower() == "true" else "http"
         candidates: List[str] = []
         for port in self._ordered_prime_ports():
             for path in self.config.prime_health_paths:
@@ -1251,7 +1251,7 @@ class PrimeNeuralMeshBridge:
         return False
 
     async def _handle_prime_event(self, event: Dict[str, Any]) -> None:
-        """Handle an event from JARVIS-Prime."""
+        """Handle an event from Ironcliw-Prime."""
         event_type = event.get("event_type", "unknown")
 
         # Translate to AgentMessage
@@ -1273,7 +1273,7 @@ class PrimeNeuralMeshBridge:
                 logger.warning(f"[PrimeNeuralMesh] Callback error: {e}")
 
     async def _translate_to_agent_message(self, event: Dict[str, Any]) -> Optional[Any]:
-        """Translate JARVIS-Prime event to Neural Mesh AgentMessage."""
+        """Translate Ironcliw-Prime event to Neural Mesh AgentMessage."""
         try:
             from neural_mesh.data_models import (
                 AgentMessage,
@@ -1334,14 +1334,14 @@ class PrimeNeuralMeshBridge:
 
     async def publish_to_prime(self, command: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Send a command to JARVIS-Prime from the Neural Mesh.
+        Send a command to Ironcliw-Prime from the Neural Mesh.
 
         Args:
             command: Command type (inference, status, reload, etc.)
             data: Command data
 
         Returns:
-            Response from JARVIS-Prime
+            Response from Ironcliw-Prime
         """
         if not self._prime_client:
             logger.warning("[PrimeNeuralMesh] Prime client not available")

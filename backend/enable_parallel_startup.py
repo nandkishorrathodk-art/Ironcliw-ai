@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Enable Parallel Startup for JARVIS
+Enable Parallel Startup for Ironcliw
 This script integrates parallel startup with the existing system
 """
 
@@ -10,13 +10,13 @@ import sys
 from pathlib import Path
 
 def enable_parallel_startup():
-    """Enable parallel startup for JARVIS"""
-    print("🚀 Enabling Parallel Startup for JARVIS")
+    """Enable parallel startup for Ironcliw"""
+    print("🚀 Enabling Parallel Startup for Ironcliw")
     print("=" * 60)
     
     # Check if we're in the right directory
     if not os.path.exists('backend') or not os.path.exists('start_system.py'):
-        print("❌ Error: Please run this from the JARVIS root directory")
+        print("❌ Error: Please run this from the Ironcliw root directory")
         return False
     
     # Step 1: Backup original start_system.py
@@ -44,7 +44,7 @@ def enable_parallel_startup():
     
     start_script = '''#!/usr/bin/env python3
 """
-JARVIS Start System - Parallel Optimized Version
+Ironcliw Start System - Parallel Optimized Version
 Starts all services in parallel for faster initialization
 """
 
@@ -134,7 +134,7 @@ import time
 import subprocess
 import os
 
-print("🧪 Testing JARVIS Startup Performance")
+print("🧪 Testing Ironcliw Startup Performance")
 print("=" * 60)
 
 # Test sequential startup
@@ -185,7 +185,7 @@ print(f"Improvement: {sequential_time/parallel_time:.1f}x faster!")
     print("  • Imports happen in thread pools")
     print("  • Lazy loading for heavy components")
     
-    print("\n🚀 To Start JARVIS (parallel mode):")
+    print("\n🚀 To Start Ironcliw (parallel mode):")
     print("  python start_system.py")
     
     print("\n🐌 To Use Legacy Mode:")

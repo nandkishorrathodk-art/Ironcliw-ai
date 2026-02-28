@@ -1,8 +1,8 @@
-# Screen Sharing Integration Guide for JARVIS Vision System
+﻿# Screen Sharing Integration Guide for Ironcliw Vision System
 
 ## Overview
 
-The screen sharing module provides memory-safe, real-time screen sharing capabilities integrated with the JARVIS Vision System. It's designed specifically for macOS systems with 16GB RAM and includes aggressive memory management to prevent crashes.
+The screen sharing module provides memory-safe, real-time screen sharing capabilities integrated with the Ironcliw Vision System. It's designed specifically for macOS systems with 16GB RAM and includes aggressive memory management to prevent crashes.
 
 ## Key Features
 

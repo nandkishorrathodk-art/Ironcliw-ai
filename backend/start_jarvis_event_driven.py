@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-JARVIS Event-Driven Startup Script
-Initializes and runs JARVIS with the new event-driven architecture
+Ironcliw Event-Driven Startup Script
+Initializes and runs Ironcliw with the new event-driven architecture
 """
 
 import os
@@ -21,10 +21,10 @@ from jarvis_event_coordinator import main
 def setup_environment():
     """Setup default environment variables"""
     defaults = {
-        "JARVIS_USER": "Sir",
-        "JARVIS_DEBUG": "false",
-        "JARVIS_WEB_UI": "true",
-        "JARVIS_LOG_LEVEL": "INFO"
+        "Ironcliw_USER": "Sir",
+        "Ironcliw_DEBUG": "false",
+        "Ironcliw_WEB_UI": "true",
+        "Ironcliw_LOG_LEVEL": "INFO"
     }
     
     for key, value in defaults.items():
@@ -39,7 +39,7 @@ def setup_environment():
         print()
 
 def print_banner():
-    """Print JARVIS startup banner"""
+    """Print Ironcliw startup banner"""
     banner = """
     ╔══════════════════════════════════════════════════════════╗
     ║                                                          ║
@@ -54,7 +54,7 @@ def print_banner():
     ║                                                          ║
     ╚══════════════════════════════════════════════════════════╝
     
-    🚀 Starting JARVIS with Event-Driven Architecture...
+    🚀 Starting Ironcliw with Event-Driven Architecture...
     """
     print(banner)
 
@@ -86,7 +86,7 @@ def check_requirements():
         sys.exit(1)
 
 async def run_jarvis():
-    """Run JARVIS with proper initialization"""
+    """Run Ironcliw with proper initialization"""
     # Print startup banner
     print_banner()
     
@@ -97,7 +97,7 @@ async def run_jarvis():
     check_requirements()
     
     # Configure logging
-    log_level = getattr(logging, os.getenv("JARVIS_LOG_LEVEL", "INFO"))
+    log_level = getattr(logging, os.getenv("Ironcliw_LOG_LEVEL", "INFO"))
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -112,9 +112,9 @@ async def run_jarvis():
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
     
     print("✅ Environment configured")
-    print(f"👤 User: {os.getenv('JARVIS_USER')}")
-    print(f"🔍 Debug: {os.getenv('JARVIS_DEBUG')}")
-    print(f"🌐 Web UI: {os.getenv('JARVIS_WEB_UI')}")
+    print(f"👤 User: {os.getenv('Ironcliw_USER')}")
+    print(f"🔍 Debug: {os.getenv('Ironcliw_DEBUG')}")
+    print(f"🌐 Web UI: {os.getenv('Ironcliw_WEB_UI')}")
     print()
     
     # Run the main coordinator
@@ -126,10 +126,10 @@ async def run_jarvis():
 
 if __name__ == "__main__":
     try:
-        # Run JARVIS
+        # Run Ironcliw
         asyncio.run(run_jarvis())
     except KeyboardInterrupt:
-        print("\n\n👋 JARVIS shutting down gracefully...")
+        print("\n\n👋 Ironcliw shutting down gracefully...")
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ Error: {e}")

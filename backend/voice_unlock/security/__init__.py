@@ -1,4 +1,4 @@
-"""
+﻿"""
 Voice Unlock Security Module
 ============================
 
@@ -10,7 +10,7 @@ Components:
 - Environmental Security - Location and device verification
 - Multi-Factor Fusion - Visual + Voice + Behavioral security
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.2.0 - Visual Security Enhancement
 """
 

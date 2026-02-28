@@ -1,5 +1,5 @@
-"""
-Capture Strategy Manager for JARVIS
+﻿"""
+Capture Strategy Manager for Ironcliw
 ====================================
 
 Implements intelligent capture fallback strategies:

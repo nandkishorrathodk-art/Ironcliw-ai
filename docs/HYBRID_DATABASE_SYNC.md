@@ -1,4 +1,4 @@
-# Hybrid Database Synchronization System
+﻿# Hybrid Database Synchronization System
 ## Voice Biometrics - Instant Local Access with Cloud Resilience
 
 **Status**: ✅ Implemented
@@ -9,7 +9,7 @@
 
 ## 🎯 Objective
 
-Implement a hybrid database synchronization system for JARVIS voice biometrics that maintains both local (SQLite) and remote (CloudSQL) data stores in perfect sync, ensuring instant authentication even when CloudSQL is unavailable.
+Implement a hybrid database synchronization system for Ironcliw voice biometrics that maintains both local (SQLite) and remote (CloudSQL) data stores in perfect sync, ensuring instant authentication even when CloudSQL is unavailable.
 
 ---
 
@@ -108,7 +108,7 @@ class HybridDatabaseSync:
 - `_health_check_loop()` - Auto-reconnection
 - `_reconcile_pending_syncs()` - Delta sync on reconnect
 
-#### 2. **JARVISLearningDatabase Integration**
+#### 2. **IroncliwLearningDatabase Integration**
 
 Hybrid sync integrated into main database class:
 
@@ -186,10 +186,10 @@ CREATE TABLE _sync_log (
 ### Initialize Hybrid Sync
 
 ```python
-from intelligence.learning_database import JARVISLearningDatabase
+from intelligence.learning_database import IroncliwLearningDatabase
 
 # Create database with hybrid sync enabled
-db = JARVISLearningDatabase(config={
+db = IroncliwLearningDatabase(config={
     "enable_hybrid_sync": True,
     "sync_interval_seconds": 30
 })
@@ -312,7 +312,7 @@ if db.hybrid_sync:
 ### Test Resilience
 
 ```bash
-# 1. Start JARVIS with hybrid sync
+# 1. Start Ironcliw with hybrid sync
 python start_system.py
 
 # 2. Kill CloudSQL proxy to simulate network failure
@@ -320,7 +320,7 @@ pkill -f cloud-sql-proxy
 
 # 3. Try voice unlock
 You: "unlock my screen"
-JARVIS: *reads from SQLite* → ✅ Unlocked (< 10ms)
+Ironcliw: *reads from SQLite* → ✅ Unlocked (< 10ms)
 
 # 4. Restart CloudSQL proxy
 cloud-sql-proxy --port=5432 jarvis-473803:us-central1:jarvis-learning-db
@@ -351,7 +351,7 @@ cloud-sql-proxy --port=5432 jarvis-473803:us-central1:jarvis-learning-db
 - [ ] Conflict resolution UI
 
 ### Phase 3
-- [ ] Distributed sync across multiple JARVIS instances
+- [ ] Distributed sync across multiple Ironcliw instances
 - [ ] Incremental sync (delta encoding)
 - [ ] Compression for large embeddings
 - [ ] Sync analytics dashboard
@@ -369,13 +369,13 @@ cloud-sql-proxy --port=5432 jarvis-473803:us-central1:jarvis-learning-db
 
 ## ✅ Outcome
 
-JARVIS now maintains a **consistent, redundant, and self-healing biometric store** across local and cloud environments:
+Ironcliw now maintains a **consistent, redundant, and self-healing biometric store** across local and cloud environments:
 
 - ✅ **Instant Authentication**: < 10ms voice verification (even during CloudSQL outage)
 - ✅ **Perfect Sync**: All changes automatically synchronized when connectivity restored
 - ✅ **Zero Downtime**: Seamless fallback and auto-recovery
 - ✅ **Production Ready**: Tested resilience, monitoring, and error handling
 
-**Result**: When you say "unlock my screen," JARVIS verifies instantly — whether or not CloudSQL proxy is active — while transparently synchronizing all changes once connectivity is restored.
+**Result**: When you say "unlock my screen," Ironcliw verifies instantly — whether or not CloudSQL proxy is active — while transparently synchronizing all changes once connectivity is restored.
 
 🎉 **Voice unlock is now bulletproof!**

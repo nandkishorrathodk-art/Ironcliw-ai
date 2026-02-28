@@ -1,4 +1,4 @@
-# Environment Config & Async Consolidation Design
+﻿# Environment Config & Async Consolidation Design
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -22,8 +22,8 @@ The 6 Pillars code review identified two minor issues:
 
 ### Phase Strategy
 
-- **Phase 1 (This Plan)**: Fix issues in JARVIS-AI-Agent only
-- **Phase 2 (Future)**: Extract to `jarvis-common` package consumed by JARVIS, JARVIS-Prime, and reactor-core
+- **Phase 1 (This Plan)**: Fix issues in Ironcliw-AI-Agent only
+- **Phase 2 (Future)**: Extract to `jarvis-common` package consumed by Ironcliw, Ironcliw-Prime, and reactor-core
 
 ---
 
@@ -142,8 +142,8 @@ def get_env_list(
         strip: Strip whitespace from each element (default: True)
 
     Example:
-        JARVIS_FEATURES="feat1, feat2, feat3"
-        get_env_list("JARVIS_FEATURES") -> ["feat1", "feat2", "feat3"]
+        Ironcliw_FEATURES="feat1, feat2, feat3"
+        get_env_list("Ironcliw_FEATURES") -> ["feat1", "feat2", "feat3"]
     """
     ...
 
@@ -155,15 +155,15 @@ class EnvConfig:
 
     Convention:
         Field 'my_setting' -> env key '{prefix}MY_SETTING'
-        Default prefix: "JARVIS_"
+        Default prefix: "Ironcliw_"
         Override via class attribute: _env_prefix = "CUSTOM_"
 
     Example:
         @dataclass
         class VoiceConfig(EnvConfig):
-            sample_rate: int = 16000      # -> JARVIS_SAMPLE_RATE
-            base_threshold: float = 0.85  # -> JARVIS_BASE_THRESHOLD
-            enabled: bool = True          # -> JARVIS_ENABLED
+            sample_rate: int = 16000      # -> Ironcliw_SAMPLE_RATE
+            base_threshold: float = 0.85  # -> Ironcliw_BASE_THRESHOLD
+            enabled: bool = True          # -> Ironcliw_ENABLED
 
         config = VoiceConfig.from_env()
 
@@ -172,7 +172,7 @@ class EnvConfig:
         - Never raises on parse errors
         - Logs warnings for invalid values
     """
-    _env_prefix: ClassVar[str] = "JARVIS_"
+    _env_prefix: ClassVar[str] = "Ironcliw_"
 
     @classmethod
     def from_env(cls) -> "EnvConfig":
@@ -188,13 +188,13 @@ class EnvConfig:
 
 ```python
 # Parse error - logs warning, returns default:
-# WARNING [EnvConfig] JARVIS_TIMEOUT: cannot parse 'abc' as float, using default 30.0
+# WARNING [EnvConfig] Ironcliw_TIMEOUT: cannot parse 'abc' as float, using default 30.0
 
 # Validation error - logs warning, clamps to bounds:
-# WARNING [EnvConfig] JARVIS_TIMEOUT: value -5.0 below minimum 0.0, using 0.0
+# WARNING [EnvConfig] Ironcliw_TIMEOUT: value -5.0 below minimum 0.0, using 0.0
 
 # Bool unrecognized - logs warning, returns default:
-# WARNING [EnvConfig] JARVIS_ENABLED: unrecognized bool 'maybe', using default True
+# WARNING [EnvConfig] Ironcliw_ENABLED: unrecognized bool 'maybe', using default True
 ```
 
 ---
@@ -371,13 +371,13 @@ def _get_env_float(key: str, default: float) -> float:
     except ValueError:
         return default
 
-TIMEOUT = _get_env_float("JARVIS_TIMEOUT", 30.0)
+TIMEOUT = _get_env_float("Ironcliw_TIMEOUT", 30.0)
 
 
 # AFTER (consolidated):
 from backend.utils.env_config import get_env_float
 
-TIMEOUT = get_env_float("JARVIS_TIMEOUT", 30.0)
+TIMEOUT = get_env_float("Ironcliw_TIMEOUT", 30.0)
 ```
 
 ---
@@ -681,5 +681,5 @@ Task 6 subtasks (each module) can run in parallel.
 
 - jarvis-common package creation
 - Cross-repo installation mechanism (pip install)
-- JARVIS-Prime and reactor-core migration
+- Ironcliw-Prime and reactor-core migration
 - voice_unlock/config.py EnvConfig conversion (larger refactor)

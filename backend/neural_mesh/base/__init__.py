@@ -1,5 +1,5 @@
-"""
-JARVIS Neural Mesh - Base Module
+﻿"""
+Ironcliw Neural Mesh - Base Module
 
 This module provides the BaseNeuralMeshAgent class that all
 agents should inherit from for Neural Mesh integration.

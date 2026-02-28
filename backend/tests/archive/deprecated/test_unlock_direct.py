@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Direct Unlock Via API
 ==========================
@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, '.')
 
 from api.unified_command_processor import get_unified_processor
-from api.jarvis_voice_api import JARVISCommand
+from api.jarvis_voice_api import IroncliwCommand
 
 async def test_direct_unlock():
     """Test unlock command directly"""
@@ -23,7 +23,7 @@ async def test_direct_unlock():
         processor = get_unified_processor(None)  # No API key needed for unlock
         
         # Create command
-        command = JARVISCommand(text="unlock my screen")
+        command = IroncliwCommand(text="unlock my screen")
         
         print(f"\n📝 Processing command: '{command.text}'")
         

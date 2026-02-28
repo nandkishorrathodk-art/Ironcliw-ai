@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Python bindings for Fast Capture Engine
  * Uses pybind11 for seamless Python integration
  */
@@ -89,7 +89,7 @@ py::dict capture_result_to_dict(const CaptureResult& result) {
 
 // Module definition
 PYBIND11_MODULE(fast_capture, m) {
-    m.doc() = "Fast Screen Capture Engine for JARVIS Vision System";
+    m.doc() = "Fast Screen Capture Engine for Ironcliw Vision System";
     
     // ===== Enums and Constants =====
     m.attr("VERSION") = "1.0.0";

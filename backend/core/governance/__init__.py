@@ -1,13 +1,13 @@
-"""
-JARVIS Governance Module
+﻿"""
+Ironcliw Governance Module
 ========================
 
-Provides clinical-grade governance for JARVIS task execution:
+Provides clinical-grade governance for Ironcliw task execution:
 - SOP Enforcer: Requires design plans before code changes
 - Thinking Protocol: Structured reasoning framework
 - Complexity Analyzer: Task complexity assessment
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 """
 
 from backend.core.governance.sop_enforcer import (
@@ -27,7 +27,7 @@ from backend.core.governance.sop_enforcer import (
 
     # Core Classes
     ThinkingProtocol,
-    JARVISThinkingProtocol,
+    IroncliwThinkingProtocol,
     ComplexityAnalyzer,
     SOPEnforcer,
 
@@ -56,7 +56,7 @@ __all__ = [
 
     # Core Classes
     "ThinkingProtocol",
-    "JARVISThinkingProtocol",
+    "IroncliwThinkingProtocol",
     "ComplexityAnalyzer",
     "SOPEnforcer",
 

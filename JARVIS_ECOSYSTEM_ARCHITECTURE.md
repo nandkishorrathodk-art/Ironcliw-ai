@@ -1,10 +1,10 @@
-# JARVIS Ecosystem Architecture
+﻿# Ironcliw Ecosystem Architecture
 
 **Three Independent Projects Working Together**
 
 ## Overview
 
-The JARVIS ecosystem has been modernized into three separate but connected projects:
+The Ironcliw ecosystem has been modernized into three separate but connected projects:
 
 ```
 ┌─────────────────┐
@@ -13,12 +13,12 @@ The JARVIS ecosystem has been modernized into three separate but connected proje
          │ uses
          ▼
 ┌─────────────────┐
-│  JARVIS Prime   │  ← Specialized PRIME Models
+│  Ironcliw Prime   │  ← Specialized PRIME Models
 └────────┬────────┘
          │ imports
          ▼
 ┌─────────────────┐
-│     JARVIS      │  ← AI Assistant (Runtime)
+│     Ironcliw      │  ← AI Assistant (Runtime)
 └─────────────────┘
 ```
 
@@ -67,18 +67,18 @@ trainer.train("./data/train.jsonl")
 
 ---
 
-## 2. JARVIS Prime
+## 2. Ironcliw Prime
 
 **Repository:** https://github.com/drussell23/jarvis-prime
 **Version:** v0.6.0
-**Purpose:** Specialized PRIME models for JARVIS AI Assistant
+**Purpose:** Specialized PRIME models for Ironcliw AI Assistant
 
 ### Key Features
 - ✅ Simple `PrimeModel.from_pretrained()` API
 - ✅ Automatic quantization (4-bit, 8-bit) for M1 Mac
 - ✅ Pre-configured PRIME models (chat, vision, reasoning)
 - ✅ Uses Reactor Core for training
-- ✅ Production-ready for JARVIS integration
+- ✅ Production-ready for Ironcliw integration
 
 ### Available Models
 | Model | Size | Use Case | M1 Compatible |
@@ -89,7 +89,7 @@ trainer.train("./data/train.jsonl")
 
 ### Installation
 ```bash
-# For JARVIS runtime (inference only)
+# For Ironcliw runtime (inference only)
 pip install jarvis-prime
 
 # For model training
@@ -112,14 +112,14 @@ response = model.generate("What is machine learning?")
 
 ---
 
-## 3. JARVIS
+## 3. Ironcliw
 
-**Repository:** https://github.com/drussell23/JARVIS-AI-Agent
+**Repository:** https://github.com/drussell23/Ironcliw-AI-Agent
 **Version:** v2.0.0+ (current)
 **Purpose:** AI Assistant with reasoning, chat, and multimodal capabilities
 
 ### Changes Required
-Remove training logic from JARVIS backend and import JARVIS Prime:
+Remove training logic from Ironcliw backend and import Ironcliw Prime:
 
 #### Before
 ```python
@@ -142,8 +142,8 @@ class ClaudeChatbot:
 ```
 
 ### Files to Modify
-1. Remove `backend/models/training_pipeline.py` → Use JARVIS Prime
-2. Remove `backend/models/training_interface.py` → Use JARVIS Prime
+1. Remove `backend/models/training_pipeline.py` → Use Ironcliw Prime
+2. Remove `backend/models/training_interface.py` → Use Ironcliw Prime
 3. Update `backend/chatbots/claude_chatbot.py` → Import from `jarvis_prime`
 4. Update `backend/requirements.txt`:
    - Remove: `torch`, `transformers`, `peft` (direct deps)
@@ -155,20 +155,20 @@ class ClaudeChatbot:
 
 ### Local Development (M1 Mac 16GB)
 - **Reactor Core:** Disabled (inference-only mode)
-- **JARVIS Prime:** Loads quantized models (8-bit)
-- **JARVIS:** Runs normally with lightweight models
+- **Ironcliw Prime:** Loads quantized models (8-bit)
+- **Ironcliw:** Runs normally with lightweight models
 
 ### Remote Training (GCP 32GB VM)
 - **Reactor Core:** Full training mode with GCP Spot VM support
-- **JARVIS Prime:** Trains PRIME models using Reactor Core
-- **JARVIS:** Deployed separately (runtime only)
+- **Ironcliw Prime:** Trains PRIME models using Reactor Core
+- **Ironcliw:** Deployed separately (runtime only)
 
 ---
 
 ## Dependency Graph
 
 ```
-JARVIS (runtime)
+Ironcliw (runtime)
   │
   └─> jarvis-prime>=0.6.0
         │
@@ -188,15 +188,15 @@ JARVIS (runtime)
 - [ ] Build data preprocessing pipeline
 - [ ] Add model serving utilities
 
-### JARVIS Prime
-- [ ] Train `prime-7b-chat-v1` on JARVIS conversation data
+### Ironcliw Prime
+- [ ] Train `prime-7b-chat-v1` on Ironcliw conversation data
 - [ ] Add multimodal support for `prime-7b-vision-v1`
 - [ ] Create quantized exports for all models
 - [ ] Add model evaluation benchmarks
 - [ ] Publish models to Hugging Face Hub
 
-### JARVIS
-- [ ] Refactor backend to use JARVIS Prime
+### Ironcliw
+- [ ] Refactor backend to use Ironcliw Prime
 - [ ] Remove training logic from `backend/models/`
 - [ ] Update chatbot integrations
 - [ ] Test with quantized models on M1
@@ -206,7 +206,7 @@ JARVIS (runtime)
 
 ## Version Compatibility Matrix
 
-| Component | Reactor Core | JARVIS Prime | JARVIS |
+| Component | Reactor Core | Ironcliw Prime | Ironcliw |
 |-----------|--------------|--------------|--------|
 | Current | v1.0.0 | v0.6.0 | v2.0.0+ |
 | Min Required | - | ≥ 1.0.0 | ≥ 0.6.0 |
@@ -216,11 +216,11 @@ JARVIS (runtime)
 ## Summary
 
 ✅ **Reactor Core** - Live on GitHub
-✅ **JARVIS Prime** - Live on GitHub
-🔄 **JARVIS** - Needs refactoring to use JARVIS Prime
+✅ **Ironcliw Prime** - Live on GitHub
+🔄 **Ironcliw** - Needs refactoring to use Ironcliw Prime
 
 **Benefits:**
-1. **Separation of Concerns:** Training (Reactor Core) vs Models (JARVIS Prime) vs Runtime (JARVIS)
+1. **Separation of Concerns:** Training (Reactor Core) vs Models (Ironcliw Prime) vs Runtime (Ironcliw)
 2. **Environment Awareness:** Auto-detect M1 vs GCP and configure accordingly
 3. **GCP Spot VM Support:** Save costs with preemptible VMs + auto-resume
 4. **Modular Architecture:** Each project is independently testable and deployable
@@ -230,6 +230,6 @@ JARVIS (runtime)
 
 **Links:**
 - Reactor Core: https://github.com/drussell23/reactor-core
-- JARVIS Prime: https://github.com/drussell23/jarvis-prime
-- JARVIS: https://github.com/drussell23/JARVIS-AI-Agent
+- Ironcliw Prime: https://github.com/drussell23/jarvis-prime
+- Ironcliw: https://github.com/drussell23/Ironcliw-AI-Agent
 - MLForge (C++ Core): https://github.com/drussell23/MLForge

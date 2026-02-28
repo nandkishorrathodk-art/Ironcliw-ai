@@ -1,4 +1,4 @@
-"""
+﻿"""
 Surveillance Progress Stream - Real-time UI feedback for God Mode operations
 
 v32.0: Provides real-time progress streaming from VisualMonitorAgent to WebSocket/UI.
@@ -6,7 +6,7 @@ v32.0: Provides real-time progress streaming from VisualMonitorAgent to WebSocke
 The Problem:
     When user says "watch all Chrome windows for bouncing ball", they see:
     - "Got it, Sir. I'll scan every Chrome window..."
-    - Then SILENCE for 30-60 seconds while JARVIS works
+    - Then SILENCE for 30-60 seconds while Ironcliw works
     - User doesn't know: Is it working? Did it crash? What's happening?
 
 The Solution:

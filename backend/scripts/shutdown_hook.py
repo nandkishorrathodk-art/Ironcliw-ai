@@ -1,8 +1,8 @@
-"""
-JARVIS Shutdown Hook - Triple-Lock VM Cleanup System
+﻿"""
+Ironcliw Shutdown Hook - Triple-Lock VM Cleanup System
 =====================================================
 
-This module provides robust, guaranteed cleanup of GCP resources when JARVIS shuts down.
+This module provides robust, guaranteed cleanup of GCP resources when Ironcliw shuts down.
 It's designed to work in all shutdown scenarios: normal exit, SIGTERM, SIGINT, atexit.
 
 Triple-Lock Safety System:
@@ -34,7 +34,7 @@ Usage:
     from backend.scripts.shutdown_hook import cleanup_remote_resources_sync
     cleanup_remote_resources_sync()
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 2.0.0
 """
 
@@ -149,7 +149,7 @@ def _is_interpreter_shutting_down() -> bool:
 
 async def cleanup_remote_resources(
     timeout: float = 30.0,
-    reason: str = "JARVIS shutdown",
+    reason: str = "Ironcliw shutdown",
 ) -> Dict[str, Any]:
     """
     Force cleanup of all GCP resources (async version).
@@ -424,7 +424,7 @@ async def _cleanup_via_infrastructure_orchestrator(timeout: float) -> int:
     Cleanup using the Infrastructure Orchestrator (Terraform-managed resources).
 
     This handles:
-    - Cloud Run services (JARVIS Prime, Backend)
+    - Cloud Run services (Ironcliw Prime, Backend)
     - Redis/Memorystore
     - Any other Terraform-managed resources
 
@@ -569,7 +569,7 @@ async def _cleanup_via_vm_manager(timeout: float) -> int:
         
         # Cleanup all VMs
         await asyncio.wait_for(
-            manager.cleanup_all_vms(reason="Local JARVIS shutdown"),
+            manager.cleanup_all_vms(reason="Local Ironcliw shutdown"),
             timeout=timeout - 5
         )
         
@@ -613,7 +613,7 @@ async def _cleanup_via_gcloud(timeout: float) -> tuple[int, List[str]]:
         
         logger.info(f"   Attempting gcloud CLI cleanup (project: {project_id})...")
         
-        # List JARVIS VMs
+        # List Ironcliw VMs
         list_cmd = [
             "gcloud", "compute", "instances", "list",
             f"--project={project_id}",
@@ -645,10 +645,10 @@ async def _cleanup_via_gcloud(timeout: float) -> tuple[int, List[str]]:
                     vms.append({"name": parts[0], "zone": parts[1]})
         
         if not vms:
-            logger.info("   No JARVIS VMs found via gcloud")
+            logger.info("   No Ironcliw VMs found via gcloud")
             return 0, []
         
-        logger.info(f"   Found {len(vms)} JARVIS VM(s) via gcloud, deleting...")
+        logger.info(f"   Found {len(vms)} Ironcliw VM(s) via gcloud, deleting...")
         
         # Delete VMs in parallel
         delete_tasks = []
@@ -713,7 +713,7 @@ async def _run_gcloud_delete(cmd: List[str], vm_name: str) -> bool:
 
 def cleanup_remote_resources_sync(
     timeout: float = 30.0,
-    reason: str = "JARVIS shutdown (sync)",
+    reason: str = "Ironcliw shutdown (sync)",
 ) -> Dict[str, Any]:
     """
     Synchronous wrapper for cleanup_remote_resources.
@@ -1153,9 +1153,9 @@ def cleanup_orphaned_semaphores_on_startup() -> Dict[str, Any]:
                 f"(some may be from other processes)"
             )
 
-        # Note: Actually removing semaphores requires identifying which belong to JARVIS
+        # Note: Actually removing semaphores requires identifying which belong to Ironcliw
         # and having appropriate permissions. For now, we just report.
-        # Future enhancement: Track JARVIS semaphore IDs and clean them up on startup
+        # Future enhancement: Track Ironcliw semaphore IDs and clean them up on startup
 
     except subprocess.TimeoutExpired:
         results["errors"].append("Command timeout")
@@ -1265,9 +1265,9 @@ def unregister_handlers() -> None:
 
 # Only auto-register if we're not being imported in a subprocess
 # (check for environment variable set by main process)
-if os.getenv("JARVIS_SHUTDOWN_HOOK_REGISTERED") != "1":
+if os.getenv("Ironcliw_SHUTDOWN_HOOK_REGISTERED") != "1":
     # Mark as registered to prevent duplicate registration in subprocesses
-    os.environ["JARVIS_SHUTDOWN_HOOK_REGISTERED"] = "1"
+    os.environ["Ironcliw_SHUTDOWN_HOOK_REGISTERED"] = "1"
     register_handlers()
 
 
@@ -1285,7 +1285,7 @@ if __name__ == "__main__":
     """
     import argparse
     
-    parser = argparse.ArgumentParser(description="JARVIS GCP Resource Cleanup")
+    parser = argparse.ArgumentParser(description="Ironcliw GCP Resource Cleanup")
     parser.add_argument(
         "--timeout",
         type=float,

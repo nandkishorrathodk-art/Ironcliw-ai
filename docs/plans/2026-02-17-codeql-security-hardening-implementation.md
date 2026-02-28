@@ -1,4 +1,4 @@
-# CodeQL Security Hardening Implementation Plan
+﻿# CodeQL Security Hardening Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -633,7 +633,7 @@ After all commits are pushed, the next CodeQL scan (or manually triggered) shoul
 
 **Step 2: Check remaining alerts**
 
-Run: `gh api "repos/drussell23/JARVIS/code-scanning/alerts?state=open&per_page=1" -i 2>/dev/null | grep -i link`
+Run: `gh api "repos/drussell23/Ironcliw/code-scanning/alerts?state=open&per_page=1" -i 2>/dev/null | grep -i link`
 
 Expected: Significant reduction from 5,117. The remaining alerts should be primarily:
 - `py/unused-import` (~3,500) — cosmetic, separate effort

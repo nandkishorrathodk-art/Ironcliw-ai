@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Simple Unlock Handler
 ====================
@@ -236,7 +236,7 @@ async def _perform_direct_unlock(password: str) -> bool:
         logger.info("[DIRECT UNLOCK] Starting secure unlock sequence with biometric integration")
 
         # CRITICAL: Keep screen awake during entire unlock process
-        # This prevents screen from going black while JARVIS processes audio
+        # This prevents screen from going black while Ironcliw processes audio
         logger.info("[DIRECT UNLOCK] Starting caffeinate to prevent screen sleep...")
         caffeinate_process = await asyncio.create_subprocess_exec(
             "caffeinate", "-d", "-u",  # -d = prevent display sleep, -u = wake display
@@ -877,7 +877,7 @@ async def _execute_screen_action(
                     context["status_message"] = (
                         f"Identity verified: {speaker_name} ({confidence:.0%} confidence)"
                     )
-                    # Store intermediate message for JARVIS to speak
+                    # Store intermediate message for Ironcliw to speak
                     context["verification_message"] = (
                         f"Identity confirmed, {speaker_name}. "
                         f"Initiating screen unlock sequence now."

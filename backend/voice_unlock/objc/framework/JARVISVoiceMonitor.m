@@ -1,11 +1,11 @@
-/**
- * JARVISVoiceMonitor.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwVoiceMonitor.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of continuous background voice monitoring.
  */
 
-#import "JARVISVoiceMonitor.h"
+#import "IroncliwVoiceMonitor.h"
 #import <Accelerate/Accelerate.h>
 #import <os/log.h>
 
@@ -18,7 +18,7 @@ static const NSUInteger kAudioBufferSize = 4096;
 static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 
 // Audio buffer info implementation
-@interface JARVISAudioBufferInfo ()
+@interface IroncliwAudioBufferInfo ()
 @property (nonatomic, readwrite) NSTimeInterval timestamp;
 @property (nonatomic, readwrite) NSTimeInterval duration;
 @property (nonatomic, readwrite) float averagePower;
@@ -27,11 +27,11 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 @property (nonatomic, readwrite) float voiceConfidence;
 @end
 
-@implementation JARVISAudioBufferInfo
+@implementation IroncliwAudioBufferInfo
 @end
 
 // Main implementation
-@interface JARVISVoiceMonitor ()
+@interface IroncliwVoiceMonitor ()
 
 @property (nonatomic, strong) AVAudioEngine *audioEngine;
 @property (nonatomic, strong) AVAudioInputNode *inputNode;
@@ -44,7 +44,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 @property (nonatomic, strong) NSDate *recordingStartTime;
 
 @property (nonatomic, readwrite) BOOL isMonitoring;
-@property (nonatomic, readwrite) JARVISVoiceActivityState activityState;
+@property (nonatomic, readwrite) IroncliwVoiceActivityState activityState;
 @property (nonatomic, readwrite) float currentAudioLevel;
 
 @property (nonatomic, strong) os_log_t logger;
@@ -57,7 +57,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 
 @end
 
-@implementation JARVISVoiceMonitor
+@implementation IroncliwVoiceMonitor
 
 - (instancetype)init {
     self = [super init];
@@ -72,7 +72,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
         _logger = os_log_create("com.jarvis.voiceunlock", "monitor");
         
         // Default configuration
-        _processingMode = JARVISAudioProcessingModeNormal;
+        _processingMode = IroncliwAudioProcessingModeNormal;
         _silenceTimeout = kDefaultSilenceTimeout;
         _maxRecordingDuration = kDefaultMaxRecordingDuration;
         _voiceDetectionThreshold = kDefaultVoiceDetectionThreshold;
@@ -151,7 +151,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
     }
     
     self.isMonitoring = YES;
-    self.activityState = JARVISVoiceActivityStateListening;
+    self.activityState = IroncliwVoiceActivityStateListening;
     self.recordingStartTime = [NSDate date];
     
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -177,7 +177,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
     [self.audioEngine stop];
     
     self.isMonitoring = NO;
-    self.activityState = JARVISVoiceActivityStateIdle;
+    self.activityState = IroncliwVoiceActivityStateIdle;
     [self.audioBuffer setLength:0];
     
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -190,7 +190,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 - (void)pauseMonitoring {
     if (self.isMonitoring) {
         [self.audioEngine pause];
-        self.activityState = JARVISVoiceActivityStateIdle;
+        self.activityState = IroncliwVoiceActivityStateIdle;
     }
 }
 
@@ -198,7 +198,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
     if (self.isMonitoring) {
         NSError *error = nil;
         if ([self.audioEngine startAndReturnError:&error]) {
-            self.activityState = JARVISVoiceActivityStateListening;
+            self.activityState = IroncliwVoiceActivityStateListening;
         } else {
             os_log_error(self.logger, "Failed to resume monitoring: %@", error);
         }
@@ -209,12 +209,12 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 
 - (void)setHighSensitivityMode:(BOOL)enabled {
     if (enabled) {
-        self.processingMode = JARVISAudioProcessingModeHighSensitivity;
+        self.processingMode = IroncliwAudioProcessingModeHighSensitivity;
         self.voiceDetectionThreshold = 0.1f;
         self.noiseFloorThreshold = 0.005f;
         self.silenceTimeout = 5.0;
     } else {
-        self.processingMode = JARVISAudioProcessingModeNormal;
+        self.processingMode = IroncliwAudioProcessingModeNormal;
         self.voiceDetectionThreshold = kDefaultVoiceDetectionThreshold;
         self.noiseFloorThreshold = kDefaultNoiseFloorThreshold;
         self.silenceTimeout = kDefaultSilenceTimeout;
@@ -224,7 +224,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
 - (void)setNoiseCancellationMode:(BOOL)enabled {
     self.enableNoiseReduction = enabled;
     if (enabled) {
-        self.processingMode = JARVISAudioProcessingModeNoiseCancellation;
+        self.processingMode = IroncliwAudioProcessingModeNoiseCancellation;
     }
 }
 
@@ -249,7 +249,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
         float confidence = hasVoice ? [self calculateVoiceConfidence:buffer] : 0.0f;
         
         // Create buffer info
-        JARVISAudioBufferInfo *bufferInfo = [[JARVISAudioBufferInfo alloc] init];
+        IroncliwAudioBufferInfo *bufferInfo = [[IroncliwAudioBufferInfo alloc] init];
         bufferInfo.timestamp = when.sampleTime / buffer.format.sampleRate;
         bufferInfo.duration = buffer.frameLength / buffer.format.sampleRate;
         bufferInfo.averagePower = averageLevel;
@@ -259,7 +259,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
         
         if (hasVoice) {
             // Voice detected
-            self.activityState = JARVISVoiceActivityStateDetecting;
+            self.activityState = IroncliwVoiceActivityStateDetecting;
             self.voiceFrameCount++;
             self.silenceFrameCount = 0;
             
@@ -287,10 +287,10 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
             // No voice detected
             self.silenceFrameCount++;
             
-            if (self.activityState == JARVISVoiceActivityStateDetecting) {
+            if (self.activityState == IroncliwVoiceActivityStateDetecting) {
                 // Was detecting voice, now silence
                 if (self.silenceFrameCount > 10) { // ~200ms of silence
-                    self.activityState = JARVISVoiceActivityStateListening;
+                    self.activityState = IroncliwVoiceActivityStateListening;
                 }
             }
         }
@@ -340,7 +340,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
     BOOL hasVoice = energy > MAX(self.voiceDetectionThreshold, self.adaptiveThreshold);
     
     // Additional checks for voice characteristics
-    if (hasVoice && self.processingMode == JARVISAudioProcessingModeHighSensitivity) {
+    if (hasVoice && self.processingMode == IroncliwAudioProcessingModeHighSensitivity) {
         // Check for voice-like patterns (simplified)
         float zcr = [self calculateZeroCrossingRate:buffer];
         hasVoice = hasVoice && (zcr > 0.1f && zcr < 0.5f);
@@ -420,7 +420,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
     if (self.audioBuffer.length > 0) {
         [self handleRecordingComplete];
     } else {
-        self.activityState = JARVISVoiceActivityStateTimeout;
+        self.activityState = IroncliwVoiceActivityStateTimeout;
         if ([self.delegate respondsToSelector:@selector(voiceMonitorDidTimeout)]) {
             [self.delegate voiceMonitorDidTimeout];
         }
@@ -432,7 +432,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
         return;
     }
     
-    self.activityState = JARVISVoiceActivityStateProcessing;
+    self.activityState = IroncliwVoiceActivityStateProcessing;
     
     // Copy audio data
     NSData *audioData = [self.audioBuffer copy];
@@ -445,7 +445,7 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
             self.audioDetectedBlock(audioData);
         }
         
-        self.activityState = JARVISVoiceActivityStateListening;
+        self.activityState = IroncliwVoiceActivityStateListening;
     });
 }
 
@@ -456,19 +456,19 @@ static const NSUInteger kVADWindowSize = 20; // 20ms windows for VAD
         self.voiceDetectionThreshold = 0.05f;
         self.noiseFloorThreshold = 0.001f;
         self.enableNoiseReduction = NO;
-        self.processingMode = JARVISAudioProcessingModeHighSensitivity;
+        self.processingMode = IroncliwAudioProcessingModeHighSensitivity;
         
     } else if ([environment isEqualToString:@"normal"]) {
         self.voiceDetectionThreshold = kDefaultVoiceDetectionThreshold;
         self.noiseFloorThreshold = kDefaultNoiseFloorThreshold;
         self.enableNoiseReduction = YES;
-        self.processingMode = JARVISAudioProcessingModeNormal;
+        self.processingMode = IroncliwAudioProcessingModeNormal;
         
     } else if ([environment isEqualToString:@"noisy"]) {
         self.voiceDetectionThreshold = 0.5f;
         self.noiseFloorThreshold = 0.1f;
         self.enableNoiseReduction = YES;
-        self.processingMode = JARVISAudioProcessingModeNoiseCancellation;
+        self.processingMode = IroncliwAudioProcessingModeNoiseCancellation;
     }
     
     os_log_info(self.logger, "Applied preset for %@ environment", environment);

@@ -1,4 +1,4 @@
-# ✅ Phase 1.2 COMPLETE - Full Implementation Summary
+﻿# ✅ Phase 1.2 COMPLETE - Full Implementation Summary
 
 ## 🎉 **ALL PHASES COMPLETE: A + B + C + D** ✅
 
@@ -43,7 +43,7 @@
 ✅ CORRECT: "Apple Watch tracks YOUR movement"
    → Watch is on your wrist as you move
    → Bluetooth signal → MacBook calculates your distance
-   → JARVIS correlates with TV location
+   → Ironcliw correlates with TV location
 ```
 
 **What You Need:**
@@ -98,7 +98,7 @@
 SCENE: You walk into living room with Apple Watch
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[JARVIS - Internal Processing]
+[Ironcliw - Internal Processing]
 1. Bluetooth scan: "Derek's Apple Watch detected"
 2. RSSI: -55 dBm
 3. Distance calculation: 2.5 meters
@@ -110,7 +110,7 @@ SCENE: You walk into living room with Apple Watch
 9. Connection decision: PROMPT_USER (confidence: 0.75)
 10. Generate voice prompt...
 
-[JARVIS - Voice Output]
+[Ironcliw - Voice Output]
 "Sir, I see you're near the Sony Living Room TV, 
  about 2.5 meters away. Shall I connect?"
 
@@ -123,7 +123,7 @@ OPTION A: You Say "Yes"
 [YOU]
 "Yes"
 
-[JARVIS - Internal Processing]
+[Ironcliw - Internal Processing]
 1. Voice command detected: "yes"
 2. Affirmative response recognized ✅
 3. Execute connection decision
@@ -132,7 +132,7 @@ OPTION A: You Say "Yes"
 6. Connection execution time: 2.3 seconds ✅
 7. State updated: CONNECTED
 
-[JARVIS - Voice Output]
+[Ironcliw - Voice Output]
 "Connecting to Sony Living Room TV... Done, sir."
 
 [Result]
@@ -147,20 +147,20 @@ OPTION B: You Say "No"
 [YOU]
 "No"
 
-[JARVIS - Internal Processing]
+[Ironcliw - Internal Processing]
 1. Voice command detected: "no"
 2. Negative response recognized ✅
 3. Register user override (display_id: 23)
 4. Cooldown: 5 minutes
 5. State updated: ANSWERED
 
-[JARVIS - Voice Output]
+[Ironcliw - Voice Output]
 "Understood, sir. I won't ask again for a few minutes."
 
 [Result]
 ✅ Connection skipped
 ✅ User override active for 5 minutes
-✅ JARVIS won't prompt again until cooldown expires
+✅ Ironcliw won't prompt again until cooldown expires
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OPTION C: No Response (Timeout)
@@ -168,7 +168,7 @@ OPTION C: No Response (Timeout)
 
 [30 seconds pass with no response]
 
-[JARVIS - Internal Processing]
+[Ironcliw - Internal Processing]
 1. Prompt timeout (30s elapsed)
 2. State updated: TIMEOUT
 3. Prompt cleared
@@ -235,7 +235,7 @@ OPTION C: No Response (Timeout)
 
 ### **Automatic Prompts:**
 ```
-JARVIS: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
+Ironcliw: "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 
 YOU: "Yes" / "Yeah" / "Sure" / "Connect" / "Okay"
   → Connects automatically
@@ -300,7 +300,7 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 
 # 4. Enable Accessibility permissions
 #    System Settings → Privacy & Security → Accessibility
-#    Enable for Terminal or JARVIS
+#    Enable for Terminal or Ironcliw
 
 # 5. Done! ✅
 ```
@@ -310,7 +310,7 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 ```
 1. Ensure Apple Watch is on and paired
 2. Walk near Sony TV (2-8 meters)
-3. JARVIS will automatically prompt:
+3. Ironcliw will automatically prompt:
    "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 4. Say "Yes" or "No"
 5. If yes → Display extends in ~2-3 seconds
@@ -366,7 +366,7 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 ## 📝 **Quick Start**
 
 ```bash
-# 1. Restart JARVIS
+# 1. Restart Ironcliw
 python3 start_system.py
 
 # 2. Register your Sony TV (one-time)
@@ -382,7 +382,7 @@ curl -X POST http://localhost:8000/api/proximity-display/register \
 
 # 3. Walk near TV with Apple Watch
 
-# 4. JARVIS will prompt:
+# 4. Ironcliw will prompt:
 #    "Sir, I see you're near the Sony Living Room TV. Would you like to connect?"
 
 # 5. Say "Yes" to connect

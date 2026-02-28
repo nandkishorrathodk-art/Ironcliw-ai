@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Comprehensive Test Suite for JARVIS Display Monitor
+Comprehensive Test Suite for Ironcliw Display Monitor
 ====================================================
 
 Tests all components of the advanced display monitoring system:
@@ -523,7 +523,7 @@ async def run_all_tests(verbose=False, quick=False):
     """Run all tests"""
     print("\n")
     print("╔" + "="*78 + "╗")
-    print("║" + " "*20 + "JARVIS DISPLAY MONITOR TEST SUITE" + " "*25 + "║")
+    print("║" + " "*20 + "Ironcliw DISPLAY MONITOR TEST SUITE" + " "*25 + "║")
     print("╚" + "="*78 + "╝")
 
     if verbose:
@@ -551,7 +551,7 @@ async def run_all_tests(verbose=False, quick=False):
 
 async def main():
     """Main test runner"""
-    parser = argparse.ArgumentParser(description="Test JARVIS Display Monitor")
+    parser = argparse.ArgumentParser(description="Test Ironcliw Display Monitor")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--quick", "-q", action="store_true", help="Quick tests only")
 

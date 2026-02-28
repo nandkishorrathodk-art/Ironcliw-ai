@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Test different click positions to find Toronto"""
 
 import asyncio
@@ -98,5 +98,5 @@ async def test_toronto_positions():
     print(f"\nClaude says: {location_check.get('description', 'No response')[:200]}...")
 
 if __name__ == "__main__":
-    os.chdir('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend')
+    os.chdir('/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend')
     asyncio.run(test_toronto_positions())

@@ -1,8 +1,8 @@
-# Claude API Integration for JARVIS
+﻿# Claude API Integration for Ironcliw
 
 ## Overview
 
-JARVIS now supports Anthropic's Claude API, providing high-quality AI responses without any local memory constraints. This is perfect for M1 MacBooks with limited RAM since all processing happens in the cloud.
+Ironcliw now supports Anthropic's Claude API, providing high-quality AI responses without any local memory constraints. This is perfect for M1 MacBooks with limited RAM since all processing happens in the cloud.
 
 ## Benefits
 
@@ -50,7 +50,7 @@ pip install -r backend/requirements.txt
 python start_jarvis_claude.py
 ```
 
-This starts JARVIS in Claude-only mode - perfect for M1 Macs!
+This starts Ironcliw in Claude-only mode - perfect for M1 Macs!
 
 ### Using with Dynamic Mode Switching
 
@@ -74,7 +74,7 @@ claude = ClaudeChatbot(
 )
 
 # Generate response
-response = await claude.generate_response("Hello, JARVIS!")
+response = await claude.generate_response("Hello, Ironcliw!")
 print(response)
 ```
 
@@ -122,7 +122,7 @@ Claude API pricing (as of 2024):
 - **Sonnet**: ~$3 per million input tokens  
 - **Opus**: ~$15 per million input tokens
 
-For typical JARVIS usage (conversations, questions, coding help), Haiku is very cost-effective.
+For typical Ironcliw usage (conversations, questions, coding help), Haiku is very cost-effective.
 
 ## Testing
 
@@ -160,9 +160,9 @@ pip install anthropic
 - `USE_CLAUDE`: Set to "1" to enable Claude in dynamic mode
 - `CLAUDE_MODEL`: Override default model (optional)
 
-## Integration with JARVIS Modes
+## Integration with Ironcliw Modes
 
-The Claude integration works seamlessly with JARVIS's mode system:
+The Claude integration works seamlessly with Ironcliw's mode system:
 
 1. **Claude Mode**: Always uses Claude API
 2. **Simple Mode**: Local pattern matching (no AI)
@@ -182,23 +182,23 @@ When Claude is enabled, it overrides other modes since it doesn't use local reso
 ## Example Session
 
 ```
-🚀 Starting JARVIS with Claude API
+🚀 Starting Ironcliw with Claude API
 ==================================================
 ✅ Claude API key found
 🧠 Using Claude for all responses (no local memory constraints!)
 ==================================================
 
-🤖 JARVIS is ready! (Powered by Claude)
+🤖 Ironcliw is ready! (Powered by Claude)
 Type 'exit' or 'quit' to stop.
 --------------------------------------------------
 
-👤 You: Hello JARVIS! How are you running today?
+👤 You: Hello Ironcliw! How are you running today?
 
-🤖 JARVIS: Good day! I'm operating at peak efficiency, thank you for asking. I'm currently running via Claude's API, which means I can provide you with sophisticated responses without taxing your local system resources. This cloud-based configuration is particularly advantageous for your M1 MacBook Pro, as all the heavy computational work happens on Anthropic's servers rather than your local RAM. How may I assist you today?
+🤖 Ironcliw: Good day! I'm operating at peak efficiency, thank you for asking. I'm currently running via Claude's API, which means I can provide you with sophisticated responses without taxing your local system resources. This cloud-based configuration is particularly advantageous for your M1 MacBook Pro, as all the heavy computational work happens on Anthropic's servers rather than your local RAM. How may I assist you today?
 
 👤 You: Can you help me write a Python function to calculate fibonacci numbers?
 
-🤖 JARVIS: Certainly! I'll provide you with an efficient Python function to calculate Fibonacci numbers. Here's an implementation with multiple approaches:
+🤖 Ironcliw: Certainly! I'll provide you with an efficient Python function to calculate Fibonacci numbers. Here's an implementation with multiple approaches:
 
 ```python
 def fibonacci(n):
@@ -241,5 +241,5 @@ The first approach uses iteration with constant space complexity, making it very
 
 👤 You: exit
 
-👋 Goodbye! Thanks for using JARVIS.
+👋 Goodbye! Thanks for using Ironcliw.
 ```

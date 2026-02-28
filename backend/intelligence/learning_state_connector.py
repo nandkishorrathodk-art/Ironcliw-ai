@@ -1,4 +1,4 @@
-"""
+﻿"""
 Learning State Connector v100.0
 ================================
 
@@ -29,7 +29,7 @@ Architecture:
     |  (Redis + Local fallback)   |
     +----------------------------+
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations

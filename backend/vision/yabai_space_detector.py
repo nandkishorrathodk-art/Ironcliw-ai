@@ -1,4 +1,4 @@
-"""
+﻿"""
 Yabai integration for accurate Mission Control space detection
 Provides real-time space and window information using Yabai CLI
 Enhanced with YOLO vision for multi-monitor layout detection
@@ -994,7 +994,7 @@ class RescueTelemetry:
         - Base environment variable override
         """
         # Check for environment override
-        env_override = os.environ.get("JARVIS_RESCUE_WAKE_DELAY")
+        env_override = os.environ.get("Ironcliw_RESCUE_WAKE_DELAY")
         if env_override:
             return float(env_override) * 1000  # Convert seconds to ms
 
@@ -1440,136 +1440,136 @@ class GhostDisplayManagerConfig:
     """
     # Health monitoring
     health_check_interval_seconds: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_HEALTH_INTERVAL", "30"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_HEALTH_INTERVAL", "30"))
     )
     max_consecutive_failures: int = 3
     auto_recovery_enabled: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_AUTO_RECOVERY", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_AUTO_RECOVERY", "true").lower() == "true"
     )
 
     # Window layout
     default_layout_style: WindowLayoutStyle = field(
         default_factory=lambda: WindowLayoutStyle(
-            os.environ.get("JARVIS_GHOST_LAYOUT", "side_by_side")
-        ) if os.environ.get("JARVIS_GHOST_LAYOUT") else WindowLayoutStyle.SIDE_BY_SIDE
+            os.environ.get("Ironcliw_GHOST_LAYOUT", "side_by_side")
+        ) if os.environ.get("Ironcliw_GHOST_LAYOUT") else WindowLayoutStyle.SIDE_BY_SIDE
     )
     layout_padding: int = field(
-        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_PADDING", "10"))
+        default_factory=lambda: int(os.environ.get("Ironcliw_GHOST_PADDING", "10"))
     )
     max_windows_per_row: int = field(
-        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MAX_PER_ROW", "3"))
+        default_factory=lambda: int(os.environ.get("Ironcliw_GHOST_MAX_PER_ROW", "3"))
     )
 
     # Window return policy
     return_windows_after_monitoring: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_RETURN_WINDOWS", "false").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_RETURN_WINDOWS", "false").lower() == "true"
     )
     preserve_geometry_on_return: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_PRESERVE_GEOMETRY", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_PRESERVE_GEOMETRY", "true").lower() == "true"
     )
 
     # Fallback strategy
     fallback_enabled: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_FALLBACK", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_FALLBACK", "true").lower() == "true"
     )
     fallback_create_space: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_CREATE_SPACE", "false").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_CREATE_SPACE", "false").lower() == "true"
     )
 
     # Multi-window coordination
     max_windows_on_ghost: int = field(
-        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MAX_WINDOWS", "10"))
+        default_factory=lambda: int(os.environ.get("Ironcliw_GHOST_MAX_WINDOWS", "10"))
     )
     throttle_teleports: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_THROTTLE_TELEPORTS", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_THROTTLE_TELEPORTS", "true").lower() == "true"
     )
     teleport_delay_ms: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_TELEPORT_DELAY_MS", "50"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_TELEPORT_DELAY_MS", "50"))
     )
 
     # v26.0: Display scaling configuration
     enable_retina_scaling: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_RETINA_SCALING", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_RETINA_SCALING", "true").lower() == "true"
     )
     auto_detect_display_scale: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_AUTO_SCALE", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_AUTO_SCALE", "true").lower() == "true"
     )
     default_display_scale: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_DEFAULT_SCALE", "1.0"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_DEFAULT_SCALE", "1.0"))
     )
 
     # v26.0: Resolution change handling
     monitor_resolution_changes: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_MONITOR_RESOLUTION", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_MONITOR_RESOLUTION", "true").lower() == "true"
     )
     resolution_check_interval_seconds: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_RESOLUTION_INTERVAL", "10"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_RESOLUTION_INTERVAL", "10"))
     )
     auto_relayout_on_resolution_change: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_AUTO_RELAYOUT", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_AUTO_RELAYOUT", "true").lower() == "true"
     )
 
     # v26.0: System sleep/wake handling
     handle_sleep_wake_events: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_HANDLE_SLEEP", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_HANDLE_SLEEP", "true").lower() == "true"
     )
     post_wake_delay_ms: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_WAKE_DELAY_MS", "500"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_WAKE_DELAY_MS", "500"))
     )
     post_wake_health_check: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_WAKE_HEALTH_CHECK", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_WAKE_HEALTH_CHECK", "true").lower() == "true"
     )
 
     # v26.0: User presence detection
     detect_user_on_ghost_display: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_DETECT_USER", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_DETECT_USER", "true").lower() == "true"
     )
     pause_operations_when_user_present: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_PAUSE_ON_USER", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_PAUSE_ON_USER", "true").lower() == "true"
     )
     user_presence_cooldown_seconds: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_USER_COOLDOWN", "5.0"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_USER_COOLDOWN", "5.0"))
     )
 
     # v26.0: Animation timing
     wait_for_animations: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_WAIT_ANIMATIONS", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_WAIT_ANIMATIONS", "true").lower() == "true"
     )
     standard_animation_duration_ms: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_ANIMATION_MS", "250"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_ANIMATION_MS", "250"))
     )
     animation_buffer_ms: float = field(
-        default_factory=lambda: float(os.environ.get("JARVIS_GHOST_ANIMATION_BUFFER_MS", "50"))
+        default_factory=lambda: float(os.environ.get("Ironcliw_GHOST_ANIMATION_BUFFER_MS", "50"))
     )
 
     # v26.0: Space stability
     use_space_uuid: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_USE_SPACE_UUID", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_USE_SPACE_UUID", "true").lower() == "true"
     )
     verify_space_before_move: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_VERIFY_SPACE", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_VERIFY_SPACE", "true").lower() == "true"
     )
 
     # v26.0: Window z-order management
     preserve_z_order: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_PRESERVE_ZORDER", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_PRESERVE_ZORDER", "true").lower() == "true"
     )
     restore_focus_on_return: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_RESTORE_FOCUS", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_RESTORE_FOCUS", "true").lower() == "true"
     )
 
     # v26.0: Window constraints
     respect_window_constraints: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_RESPECT_CONSTRAINTS", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_RESPECT_CONSTRAINTS", "true").lower() == "true"
     )
     enforce_minimum_window_size: bool = field(
-        default_factory=lambda: os.environ.get("JARVIS_GHOST_ENFORCE_MIN_SIZE", "true").lower() == "true"
+        default_factory=lambda: os.environ.get("Ironcliw_GHOST_ENFORCE_MIN_SIZE", "true").lower() == "true"
     )
     minimum_window_width: int = field(
-        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MIN_WIDTH", "200"))
+        default_factory=lambda: int(os.environ.get("Ironcliw_GHOST_MIN_WIDTH", "200"))
     )
     minimum_window_height: int = field(
-        default_factory=lambda: int(os.environ.get("JARVIS_GHOST_MIN_HEIGHT", "150"))
+        default_factory=lambda: int(os.environ.get("Ironcliw_GHOST_MIN_HEIGHT", "150"))
     )
 
 
@@ -1637,7 +1637,7 @@ class GhostDisplayManager:
         # v27.0: Crash Recovery - Persistence Manager Integration
         # =========================================================================
         # FIXES "AMNESIA" RISK:
-        # If JARVIS crashes while windows are on Ghost Display, the in-memory
+        # If Ironcliw crashes while windows are on Ghost Display, the in-memory
         # geometry cache is lost. GhostPersistenceManager persists state to disk
         # BEFORE teleportation, enabling recovery on restart.
         # =========================================================================
@@ -2552,7 +2552,7 @@ class GhostDisplayManager:
                         cg_display_id = resolve_yabai_index_to_cg_display_id(yabai_idx)
 
                         # Direct override (for debugging/testing)
-                        cg_override = os.environ.get('JARVIS_GHOST_CG_DISPLAY_ID')
+                        cg_override = os.environ.get('Ironcliw_GHOST_CG_DISPLAY_ID')
                         if cg_override:
                             try:
                                 cg_display_id = int(cg_override)
@@ -3093,7 +3093,7 @@ class GhostDisplayManager:
                 self._focused_window_before_teleport = window_id
 
             # v27.0: Persist to disk BEFORE teleportation for crash recovery
-            # This ensures if JARVIS crashes mid-teleport, we know where to return windows
+            # This ensures if Ironcliw crashes mid-teleport, we know where to return windows
             if self._persistence_manager:
                 try:
                     ghost_space_id = self.ghost_space or 0
@@ -3171,11 +3171,11 @@ class GhostDisplayManager:
             and getattr(self._ghost_info, 'is_virtual', False)
         )
         if _is_virtual:
-            usable_y = int(os.environ.get("JARVIS_MENU_BAR_HEIGHT", "0"))
-            dock_h = int(os.environ.get("JARVIS_DOCK_HEIGHT", "0"))
+            usable_y = int(os.environ.get("Ironcliw_MENU_BAR_HEIGHT", "0"))
+            dock_h = int(os.environ.get("Ironcliw_DOCK_HEIGHT", "0"))
         else:
-            usable_y = int(os.environ.get("JARVIS_MENU_BAR_HEIGHT", "25"))
-            dock_h = int(os.environ.get("JARVIS_DOCK_HEIGHT", "50"))
+            usable_y = int(os.environ.get("Ironcliw_MENU_BAR_HEIGHT", "25"))
+            dock_h = int(os.environ.get("Ironcliw_DOCK_HEIGHT", "50"))
         usable_height = screen_height - usable_y - dock_h
         usable_width = screen_width
 
@@ -3638,10 +3638,10 @@ def get_shadow_display_index() -> int:
 
     Resolution order:
         1. GhostDisplayManager's live _ghost_info.yabai_display_index (most accurate)
-        2. JARVIS_SHADOW_DISPLAY env var (user override)
+        2. Ironcliw_SHADOW_DISPLAY env var (user override)
         3. Default: 2
 
-    This replaces all hardcoded int(os.getenv("JARVIS_SHADOW_DISPLAY", "2")) calls
+    This replaces all hardcoded int(os.getenv("Ironcliw_SHADOW_DISPLAY", "2")) calls
     throughout the codebase with a single source of truth that adapts to runtime
     display topology changes (e.g., monitor reconnect, display rearrangement).
     """
@@ -3654,7 +3654,7 @@ def get_shadow_display_index() -> int:
     except Exception:
         pass
 
-    return int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+    return int(os.getenv("Ironcliw_SHADOW_DISPLAY", "2"))
 
 
 # =============================================================================
@@ -3700,7 +3700,7 @@ def resolve_yabai_index_to_cg_display_id(
     """
     global _yabai_to_cg_cache, _yabai_to_cg_cache_time, _yabai_to_cg_cache_dirty
 
-    cache_ttl = float(os.environ.get('JARVIS_DISPLAY_MAP_CACHE_TTL', '30.0'))
+    cache_ttl = float(os.environ.get('Ironcliw_DISPLAY_MAP_CACHE_TTL', '30.0'))
 
     # v243.0: Thread-safe cache check — lock only dict read, NOT subprocess
     with _yabai_to_cg_cache_lock:
@@ -3839,8 +3839,8 @@ def _resolve_via_quartz_fallback(yabai_index: int) -> Optional[int]:
         ordered.extend(did for _, did in non_main)  # index 2, 3, ...
 
         # v243.0 (#1): Cross-validate against known ghost display dimensions
-        ghost_width = os.environ.get("JARVIS_GHOST_WIDTH")
-        ghost_height = os.environ.get("JARVIS_GHOST_HEIGHT")
+        ghost_width = os.environ.get("Ironcliw_GHOST_WIDTH")
+        ghost_height = os.environ.get("Ironcliw_GHOST_HEIGHT")
         if ghost_width and ghost_height:
             try:
                 target_w, target_h = int(ghost_width), int(ghost_height)
@@ -4876,7 +4876,7 @@ class YabaiSpaceDetector:
     # =========================================================================
     # v22.0.0: WINDOW TELEPORTATION - Autonomous Window Management
     # =========================================================================
-    # These methods enable JARVIS to move windows between spaces automatically.
+    # These methods enable Ironcliw to move windows between spaces automatically.
     # Key use case: Move windows to Ghost Display for background monitoring
     # without disturbing the user's current workspace.
     # =========================================================================
@@ -5086,7 +5086,7 @@ class YabaiSpaceDetector:
         Browsers like Chrome expose their window state via AppleScript even when hidden.
         
         v44.0 ENHANCEMENTS (over v43.5):
-        - Smart Targeting: Excludes JARVIS windows (localhost, 127.0.0.1) from unpack
+        - Smart Targeting: Excludes Ironcliw windows (localhost, 127.0.0.1) from unpack
         - State Verification Loop: Waits up to 2s and verifies fullscreen actually exited
         - Nuclear Fallback: If AppleScript fails, tries direct display move as last resort
         - Fire & Forget Mode: Optional parallel execution for max speed
@@ -5157,7 +5157,7 @@ class YabaiSpaceDetector:
             app_type = "electron"
         else:
             # v43.5: POLYMORPHIC - Use the app name directly
-            # This handles any app JARVIS encounters
+            # This handles any app Ironcliw encounters
             actual_app_name = app_name
             app_type = "generic"
         
@@ -5220,16 +5220,16 @@ class YabaiSpaceDetector:
         # v44.0: BUILD SMART-TARGETED AppleScript (Direct Object Model)
         # ═══════════════════════════════════════════════════════════════════════
         # CRITICAL: We use DIRECT APPLICATION CONTROL, not System Events.
-        # v44.0 SMART TARGETING: Exclude JARVIS windows to protect dashboard
-        # - Skips windows with "JARVIS", "localhost", "127.0.0.1" in title
+        # v44.0 SMART TARGETING: Exclude Ironcliw windows to protect dashboard
+        # - Skips windows with "Ironcliw", "localhost", "127.0.0.1" in title
         # - No focus stealing (doesn't bring window to front)
         # - No keyboard simulation (no ⌘F shortcuts)
         # - Works on hidden/background windows
         # - Requires Automation permission on first run
         # ═══════════════════════════════════════════════════════════════════════
         
-        # v44.0: JARVIS protection patterns - these windows should NOT be unfullscreened
-        jarvis_patterns = ["JARVIS", "localhost", "127.0.0.1"]
+        # v44.0: Ironcliw protection patterns - these windows should NOT be unfullscreened
+        jarvis_patterns = ["Ironcliw", "localhost", "127.0.0.1"]
         
         if app_type == "chrome":
             # ═══════════════════════════════════════════════════════════════════
@@ -5247,9 +5247,9 @@ class YabaiSpaceDetector:
                     repeat with w in windowList
                         try
                             set winName to name of w
-                            -- v44.0: Skip JARVIS windows (protect dashboard)
+                            -- v44.0: Skip Ironcliw windows (protect dashboard)
                             set isJarvis to false
-                            if winName contains "JARVIS" then set isJarvis to true
+                            if winName contains "Ironcliw" then set isJarvis to true
                             if winName contains "localhost" then set isJarvis to true
                             if winName contains "127.0.0.1" then set isJarvis to true
                             
@@ -5295,9 +5295,9 @@ class YabaiSpaceDetector:
                     repeat with w in windowList
                         try
                             set winName to name of w
-                            -- v44.0: Skip JARVIS windows (protect dashboard)
+                            -- v44.0: Skip Ironcliw windows (protect dashboard)
                             set isJarvis to false
-                            if winName contains "JARVIS" then set isJarvis to true
+                            if winName contains "Ironcliw" then set isJarvis to true
                             if winName contains "localhost" then set isJarvis to true
                             if winName contains "127.0.0.1" then set isJarvis to true
                             
@@ -5343,9 +5343,9 @@ class YabaiSpaceDetector:
                     repeat with w in windowList
                         try
                             set winName to name of w
-                            -- v44.0: Skip JARVIS windows (protect dashboard)
+                            -- v44.0: Skip Ironcliw windows (protect dashboard)
                             set isJarvis to false
-                            if winName contains "JARVIS" then set isJarvis to true
+                            if winName contains "Ironcliw" then set isJarvis to true
                             if winName contains "localhost" then set isJarvis to true
                             if winName contains "127.0.0.1" then set isJarvis to true
                             
@@ -5385,7 +5385,7 @@ class YabaiSpaceDetector:
             # v44.0: GENERIC FALLBACK - Accessibility API (no focus stealing)
             # Uses AXFullScreen attribute via System Events process control
             # NOTE: This requires Accessibility permission, not Automation
-            # v44.0: Skip JARVIS windows using title check
+            # v44.0: Skip Ironcliw windows using title check
             script = f'''
             tell application "System Events"
                 try
@@ -5393,9 +5393,9 @@ class YabaiSpaceDetector:
                         repeat with w in (every window)
                             try
                                 set winName to name of w
-                                -- v44.0: Skip JARVIS windows (protect dashboard)
+                                -- v44.0: Skip Ironcliw windows (protect dashboard)
                                 set isJarvis to false
-                                if winName contains "JARVIS" then set isJarvis to true
+                                if winName contains "Ironcliw" then set isJarvis to true
                                 if winName contains "localhost" then set isJarvis to true
                                 if winName contains "127.0.0.1" then set isJarvis to true
                                 
@@ -5468,7 +5468,7 @@ class YabaiSpaceDetector:
                         # ═══════════════════════════════════════════════════════
                         logger.critical(
                             f"[YABAI v44.0] ⚠️ PERMISSION DENIED! ⚠️\n"
-                            f"JARVIS needs Automation permission to control {actual_app_name}.\n"
+                            f"Ironcliw needs Automation permission to control {actual_app_name}.\n"
                             f"Please check for a macOS popup asking to allow access.\n"
                             f"Go to: System Preferences → Security & Privacy → Privacy → Automation\n"
                             f"Enable: Terminal (or Python) → {actual_app_name}"
@@ -5971,7 +5971,7 @@ class YabaiSpaceDetector:
 
                 # SIP-AWARE CONVERGENCE: macOS enforces mandatory animations
                 # With SIP enabled, we must wait longer for the animation to complete
-                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", str(sip_convergence_delay)))
+                sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", str(sip_convergence_delay)))
                 logger.debug(f"[YABAI v50.0] ⏳ SIP Convergence: waiting {sip_delay}s for animation")
                 await asyncio.sleep(sip_delay)
 
@@ -6450,7 +6450,7 @@ class YabaiSpaceDetector:
                 )
 
             # Wait for unpack animation to complete
-            sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "2.0"))
+            sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "2.0"))
             await asyncio.sleep(sip_delay)
 
             # ═══════════════════════════════════════════════════════════════
@@ -6619,7 +6619,7 @@ class YabaiSpaceDetector:
     # v54.0: PHOENIX PROTOCOL - Dynamic Window ID Regeneration
     # ═══════════════════════════════════════════════════════════════════════════
     # ROOT CAUSE FIX: macOS/Chrome can destroy and recreate windows during
-    # fullscreen transitions, giving them new IDs. This leaves JARVIS holding
+    # fullscreen transitions, giving them new IDs. This leaves Ironcliw holding
     # a "dead phone number" - the old ID that no longer exists.
     #
     # SOLUTION: When an ID fails, immediately scan all windows to find the
@@ -7860,7 +7860,7 @@ class YabaiSpaceDetector:
         v57.0: SUMMON PROTOCOL - Bring a window back from the Shadow Realm.
 
         Completes the bi-directional teleportation cycle:
-        - Exile: Window → Ghost Display (for JARVIS to watch)
+        - Exile: Window → Ghost Display (for Ironcliw to watch)
         - Summon: Window → User's Active Display (for user to interact)
 
         Handles all edge cases:
@@ -8667,7 +8667,7 @@ class YabaiSpaceDetector:
         """
         v63.0: DETECTION TRIGGER - Called when surveillance detects the target.
 
-        This is the primary trigger for God Mode surveillance. When JARVIS
+        This is the primary trigger for God Mode surveillance. When Ironcliw
         detects "bouncing ball" (or whatever was being watched), this
         automatically returns the windows to the user's screen.
 
@@ -9066,7 +9066,7 @@ class YabaiSpaceDetector:
             logger.info(f"[YABAI v51.0] Toggle command accepted for window {window_id}")
 
             # v51.0: Wait for macOS animation with SIP-aware delay
-            sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+            sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "3.0"))
             logger.debug(f"[YABAI v51.0] ⏳ Waiting {sip_delay}s for fullscreen animation...")
             await asyncio.sleep(sip_delay)
 
@@ -9354,7 +9354,7 @@ class YabaiSpaceDetector:
                     f"[YABAI v51.2] ☢️ AX API FLIPPED: Successfully flipped AXFullScreen for PID {pid}"
                 )
                 # Wait for macOS to process the state change
-                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "3.0"))
                 await asyncio.sleep(sip_delay)
                 return True
             elif "ESCAPED" in result:
@@ -9363,7 +9363,7 @@ class YabaiSpaceDetector:
                     f"for PID {pid} (AXFullScreen was already false)"
                 )
                 # Wait for macOS to process the state change
-                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "3.0"))
                 await asyncio.sleep(sip_delay)
                 return True
             elif "SILENT_SKIP" in result:
@@ -9476,7 +9476,7 @@ class YabaiSpaceDetector:
                 logger.info(
                     f"[YABAI v51.0] ☢️ AX API (by app) SUCCESS for '{app_name}'"
                 )
-                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "3.0"))
                 await asyncio.sleep(sip_delay)
                 return True
             else:
@@ -10153,10 +10153,10 @@ class YabaiSpaceDetector:
         # v34.0: Configurable hydration timing
         hydration_checkpoints = [
             float(x) for x in os.getenv(
-                'JARVIS_HYDRATION_CHECKPOINTS', '0.2,0.5,1.0,1.5'
+                'Ironcliw_HYDRATION_CHECKPOINTS', '0.2,0.5,1.0,1.5'
             ).split(',')
         ]
-        max_hydration_time = float(os.getenv('JARVIS_MAX_HYDRATION_TIME', '3.0'))
+        max_hydration_time = float(os.getenv('Ironcliw_MAX_HYDRATION_TIME', '3.0'))
 
         # ═══════════════════════════════════════════════════════════════════
         # v34.0: INTELLIGENT DISPLAY/SPACE RESOLUTION HELPERS
@@ -10225,7 +10225,7 @@ class YabaiSpaceDetector:
         # v47.0: CHEMICAL BOND RE-BONDING PROTOCOL
         # ═══════════════════════════════════════════════════════════════════
         # ROOT CAUSE FIX: When Chrome unpacks from fullscreen, macOS DESTROYS
-        # the window ID and creates a NEW one. JARVIS loses track.
+        # the window ID and creates a NEW one. Ironcliw loses track.
         #
         # SOLUTION: The "Chemical Bond" - App Name + Window Title
         # - Before unpack: Save the window's Chemical Bond
@@ -10421,7 +10421,7 @@ class YabaiSpaceDetector:
                 # Try hardware targeting directly
                 ghost_display = await self._get_ghost_display_index_async()
                 if ghost_display is not None:
-                    sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                    sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "3.0"))
                     hardware_success = await self._move_window_to_display_async(
                         window_id=window_id,
                         display_index=ghost_display,
@@ -10479,7 +10479,7 @@ class YabaiSpaceDetector:
                         original_window_title,
                         original_window_id,
                         original_pid=original_pid,  # v48.0 PID Hardening
-                        fuzzy_threshold=float(os.getenv("JARVIS_REBOND_FUZZY_THRESHOLD", "0.7"))
+                        fuzzy_threshold=float(os.getenv("Ironcliw_REBOND_FUZZY_THRESHOLD", "0.7"))
                     )
 
                     if new_window_id is not None:
@@ -11444,7 +11444,7 @@ class YabaiSpaceDetector:
 
             if ghost_display is not None:
                 # Try hardware targeting with SIP-aware convergence delay
-                sip_delay = float(os.getenv("JARVIS_SIP_CONVERGENCE_DELAY", "3.0"))
+                sip_delay = float(os.getenv("Ironcliw_SIP_CONVERGENCE_DELAY", "3.0"))
                 hardware_success = await self._move_window_to_display_async(
                     window_id=window_id,
                     display_index=ghost_display,
@@ -12546,7 +12546,7 @@ class YabaiSpaceDetector:
                 # This is now the PRIMARY strategy, not a fallback!
                 # ═══════════════════════════════════════════════════════════════
                 shadow_display = get_shadow_display_index()
-                use_shadow_realm = bool(os.getenv("JARVIS_SHADOW_REALM_ENABLED", "1") == "1")
+                use_shadow_realm = bool(os.getenv("Ironcliw_SHADOW_REALM_ENABLED", "1") == "1")
 
                 if use_shadow_realm:
                     logger.info(
@@ -12748,7 +12748,7 @@ class YabaiSpaceDetector:
 
         if telemetry.success_rate < 0.8:
             recommendations.append(
-                "Success rate below 80%. Consider increasing JARVIS_RESCUE_WAKE_DELAY."
+                "Success rate below 80%. Consider increasing Ironcliw_RESCUE_WAKE_DELAY."
             )
 
         if telemetry.failures_by_reason.get("space_switch_failed", 0) > 3:
@@ -13543,7 +13543,7 @@ async def parallel_workspace_query_async(
     """
     # Get configurable timeout
     if timeout_seconds is None:
-        timeout_seconds = float(os.getenv("JARVIS_WORKSPACE_QUERY_TIMEOUT", "3.0"))
+        timeout_seconds = float(os.getenv("Ironcliw_WORKSPACE_QUERY_TIMEOUT", "3.0"))
 
     start_time = time.time()
 

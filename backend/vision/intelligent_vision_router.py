@@ -1,5 +1,5 @@
-"""
-Intelligent Vision Router for JARVIS
+﻿"""
+Intelligent Vision Router for Ironcliw
 Dynamically routes vision queries to optimal model: YOLO, LLaMA, Claude (Haiku/Sonnet/Opus)
 
 Features:
@@ -975,7 +975,7 @@ class IntelligentVisionRouter:
                     "- Any text or content visible on screen\n"
                     "- What the user appears to be working on\n"
                     "- Any notable UI elements or activities\n"
-                    "Respond naturally as JARVIS."
+                    "Respond naturally as Ironcliw."
                 )
 
             # Use OptimizedClaudeVisionAnalyzer
@@ -1018,7 +1018,7 @@ class IntelligentVisionRouter:
                     "- Any text or content visible on screen\n"
                     "- What the user appears to be working on\n"
                     "- Any notable UI elements or activities\n"
-                    "Respond naturally as JARVIS."
+                    "Respond naturally as Ironcliw."
                 )
 
             # v251.6: Fixed phantom method — analyze_with_yolo_hybrid doesn't exist.

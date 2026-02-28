@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test runner for all autonomous system tests
 Executes functionality and edge case tests with detailed reporting
@@ -253,7 +253,7 @@ async def run_quick_demo():
 
 async def main():
     """Main test runner"""
-    print(f"\n{Colors.BOLD}🤖 JARVIS AUTONOMOUS SYSTEM TEST SUITE{Colors.ENDC}")
+    print(f"\n{Colors.BOLD}🤖 Ironcliw AUTONOMOUS SYSTEM TEST SUITE{Colors.ENDC}")
     print(f"{Colors.BLUE}Testing autonomous behaviors and edge cases{Colors.ENDC}")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     

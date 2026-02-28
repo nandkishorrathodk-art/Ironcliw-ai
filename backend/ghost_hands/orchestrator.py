@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ghost Hands Orchestrator
 =========================
 
@@ -44,7 +44,7 @@ Architecture:
     └── Ghost Task Manager
         └── Task lifecycle (create, run, pause, stop)
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0 - Ghost Hands Edition
 """
 
@@ -80,37 +80,37 @@ class GhostHandsConfig:
     # Component enablement
     vision_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GHOST_VISION", "true"
+            "Ironcliw_GHOST_VISION", "true"
         ).lower() == "true"
     )
     actuator_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GHOST_ACTUATOR", "true"
+            "Ironcliw_GHOST_ACTUATOR", "true"
         ).lower() == "true"
     )
     narration_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GHOST_NARRATION", "true"
+            "Ironcliw_GHOST_NARRATION", "true"
         ).lower() == "true"
     )
     yabai_enabled: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GHOST_YABAI", "true"
+            "Ironcliw_GHOST_YABAI", "true"
         ).lower() == "true"
     )
 
     # Task settings
     max_concurrent_tasks: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_GHOST_MAX_TASKS", "10"))
+        default_factory=lambda: int(os.getenv("Ironcliw_GHOST_MAX_TASKS", "10"))
     )
     task_timeout_seconds: int = field(
-        default_factory=lambda: int(os.getenv("JARVIS_GHOST_TASK_TIMEOUT", "300"))
+        default_factory=lambda: int(os.getenv("Ironcliw_GHOST_TASK_TIMEOUT", "300"))
     )
 
     # Safety
     require_confirmation_dangerous: bool = field(
         default_factory=lambda: os.getenv(
-            "JARVIS_GHOST_CONFIRM_DANGEROUS", "true"
+            "Ironcliw_GHOST_CONFIRM_DANGEROUS", "true"
         ).lower() == "true"
     )
 

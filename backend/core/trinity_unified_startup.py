@@ -1,12 +1,12 @@
-"""
+﻿"""
 Trinity Unified Startup Coordinator v113.0
 ============================================
 
-Single entry point for starting all Trinity repos (JARVIS, JARVIS-Prime, Reactor-Core)
+Single entry point for starting all Trinity repos (Ironcliw, Ironcliw-Prime, Reactor-Core)
 with intelligent coordination, dependency management, and health verification.
 
 Features:
-- Dependency-aware startup ordering (infrastructure → JARVIS → Prime + Reactor)
+- Dependency-aware startup ordering (infrastructure → Ironcliw → Prime + Reactor)
 - Parallel startup where safe
 - Progressive health verification
 - Automatic retry with exponential backoff
@@ -19,7 +19,7 @@ Usage:
     startup = get_trinity_startup()
     success = await startup.start_all()
 
-Author: JARVIS Development Team
+Author: Ironcliw Development Team
 Version: 113.0.0
 """
 
@@ -43,7 +43,7 @@ class StartupPhase(str, Enum):
     INITIALIZING = "initializing"
     LOADING = "loading"              # v113.0: Loading server startup
     INFRASTRUCTURE = "infrastructure"  # Redis, shared state
-    CORE = "core"                       # JARVIS-body
+    CORE = "core"                       # Ironcliw-body
     SERVICES = "services"               # J-Prime, Reactor-Core
     FRONTEND = "frontend"            # v113.0: React frontend
     VERIFYING = "verifying"             # Cross-repo health check
@@ -108,13 +108,13 @@ class TrinityUnifiedStartup:
         # v113.0: Loading server and frontend process tracking
         self._loading_server_process: Optional[asyncio.subprocess.Process] = None
         self._frontend_process: Optional[asyncio.subprocess.Process] = None
-        self._loading_server_port = int(os.getenv("JARVIS_LOADING_PORT", "3001"))
-        self._frontend_port = int(os.getenv("JARVIS_FRONTEND_PORT", "3000"))
+        self._loading_server_port = int(os.getenv("Ironcliw_LOADING_PORT", "3001"))
+        self._frontend_port = int(os.getenv("Ironcliw_FRONTEND_PORT", "3000"))
         
         # v113.0: Repo paths for cross-repo startup
         self._jarvis_repo = Path(os.getenv(
-            "JARVIS_REPO", 
-            str(Path.home() / "Documents" / "repos" / "JARVIS-AI-Agent")
+            "Ironcliw_REPO", 
+            str(Path.home() / "Documents" / "repos" / "Ironcliw-AI-Agent")
         ))
         
     @property
@@ -179,7 +179,7 @@ class TrinityUnifiedStartup:
                     # Continue anyway - services may still work
                     logger.warning("[TrinityStartup] Infrastructure startup failed, continuing...")
             
-            # Phase 2: Core (JARVIS-body)
+            # Phase 2: Core (Ironcliw-body)
             self._phase = StartupPhase.CORE
             await self._emit_phase_change("core")
             
@@ -284,7 +284,7 @@ class TrinityUnifiedStartup:
                 f"({result.total_duration:.1f}s)"
             )
             if frontend_ok:
-                logger.info(f"🚀 JARVIS is online at http://localhost:{self._frontend_port}")
+                logger.info(f"🚀 Ironcliw is online at http://localhost:{self._frontend_port}")
             
             return result
             
@@ -455,8 +455,8 @@ class TrinityUnifiedStartup:
 
         # Fallback to environment variables and defaults
         ports = {
-            "jarvis-body": int(os.getenv("JARVIS_BODY_PORT", "8010")),
-            "jarvis-prime": int(os.getenv("JARVIS_PRIME_PORT", "8000")),
+            "jarvis-body": int(os.getenv("Ironcliw_BODY_PORT", "8010")),
+            "jarvis-prime": int(os.getenv("Ironcliw_PRIME_PORT", "8000")),
             "reactor-core": int(os.getenv("REACTOR_CORE_PORT", "8090")),
         }
         return ports.get(service_name, 8010)

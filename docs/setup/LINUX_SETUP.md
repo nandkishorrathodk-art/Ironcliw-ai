@@ -1,6 +1,6 @@
-# JARVIS Linux Setup Guide
+﻿# Ironcliw Linux Setup Guide
 
-**Complete installation guide for JARVIS on Ubuntu, Debian, Fedora, and Arch Linux**
+**Complete installation guide for Ironcliw on Ubuntu, Debian, Fedora, and Arch Linux**
 
 ---
 
@@ -77,10 +77,10 @@ sudo apt install -y \
 # For GPU support (AMD)
 # sudo apt install mesa-opencl-icd rocm-opencl-runtime
 
-# Clone JARVIS
+# Clone Ironcliw
 cd ~/Documents
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Create virtual environment
 python3 -m venv venv
@@ -118,10 +118,10 @@ sudo dnf install -y \
 # For GPU support (NVIDIA)
 # sudo dnf install akmod-nvidia nvidia-driver-cuda
 
-# Clone JARVIS
+# Clone Ironcliw
 cd ~/Documents
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Create virtual environment
 python3 -m venv venv
@@ -162,10 +162,10 @@ sudo pacman -S --needed \
 # For GPU support (AMD)
 # sudo pacman -S rocm-opencl-runtime
 
-# Clone JARVIS
+# Clone Ironcliw
 cd ~/Documents
-git clone https://github.com/drussell23/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
+git clone https://github.com/drussell23/Ironcliw-AI-Agent.git
+cd Ironcliw-AI-Agent
 
 # Create virtual environment
 python -m venv venv
@@ -206,31 +206,31 @@ Configure for Linux:
 
 ```bash
 # Platform Configuration
-JARVIS_PLATFORM=linux
+Ironcliw_PLATFORM=linux
 
 # Authentication (bypass enabled for Linux by default)
-JARVIS_AUTH_BYPASS=true
+Ironcliw_AUTH_BYPASS=true
 
 # TTS Engine (Linux uses espeak)
-JARVIS_TTS_ENGINE=pyttsx3
+Ironcliw_TTS_ENGINE=pyttsx3
 
 # Screen Capture Method
-JARVIS_CAPTURE_METHOD=mss
+Ironcliw_CAPTURE_METHOD=mss
 
 # Display Server
-JARVIS_DISPLAY_SERVER=auto  # Options: x11, wayland, auto
+Ironcliw_DISPLAY_SERVER=auto  # Options: x11, wayland, auto
 
 # GPU Backend
-JARVIS_GPU_BACKEND=auto  # Options: cpu, cuda, rocm, vulkan
+Ironcliw_GPU_BACKEND=auto  # Options: cpu, cuda, rocm, vulkan
 
 # ML Inference Backend
-JARVIS_ML_BACKEND=cpu  # Change to 'cuda' for NVIDIA or 'rocm' for AMD
+Ironcliw_ML_BACKEND=cpu  # Change to 'cuda' for NVIDIA or 'rocm' for AMD
 
 # Data Directories (Linux XDG-compliant paths)
-JARVIS_CONFIG_DIR=$HOME/.config/jarvis
-JARVIS_LOG_DIR=$HOME/.local/share/jarvis/logs
-JARVIS_DATA_DIR=$HOME/.local/share/jarvis/data
-JARVIS_CACHE_DIR=$HOME/.cache/jarvis
+Ironcliw_CONFIG_DIR=$HOME/.config/jarvis
+Ironcliw_LOG_DIR=$HOME/.local/share/jarvis/logs
+Ironcliw_DATA_DIR=$HOME/.local/share/jarvis/data
+Ironcliw_CACHE_DIR=$HOME/.cache/jarvis
 ```
 
 ### 3. Configure Linux-Specific Settings
@@ -278,18 +278,18 @@ chmod 755 ~/.local/share/jarvis
 
 ## First Run
 
-### 1. Start JARVIS
+### 1. Start Ironcliw
 
 **Important**: Always run from activated virtual environment!
 
 ```bash
-# Navigate to JARVIS directory
-cd ~/Documents/JARVIS-AI-Agent
+# Navigate to Ironcliw directory
+cd ~/Documents/Ironcliw-AI-Agent
 
 # Activate virtual environment
 source venv/bin/activate
 
-# Start JARVIS supervisor
+# Start Ironcliw supervisor
 python3 unified_supervisor.py
 ```
 
@@ -307,7 +307,7 @@ First startup will:
 ### 3. Verify Everything Works
 
 Once the UI loads, you should see:
-- ✅ "JARVIS READY" status
+- ✅ "Ironcliw READY" status
 - ✅ System status indicators (all green)
 - ✅ No error messages in the console
 
@@ -411,7 +411,7 @@ sudo dnf install grim  # Fedora
 sudo pacman -S grim   # Arch
 
 # Or fall back to X11
-# Edit .env: JARVIS_DISPLAY_SERVER=x11
+# Edit .env: Ironcliw_DISPLAY_SERVER=x11
 ```
 
 ### TTS Not Speaking
@@ -438,7 +438,7 @@ alsamixer   # Check volume levels
 
 ### GPU Not Detected
 
-**Symptom**: JARVIS falls back to CPU despite having GPU
+**Symptom**: Ironcliw falls back to CPU despite having GPU
 
 **Solution for NVIDIA**:
 ```bash
@@ -453,8 +453,8 @@ pip uninstall torch torchvision torchaudio
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Set GPU backend in .env
-# JARVIS_GPU_BACKEND=cuda
-# JARVIS_ML_BACKEND=cuda
+# Ironcliw_GPU_BACKEND=cuda
+# Ironcliw_ML_BACKEND=cuda
 ```
 
 **Solution for AMD**:
@@ -466,8 +466,8 @@ sudo apt install rocm-opencl-runtime
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6
 
 # Set GPU backend in .env
-# JARVIS_GPU_BACKEND=rocm
-# JARVIS_ML_BACKEND=rocm
+# Ironcliw_GPU_BACKEND=rocm
+# Ironcliw_ML_BACKEND=rocm
 ```
 
 ### Window Management Not Working
@@ -496,11 +496,11 @@ xdotool search --name "Firefox"  # Search for Firefox window
 
 **Solution**:
 ```bash
-# Fix ownership of JARVIS directory
-sudo chown -R $USER:$USER ~/Documents/JARVIS-AI-Agent
+# Fix ownership of Ironcliw directory
+sudo chown -R $USER:$USER ~/Documents/Ironcliw-AI-Agent
 
 # Fix permissions
-chmod -R 755 ~/Documents/JARVIS-AI-Agent
+chmod -R 755 ~/Documents/Ironcliw-AI-Agent
 ```
 
 ### Issue: Import Errors After Installation
@@ -521,14 +521,14 @@ pip install -r requirements.txt --force-reinstall
 
 ### Issue: Slow Performance
 
-**Symptom**: JARVIS is slow or unresponsive
+**Symptom**: Ironcliw is slow or unresponsive
 
 **Solutions**:
 1. **Enable GPU acceleration** (if available):
    ```bash
    # Edit .env
-   # JARVIS_GPU_BACKEND=cuda  # Or rocm for AMD
-   # JARVIS_ML_BACKEND=cuda
+   # Ironcliw_GPU_BACKEND=cuda  # Or rocm for AMD
+   # Ironcliw_ML_BACKEND=cuda
    ```
 
 2. **Reduce screen capture FPS**:
@@ -540,7 +540,7 @@ pip install -r requirements.txt --force-reinstall
 3. **Use X11 instead of Wayland** (Wayland has overhead):
    ```bash
    # Edit .env
-   # JARVIS_DISPLAY_SERVER=x11
+   # Ironcliw_DISPLAY_SERVER=x11
    
    # Or logout and select X11 session at login
    ```
@@ -567,12 +567,12 @@ pip install -r requirements.txt --force-reinstall
 sudo apt install grim slurp wl-clipboard  # Screen capture tools
 
 # Option 3: Enable XWayland fallback
-# Edit .env: JARVIS_DISPLAY_SERVER=x11
+# Edit .env: Ironcliw_DISPLAY_SERVER=x11
 ```
 
 ### Issue: System Tray Icon Not Showing
 
-**Symptom**: JARVIS tray icon missing
+**Symptom**: Ironcliw tray icon missing
 
 **Solution**:
 ```bash
@@ -621,7 +621,7 @@ gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
 
 ## Next Steps
 
-✅ **Setup complete!** JARVIS is now running on Linux.
+✅ **Setup complete!** Ironcliw is now running on Linux.
 
 **Learn more**:
 - [Main README](../../README.md) - Overview and features
@@ -654,9 +654,9 @@ screen_capture:
 mkdir -p /mnt/data/jarvis/{logs,data,cache}
 
 # Update .env
-# JARVIS_DATA_DIR=/mnt/data/jarvis/data
-# JARVIS_LOG_DIR=/mnt/data/jarvis/logs
-# JARVIS_CACHE_DIR=/mnt/data/jarvis/cache
+# Ironcliw_DATA_DIR=/mnt/data/jarvis/data
+# Ironcliw_LOG_DIR=/mnt/data/jarvis/logs
+# Ironcliw_CACHE_DIR=/mnt/data/jarvis/cache
 ```
 
 ### Systemd Service (Auto-start on Boot)
@@ -665,14 +665,14 @@ Create `/etc/systemd/system/jarvis.service`:
 
 ```ini
 [Unit]
-Description=JARVIS AI Assistant
+Description=Ironcliw AI Assistant
 After=network.target
 
 [Service]
 Type=simple
 User=youruser
-WorkingDirectory=/home/youruser/Documents/JARVIS-AI-Agent
-ExecStart=/home/youruser/Documents/JARVIS-AI-Agent/venv/bin/python unified_supervisor.py
+WorkingDirectory=/home/youruser/Documents/Ironcliw-AI-Agent
+ExecStart=/home/youruser/Documents/Ironcliw-AI-Agent/venv/bin/python unified_supervisor.py
 Restart=on-failure
 RestartSec=10
 
@@ -693,15 +693,15 @@ sudo systemctl status jarvis
 
 ## Uninstallation
 
-To completely remove JARVIS:
+To completely remove Ironcliw:
 
 ```bash
 # 1. Deactivate virtual environment
 deactivate
 
-# 2. Delete JARVIS directory
+# 2. Delete Ironcliw directory
 cd ~
-rm -rf ~/Documents/JARVIS-AI-Agent
+rm -rf ~/Documents/Ironcliw-AI-Agent
 
 # 3. Delete user data (optional)
 rm -rf ~/.config/jarvis

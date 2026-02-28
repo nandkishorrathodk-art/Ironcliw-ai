@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
-# ARM64 Assembly Installation Script for JARVIS ML
+# ARM64 Assembly Installation Script for Ironcliw ML
 #
 # This script compiles and installs the ARM64 NEON SIMD assembly extension
-# for maximum M1 performance in JARVIS ML intent prediction.
+# for maximum M1 performance in Ironcliw ML intent prediction.
 #
 # Features:
 # - Compiles pure ARM64 assembly (.s file)
@@ -15,7 +15,7 @@
 set -e  # Exit on error
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  JARVIS ARM64 NEON Assembly Installation"
+echo "  Ironcliw ARM64 NEON Assembly Installation"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

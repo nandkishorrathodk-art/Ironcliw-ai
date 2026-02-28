@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Claude-Powered Command Interpreter for JARVIS
+Claude-Powered Command Interpreter for Ironcliw
 Analyzes natural language and converts it to system commands
 """
 
@@ -121,7 +121,7 @@ class ClaudeCommandInterpreter:
             )
 
         # Build context for Claude
-        system_prompt = """You are JARVIS, an AI assistant that controls macOS systems.
+        system_prompt = """You are Ironcliw, an AI assistant that controls Windows systems.
         Analyze the user's command and extract:
         1. The action to perform
         2. The target (application, file, URL, etc.) - if multiple targets use "and" between them
@@ -668,7 +668,7 @@ class ClaudeCommandInterpreter:
     def get_help(self, topic: Optional[str] = None) -> str:
         """Get help on available commands"""
         if not topic:
-            return """JARVIS System Control Commands:
+            return """Ironcliw System Control Commands:
 
 Applications: Open, close, or switch between applications
 Files: Create, open, delete, or search for files

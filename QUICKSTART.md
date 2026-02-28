@@ -1,4 +1,4 @@
-# 🚀 JARVIS Quick Start Guide
+﻿# 🚀 Ironcliw Quick Start Guide
 
 ## The Simple Way: Just Run It! ✨
 
@@ -6,7 +6,7 @@
 python start_system.py
 ```
 
-**That's it!** JARVIS automatically:
+**That's it!** Ironcliw automatically:
 1. 🤖 **Detects the best preset** based on your usage history
 2. 🧠 **Learns from your patterns** and adapts over time
 3. ⚙️ **Smart automation** - enables when you're ready (80%+ success rate)
@@ -16,7 +16,7 @@ python start_system.py
 
 ## How Auto-Detection Works
 
-JARVIS intelligently chooses the best configuration for you:
+Ironcliw intelligently chooses the best configuration for you:
 
 ### 🆕 First Run (No Database)
 ```
@@ -24,7 +24,7 @@ JARVIS intelligently chooses the best configuration for you:
    → First run detected, using 'learning' preset for fast adaptation
 ⚠️ Goal Inference Automation: DISABLED
 ```
-**Why?** You're new - JARVIS needs to learn your patterns first!
+**Why?** You're new - Ironcliw needs to learn your patterns first!
 
 ### 📚 Early Learning Phase (< 50 goals)
 ```
@@ -49,7 +49,7 @@ JARVIS intelligently chooses the best configuration for you:
    → High pattern success (87%), automation recommended
 ✓ Goal Inference Automation: ENABLED
 ```
-**Why?** You're experienced - JARVIS trusts your patterns and enables automation!
+**Why?** You're experienced - Ironcliw trusts your patterns and enables automation!
 
 ---
 
@@ -75,8 +75,8 @@ python start_system.py --goal-preset balanced --no-browser --verbose
 Add to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-export JARVIS_GOAL_PRESET=balanced
-export JARVIS_GOAL_AUTOMATION=false
+export Ironcliw_GOAL_PRESET=balanced
+export Ironcliw_GOAL_AUTOMATION=false
 ```
 
 Then just run:
@@ -100,13 +100,13 @@ python start_system.py
 
 ## What Gets Started?
 
-JARVIS includes **10 core components** + **6 intelligent systems**:
+Ironcliw includes **10 core components** + **6 intelligent systems**:
 
 ### Core Components
 1. **CHATBOTS** - Claude Vision AI
 2. **VISION** - Multi-Space Desktop Monitoring
 3. **MEMORY** - M1-optimized memory management
-4. **VOICE** - Voice activation ("Hey JARVIS")
+4. **VOICE** - Voice activation ("Hey Ironcliw")
 5. **ML_MODELS** - NLP and sentiment analysis
 6. **MONITORING** - System health tracking
 7. **VOICE_UNLOCK** - Advanced Screen Unlock
@@ -134,13 +134,13 @@ JARVIS includes **10 core components** + **6 intelligent systems**:
 
 ## First Time Setup
 
-1. **Run JARVIS**:
+1. **Run Ironcliw**:
    ```bash
    python start_system.py
    ```
 
 2. **Select "learning" preset** (Option 4)
-   - This helps JARVIS learn your patterns quickly
+   - This helps Ironcliw learn your patterns quickly
 
 3. **Keep automation OFF** for the first week
    - Review suggestions to build trust
@@ -173,7 +173,7 @@ python start_system.py --goal-preset learning --enable-automation
 
 ### Method 3: Environment Variables (Permanent Override)
 ```bash
-export JARVIS_GOAL_PRESET=balanced
+export Ironcliw_GOAL_PRESET=balanced
 python start_system.py
 ```
 ✅ **Permanent setting** → Skips auto-detection every time
@@ -182,7 +182,7 @@ python start_system.py
 
 ## Everything is Intelligent & Automatic! 🎉
 
-No configuration needed - JARVIS adapts to YOU!
+No configuration needed - Ironcliw adapts to YOU!
 
 - 🤖 **Fully automatic** - Detects best preset from your usage
 - 🧠 **Self-learning** - Adapts as you use it more

@@ -1,4 +1,4 @@
-# backend/core/enterprise_supervisor_integration.py
+﻿# backend/core/enterprise_supervisor_integration.py
 """
 Enterprise Supervisor Integration - Unified entry point for enterprise hardening.
 
@@ -105,7 +105,7 @@ class EnterpriseStartupConfig:
     and how the startup behaves.
 
     Attributes:
-        register_defaults: If True, register default JARVIS components.
+        register_defaults: If True, register default Ironcliw components.
         display_summary: If True, display startup summary to console.
         use_startup_lock: If True, acquire startup lock to prevent concurrent runs.
         enable_subprocess_manager: If True, enable subprocess manager for cross-repo processes.

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Test app open/close commands through JARVIS"""
+﻿#!/usr/bin/env python3
+"""Test app open/close commands through Ironcliw"""
 
 import asyncio
 import websockets
@@ -7,15 +7,15 @@ import json
 import time
 
 async def test_app_commands():
-    """Test opening and closing apps through JARVIS"""
-    print("🎯 Testing App Commands through JARVIS")
+    """Test opening and closing apps through Ironcliw"""
+    print("🎯 Testing App Commands through Ironcliw")
     print("=" * 50)
     
     uri = 'ws://localhost:8000/voice/jarvis/stream'
     
     try:
         async with websockets.connect(uri) as ws:
-            print("✅ Connected to JARVIS WebSocket")
+            print("✅ Connected to Ironcliw WebSocket")
             
             # Wait for connection message
             msg = await ws.recv()
@@ -67,12 +67,12 @@ async def test_app_commands():
     except Exception as e:
         print(f"❌ Error: {e}")
         print("\nMake sure:")
-        print("  1. JARVIS is running on port 8000")
+        print("  1. Ironcliw is running on port 8000")
         print("  2. WebSocket endpoint is available")
 
 
 if __name__ == "__main__":
-    print("Testing JARVIS app open/close commands...")
+    print("Testing Ironcliw app open/close commands...")
     print("This will try to open and close Safari, Music, and Weather apps\n")
     
     asyncio.run(test_app_commands())

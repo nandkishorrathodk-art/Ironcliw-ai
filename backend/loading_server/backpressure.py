@@ -1,5 +1,5 @@
-"""
-Adaptive Backpressure Controller for JARVIS Loading Server v212.0
+﻿"""
+Adaptive Backpressure Controller for Ironcliw Loading Server v212.0
 =================================================================
 
 AIMD (Additive Increase Multiplicative Decrease) backpressure for WebSocket.
@@ -24,7 +24,7 @@ Usage:
         pass
     controller.report_congestion(queue_depth)
 
-Author: JARVIS Trinity System
+Author: Ironcliw Trinity System
 Version: 212.0.0
 """
 

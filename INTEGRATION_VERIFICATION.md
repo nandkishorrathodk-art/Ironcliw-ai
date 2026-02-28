@@ -1,4 +1,4 @@
-# Integration Verification Checklist
+﻿# Integration Verification Checklist
 
 **Status**: ✅ Complete - Advanced Training System Fully Integrated
 **Version**: 2.0.0
@@ -59,7 +59,7 @@ The advanced training system with cross-repo orchestration is now **fully integr
 - **Status**: ✅ **INTEGRATED**
 - **Changes**:
   - ✅ Calls `initialize_cross_repo_orchestration()` during startup
-  - ✅ Positioned after JARVIS Prime initialization
+  - ✅ Positioned after Ironcliw Prime initialization
   - ✅ Error handling and fallback logic
 
 ### 3. Documentation
@@ -99,15 +99,15 @@ The advanced training system with cross-repo orchestration is now **fully integr
 ### Startup Sequence (python3 run_supervisor.py)
 
 ```
-1. JARVIS Core starts
+1. Ironcliw Core starts
    ↓
-2. JARVIS Prime initialization
+2. Ironcliw Prime initialization
    ├─ Memory-aware routing decision
    ├─ Launch local subprocess if needed
    └─ Health verification
    ↓
 3. Cross-Repo Orchestration (NEW - v10.1)
-   ├─ Phase 1: JARVIS Core (already running)
+   ├─ Phase 1: Ironcliw Core (already running)
    ├─ Phase 2: External repos (parallel)
    │   ├─ Probe J-Prime → Launch if not running
    │   └─ Probe Reactor-Core → Launch if not running
@@ -129,7 +129,7 @@ The advanced training system with cross-repo orchestration is now **fully integr
 
 ```
 1. Experience Collection
-   ├─ JARVIS collects experiences during interactions
+   ├─ Ironcliw collects experiences during interactions
    ├─ Writes to ~/.jarvis/trinity/events/experiences_*.json
    └─ Buffer accumulates (target: 100+ experiences)
    ↓
@@ -158,7 +158,7 @@ The advanced training system with cross-repo orchestration is now **fully integr
    ↓
 7. Training Completion
    ├─ Reactor Core publishes MODEL_READY event
-   ├─ JARVIS receives event via Trinity Bridge
+   ├─ Ironcliw receives event via Trinity Bridge
    └─ Deploy model with A/B testing
    ↓
 8. Model Deployment
@@ -175,7 +175,7 @@ The advanced training system with cross-repo orchestration is now **fully integr
 
 **Command**:
 ```bash
-cd ~/Documents/repos/JARVIS-AI-Agent
+cd ~/Documents/repos/Ironcliw-AI-Agent
 python3 run_supervisor.py
 ```
 
@@ -185,8 +185,8 @@ python3 run_supervisor.py
 Cross-Repo Startup Orchestration v1.0
 ======================================================================
 
-📍 PHASE 1: JARVIS Core (starting via supervisor)
-✅ JARVIS Core initialization in progress...
+📍 PHASE 1: Ironcliw Core (starting via supervisor)
+✅ Ironcliw Core initialization in progress...
 
 📍 PHASE 2: External repos startup (parallel)
   → Probing J-Prime...
@@ -201,7 +201,7 @@ Cross-Repo Startup Orchestration v1.0
 
 ======================================================================
 🎯 Startup Summary:
-  JARVIS Core:   ✅ Running
+  Ironcliw Core:   ✅ Running
   J-Prime:       ✅ Running
   Reactor-Core:  ✅ Running
 ======================================================================
@@ -210,7 +210,7 @@ Cross-Repo Startup Orchestration v1.0
 **Verification**:
 ```bash
 # Check all repos are running
-curl http://localhost:5001/health      # JARVIS Core
+curl http://localhost:5001/health      # Ironcliw Core
 curl http://localhost:8002/health      # J-Prime
 curl http://localhost:8090/health       # Reactor Core
 
@@ -224,7 +224,7 @@ curl http://localhost:8090/health       # Reactor Core
 **Wait for auto-trigger (5 minutes)** or **manually trigger training**:
 
 ```bash
-# View JARVIS logs
+# View Ironcliw logs
 tail -f logs/jarvis*.log | grep -E "Training|Coordinator"
 ```
 
@@ -338,7 +338,7 @@ tail -f logs/jarvis*.log | grep -E "Resource|J-Prime"
 
 ### 1. Reactor Core Implementation Required
 
-**Status**: ⚠️ **Pending** (external to JARVIS repo)
+**Status**: ⚠️ **Pending** (external to Ironcliw repo)
 
 Reactor Core must implement the following API endpoints as specified in `REACTOR_CORE_API_SPECIFICATION.md`:
 
@@ -364,13 +364,13 @@ The cross-repo orchestrator expects:
 
 **Configuration**: Use environment variables to specify different paths:
 ```bash
-export JARVIS_PRIME_PATH=~/path/to/jarvis-prime
+export Ironcliw_PRIME_PATH=~/path/to/jarvis-prime
 export REACTOR_CORE_PATH=~/path/to/reactor-core
 ```
 
 **Disable if not needed**:
 ```bash
-export JARVIS_PRIME_ENABLED=false
+export Ironcliw_PRIME_ENABLED=false
 export REACTOR_CORE_ENABLED=false
 ```
 
@@ -381,15 +381,15 @@ export REACTOR_CORE_ENABLED=false
 ### Cross-Repo Configuration
 ```bash
 # Repo paths (auto-detected if in standard locations)
-JARVIS_PRIME_PATH=~/Documents/repos/jarvis-prime
+Ironcliw_PRIME_PATH=~/Documents/repos/jarvis-prime
 REACTOR_CORE_PATH=~/Documents/repos/reactor-core
 
 # Ports
-JARVIS_PRIME_PORT=8002
+Ironcliw_PRIME_PORT=8002
 REACTOR_CORE_PORT=8090
 
 # Enable/disable repos
-JARVIS_PRIME_ENABLED=true
+Ironcliw_PRIME_ENABLED=true
 REACTOR_CORE_ENABLED=true
 ```
 
@@ -431,7 +431,7 @@ ROLLBACK_ON_ERROR_RATE=0.05
 
 ## 🎓 Next Steps
 
-### For JARVIS (This Repo)
+### For Ironcliw (This Repo)
 ✅ **All tasks complete** - System is production-ready
 
 ### For Reactor Core (External Repo)

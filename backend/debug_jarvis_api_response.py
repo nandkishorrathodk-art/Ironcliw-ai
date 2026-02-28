@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Debug JARVIS API Response
+Debug Ironcliw API Response
 =========================
 
 Figure out why the API returns None values.
@@ -11,8 +11,8 @@ import aiohttp
 import json
 
 async def test_jarvis_api():
-    """Test JARVIS API response format"""
-    print("🔍 Debugging JARVIS API Response")
+    """Test Ironcliw API response format"""
+    print("🔍 Debugging Ironcliw API Response")
     print("=" * 50)
     
     url = "http://localhost:8000/api/voice-command"
@@ -46,8 +46,8 @@ async def test_jarvis_api():
                     print("\nCould not parse as JSON")
                     
     except aiohttp.ClientConnectorError:
-        print("\n❌ Could not connect to JARVIS on port 8000")
-        print("Make sure JARVIS is running: python main.py")
+        print("\n❌ Could not connect to Ironcliw on port 8000")
+        print("Make sure Ironcliw is running: python main.py")
     except Exception as e:
         print(f"\n❌ Error: {type(e).__name__}: {e}")
 

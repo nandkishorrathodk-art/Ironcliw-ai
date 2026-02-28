@@ -1,4 +1,4 @@
-# ✅ Phase 1C + 1D: Command Routing + Auto-Connection - COMPLETION REPORT
+﻿# ✅ Phase 1C + 1D: Command Routing + Auto-Connection - COMPLETION REPORT
 
 ## 🎉 **STATUS: PHASE 1C + 1D COMPLETE - PRODUCTION READY** ✅
 
@@ -416,15 +416,15 @@ curl "http://localhost:8000/api/proximity-display/connection-stats"
 
 ## 🚀 **How to Use**
 
-### **1. Restart JARVIS:**
+### **1. Restart Ironcliw:**
 ```bash
 python3 start_system.py
 ```
 
 ### **2. Test Proximity Routing:**
 ```bash
-# Ask JARVIS to show something
-# JARVIS will automatically route to nearest display based on proximity
+# Ask Ironcliw to show something
+# Ironcliw will automatically route to nearest display based on proximity
 curl -X POST "http://localhost:8000/api/proximity-display/route-command?command=show%20my%20calendar"
 ```
 

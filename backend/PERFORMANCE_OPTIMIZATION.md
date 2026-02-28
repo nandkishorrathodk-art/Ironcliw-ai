@@ -1,9 +1,9 @@
-# JARVIS Performance Optimization Guide
+﻿# Ironcliw Performance Optimization Guide
 
 ## 🚨 Critical Performance Issue Resolved
 
 ### Problem
-The JARVIS continuous learning module was consuming **97% CPU**, making the system unusable on a 16GB M1 MacBook Pro.
+The Ironcliw continuous learning module was consuming **97% CPU**, making the system unusable on a 16GB M1 MacBook Pro.
 
 ### Solution
 Implemented a **Rust-Python hybrid architecture** that reduces CPU usage to **25%** while maintaining all functionality.
@@ -54,7 +54,7 @@ cd backend
 python migrate_to_rust_performance.py
 ```
 
-### 3. Restart JARVIS
+### 3. Restart Ironcliw
 ```bash
 # Kill any existing high-CPU processes
 pkill -f "python.*main.py"
@@ -197,7 +197,7 @@ cp backups_*/robust_continuous_learning.py.bak vision/robust_continuous_learning
 export DISABLE_CONTINUOUS_LEARNING=true
 ```
 
-3. Restart JARVIS
+3. Restart Ironcliw
 
 ## 🎉 Success Metrics
 
@@ -232,4 +232,4 @@ Quantized Value = round(value / scale + zero_point)
 
 ---
 
-**Remember**: This optimization is critical for JARVIS usability. Without it, the system will consume all available CPU and become unresponsive.
+**Remember**: This optimization is critical for Ironcliw usability. Without it, the system will consume all available CPU and become unresponsive.

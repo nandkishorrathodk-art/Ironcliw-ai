@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Demonstration of the Solution Memory Bank
-Shows how JARVIS learns from past problem resolutions
+Shows how Ironcliw learns from past problem resolutions
 """
 
 import asyncio
@@ -13,7 +13,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def main():
-    print("🧠 JARVIS Solution Memory Bank Demo")
+    print("🧠 Ironcliw Solution Memory Bank Demo")
     print("=" * 50)
     
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer

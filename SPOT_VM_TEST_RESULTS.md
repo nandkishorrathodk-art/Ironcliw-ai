@@ -1,4 +1,4 @@
-# Spot VM Testing Results - Priority 1
+﻿# Spot VM Testing Results - Priority 1
 **Date:** 2025-10-25
 **Branch:** `test-spot-vm-deployment`
 **Duration:** ~4 hours
@@ -12,14 +12,14 @@
 2. ✅ Test VM creation with Spot pricing
 3. ✅ Verify Cloud Storage deployment package system works
 4. ✅ Confirm VM pulls code and starts backend
-5. ❌ **FAILED:** Verify automatic VM cleanup on JARVIS shutdown
+5. ❌ **FAILED:** Verify automatic VM cleanup on Ironcliw shutdown
 
 ---
 
 ## ✅ Successes
 
 ### 1. RAM Monitoring & Trigger System **WORKS**
-- **Test:** Started JARVIS and monitored RAM usage
+- **Test:** Started Ironcliw and monitored RAM usage
 - **Result:** At 77.5% RAM (approaching 85% threshold), predictive system triggered
 - **Log Evidence:**
   ```
@@ -58,7 +58,7 @@
 - **Test:** Verified VM pulls code from Cloud Storage instead of git clone
 - **VM Startup Logs:**
   ```
-  Oct 25 05:55:15 jarvis-auto-1761371668: 🚀 JARVIS GCP Auto-Deployment Starting...
+  Oct 25 05:55:15 jarvis-auto-1761371668: 🚀 Ironcliw GCP Auto-Deployment Starting...
   Oct 25 05:55:44: 📥 Downloading latest deployment from Cloud Storage...
   Oct 25 05:55:49: 📦 Using deployment: cfd6b67f6b98691c97e1a2eb009818f755359f4d
   Oct 25 05:55:50: Copying gs://jarvis-473803-deployments/jarvis-cfd6b67...tar.gz
@@ -83,14 +83,14 @@
 
 ## ❌ Critical Bug Found
 
-### **BUG: VM Cleanup Not Running on JARVIS Shutdown**
+### **BUG: VM Cleanup Not Running on Ironcliw Shutdown**
 
 **Severity:** 🔴 **CRITICAL**
 **Impact:** Orphaned VMs = surprise bills
 
 #### What Happened:
-1. Started JARVIS → Created Spot VM (working ✅)
-2. Stopped JARVIS with `kill -TERM`
+1. Started Ironcliw → Created Spot VM (working ✅)
+2. Stopped Ironcliw with `kill -TERM`
 3. **Expected:** VM deleted automatically
 4. **Actual:** VMs remained running
 
@@ -255,7 +255,7 @@ self.critical_threshold = 0.70  # 70%
 ## 🔍 Detailed Test Timeline
 
 ### 01:43 AM - Test Start
-- Started JARVIS with lowered threshold (70%)
+- Started Ironcliw with lowered threshold (70%)
 - RAM at 80.1%
 
 ### 01:43 AM - First VM Creation Attempt (Failed)
@@ -269,13 +269,13 @@ self.critical_threshold = 0.70  # 70%
 - Committed: `ae2ab33`
 
 ### 01:53 AM - Second VM Creation (Success!)
-- Re-started JARVIS
+- Re-started Ironcliw
 - Triggered at 77.5% RAM (predictive)
 - **SUCCESS:** `jarvis-auto-1761371668` created
 - VM pulled code from Cloud Storage ✅
 
 ### 01:58 AM - Cleanup Test (Failed)
-- Stopped JARVIS with `kill -TERM`
+- Stopped Ironcliw with `kill -TERM`
 - **Expected:** VMs deleted
 - **Actual:** VMs still running
 - **Action:** Manual deletion required

@@ -1,8 +1,8 @@
-"""
+﻿"""
 Platform Abstraction Layer - System Commands Module
 
 This module provides cross-platform system command execution abstraction,
-enabling JARVIS to run platform-specific commands in a unified interface.
+enabling Ironcliw to run platform-specific commands in a unified interface.
 
 Created: 2026-02-22
 Purpose: Windows/Linux porting - Phase 1 (PAL)

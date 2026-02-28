@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: AST Validator - Gap #18
 ==============================
 
@@ -13,7 +13,7 @@ Advanced AST-based code validation with:
 
 Uses Python's ast module with advanced visitor patterns.
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
-# Workspace Window Capture Fix Documentation
+﻿# Workspace Window Capture Fix Documentation
 
 ## Issue
-JARVIS was responding "I'm having trouble analyzing your workspace" when window capture failed for certain applications (like Cursor and WhatsApp), even though the Multi-Window Intelligence system was properly implemented.
+Ironcliw was responding "I'm having trouble analyzing your workspace" when window capture failed for certain applications (like Cursor and WhatsApp), even though the Multi-Window Intelligence system was properly implemented.
 
 ## Root Causes
 1. Window capture was throwing exceptions that halted the entire workspace analysis
@@ -40,7 +40,7 @@ This method:
 
 ## How It Works Now
 
-1. JARVIS attempts to capture window screenshots
+1. Ironcliw attempts to capture window screenshots
 2. If capture fails for some windows, it logs warnings but continues
 3. If NO captures succeed, it falls back to window title analysis
 4. User still gets useful information about open apps and windows
@@ -49,14 +49,14 @@ This method:
 
 **Before Fix:**
 - User: "Do I have any messages?"
-- JARVIS: "I'm having trouble analyzing your workspace at the moment, sir."
+- Ironcliw: "I'm having trouble analyzing your workspace at the moment, sir."
 
 **After Fix:**
 - User: "Do I have any messages?"
-- JARVIS: "Sir, no communication apps are currently open."
+- Ironcliw: "Sir, no communication apps are currently open."
   
 OR if Discord/Slack are open:
-- JARVIS: "Sir, you have Discord and Slack open. Discord shows 3 unread messages."
+- Ironcliw: "Sir, you have Discord and Slack open. Discord shows 3 unread messages."
 
 ## Benefits
 - More robust workspace analysis

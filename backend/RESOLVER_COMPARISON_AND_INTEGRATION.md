@@ -1,4 +1,4 @@
-# Resolver Systems Comparison & Integration Strategy
+﻿# Resolver Systems Comparison & Integration Strategy
 
 ## System Comparison
 
@@ -379,7 +379,7 @@ The two systems are complementary:
 - **Contextual Query Resolver**: Lightweight, space-focused, already integrated ✅
 - **Implicit Reference Resolver**: Comprehensive, entity-focused, NOT integrated ❌
 
-Integrating both would give JARVIS the best of both worlds:
+Integrating both would give Ironcliw the best of both worlds:
 - "What's happening?" → Active space detection (contextual)
 - "What does it say?" → OCR text from visual attention (implicit)
 - "How do I fix it?" → Error entity + space + intent-aware response (both!)

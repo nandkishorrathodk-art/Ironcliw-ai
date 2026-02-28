@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trinity Voice Coordinator - Ultra-Robust Cross-Repo Voice System v100.0
 ================================================================================
 
@@ -20,7 +20,7 @@ ADVANCED FEATURES:
 - Zero hardcoding - all environment-driven configuration
 - Async/parallel execution for non-blocking voice
 
-Author: JARVIS Trinity Ultra v100.0
+Author: Ironcliw Trinity Ultra v100.0
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ def _allow_pyttsx3_on_darwin() -> bool:
     pyttsx3 on macOS uses PyObjC/AppKit and can abort the process when invoked
     from worker threads. Keep it opt-in on Darwin.
     """
-    return os.getenv("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", "").strip().lower() in (
+    return os.getenv("Ironcliw_TTS_ALLOW_PYTTSX3_DARWIN", "").strip().lower() in (
         "1", "true", "yes", "on"
     )
 
@@ -154,133 +154,133 @@ class VoiceConfig:
     """
     # Queue Configuration
     max_queue_size: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_MAX_QUEUE_SIZE", 1000
+        "Ironcliw_VOICE_MAX_QUEUE_SIZE", 1000
     ))
     critical_queue_limit: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_CRITICAL_LIMIT", 500
+        "Ironcliw_VOICE_CRITICAL_LIMIT", 500
     ))
     high_queue_limit: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_HIGH_LIMIT", 300
+        "Ironcliw_VOICE_HIGH_LIMIT", 300
     ))
     normal_queue_limit: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_NORMAL_LIMIT", 200
+        "Ironcliw_VOICE_NORMAL_LIMIT", 200
     ))
     low_queue_limit: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_LOW_LIMIT", 100
+        "Ironcliw_VOICE_LOW_LIMIT", 100
     ))
 
     # Worker Pool Configuration
     worker_count: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_WORKER_COUNT", 3
+        "Ironcliw_VOICE_WORKER_COUNT", 3
     ))
     worker_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_WORKER_TIMEOUT", 60.0
+        "Ironcliw_VOICE_WORKER_TIMEOUT", 60.0
     ))
 
     # Timeout Configuration
     announcement_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_ANNOUNCEMENT_TIMEOUT", 30.0
+        "Ironcliw_VOICE_ANNOUNCEMENT_TIMEOUT", 30.0
     ))
     stale_threshold: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_STALE_THRESHOLD", 60.0
+        "Ironcliw_VOICE_STALE_THRESHOLD", 60.0
     ))
     engine_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_ENGINE_TIMEOUT", 30.0
+        "Ironcliw_VOICE_ENGINE_TIMEOUT", 30.0
     ))
     subscriber_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_SUBSCRIBER_TIMEOUT", 5.0
+        "Ironcliw_VOICE_SUBSCRIBER_TIMEOUT", 5.0
     ))
 
     # Rate Limiting Configuration (AIMD)
     base_rate_limit: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_BASE_RATE", 5
+        "Ironcliw_VOICE_BASE_RATE", 5
     ))
     rate_limit_window: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_RATE_LIMIT_WINDOW", 10.0
+        "Ironcliw_VOICE_RATE_LIMIT_WINDOW", 10.0
     ))
     rate_aimd_increase: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_AIMD_INCREASE", 1
+        "Ironcliw_VOICE_AIMD_INCREASE", 1
     ))
     rate_aimd_decrease_factor: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_AIMD_DECREASE", 0.5
+        "Ironcliw_VOICE_AIMD_DECREASE", 0.5
     ))
     rate_burst_allowance: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_BURST_ALLOWANCE", 3
+        "Ironcliw_VOICE_BURST_ALLOWANCE", 3
     ))
 
     # Deduplication Configuration
     dedup_window: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_DEDUP_WINDOW", 30.0
+        "Ironcliw_VOICE_DEDUP_WINDOW", 30.0
     ))
     dedup_cache_size: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_DEDUP_CACHE_SIZE", 1000
+        "Ironcliw_VOICE_DEDUP_CACHE_SIZE", 1000
     ))
 
     # Retry Configuration
     max_retries: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_MAX_RETRIES", 3
+        "Ironcliw_VOICE_MAX_RETRIES", 3
     ))
     retry_base_delay: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_RETRY_BASE_DELAY", 2.0
+        "Ironcliw_VOICE_RETRY_BASE_DELAY", 2.0
     ))
     max_retry_queue_depth: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_MAX_RETRY_DEPTH", 50
+        "Ironcliw_VOICE_MAX_RETRY_DEPTH", 50
     ))
     retry_jitter_max: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_RETRY_JITTER", 1.0
+        "Ironcliw_VOICE_RETRY_JITTER", 1.0
     ))
 
     # Circuit Breaker Configuration
     circuit_failure_threshold: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_CB_FAILURE_THRESHOLD", 5
+        "Ironcliw_VOICE_CB_FAILURE_THRESHOLD", 5
     ))
     circuit_recovery_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_CB_RECOVERY_TIMEOUT", 60.0
+        "Ironcliw_VOICE_CB_RECOVERY_TIMEOUT", 60.0
     ))
     circuit_success_threshold: int = field(default_factory=lambda: _env_int(
-        "JARVIS_VOICE_CB_SUCCESS_THRESHOLD", 2
+        "Ironcliw_VOICE_CB_SUCCESS_THRESHOLD", 2
     ))
 
     # Health Monitoring Configuration
     health_check_interval: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_HEALTH_CHECK_INTERVAL", 30.0
+        "Ironcliw_VOICE_HEALTH_CHECK_INTERVAL", 30.0
     ))
     health_check_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_HEALTH_CHECK_TIMEOUT", 5.0
+        "Ironcliw_VOICE_HEALTH_CHECK_TIMEOUT", 5.0
     ))
 
     # Message Coalescing Configuration
     coalesce_window: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_COALESCE_WINDOW", 5.0
+        "Ironcliw_VOICE_COALESCE_WINDOW", 5.0
     ))
     coalesce_enabled: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_COALESCE_ENABLED", True
+        "Ironcliw_VOICE_COALESCE_ENABLED", True
     ))
 
     # Metrics Persistence
     metrics_db_path: Path = field(default_factory=lambda: _env_path(
-        "JARVIS_VOICE_METRICS_DB", Path.home() / ".jarvis" / "voice_metrics.db"
+        "Ironcliw_VOICE_METRICS_DB", Path.home() / ".jarvis" / "voice_metrics.db"
     ))
     metrics_flush_interval: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_METRICS_FLUSH_INTERVAL", 60.0
+        "Ironcliw_VOICE_METRICS_FLUSH_INTERVAL", 60.0
     ))
 
     # Shutdown Configuration
     shutdown_timeout: float = field(default_factory=lambda: _env_float(
-        "JARVIS_VOICE_SHUTDOWN_TIMEOUT", 30.0
+        "Ironcliw_VOICE_SHUTDOWN_TIMEOUT", 30.0
     ))
     shutdown_drain_high_priority: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_SHUTDOWN_DRAIN_HIGH", True
+        "Ironcliw_VOICE_SHUTDOWN_DRAIN_HIGH", True
     ))
 
     # Audio Device Detection
     audio_device_check_enabled: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_AUDIO_CHECK", True
+        "Ironcliw_VOICE_AUDIO_CHECK", True
     ))
 
     # Tracing
     tracing_enabled: bool = field(default_factory=lambda: _env_bool(
-        "JARVIS_VOICE_TRACING_ENABLED", True
+        "Ironcliw_VOICE_TRACING_ENABLED", True
     ))
 
 
@@ -982,7 +982,7 @@ class MacOSSayEngine(TTSEngine):
         self._lock = asyncio.Lock()
         self._voice_cache_ttl_sec = max(
             5.0,
-            _env_float("JARVIS_MACOS_SAY_VOICE_CACHE_TTL_SEC", 300.0),
+            _env_float("Ironcliw_MACOS_SAY_VOICE_CACHE_TTL_SEC", 300.0),
         )
         self._voice_cache_updated_at = 0.0
         self._available_voices: List[str] = []
@@ -1060,12 +1060,12 @@ class MacOSSayEngine(TTSEngine):
         """
         available = await self._refresh_available_voices(force=force_refresh)
         if not available:
-            return requested_voice or os.getenv("JARVIS_VOICE_NAME", "Daniel")
+            return requested_voice or os.getenv("Ironcliw_VOICE_NAME", "Daniel")
 
         fallback_chain = [
             voice.strip()
             for voice in os.getenv(
-                "JARVIS_VOICE_FALLBACK_ORDER",
+                "Ironcliw_VOICE_FALLBACK_ORDER",
                 "Daniel,Alex,Tom,Karen,Samantha",
             ).split(",")
             if voice.strip()
@@ -1073,8 +1073,8 @@ class MacOSSayEngine(TTSEngine):
 
         candidates = [
             requested_voice,
-            os.getenv("JARVIS_NARRATOR_VOICE_NAME", ""),
-            os.getenv("JARVIS_VOICE_NAME", ""),
+            os.getenv("Ironcliw_NARRATOR_VOICE_NAME", ""),
+            os.getenv("Ironcliw_VOICE_NAME", ""),
             *fallback_chain,
         ]
 
@@ -1250,7 +1250,7 @@ class Pyttsx3Engine(TTSEngine):
         # `say -o file` (no device) then routes through PlaybackRingBuffer.
         _device_held = _is_audio_device_held()
         _bus_enabled = _device_held or os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
+            "Ironcliw_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
 
         if _bus_enabled:
@@ -1284,7 +1284,7 @@ class Pyttsx3Engine(TTSEngine):
                             fallback_chain = [
                                 voice.strip()
                                 for voice in os.getenv(
-                                    "JARVIS_VOICE_FALLBACK_ORDER",
+                                    "Ironcliw_VOICE_FALLBACK_ORDER",
                                     "Daniel,Alex,Tom,Karen,Samantha",
                                 ).split(",")
                                 if voice.strip()
@@ -1292,8 +1292,8 @@ class Pyttsx3Engine(TTSEngine):
 
                             candidate_chain = [
                                 personality.voice_name,
-                                os.getenv("JARVIS_NARRATOR_VOICE_NAME", ""),
-                                os.getenv("JARVIS_VOICE_NAME", ""),
+                                os.getenv("Ironcliw_NARRATOR_VOICE_NAME", ""),
+                                os.getenv("Ironcliw_VOICE_NAME", ""),
                                 *fallback_chain,
                             ]
 
@@ -1425,18 +1425,46 @@ class EdgeTTSEngine(TTSEngine):
                     timeout=timeout
                 )
 
-                # Play using afplay (macOS) or mpg123 (Linux)
-                if os.path.exists("/usr/bin/afplay"):
+                # Play audio - platform-specific
+                _system = platform.system()
+                if _system == "Windows":
+                    try:
+                        import pygame
+                        if not pygame.mixer.get_init():
+                            pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+                        pygame.mixer.music.load(temp_path)
+                        pygame.mixer.music.play()
+
+                        def _wait_for_pygame():
+                            import time as _t
+                            _t.sleep(0.1)
+                            while pygame.mixer.music.get_busy():
+                                _t.sleep(0.05)
+
+                        loop = asyncio.get_event_loop()
+                        await asyncio.wait_for(
+                            loop.run_in_executor(None, _wait_for_pygame),
+                            timeout=timeout
+                        )
+                    except Exception as _win_e:
+                        self.last_error = f"Windows audio playback failed: {_win_e}"
+                        return False
+                elif os.path.exists("/usr/bin/afplay"):
                     play_cmd = ["afplay", temp_path]
+                    process = await asyncio.create_subprocess_exec(
+                        *play_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await asyncio.wait_for(process.wait(), timeout=timeout)
                 else:
                     play_cmd = ["mpg123", "-q", temp_path]
-
-                process = await asyncio.create_subprocess_exec(
-                    *play_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await asyncio.wait_for(process.wait(), timeout=timeout)
+                    process = await asyncio.create_subprocess_exec(
+                        *play_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await asyncio.wait_for(process.wait(), timeout=timeout)
                 return True
 
             finally:
@@ -1669,7 +1697,7 @@ class MetricsPersistence:
 
 class TrinityVoiceCoordinator:
     """
-    Ultra-robust voice coordinator for JARVIS Trinity ecosystem v100.0.
+    Ultra-robust voice coordinator for Ironcliw Trinity ecosystem v100.0.
 
     Advanced Features:
     - Multi-engine TTS with intelligent fallback chain and circuit breakers
@@ -1744,7 +1772,7 @@ class TrinityVoiceCoordinator:
         else:
             logger.info(
                 "[TrinityVoice] Skipping pyttsx3 on macOS "
-                "(set JARVIS_TTS_ALLOW_PYTTSX3_DARWIN=true to enable)"
+                "(set Ironcliw_TTS_ALLOW_PYTTSX3_DARWIN=true to enable)"
             )
         engines_to_init.append(EdgeTTSEngine(self.config))
 
@@ -1802,14 +1830,14 @@ class TrinityVoiceCoordinator:
         """Load voice personalities from environment variables (zero hardcoding)."""
         # Detect best available voice from system
         default_voice = self._detect_best_voice()
-        canonical_voice = os.getenv("JARVIS_VOICE_NAME", default_voice)
+        canonical_voice = os.getenv("Ironcliw_VOICE_NAME", default_voice)
 
         # Startup personality (formal, professional)
-        startup_voice = os.getenv("JARVIS_STARTUP_VOICE_NAME", canonical_voice)
-        startup_rate = int(os.getenv("JARVIS_STARTUP_VOICE_RATE", "175"))
-        startup_pitch = int(os.getenv("JARVIS_STARTUP_VOICE_PITCH", "50"))
-        startup_volume = float(os.getenv("JARVIS_STARTUP_VOICE_VOLUME", "0.9"))
-        startup_emotion = os.getenv("JARVIS_STARTUP_VOICE_EMOTION", "neutral")
+        startup_voice = os.getenv("Ironcliw_STARTUP_VOICE_NAME", canonical_voice)
+        startup_rate = int(os.getenv("Ironcliw_STARTUP_VOICE_RATE", "175"))
+        startup_pitch = int(os.getenv("Ironcliw_STARTUP_VOICE_PITCH", "50"))
+        startup_volume = float(os.getenv("Ironcliw_STARTUP_VOICE_VOLUME", "0.9"))
+        startup_emotion = os.getenv("Ironcliw_STARTUP_VOICE_EMOTION", "neutral")
         self._personality_profiles[VoiceContext.STARTUP] = VoicePersonality(
             voice_name=startup_voice,
             rate=startup_rate,
@@ -1819,11 +1847,11 @@ class TrinityVoiceCoordinator:
         )
 
         # Narrator personality (clear, informative)
-        narrator_voice = os.getenv("JARVIS_NARRATOR_VOICE_NAME", canonical_voice)
-        narrator_rate = int(os.getenv("JARVIS_NARRATOR_VOICE_RATE", "180"))
-        narrator_pitch = int(os.getenv("JARVIS_NARRATOR_VOICE_PITCH", "50"))
-        narrator_volume = float(os.getenv("JARVIS_NARRATOR_VOICE_VOLUME", "0.85"))
-        narrator_emotion = os.getenv("JARVIS_NARRATOR_VOICE_EMOTION", "neutral")
+        narrator_voice = os.getenv("Ironcliw_NARRATOR_VOICE_NAME", canonical_voice)
+        narrator_rate = int(os.getenv("Ironcliw_NARRATOR_VOICE_RATE", "180"))
+        narrator_pitch = int(os.getenv("Ironcliw_NARRATOR_VOICE_PITCH", "50"))
+        narrator_volume = float(os.getenv("Ironcliw_NARRATOR_VOICE_VOLUME", "0.85"))
+        narrator_emotion = os.getenv("Ironcliw_NARRATOR_VOICE_EMOTION", "neutral")
         self._personality_profiles[VoiceContext.NARRATOR] = VoicePersonality(
             voice_name=narrator_voice,
             rate=narrator_rate,
@@ -1833,11 +1861,11 @@ class TrinityVoiceCoordinator:
         )
 
         # Runtime personality (friendly, conversational)
-        runtime_voice = os.getenv("JARVIS_RUNTIME_VOICE_NAME", canonical_voice)
-        runtime_rate = int(os.getenv("JARVIS_RUNTIME_VOICE_RATE", "190"))
-        runtime_pitch = int(os.getenv("JARVIS_RUNTIME_VOICE_PITCH", "55"))
-        runtime_volume = float(os.getenv("JARVIS_RUNTIME_VOICE_VOLUME", "0.8"))
-        runtime_emotion = os.getenv("JARVIS_RUNTIME_VOICE_EMOTION", "friendly")
+        runtime_voice = os.getenv("Ironcliw_RUNTIME_VOICE_NAME", canonical_voice)
+        runtime_rate = int(os.getenv("Ironcliw_RUNTIME_VOICE_RATE", "190"))
+        runtime_pitch = int(os.getenv("Ironcliw_RUNTIME_VOICE_PITCH", "55"))
+        runtime_volume = float(os.getenv("Ironcliw_RUNTIME_VOICE_VOLUME", "0.8"))
+        runtime_emotion = os.getenv("Ironcliw_RUNTIME_VOICE_EMOTION", "friendly")
         self._personality_profiles[VoiceContext.RUNTIME] = VoicePersonality(
             voice_name=runtime_voice,
             rate=runtime_rate,
@@ -1847,11 +1875,11 @@ class TrinityVoiceCoordinator:
         )
 
         # Alert personality (urgent, attention-grabbing)
-        alert_voice = os.getenv("JARVIS_ALERT_VOICE_NAME", canonical_voice)
-        alert_rate = int(os.getenv("JARVIS_ALERT_VOICE_RATE", "165"))
-        alert_pitch = int(os.getenv("JARVIS_ALERT_VOICE_PITCH", "60"))
-        alert_volume = float(os.getenv("JARVIS_ALERT_VOICE_VOLUME", "1.0"))
-        alert_emotion = os.getenv("JARVIS_ALERT_VOICE_EMOTION", "urgent")
+        alert_voice = os.getenv("Ironcliw_ALERT_VOICE_NAME", canonical_voice)
+        alert_rate = int(os.getenv("Ironcliw_ALERT_VOICE_RATE", "165"))
+        alert_pitch = int(os.getenv("Ironcliw_ALERT_VOICE_PITCH", "60"))
+        alert_volume = float(os.getenv("Ironcliw_ALERT_VOICE_VOLUME", "1.0"))
+        alert_emotion = os.getenv("Ironcliw_ALERT_VOICE_EMOTION", "urgent")
         self._personality_profiles[VoiceContext.ALERT] = VoicePersonality(
             voice_name=alert_voice,
             rate=alert_rate,
@@ -1861,11 +1889,11 @@ class TrinityVoiceCoordinator:
         )
 
         # Success personality (celebratory, upbeat)
-        success_voice = os.getenv("JARVIS_SUCCESS_VOICE_NAME", canonical_voice)
-        success_rate = int(os.getenv("JARVIS_SUCCESS_VOICE_RATE", "195"))
-        success_pitch = int(os.getenv("JARVIS_SUCCESS_VOICE_PITCH", "58"))
-        success_volume = float(os.getenv("JARVIS_SUCCESS_VOICE_VOLUME", "0.9"))
-        success_emotion = os.getenv("JARVIS_SUCCESS_VOICE_EMOTION", "celebratory")
+        success_voice = os.getenv("Ironcliw_SUCCESS_VOICE_NAME", canonical_voice)
+        success_rate = int(os.getenv("Ironcliw_SUCCESS_VOICE_RATE", "195"))
+        success_pitch = int(os.getenv("Ironcliw_SUCCESS_VOICE_PITCH", "58"))
+        success_volume = float(os.getenv("Ironcliw_SUCCESS_VOICE_VOLUME", "0.9"))
+        success_emotion = os.getenv("Ironcliw_SUCCESS_VOICE_EMOTION", "celebratory")
         self._personality_profiles[VoiceContext.SUCCESS] = VoicePersonality(
             voice_name=success_voice,
             rate=success_rate,
@@ -1875,11 +1903,11 @@ class TrinityVoiceCoordinator:
         )
 
         # Trinity personality (synchronized)
-        trinity_voice = os.getenv("JARVIS_TRINITY_VOICE_NAME", canonical_voice)
-        trinity_rate = int(os.getenv("JARVIS_TRINITY_VOICE_RATE", "185"))
-        trinity_pitch = int(os.getenv("JARVIS_TRINITY_VOICE_PITCH", "52"))
-        trinity_volume = float(os.getenv("JARVIS_TRINITY_VOICE_VOLUME", "0.9"))
-        trinity_emotion = os.getenv("JARVIS_TRINITY_VOICE_EMOTION", "neutral")
+        trinity_voice = os.getenv("Ironcliw_TRINITY_VOICE_NAME", canonical_voice)
+        trinity_rate = int(os.getenv("Ironcliw_TRINITY_VOICE_RATE", "185"))
+        trinity_pitch = int(os.getenv("Ironcliw_TRINITY_VOICE_PITCH", "52"))
+        trinity_volume = float(os.getenv("Ironcliw_TRINITY_VOICE_VOLUME", "0.9"))
+        trinity_emotion = os.getenv("Ironcliw_TRINITY_VOICE_EMOTION", "neutral")
         self._personality_profiles[VoiceContext.TRINITY] = VoicePersonality(
             voice_name=trinity_voice,
             rate=trinity_rate,
@@ -1937,7 +1965,7 @@ class TrinityVoiceCoordinator:
         """
         Detect best available voice on system with caching.
 
-        ⭐ JARVIS CANONICAL VOICE: UK Daniel (professional, deep, authoritative)
+        ⭐ Ironcliw CANONICAL VOICE: UK Daniel (professional, deep, authoritative)
 
         v93.1 Improvements:
         - Cached result to avoid repeated subprocess calls
@@ -1945,14 +1973,14 @@ class TrinityVoiceCoordinator:
         - Graceful fallback without error spam
         - Async-safe with threading lock
 
-        Priority (configurable via JARVIS_VOICE_FALLBACK_ORDER):
-        1. Daniel (UK Male) - JARVIS's signature voice - NON-NEGOTIABLE
+        Priority (configurable via Ironcliw_VOICE_FALLBACK_ORDER):
+        1. Daniel (UK Male) - Ironcliw's signature voice - NON-NEGOTIABLE
         2. Alex (US Male) - macOS default
         3. Tom (US Male) - Additional fallback
         4. Karen (AU Female) - Additional fallback
         5. Samantha (US Female) - Last resort named fallback
         6. First available voice
-        7. Environment default (JARVIS_DEFAULT_VOICE_NAME)
+        7. Environment default (Ironcliw_DEFAULT_VOICE_NAME)
         """
         # v93.1: Return cached voice if available
         with self._voice_cache_lock:
@@ -1960,15 +1988,15 @@ class TrinityVoiceCoordinator:
                 return self._cached_voice
 
         default_voice = (
-            os.getenv("JARVIS_VOICE_NAME")
-            or os.getenv("JARVIS_DEFAULT_VOICE_NAME")
+            os.getenv("Ironcliw_VOICE_NAME")
+            or os.getenv("Ironcliw_DEFAULT_VOICE_NAME")
             or "Daniel"
         )
         detected_voice = default_voice
 
         try:
             # v93.1: Increased timeout for heavily loaded systems
-            voice_timeout = float(os.getenv("JARVIS_VOICE_DETECT_TIMEOUT", "5.0"))
+            voice_timeout = float(os.getenv("Ironcliw_VOICE_DETECT_TIMEOUT", "5.0"))
 
             result = subprocess.run(
                 ["say", "-v", "?"],
@@ -1985,7 +2013,7 @@ class TrinityVoiceCoordinator:
                     if voice_line and voice_line.split()
                 ]
                 available_voice_names_lower = {name.lower() for name in available_voice_names}
-                enforce_canonical = _env_bool("JARVIS_ENFORCE_CANONICAL_VOICE", True)
+                enforce_canonical = _env_bool("Ironcliw_ENFORCE_CANONICAL_VOICE", True)
 
                 # If configured voice exists, keep it to preserve deterministic startup voice.
                 if default_voice.lower() in available_voice_names_lower:
@@ -2004,12 +2032,12 @@ class TrinityVoiceCoordinator:
                     )
                 else:
                     # Dynamic fallback chain from environment (comma-separated).
-                    # Defaults prioritize canonical JARVIS voice family while keeping
+                    # Defaults prioritize canonical Ironcliw voice family while keeping
                     # deterministic behavior when Daniel is unavailable.
                     fallback_chain = [
                         voice.strip()
                         for voice in os.getenv(
-                            "JARVIS_VOICE_FALLBACK_ORDER",
+                            "Ironcliw_VOICE_FALLBACK_ORDER",
                             "Daniel,Alex,Tom,Karen,Samantha",
                         ).split(",")
                         if voice.strip()
@@ -2201,9 +2229,9 @@ class TrinityVoiceCoordinator:
         else:
             default_engine_order = "macos_say,pyttsx3,edge_tts"
         if announcement.context in (VoiceContext.STARTUP, VoiceContext.NARRATOR):
-            order_raw = os.getenv("JARVIS_STARTUP_TTS_ENGINE_ORDER", default_engine_order)
+            order_raw = os.getenv("Ironcliw_STARTUP_TTS_ENGINE_ORDER", default_engine_order)
         else:
-            order_raw = os.getenv("JARVIS_TTS_ENGINE_ORDER", default_engine_order)
+            order_raw = os.getenv("Ironcliw_TTS_ENGINE_ORDER", default_engine_order)
 
         engine_order = [
             engine_name.strip().lower()
@@ -2578,9 +2606,9 @@ class TrinityVoiceCoordinator:
     # =========================================================================
 
     async def announce_jarvis_online(self) -> Tuple[bool, str]:
-        """Standard JARVIS online announcement."""
+        """Standard Ironcliw online announcement."""
         return await self.announce(
-            "JARVIS is online. All systems operational. Ready for your command.",
+            "Ironcliw is online. All systems operational. Ready for your command.",
             context=VoiceContext.STARTUP,
             priority=VoicePriority.CRITICAL,
             source="jarvis"
@@ -2592,9 +2620,9 @@ class TrinityVoiceCoordinator:
     ) -> Tuple[bool, str]:
         """Announce J-Prime model loaded."""
         message = (
-            f"JARVIS Prime: {model_name} loaded and ready for edge processing."
+            f"Ironcliw Prime: {model_name} loaded and ready for edge processing."
             if model_name
-            else "JARVIS Prime local inference engine initialized. Ready for edge processing."
+            else "Ironcliw Prime local inference engine initialized. Ready for edge processing."
         )
         return await self.announce(
             message,
@@ -2638,7 +2666,7 @@ class TrinityVoiceCoordinator:
     async def announce_trinity_online(self) -> Tuple[bool, str]:
         """Announce all Trinity components online."""
         return await self.announce(
-            "All Trinity components online. JARVIS, Prime, and Reactor synced. "
+            "All Trinity components online. Ironcliw, Prime, and Reactor synced. "
             "Full system operational.",
             context=VoiceContext.SUCCESS,
             priority=VoicePriority.CRITICAL,
@@ -2710,7 +2738,7 @@ async def announce(
 
     Usage:
         success, reason = await announce(
-            "JARVIS is online",
+            "Ironcliw is online",
             VoiceContext.STARTUP,
             VoicePriority.HIGH
         )
@@ -2738,7 +2766,7 @@ async def integrate_with_trinity_ipc():
     """
     Integrate voice coordinator with Trinity IPC for cross-repo announcements.
 
-    This allows JARVIS Prime and Reactor Core to send voice announcements
+    This allows Ironcliw Prime and Reactor Core to send voice announcements
     through the centralized coordinator.
     """
     try:

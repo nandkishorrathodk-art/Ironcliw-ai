@@ -1,11 +1,11 @@
-/**
- * JARVISScreenUnlockManager.m
- * JARVIS Voice Unlock System
+﻿/**
+ * IroncliwScreenUnlockManager.m
+ * Ironcliw Voice Unlock System
  *
  * Implementation of screen unlock functionality.
  */
 
-#import "JARVISScreenUnlockManager.h"
+#import "IroncliwScreenUnlockManager.h"
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <Carbon/Carbon.h>
@@ -15,28 +15,28 @@
 // Private APIs would go here, but we'll use alternative methods
 
 // Unlock result implementation
-@interface JARVISUnlockResult ()
+@interface IroncliwUnlockResult ()
 @property (nonatomic, readwrite) BOOL success;
-@property (nonatomic, readwrite) JARVISUnlockMethod method;
+@property (nonatomic, readwrite) IroncliwUnlockMethod method;
 @property (nonatomic, readwrite) NSTimeInterval duration;
 @property (nonatomic, readwrite, nullable) NSError *error;
 @end
 
-@implementation JARVISUnlockResult
+@implementation IroncliwUnlockResult
 @end
 
 // Main implementation
-@interface JARVISScreenUnlockManager ()
+@interface IroncliwScreenUnlockManager ()
 @property (nonatomic, strong) LAContext *authContext;
 @property (nonatomic, strong) dispatch_queue_t unlockQueue;
 @property (nonatomic, strong) os_log_t logger;
 @property (nonatomic, assign) IOPMAssertionID sleepAssertionID;
 @property (nonatomic, strong) NSTimer *stateMonitorTimer;
-@property (nonatomic, readwrite) JARVISScreenState currentScreenState;
+@property (nonatomic, readwrite) IroncliwScreenState currentScreenState;
 @property (nonatomic, readwrite) BOOL hasSecureToken;
 @end
 
-@implementation JARVISScreenUnlockManager
+@implementation IroncliwScreenUnlockManager
 
 - (instancetype)init {
     self = [super init];
@@ -44,7 +44,7 @@
         _authContext = [[LAContext alloc] init];
         _unlockQueue = dispatch_queue_create("com.jarvis.screenunlock", DISPATCH_QUEUE_SERIAL);
         _logger = os_log_create("com.jarvis.voiceunlock", "screenunlock");
-        _currentScreenState = JARVISScreenStateUnknown;
+        _currentScreenState = IroncliwScreenStateUnknown;
         _sleepAssertionID = 0;
         
         // Check for secure token
@@ -114,15 +114,15 @@
     return NO;
 }
 
-- (JARVISScreenState)detectScreenState {
+- (IroncliwScreenState)detectScreenState {
     if ([self isSystemSleeping]) {
-        return JARVISScreenStateSleeping;
+        return IroncliwScreenStateSleeping;
     } else if ([self isScreenLocked]) {
-        return JARVISScreenStateLocked;
+        return IroncliwScreenStateLocked;
     } else if ([self isScreensaverActive]) {
-        return JARVISScreenStateScreensaver;
+        return IroncliwScreenStateScreensaver;
     } else {
-        return JARVISScreenStateUnlocked;
+        return IroncliwScreenStateUnlocked;
     }
 }
 
@@ -140,9 +140,9 @@
 }
 
 - (void)checkScreenState {
-    JARVISScreenState newState = [self detectScreenState];
+    IroncliwScreenState newState = [self detectScreenState];
     if (newState != self.currentScreenState) {
-        JARVISScreenState oldState = self.currentScreenState;
+        IroncliwScreenState oldState = self.currentScreenState;
         self.currentScreenState = newState;
         
         os_log_info(self.logger, "Screen state changed from %ld to %ld", (long)oldState, (long)newState);
@@ -182,9 +182,9 @@
                 os_log_info(self.logger, "Screen locked successfully using CGSession");
 
                 // Update screen state
-                self.currentScreenState = JARVISScreenStateLocked;
+                self.currentScreenState = IroncliwScreenStateLocked;
                 if ([self.delegate respondsToSelector:@selector(screenStateDidChange:)]) {
-                    [self.delegate screenStateDidChange:JARVISScreenStateLocked];
+                    [self.delegate screenStateDidChange:IroncliwScreenStateLocked];
                 }
 
                 return YES;
@@ -202,9 +202,9 @@
 
     if (result && !errorInfo) {
         os_log_info(self.logger, "Screen locked successfully using AppleScript");
-        self.currentScreenState = JARVISScreenStateLocked;
+        self.currentScreenState = IroncliwScreenStateLocked;
         if ([self.delegate respondsToSelector:@selector(screenStateDidChange:)]) {
-            [self.delegate screenStateDidChange:JARVISScreenStateLocked];
+            [self.delegate screenStateDidChange:IroncliwScreenStateLocked];
         }
         return YES;
     }
@@ -220,16 +220,16 @@
     }
 
     if (screensaverStarted) {
-        self.currentScreenState = JARVISScreenStateScreensaver;
+        self.currentScreenState = IroncliwScreenStateScreensaver;
         if ([self.delegate respondsToSelector:@selector(screenStateDidChange:)]) {
-            [self.delegate screenStateDidChange:JARVISScreenStateScreensaver];
+            [self.delegate screenStateDidChange:IroncliwScreenStateScreensaver];
         }
         return YES;
     }
 
     // All methods failed
     if (error) {
-        *error = [NSError errorWithDomain:@"JARVISScreenUnlock"
+        *error = [NSError errorWithDomain:@"IroncliwScreenUnlock"
                                      code:500
                                  userInfo:@{NSLocalizedDescriptionKey: @"Failed to lock screen using all available methods"}];
     }
@@ -246,7 +246,7 @@
 - (BOOL)unlockScreenWithError:(NSError **)error {
     if (![self canUnlockScreen]) {
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISScreenUnlock"
+            *error = [NSError errorWithDomain:@"IroncliwScreenUnlock"
                                          code:403
                                      userInfo:@{NSLocalizedDescriptionKey: @"Cannot unlock screen - missing permissions or secure token"}];
         }
@@ -275,7 +275,7 @@
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
         
         [self.authContext evaluatePolicy:LAPolicyDeviceOwnerAuthentication
-                        localizedReason:@"JARVIS Voice Unlock"
+                        localizedReason:@"Ironcliw Voice Unlock"
                                   reply:^(BOOL evalSuccess, NSError *evalError) {
             success = evalSuccess;
             authError = evalError;
@@ -294,7 +294,7 @@
     return NO;
 }
 
-- (void)unlockScreenAsync:(void (^)(JARVISUnlockResult *))completion {
+- (void)unlockScreenAsync:(void (^)(IroncliwUnlockResult *))completion {
     NSDate *startTime = [NSDate date];
     
     dispatch_async(self.unlockQueue, ^{
@@ -307,9 +307,9 @@
         NSError *error = nil;
         BOOL success = [self unlockScreenWithError:&error];
         
-        JARVISUnlockResult *result = [[JARVISUnlockResult alloc] init];
+        IroncliwUnlockResult *result = [[IroncliwUnlockResult alloc] init];
         result.success = success;
-        result.method = JARVISUnlockMethodVoice;
+        result.method = IroncliwUnlockMethodVoice;
         result.duration = [[NSDate date] timeIntervalSinceDate:startTime];
         result.error = error;
         
@@ -356,7 +356,7 @@
     // For now, return success based on voice data presence
     if (!voiceData || voiceData.length == 0) {
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISScreenUnlock"
+            *error = [NSError errorWithDomain:@"IroncliwScreenUnlock"
                                          code:400
                                      userInfo:@{NSLocalizedDescriptionKey: @"Invalid voice data"}];
         }
@@ -414,7 +414,7 @@
     
     if (status != errSecSuccess) {
         if (error) {
-            *error = [NSError errorWithDomain:@"JARVISScreenUnlock"
+            *error = [NSError errorWithDomain:@"IroncliwScreenUnlock"
                                          code:status
                                      userInfo:@{NSLocalizedDescriptionKey: @"Failed to store secure token"}];
         }
@@ -568,7 +568,7 @@
 - (void)preventSystemSleep:(BOOL)prevent {
     if (prevent) {
         if (self.sleepAssertionID == 0) {
-            CFStringRef reason = CFSTR("JARVIS Voice Unlock Active");
+            CFStringRef reason = CFSTR("Ironcliw Voice Unlock Active");
             IOReturn success = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep,
                                                           kIOPMAssertionLevelOn,
                                                           reason,

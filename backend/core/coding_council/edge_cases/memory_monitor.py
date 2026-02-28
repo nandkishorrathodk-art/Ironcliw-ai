@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Memory Monitor - Gap #34
 ================================
 
@@ -9,7 +9,7 @@ Memory pressure monitoring:
 - Garbage collection triggers
 - Memory leak detection
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

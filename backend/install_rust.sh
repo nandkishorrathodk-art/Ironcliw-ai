@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 
-echo "🦀 Installing Rust for JARVIS Performance Layer"
+echo "🦀 Installing Rust for Ironcliw Performance Layer"
 echo "=============================================="
 
 # Check if Rust is already installed

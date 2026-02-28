@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Visual Demo of JARVIS Lock/Unlock Flow
+Visual Demo of Ironcliw Lock/Unlock Flow
 ======================================
 
 Shows step-by-step what happens with visual indicators
@@ -31,7 +31,7 @@ class VisualWebSocket:
             self.step_num += 1
             print(f"\n{'─'*60}")
             print(f"📍 Step {self.step_num}: Context Update")
-            print(f"💬 JARVIS: \"{data.get('message')}\"")
+            print(f"💬 Ironcliw: \"{data.get('message')}\"")
             
             status = data.get('status', '')
             if status == 'unlocking_screen':
@@ -45,7 +45,7 @@ class VisualWebSocket:
 def show_header():
     """Show demo header"""
     print("\n" + "="*80)
-    print("🌟 JARVIS INTELLIGENT LOCK HANDLING DEMO 🌟".center(80))
+    print("🌟 Ironcliw INTELLIGENT LOCK HANDLING DEMO 🌟".center(80))
     print("="*80)
 
 def show_scenario():
@@ -53,8 +53,8 @@ def show_scenario():
     print("\n📖 SCENARIO:")
     print("┌─────────────────────────────────────────────────────────┐")
     print("│ 1. Your Mac screen is LOCKED 🔒                        │")
-    print("│ 2. You say: \"JARVIS, open Safari and search for dogs\" │")
-    print("│ 3. Watch JARVIS handle it intelligently!               │")
+    print("│ 2. You say: \"Ironcliw, open Safari and search for dogs\" │")
+    print("│ 3. Watch Ironcliw handle it intelligently!               │")
     print("└─────────────────────────────────────────────────────────┘")
 
 async def visual_demo():
@@ -88,11 +88,11 @@ async def visual_demo():
     
     # Phase 2: User Command
     print("\n📍 Phase 2: User gives command")
-    print("🎤 User: \"JARVIS, open Safari and search for dogs\"")
+    print("🎤 User: \"Ironcliw, open Safari and search for dogs\"")
     
-    # Phase 3: JARVIS Processing
-    print("\n📍 Phase 3: JARVIS Processing")
-    print("🤖 JARVIS is analyzing your request...")
+    # Phase 3: Ironcliw Processing
+    print("\n📍 Phase 3: Ironcliw Processing")
+    print("🤖 Ironcliw is analyzing your request...")
     
     # Create components
     processor = UnifiedCommandProcessor()
@@ -127,7 +127,7 @@ async def visual_demo():
             print(f"   {icon} {step_text}")
     
     print("\n🎯 Key Points Demonstrated:")
-    print("   ✅ JARVIS detected the locked screen")
+    print("   ✅ Ironcliw detected the locked screen")
     print("   ✅ Provided clear feedback BEFORE unlocking")
     print("   ✅ Successfully unlocked the screen")
     print("   ✅ Attempted to execute the original command")
@@ -167,7 +167,7 @@ if __name__ == "__main__":
         print("\n" + "="*80)
         print("🎉 DEMO COMPLETE! 🎉".center(80))
         print("="*80)
-        print("\n✨ JARVIS successfully demonstrated intelligent screen lock handling!")
+        print("\n✨ Ironcliw successfully demonstrated intelligent screen lock handling!")
         
     except KeyboardInterrupt:
         print("\n\n❌ Demo cancelled by user")

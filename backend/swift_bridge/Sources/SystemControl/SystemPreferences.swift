@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 import IOKit
 import IOKit.pwr_mgt
 import CoreAudio
@@ -228,7 +228,7 @@ public class SystemPreferences {
     
     public static func preventSleep() throws -> IOPMAssertionID {
         var assertionID: IOPMAssertionID = 0
-        let reason = "JARVIS System Control Operation" as CFString
+        let reason = "Ironcliw System Control Operation" as CFString
         
         let result = IOPMAssertionCreateWithName(
             kIOPMAssertionTypeNoDisplaySleep as CFString,

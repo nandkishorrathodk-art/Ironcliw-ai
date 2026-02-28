@@ -1,4 +1,4 @@
-// JARVIS Landing Page - Advanced Animations
+﻿// Ironcliw Landing Page - Advanced Animations
 
 document.addEventListener('DOMContentLoaded', function() {
     // Arc Reactor Energy Flow
@@ -217,7 +217,7 @@ document.addEventListener('DOMContentLoaded', function() {
         message.innerHTML = `
             <div class="success-content">
                 <i class="fas fa-check-circle"></i>
-                <h3>JARVIS Initialized Successfully!</h3>
+                <h3>Ironcliw Initialized Successfully!</h3>
                 <p>Your AI assistant is ready to serve.</p>
             </div>
         `;

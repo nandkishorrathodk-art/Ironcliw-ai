@@ -1,8 +1,8 @@
-# JARVIS Windows Port - Phase 10 Test Execution Guide
+﻿# Ironcliw Windows Port - Phase 10 Test Execution Guide
 
 ## Overview
 
-This guide provides step-by-step instructions for running the comprehensive End-to-End testing suite for the JARVIS Windows port.
+This guide provides step-by-step instructions for running the comprehensive End-to-End testing suite for the Ironcliw Windows port.
 
 **Phase:** Phase 10 - End-to-End Testing & Bug Fixes (Week 9-10)  
 **Status:** Testing infrastructure complete, ready for execution
@@ -258,7 +258,7 @@ python scripts\benchmark.py
 **Output:**
 ```
 ================================================================================
-            JARVIS Windows Performance Benchmark Suite
+            Ironcliw Windows Performance Benchmark Suite
 ================================================================================
 
 Platform: windows
@@ -459,10 +459,10 @@ pip install pythonnet
 
 #### Issue: Memory tests fail with > 4GB usage
 
-**Cause:** Background processes or existing JARVIS instances running
+**Cause:** Background processes or existing Ironcliw instances running
 
 **Solution:**
-1. Close all JARVIS processes
+1. Close all Ironcliw processes
 2. Run tests in a clean environment
 3. Check for memory-heavy background processes
 

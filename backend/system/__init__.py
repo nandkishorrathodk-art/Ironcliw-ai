@@ -1,5 +1,5 @@
-"""
-JARVIS System Module
+﻿"""
+Ironcliw System Module
 
 Contains system-level utilities and integrations:
 - app_library.py: v67.0 CEREBRO PROTOCOL - Dynamic App Resolution via macOS Spotlight
@@ -59,7 +59,7 @@ from .trinity_initializer import (
     trinity_context,
     is_trinity_initialized,
     get_trinity_status,
-    JARVIS_INSTANCE_ID,
+    Ironcliw_INSTANCE_ID,
 )
 
 __all__ = [
@@ -97,5 +97,5 @@ __all__ = [
     'trinity_context',
     'is_trinity_initialized',
     'get_trinity_status',
-    'JARVIS_INSTANCE_ID',
+    'Ironcliw_INSTANCE_ID',
 ]

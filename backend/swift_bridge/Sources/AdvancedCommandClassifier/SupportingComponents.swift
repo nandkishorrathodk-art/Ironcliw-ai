@@ -1,4 +1,4 @@
-import Foundation //
+﻿import Foundation //
 
 // MARK: - Context Manager
 
@@ -825,7 +825,7 @@ public class PersistenceManager {
         self.documentsDirectory = FileManager.default.urls(
             for: .documentDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("JARVISClassifier")
+        ).first!.appendingPathComponent("IroncliwClassifier")
         
         self.backupDirectory = documentsDirectory.appendingPathComponent("backups")
         

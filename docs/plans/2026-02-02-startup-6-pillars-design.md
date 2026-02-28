@@ -1,4 +1,4 @@
-# Startup 6 Pillars — Root Cause Refactor Design
+﻿# Startup 6 Pillars — Root Cause Refactor Design
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -24,16 +24,16 @@
 │  │ # All from startup_timeouts.py, env-overridable (Pillar 6)         │   │
 │  │ # SAFETY_MARGIN is NOT in budgets dict (added separately)          │   │
 │  │ budgets = {                                                         │   │
-│  │   PRE_TRINITY:     env("JARVIS_PRE_TRINITY_BUDGET", 30),           │   │
-│  │   TRINITY_PHASE:   env("JARVIS_TRINITY_PHASE_BUDGET", 300),        │   │
-│  │   GCP_WAIT_BUFFER: env("JARVIS_GCP_WAIT_BUFFER", 120),             │   │
-│  │   POST_TRINITY:    env("JARVIS_POST_TRINITY_BUDGET", 60),          │   │
-│  │   DISCOVERY:       env("JARVIS_DISCOVERY_BUDGET", 45),             │   │
-│  │   HEALTH_CHECK:    env("JARVIS_HEALTH_CHECK_BUDGET", 30),          │   │
-│  │   CLEANUP:         env("JARVIS_CLEANUP_BUDGET", 30),               │   │
+│  │   PRE_TRINITY:     env("Ironcliw_PRE_TRINITY_BUDGET", 30),           │   │
+│  │   TRINITY_PHASE:   env("Ironcliw_TRINITY_PHASE_BUDGET", 300),        │   │
+│  │   GCP_WAIT_BUFFER: env("Ironcliw_GCP_WAIT_BUFFER", 120),             │   │
+│  │   POST_TRINITY:    env("Ironcliw_POST_TRINITY_BUDGET", 60),          │   │
+│  │   DISCOVERY:       env("Ironcliw_DISCOVERY_BUDGET", 45),             │   │
+│  │   HEALTH_CHECK:    env("Ironcliw_HEALTH_CHECK_BUDGET", 30),          │   │
+│  │   CLEANUP:         env("Ironcliw_CLEANUP_BUDGET", 30),               │   │
 │  │ }                                                                   │   │
-│  │ SAFETY_MARGIN = env("JARVIS_SAFETY_MARGIN", 30)                    │   │
-│  │ HARD_CAP = env("JARVIS_STARTUP_HARD_CAP", 900)                     │   │
+│  │ SAFETY_MARGIN = env("Ironcliw_SAFETY_MARGIN", 30)                    │   │
+│  │ HARD_CAP = env("Ironcliw_STARTUP_HARD_CAP", 900)                     │   │
 │  │ # Single HARD_CAP for all phases (per-phase caps can be added later)│  │
 │  │                                                                     │   │
 │  │ # Per-phase effective (so each phase can self-tune from history)   │   │
@@ -71,8 +71,8 @@
 │  │ PHASE 0-4: Pre-Trinity (budget: effective[PRE_TRINITY])            │   │
 │  │ ─────────────────────────────────────────────────────────────────── │   │
 │  │ • Hollow Client Enforcer (Pillar 3) runs at module import          │   │
-│  │ • RAM threshold: env("JARVIS_HOLLOW_RAM_THRESHOLD_GB", 32)         │   │
-│  │ • Sets JARVIS_HOLLOW_CLIENT=true if RAM < threshold                │   │
+│  │ • RAM threshold: env("Ironcliw_HOLLOW_RAM_THRESHOLD_GB", 32)         │   │
+│  │ • Sets Ironcliw_HOLLOW_CLIENT=true if RAM < threshold                │   │
 │  │ • All async calls use asyncio.to_thread() (Pillar 4)               │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                              │                                              │
@@ -421,33 +421,33 @@ import os
 from unittest.mock import patch
 
 def test_enforce_hollow_client_when_ram_below_threshold():
-    """Sets JARVIS_HOLLOW_CLIENT=true when RAM < threshold."""
+    """Sets Ironcliw_HOLLOW_CLIENT=true when RAM < threshold."""
     from backend.config import hardware_enforcer
 
     with patch.object(hardware_enforcer, 'get_system_ram_gb', return_value=16.0):
         with patch.dict(os.environ, {}, clear=True):
             result = hardware_enforcer.enforce_hollow_client(source="test")
             assert result is True
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") == "true"
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") == "true"
 
 
 def test_no_enforcement_when_ram_above_threshold():
-    """Does not set JARVIS_HOLLOW_CLIENT when RAM >= threshold."""
+    """Does not set Ironcliw_HOLLOW_CLIENT when RAM >= threshold."""
     from backend.config import hardware_enforcer
 
     with patch.object(hardware_enforcer, 'get_system_ram_gb', return_value=64.0):
         with patch.dict(os.environ, {}, clear=True):
             result = hardware_enforcer.enforce_hollow_client(source="test")
             assert result is False
-            assert os.environ.get("JARVIS_HOLLOW_CLIENT") is None
+            assert os.environ.get("Ironcliw_HOLLOW_CLIENT") is None
 
 
 def test_threshold_is_configurable():
-    """RAM threshold is configurable via JARVIS_HOLLOW_RAM_THRESHOLD_GB."""
+    """RAM threshold is configurable via Ironcliw_HOLLOW_RAM_THRESHOLD_GB."""
     from backend.config import hardware_enforcer
 
     with patch.object(hardware_enforcer, 'get_system_ram_gb', return_value=48.0):
-        with patch.dict(os.environ, {"JARVIS_HOLLOW_RAM_THRESHOLD_GB": "64"}, clear=True):
+        with patch.dict(os.environ, {"Ironcliw_HOLLOW_RAM_THRESHOLD_GB": "64"}, clear=True):
             # Reload to pick up new threshold
             import importlib
             importlib.reload(hardware_enforcer)
@@ -617,7 +617,7 @@ from unittest.mock import patch
 
 def test_config_env_override():
     """Config values can be overridden via environment variables."""
-    with patch.dict(os.environ, {"JARVIS_TRINITY_PHASE_BUDGET": "600"}):
+    with patch.dict(os.environ, {"Ironcliw_TRINITY_PHASE_BUDGET": "600"}):
         from backend.config.startup_timeouts import StartupConfig
         config = StartupConfig()
         assert config.TRINITY_PHASE_BUDGET == 600.0

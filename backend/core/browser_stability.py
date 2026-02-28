@@ -1,4 +1,4 @@
-"""
+﻿"""
 Enterprise-Grade Browser Stability System v1.0.0
 =================================================
 
@@ -53,7 +53,7 @@ Usage:
     # Ensure Chrome is launched with stability flags
     port = await ensure_stable_chrome()
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 1.0.0
 """
 

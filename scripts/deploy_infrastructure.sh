@@ -1,5 +1,5 @@
-#!/bin/bash
-# Deploy JARVIS Infrastructure using Terraform
+﻿#!/bin/bash
+# Deploy Ironcliw Infrastructure using Terraform
 # Usage: ./scripts/deploy_infrastructure.sh
 
 set -e
@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${BLUE}🚀 JARVIS Infrastructure Deployment${NC}"
+echo -e "${BLUE}🚀 Ironcliw Infrastructure Deployment${NC}"
 echo "========================================"
 
 # Check if Terraform is installed

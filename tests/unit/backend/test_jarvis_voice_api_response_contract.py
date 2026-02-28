@@ -1,13 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
 
-from backend.api.jarvis_voice_api import JARVISCommand, JARVISVoiceAPI
+from backend.api.jarvis_voice_api import IroncliwCommand, IroncliwVoiceAPI
 
 
-_RAW_PROCESS_COMMAND = JARVISVoiceAPI.process_command.__wrapped__.__wrapped__
+_RAW_PROCESS_COMMAND = IroncliwVoiceAPI.process_command.__wrapped__.__wrapped__
 
 
 class _FakePipeline:
@@ -19,8 +19,8 @@ class _FakePipeline:
 
 
 @pytest.fixture
-def api() -> JARVISVoiceAPI:
-    inst = JARVISVoiceAPI()
+def api() -> IroncliwVoiceAPI:
+    inst = IroncliwVoiceAPI()
     inst.jarvis_available = True
     inst._jarvis_initialized = True
     inst._jarvis = SimpleNamespace(running=True, user_name="Sir")
@@ -34,13 +34,13 @@ def api() -> JARVISVoiceAPI:
 
 
 def test_coerce_text_handles_none_and_empty() -> None:
-    assert JARVISVoiceAPI._coerce_text(None, fallback="fallback") == "fallback"
-    assert JARVISVoiceAPI._coerce_text("   ", fallback="fallback") == "fallback"
-    assert JARVISVoiceAPI._coerce_text("  hello  ", fallback="fallback") == "hello"
+    assert IroncliwVoiceAPI._coerce_text(None, fallback="fallback") == "fallback"
+    assert IroncliwVoiceAPI._coerce_text("   ", fallback="fallback") == "fallback"
+    assert IroncliwVoiceAPI._coerce_text("  hello  ", fallback="fallback") == "hello"
 
 
 @pytest.mark.asyncio
-async def test_process_command_rejects_null_text_before_pipeline(api: JARVISVoiceAPI) -> None:
+async def test_process_command_rejects_null_text_before_pipeline(api: IroncliwVoiceAPI) -> None:
     bad_command = SimpleNamespace(text=None, audio_data=None, deadline=None)
 
     result = await _RAW_PROCESS_COMMAND(api, bad_command)
@@ -50,10 +50,10 @@ async def test_process_command_rejects_null_text_before_pipeline(api: JARVISVoic
 
 
 @pytest.mark.asyncio
-async def test_process_command_normalizes_none_pipeline_response(api: JARVISVoiceAPI) -> None:
+async def test_process_command_normalizes_none_pipeline_response(api: IroncliwVoiceAPI) -> None:
     api._pipeline = _FakePipeline({"response": None, "type": "generic"})
 
-    result = await _RAW_PROCESS_COMMAND(api, JARVISCommand(text="open safari"))
+    result = await _RAW_PROCESS_COMMAND(api, IroncliwCommand(text="open safari"))
 
     assert result["success"] is True
     assert result["response"] == "I processed your command, Sir."

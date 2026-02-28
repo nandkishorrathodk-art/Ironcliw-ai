@@ -1,9 +1,9 @@
-#!/bin/bash
+﻿#!/bin/bash
 #
 # Test script to verify minimal mode logging enhancements
 #
 
-echo "🔍 Testing JARVIS Minimal Mode Logging..."
+echo "🔍 Testing Ironcliw Minimal Mode Logging..."
 echo ""
 
 # Check if backend is running
@@ -16,7 +16,7 @@ echo "2️⃣ Checking voice status endpoint..."
 curl -s http://localhost:8010/voice/jarvis/status | jq '.' || curl -s http://localhost:8001/voice/jarvis/status | jq '.'
 
 echo ""
-echo "3️⃣ Testing JARVIS activation..."
+echo "3️⃣ Testing Ironcliw activation..."
 curl -X POST http://localhost:8010/voice/jarvis/activate -H "Content-Type: application/json" || \
 curl -X POST http://localhost:8001/voice/jarvis/activate -H "Content-Type: application/json"
 

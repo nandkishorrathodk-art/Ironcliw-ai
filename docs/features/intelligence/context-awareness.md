@@ -1,8 +1,8 @@
-# JARVIS Context Awareness Implementation
+﻿# Ironcliw Context Awareness Implementation
 
 ## Overview
 
-I've implemented a context awareness system for JARVIS that handles the specific scenario you requested: when the screen is locked and you give a command that requires screen access, JARVIS will:
+I've implemented a context awareness system for Ironcliw that handles the specific scenario you requested: when the screen is locked and you give a command that requires screen access, Ironcliw will:
 
 1. Detect that the screen is locked
 2. Inform you: "Your screen is locked. I'll unlock it now by typing in the password."
@@ -57,9 +57,9 @@ The system recognizes these patterns as requiring an unlocked screen:
 
 ## Usage Example
 
-When you say: "Hey JARVIS, open Safari and search for dogs" while the screen is locked:
+When you say: "Hey Ironcliw, open Safari and search for dogs" while the screen is locked:
 
-1. JARVIS detects the locked screen
+1. Ironcliw detects the locked screen
 2. Responds: "Your screen is locked. I'll unlock it now by typing in the password."
 3. Unlocks the screen
 4. Opens Safari and performs the search

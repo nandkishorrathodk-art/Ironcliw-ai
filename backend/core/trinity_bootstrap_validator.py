@@ -1,9 +1,9 @@
-"""
+﻿"""
 Trinity Bootstrap Validator v100.0
 ===================================
 
 Ultra-robust, async, parallel, intelligent pre-flight validation system.
-Validates ALL prerequisites before JARVIS startup to prevent mysterious failures.
+Validates ALL prerequisites before Ironcliw startup to prevent mysterious failures.
 
 Advanced Features:
 - Zero hardcoding (100% environment-driven)
@@ -12,7 +12,7 @@ Advanced Features:
 - Protocol-based extensibility
 - Distributed tracing integration
 - Self-healing suggestion engine
-- Cross-repo validation (JARVIS, JARVIS Prime, Reactor Core)
+- Cross-repo validation (Ironcliw, Ironcliw Prime, Reactor Core)
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -34,7 +34,7 @@ Architecture:
     │  └─────────────────────────────────────────────────────────────┘│
     └─────────────────────────────────────────────────────────────────┘
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 100.0.0
 """
 from __future__ import annotations
@@ -133,12 +133,12 @@ class ValidatorConfig:
     MAX_CPU_PERCENT: Final[float] = _env_float("TRINITY_MAX_CPU_PERCENT", 95.0)
 
     # Paths
-    JARVIS_HOME: Final[Path] = _env_path("JARVIS_HOME", Path.home() / ".jarvis")
-    STATE_DIR: Final[Path] = _env_path("JARVIS_STATE_DIR", Path.home() / ".jarvis" / "state")
-    LOGS_DIR: Final[Path] = _env_path("JARVIS_LOGS_DIR", Path.home() / ".jarvis" / "logs")
+    Ironcliw_HOME: Final[Path] = _env_path("Ironcliw_HOME", Path.home() / ".jarvis")
+    STATE_DIR: Final[Path] = _env_path("Ironcliw_STATE_DIR", Path.home() / ".jarvis" / "state")
+    LOGS_DIR: Final[Path] = _env_path("Ironcliw_LOGS_DIR", Path.home() / ".jarvis" / "logs")
 
     # Cross-repo paths
-    JARVIS_PRIME_PATH: Final[Optional[Path]] = _env_path("JARVIS_PRIME_PATH")
+    Ironcliw_PRIME_PATH: Final[Optional[Path]] = _env_path("Ironcliw_PRIME_PATH")
     REACTOR_CORE_PATH: Final[Optional[Path]] = _env_path("REACTOR_CORE_PATH")
 
     # Required ports (comma-separated)
@@ -458,13 +458,13 @@ class EnvironmentValidator(BaseValidator):
     # Environment variable specifications (dynamically loaded)
     ENV_SPECS: ClassVar[Dict[str, Dict[str, Any]]] = {
         # Format: "VAR_NAME": {"type": "float|int|bool|path|str", "min": X, "max": Y, "required": bool}
-        "JARVIS_PRIME_PORT": {"type": "int", "min": 1, "max": 65535},
+        "Ironcliw_PRIME_PORT": {"type": "int", "min": 1, "max": 65535},
         # v150.0: Increased max from 600.0 to 1200.0 (20 minutes) to allow for very large models
-        "JARVIS_PRIME_STARTUP_TIMEOUT": {"type": "float", "min": 1.0, "max": 1200.0},
+        "Ironcliw_PRIME_STARTUP_TIMEOUT": {"type": "float", "min": 1.0, "max": 1200.0},
         "TRINITY_VALIDATION_TIMEOUT": {"type": "float", "min": 1.0, "max": 300.0},
-        "JARVIS_PRIME_PATH": {"type": "path"},
+        "Ironcliw_PRIME_PATH": {"type": "path"},
         "REACTOR_CORE_PATH": {"type": "path"},
-        "JARVIS_PRIME_ENABLED": {"type": "bool"},
+        "Ironcliw_PRIME_ENABLED": {"type": "bool"},
         "REACTOR_CORE_ENABLED": {"type": "bool"},
     }
 
@@ -628,7 +628,7 @@ class FileSystemValidator(BaseValidator):
     async def _check_directory_permissions(self, result: ValidationResult) -> None:
         """Check write permissions for required directories."""
         required_dirs = [
-            ValidatorConfig.JARVIS_HOME,
+            ValidatorConfig.Ironcliw_HOME,
             ValidatorConfig.STATE_DIR,
             ValidatorConfig.LOGS_DIR,
         ]
@@ -663,7 +663,7 @@ class FileSystemValidator(BaseValidator):
         """Check available disk space."""
         try:
             import shutil
-            total, used, free = shutil.disk_usage(ValidatorConfig.JARVIS_HOME)
+            total, used, free = shutil.disk_usage(ValidatorConfig.Ironcliw_HOME)
             free_gb = free / (1024 ** 3)
 
             if free_gb < ValidatorConfig.MIN_DISK_GB:
@@ -745,7 +745,7 @@ class NetworkValidator(BaseValidator):
                         severity=ValidationSeverity.WARNING,
                         code=f"NET_PORT_IN_USE_{port}",
                         message=f"Port {port} is already in use" + (f" by {process_info}" if process_info else ""),
-                        fix_suggestion="The existing process will be cleaned up if it's a JARVIS process",
+                        fix_suggestion="The existing process will be cleaned up if it's a Ironcliw process",
                         metadata={"port": port, "process": process_info},
                     )
             except socket.error as e:
@@ -789,7 +789,7 @@ class NetworkValidator(BaseValidator):
 
 class ProcessValidator(BaseValidator):
     """
-    Validates running processes and detects orphaned JARVIS instances.
+    Validates running processes and detects orphaned Ironcliw instances.
 
     Features:
     - Orphan detection with PID validation
@@ -805,7 +805,7 @@ class ProcessValidator(BaseValidator):
         await self._check_zombie_processes(result)
 
     async def _check_orphan_processes(self, result: ValidationResult) -> None:
-        """Check for orphaned JARVIS processes."""
+        """Check for orphaned Ironcliw processes."""
         try:
             import psutil
 
@@ -819,7 +819,7 @@ class ProcessValidator(BaseValidator):
 
                     cmdline = ' '.join(proc.info.get('cmdline', []) or []).lower()
 
-                    # Detect JARVIS-related processes
+                    # Detect Ironcliw-related processes
                     if any(marker in cmdline for marker in ['jarvis', 'j-prime', 'reactor-core']):
                         orphans.append({
                             'pid': proc.info['pid'],
@@ -835,7 +835,7 @@ class ProcessValidator(BaseValidator):
                     category=self.category,
                     severity=ValidationSeverity.INFO,
                     code="PROC_ORPHANS_FOUND",
-                    message=f"Found {len(orphans)} existing JARVIS-related process(es)",
+                    message=f"Found {len(orphans)} existing Ironcliw-related process(es)",
                     fix_suggestion="Will be cleaned up automatically during startup",
                     metadata={"orphans": orphans},
                 )
@@ -1054,21 +1054,21 @@ class ConfigurationValidator(BaseValidator):
     async def _check_conflicts(self, result: ValidationResult) -> None:
         """Check for conflicting configurations."""
         # Docker and Cloud Run conflict
-        use_docker = _env_bool("JARVIS_PRIME_USE_DOCKER", False)
-        use_cloud_run = _env_bool("JARVIS_PRIME_USE_CLOUD_RUN", False)
+        use_docker = _env_bool("Ironcliw_PRIME_USE_DOCKER", False)
+        use_cloud_run = _env_bool("Ironcliw_PRIME_USE_CLOUD_RUN", False)
 
         if use_docker and use_cloud_run:
             result.add_issue(
                 category=self.category,
                 severity=ValidationSeverity.ERROR,
                 code="CFG_CONFLICT_DOCKER_CLOUD",
-                message="Cannot use both Docker and Cloud Run for JARVIS Prime",
-                fix_suggestion="Set only one of JARVIS_PRIME_USE_DOCKER or JARVIS_PRIME_USE_CLOUD_RUN to true",
+                message="Cannot use both Docker and Cloud Run for Ironcliw Prime",
+                fix_suggestion="Set only one of Ironcliw_PRIME_USE_DOCKER or Ironcliw_PRIME_USE_CLOUD_RUN to true",
             )
 
         # Local and Cloud mode conflict
-        force_local = _env_bool("JARVIS_PRIME_FORCE_LOCAL", False)
-        force_cloud = _env_bool("JARVIS_PRIME_FORCE_CLOUD", False)
+        force_local = _env_bool("Ironcliw_PRIME_FORCE_LOCAL", False)
+        force_cloud = _env_bool("Ironcliw_PRIME_FORCE_CLOUD", False)
 
         if force_local and force_cloud:
             result.add_issue(
@@ -1076,7 +1076,7 @@ class ConfigurationValidator(BaseValidator):
                 severity=ValidationSeverity.ERROR,
                 code="CFG_CONFLICT_LOCAL_CLOUD",
                 message="Cannot force both local and cloud mode",
-                fix_suggestion="Set only one of JARVIS_PRIME_FORCE_LOCAL or JARVIS_PRIME_FORCE_CLOUD",
+                fix_suggestion="Set only one of Ironcliw_PRIME_FORCE_LOCAL or Ironcliw_PRIME_FORCE_CLOUD",
             )
 
     async def _check_config_files(self, result: ValidationResult) -> None:
@@ -1111,7 +1111,7 @@ class ConfigurationValidator(BaseValidator):
 
 class CrossRepoValidator(BaseValidator):
     """
-    Validates cross-repository integration (JARVIS, JARVIS Prime, Reactor Core).
+    Validates cross-repository integration (Ironcliw, Ironcliw Prime, Reactor Core).
 
     Features:
     - Repository path validation
@@ -1135,20 +1135,20 @@ class CrossRepoValidator(BaseValidator):
         await self._parallel_checks(checks)
 
     async def _check_jarvis_prime(self, result: ValidationResult) -> None:
-        """Check JARVIS Prime repository."""
-        if not ValidatorConfig.JARVIS_PRIME_PATH:
+        """Check Ironcliw Prime repository."""
+        if not ValidatorConfig.Ironcliw_PRIME_PATH:
             return
 
-        path = ValidatorConfig.JARVIS_PRIME_PATH
+        path = ValidatorConfig.Ironcliw_PRIME_PATH
 
         if not path.exists():
             result.add_issue(
                 category=self.category,
                 severity=ValidationSeverity.WARNING,
                 code="XREPO_JPRIME_NOT_FOUND",
-                message=f"JARVIS Prime repository not found: {path}",
+                message=f"Ironcliw Prime repository not found: {path}",
                 component="jarvis_prime",
-                fix_suggestion="Clone jarvis-prime repository or update JARVIS_PRIME_PATH",
+                fix_suggestion="Clone jarvis-prime repository or update Ironcliw_PRIME_PATH",
                 fix_command=f"git clone https://github.com/drussell23/jarvis-prime.git '{path}'",
             )
             return
@@ -1164,7 +1164,7 @@ class CrossRepoValidator(BaseValidator):
                 category=self.category,
                 severity=ValidationSeverity.WARNING,
                 code="XREPO_JPRIME_INVALID",
-                message=f"JARVIS Prime path exists but doesn't appear to be valid: {path}",
+                message=f"Ironcliw Prime path exists but doesn't appear to be valid: {path}",
                 component="jarvis_prime",
             )
         else:
@@ -1172,7 +1172,7 @@ class CrossRepoValidator(BaseValidator):
                 category=self.category,
                 severity=ValidationSeverity.INFO,
                 code="XREPO_JPRIME_OK",
-                message=f"JARVIS Prime repository found: {path}",
+                message=f"Ironcliw Prime repository found: {path}",
                 component="jarvis_prime",
             )
 
@@ -1204,7 +1204,7 @@ class CrossRepoValidator(BaseValidator):
 
     async def _check_bridge_state(self, result: ValidationResult) -> None:
         """Check cross-repo bridge state files."""
-        bridge_file = ValidatorConfig.JARVIS_HOME / "cross_repo" / "bridge_state.json"
+        bridge_file = ValidatorConfig.Ironcliw_HOME / "cross_repo" / "bridge_state.json"
 
         if bridge_file.exists():
             try:
@@ -1254,7 +1254,7 @@ class SelfHealingSuggestionEngine:
             return None
 
         script = "#!/bin/bash\n"
-        script += "# Auto-generated fix script for JARVIS validation issues\n"
+        script += "# Auto-generated fix script for Ironcliw validation issues\n"
         script += f"# Generated: {datetime.now().isoformat()}\n\n"
         script += "set -e  # Exit on error\n\n"
         script += "\n".join(commands)
@@ -1351,7 +1351,7 @@ class TrinityBootstrapValidator:
         )
 
         if not result.passed:
-            self.logger.error("Validation FAILED - cannot start JARVIS")
+            self.logger.error("Validation FAILED - cannot start Ironcliw")
 
             # Generate fix script if possible
             fix_script_path = self.self_healing.save_fix_script(result)
@@ -1430,7 +1430,7 @@ async def validate_and_exit_on_failure() -> ValidationResult:
 
     if not result.passed:
         print("\n" + "=" * 60)
-        print("JARVIS BOOTSTRAP VALIDATION FAILED")
+        print("Ironcliw BOOTSTRAP VALIDATION FAILED")
         print("=" * 60)
 
         for issue in result.critical_issues + result.errors:

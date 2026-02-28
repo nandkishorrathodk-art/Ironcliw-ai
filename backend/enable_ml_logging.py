@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Enable ML Model Real-Time Logging
 =================================
@@ -20,7 +20,7 @@ from ml_logging_config import setup_ml_logging, ml_logger
 
 
 def configure_ml_logging():
-    """Configure ML logging for JARVIS startup"""
+    """Configure ML logging for Ironcliw startup"""
     
     # Setup enhanced logging
     ml_logger_instance, visualizer = setup_ml_logging(
@@ -37,7 +37,7 @@ def configure_ml_logging():
         root_logger.removeHandler(handler)
     
     print("\n" + "=" * 70)
-    print("🚀 JARVIS ML MODEL REAL-TIME LOGGING ENABLED")
+    print("🚀 Ironcliw ML MODEL REAL-TIME LOGGING ENABLED")
     print("=" * 70)
     print("\nYou will see detailed information about:")
     print("  • 🔄 Model loading start (with reason)")
@@ -67,13 +67,13 @@ if __name__ != "__main__":
     
     
 def patch_jarvis_startup():
-    """Patch JARVIS startup to include enhanced logging"""
+    """Patch Ironcliw startup to include enhanced logging"""
     try:
         # Import main components that need logging
         import ml_memory_manager
         import context_aware_loader
         
-        print("✅ Enhanced ML logging integrated with JARVIS")
+        print("✅ Enhanced ML logging integrated with Ironcliw")
         print("   Models will be logged as they load/unload\n")
         
     except ImportError as e:

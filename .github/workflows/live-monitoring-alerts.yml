@@ -1,4 +1,4 @@
-name: Live System Monitoring & Alerts
+﻿name: Live System Monitoring & Alerts
 
 on:
   schedule:
@@ -31,7 +31,7 @@ env:
 jobs:
   monitor-live-system:
     name: Monitor Live System
-    runs-on: self-hosted  # Must run on machine where JARVIS is running
+    runs-on: self-hosted  # Must run on machine where Ironcliw is running
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
@@ -138,7 +138,7 @@ jobs:
 
 
           class LiveSystemMonitor:
-              """Monitor live JARVIS instance for issues"""
+              """Monitor live Ironcliw instance for issues"""
 
               def __init__(self, backend_url: str, config: Dict):
                   self.backend_url = backend_url

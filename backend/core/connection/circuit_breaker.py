@@ -1,4 +1,4 @@
-"""
+﻿"""
 Atomic Circuit Breaker with Thundering Herd Prevention
 =======================================================
 
@@ -13,7 +13,7 @@ The key innovation is limiting HALF_OPEN requests:
 - That coroutine gets to make the test request
 - Other coroutines are blocked, preventing thundering herd
 
-Author: JARVIS System
+Author: Ironcliw System
 Version: 1.0.0
 """
 

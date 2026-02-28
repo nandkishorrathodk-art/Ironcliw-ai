@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test the enhanced speaker verification system with adaptive learning
 """
@@ -43,7 +43,7 @@ async def test_with_calibration():
     logger.info(f"   Result: {result}")
 
     # Load test audio samples
-    audio_dir = Path("/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/voice/audio_samples")
+    audio_dir = Path("/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/voice/audio_samples")
 
     if not audio_dir.exists():
         logger.error(f"❌ Audio samples directory not found: {audio_dir}")
@@ -109,15 +109,15 @@ async def test_with_calibration():
         logger.info(f"   Average confidence: {avg_confidence:.2%}")
         logger.info(f"   Success rate: {success_rate:.1f}%")
 
-    # Test with live simulation (simulating JARVIS sending data)
-    logger.info("\n🎮 Simulating JARVIS live audio (int16 PCM)...")
+    # Test with live simulation (simulating Ironcliw sending data)
+    logger.info("\n🎮 Simulating Ironcliw live audio (int16 PCM)...")
 
     # Create simulated int16 PCM audio
     if audio_files:
         with open(audio_files[0], 'rb') as f:
             wav_data = f.read()[44:]  # Skip header
 
-        # Convert to int16 array and back to bytes (simulating JARVIS format)
+        # Convert to int16 array and back to bytes (simulating Ironcliw format)
         audio_array = np.frombuffer(wav_data, dtype=np.int16)
         simulated_jarvis_audio = audio_array.tobytes()
 
@@ -126,7 +126,7 @@ async def test_with_calibration():
             speaker_name=primary_user
         )
 
-        logger.info(f"   JARVIS simulation result:")
+        logger.info(f"   Ironcliw simulation result:")
         logger.info(f"   ✅ Verified: {result['verified']}")
         logger.info(f"   📊 Confidence: {result['confidence']:.2%}")
         logger.info(f"   🎯 Adaptive threshold: {result.get('adaptive_threshold', 'N/A')}")

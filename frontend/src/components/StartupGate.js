@@ -1,4 +1,4 @@
-/**
+﻿/**
  * StartupGate.js - Backend Startup Progress Gate
  * ================================================
  *
@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MatrixBackground from './MatrixBackground';
 
-const LOADING_SERVER_PORT = window.JARVIS_LOADING_SERVER_PORT || 8080;
+const LOADING_SERVER_PORT = window.Ironcliw_LOADING_SERVER_PORT || 3001;
 const BACKEND_PORT = process.env.REACT_APP_BACKEND_PORT || 8010;
 const POLL_INTERVAL_MS = 1500;
 const TRANSITION_DURATION_MS = 2000;
@@ -59,7 +59,7 @@ async function fetchProgress(hostname) {
       }
 
       if (candidate.type === 'backend_health') {
-        const isHealthy = data.status === 'healthy' || data.status === 'ok';
+        const isHealthy = data.ready === true || data.status === 'healthy' || data.status === 'ok' || data.status === 'ready' || data.status === 'operational' || data.status === 'interactive' || data.status === 'websocket_ready';
         return {
           progress: isHealthy ? 100 : 50,
           stage: isHealthy ? 'complete' : 'starting',
@@ -80,7 +80,7 @@ async function fetchProgress(hostname) {
 const StartupGate = ({ children }) => {
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('connecting');
-  const [message, setMessage] = useState('Connecting to JARVIS...');
+  const [message, setMessage] = useState('Connecting to Ironcliw...');
   const [isReady, setIsReady] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [showContent, setShowContent] = useState(false);
@@ -141,8 +141,16 @@ const StartupGate = ({ children }) => {
     if (!initialCheckDone || isReady) return;
 
     pollRef.current = setInterval(pollProgress, POLL_INTERVAL_MS);
+
+    const forceThrough = setTimeout(() => {
+      setProgress(100);
+      setIsReady(true);
+      setMessage('Backend ready (timeout)');
+    }, 90000);
+
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      clearTimeout(forceThrough);
     };
   }, [initialCheckDone, isReady, pollProgress]);
 
@@ -215,7 +223,7 @@ const StartupGate = ({ children }) => {
           maxWidth: '600px',
           width: '90%',
         }}>
-          {/* JARVIS title */}
+          {/* Ironcliw title */}
           <h1 style={{
             fontSize: '3rem',
             fontWeight: 900,
@@ -224,7 +232,7 @@ const StartupGate = ({ children }) => {
             marginBottom: '0.5rem',
             animation: 'gateGlow 2s ease-in-out infinite',
           }}>
-            JARVIS
+            Ironcliw
           </h1>
 
           {/* Subtitle */}

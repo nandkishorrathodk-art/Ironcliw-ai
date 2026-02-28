@@ -1,7 +1,7 @@
-# Vision Command Performance Fix - Complete Solution
+﻿# Vision Command Performance Fix - Complete Solution
 
 ## Problem Statement
-When asking "can you see my screen?", JARVIS takes 10-20+ seconds to respond or gets stuck indefinitely, causing poor user experience.
+When asking "can you see my screen?", Ironcliw takes 10-20+ seconds to respond or gets stuck indefinitely, causing poor user experience.
 
 ## Root Causes Identified
 
@@ -121,7 +121,7 @@ if error_type == "screenshot_failed":
         error_message = (
             "The screen capture is taking longer than expected, Sir. "
             "This might be due to system resource constraints or screen recording permissions. "
-            "Please ensure JARVIS has Screen Recording permissions in System Settings > Privacy & Security."
+            "Please ensure Ironcliw has Screen Recording permissions in System Settings > Privacy & Security."
         )
 ```
 

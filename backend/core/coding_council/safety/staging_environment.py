@@ -1,4 +1,4 @@
-"""
+﻿"""
 v77.0: Staging Environment - Gap #16
 =====================================
 
@@ -9,7 +9,7 @@ Hot-swap staging environment for safe code evolution:
 - Automatic cleanup on failure
 - Import path isolation
 
-Author: JARVIS v77.0
+Author: Ironcliw v77.0
 """
 
 from __future__ import annotations

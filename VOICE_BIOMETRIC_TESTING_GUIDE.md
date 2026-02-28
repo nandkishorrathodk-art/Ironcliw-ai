@@ -1,6 +1,6 @@
-# 🎙️ Voice Biometric Testing Guide
+﻿# 🎙️ Voice Biometric Testing Guide
 
-Complete guide for testing JARVIS voice biometric unlock functionality with comprehensive edge cases and real-time verification.
+Complete guide for testing Ironcliw voice biometric unlock functionality with comprehensive edge cases and real-time verification.
 
 ---
 
@@ -36,7 +36,7 @@ The voice biometric testing system ensures that the "unlock my screen" functiona
 ```
 You: "unlock my screen"
       ↓
-JARVIS:
+Ironcliw:
   1. Captures your voice
   2. Extracts biometric embedding (ECAPA-TDNN 192D)
   3. Compares to database (59 samples of Derek)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Fix Voice Unlock Lock Function
 ==============================
@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime
 
 # Read the current websocket_server.py
-ws_path = "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/objc/server/websocket_server.py"
+ws_path = "/Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent/backend/voice_unlock/objc/server/websocket_server.py"
 
 print("🔧 Fixing Voice Unlock Lock Implementation")
 print("=" * 50)
@@ -132,6 +132,6 @@ print("4. pmset displaysleepnow (fallback)")
 
 print("\n⚠️  You need to restart the Voice Unlock daemon for changes to take effect!")
 print("\nRun these commands:")
-print("1. pkill -f 'JARVISVoiceUnlockDaemon'")
+print("1. pkill -f 'IroncliwVoiceUnlockDaemon'")
 print("2. pkill -f 'websocket_server.py'")
 print("3. cd voice_unlock/objc/server && python websocket_server.py")

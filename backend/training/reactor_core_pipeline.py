@@ -1,8 +1,8 @@
-"""
+﻿"""
 Reactor-Core Training Pipeline
 ==============================
 
-Automated training pipeline for JARVIS-Prime models using telemetry data.
+Automated training pipeline for Ironcliw-Prime models using telemetry data.
 
 Features:
 - Automatic data collection from telemetry logs
@@ -125,7 +125,7 @@ class TrainingConfig:
     auto_deploy_local: bool = True
     auto_deploy_gcs: bool = True
     gcs_bucket: str = field(
-        default_factory=lambda: os.getenv("JARVIS_MODELS_GCS_BUCKET", "gs://jarvis-473803-deployments/models")
+        default_factory=lambda: os.getenv("Ironcliw_MODELS_GCS_BUCKET", "gs://jarvis-473803-deployments/models")
     )
 
     # Scheduling
@@ -593,7 +593,7 @@ class GGUFExporter:
 
 class ReactorCorePipeline:
     """
-    Complete training pipeline for JARVIS-Prime.
+    Complete training pipeline for Ironcliw-Prime.
 
     Handles the full cycle:
     1. Collect telemetry data
@@ -784,7 +784,7 @@ class ReactorCorePipeline:
     async def _deploy_local(self, model_path: Path):
         """Deploy model locally."""
         local_dir = Path(os.getenv(
-            "JARVIS_PRIME_MODELS_DIR",
+            "Ironcliw_PRIME_MODELS_DIR",
             "~/.jarvis/models"
         )).expanduser()
 

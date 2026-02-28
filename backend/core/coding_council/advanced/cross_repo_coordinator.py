@@ -1,9 +1,9 @@
-"""
+﻿"""
 v78.0: Cross-Repo Transaction Coordinator
 ==========================================
 
 Provides atomic commit coordination across multiple repositories in the
-Trinity architecture (JARVIS, J-Prime, Reactor-Core).
+Trinity architecture (Ironcliw, J-Prime, Reactor-Core).
 
 Features:
 - Two-Phase Commit (2PC) protocol for distributed transactions
@@ -14,10 +14,10 @@ Features:
 - Timeout-based deadlock prevention
 
 Architecture:
-    Coordinator (JARVIS)
+    Coordinator (Ironcliw)
          │
          ├── Phase 1: PREPARE
-         │      ├── JARVIS:      git add -A, check conflicts → VOTE_YES/NO
+         │      ├── Ironcliw:      git add -A, check conflicts → VOTE_YES/NO
          │      ├── J-Prime:     git add -A, check conflicts → VOTE_YES/NO
          │      └── Reactor:     git add -A, check conflicts → VOTE_YES/NO
          │
@@ -41,7 +41,7 @@ Usage:
     # Start transaction
     tx = await coordinator.begin_transaction(
         message="feat: Implement voice authentication",
-        repos=[RepoScope.JARVIS, RepoScope.JPRIME],
+        repos=[RepoScope.Ironcliw, RepoScope.JPRIME],
     )
 
     # Prepare (phase 1)
@@ -52,7 +52,7 @@ Usage:
         # Rollback
         await coordinator.abort(tx.transaction_id)
 
-Author: JARVIS v78.0
+Author: Ironcliw v78.0
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ logger = logging.getLogger(__name__)
 
 class RepoScope(Enum):
     """Repository scope in Trinity architecture."""
-    JARVIS = "jarvis"           # JARVIS-AI-Agent
+    Ironcliw = "jarvis"           # Ironcliw-AI-Agent
     JPRIME = "jarvis-prime"     # jarvis-prime
     REACTOR = "reactor-core"    # reactor-core
     ALL = "all"                 # All repos
@@ -416,14 +416,14 @@ class CrossRepoTransactionCoordinator:
         Discover repository paths dynamically with robust fallback chain.
 
         v78.1: Fixed hardcoded paths issue. Now uses:
-        1. Environment variables (JARVIS_REPO_PATH, JPRIME_REPO_PATH, REACTOR_REPO_PATH)
-        2. JARVIS_REPOS_BASE for common parent directory
+        1. Environment variables (Ironcliw_REPO_PATH, JPRIME_REPO_PATH, REACTOR_REPO_PATH)
+        2. Ironcliw_REPOS_BASE for common parent directory
         3. Dynamic home-based discovery
         4. Relative path discovery from current working directory
         """
         # Environment variable overrides (highest priority)
         env_overrides = {
-            RepoScope.JARVIS: os.getenv("JARVIS_REPO_PATH"),
+            RepoScope.Ironcliw: os.getenv("Ironcliw_REPO_PATH"),
             RepoScope.JPRIME: os.getenv("JPRIME_REPO_PATH"),
             RepoScope.REACTOR: os.getenv("REACTOR_REPO_PATH"),
         }
@@ -438,7 +438,7 @@ class CrossRepoTransactionCoordinator:
                     self.log.info(f"[CrossRepo] {scope.value} from env: {path}")
 
         # Base paths for discovery (no hardcoded user paths)
-        repos_base = os.getenv("JARVIS_REPOS_BASE")
+        repos_base = os.getenv("Ironcliw_REPOS_BASE")
         base_paths = []
 
         if repos_base:
@@ -462,8 +462,8 @@ class CrossRepoTransactionCoordinator:
                 unique_base_paths.append(p)
 
         repo_names = {
-            RepoScope.JARVIS: ["JARVIS-AI-Agent", "jarvis-ai-agent", "jarvis"],
-            RepoScope.JPRIME: ["jarvis-prime", "JARVIS-Prime", "j-prime", "jprime"],
+            RepoScope.Ironcliw: ["Ironcliw-AI-Agent", "jarvis-ai-agent", "jarvis"],
+            RepoScope.JPRIME: ["jarvis-prime", "Ironcliw-Prime", "j-prime", "jprime"],
             RepoScope.REACTOR: ["reactor-core", "Reactor-Core", "reactor"],
         }
 
@@ -507,12 +507,12 @@ class CrossRepoTransactionCoordinator:
         )
 
         # Warn about missing repos (exclude ALL since it's not a real repo)
-        actual_repos = {RepoScope.JARVIS, RepoScope.JPRIME, RepoScope.REACTOR}
+        actual_repos = {RepoScope.Ironcliw, RepoScope.JPRIME, RepoScope.REACTOR}
         missing = actual_repos - set(self._repo_paths.keys())
         if missing:
             self.log.warning(
                 f"[CrossRepo] Missing repos: {[r.value for r in missing]}. "
-                f"Set JARVIS_REPOS_BASE or individual *_REPO_PATH env vars."
+                f"Set Ironcliw_REPOS_BASE or individual *_REPO_PATH env vars."
             )
 
         # Warn about multiple discoveries (potential version conflicts)

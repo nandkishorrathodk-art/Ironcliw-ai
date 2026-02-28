@@ -1,4 +1,4 @@
-"""
+﻿"""
 OmniParser Core Integration - Production Grade
 ===============================================
 
@@ -21,7 +21,7 @@ Architecture:
                       ↓
                  Element Cache → Cross-Repo Share
 
-Author: JARVIS AI System
+Author: Ironcliw AI System
 Version: 6.2.0 - Production OmniParser
 """
 

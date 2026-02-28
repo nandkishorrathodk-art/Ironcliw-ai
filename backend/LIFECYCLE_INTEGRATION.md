@@ -1,4 +1,4 @@
-# Lifecycle Manager Integration Guide
+﻿# Lifecycle Manager Integration Guide
 
 ## Overview
 
@@ -111,12 +111,12 @@ python test_connection_manager.py
 python main.py
 
 # In another terminal:
-lsof -i :5432  # Should show JARVIS connections
+lsof -i :5432  # Should show Ironcliw connections
 
-# Stop JARVIS (Ctrl+C in first terminal)
+# Stop Ironcliw (Ctrl+C in first terminal)
 
 # Check again:
-lsof -i :5432  # Should show no JARVIS connections (only proxy)
+lsof -i :5432  # Should show no Ironcliw connections (only proxy)
 ```
 
 ## Expected Behavior
@@ -139,7 +139,7 @@ lsof -i :5432  # Should show no JARVIS connections (only proxy)
 ### On Shutdown (Ctrl+C):
 ```
 📡 Received SIGINT - initiating graceful shutdown...
-🛑 Starting JARVIS graceful shutdown...
+🛑 Starting Ironcliw graceful shutdown...
 🔄 Shutting down hybrid database sync...
 ✅ Hybrid sync shutdown complete
 🔌 Closing database adapter...
@@ -148,7 +148,7 @@ lsof -i :5432  # Should show no JARVIS connections (only proxy)
 🔌 Closing connection pool...
 ✅ Connection pool closed
 ✅ Connection manager shutdown complete
-✅ JARVIS graceful shutdown complete
+✅ Ironcliw graceful shutdown complete
 ```
 
 ## Connection Leak Prevention
@@ -180,10 +180,10 @@ The singleton pattern ensures:
 **New behavior:** Singleton pool, max 3 connections, auto-cleanup
 
 If you still see this:
-1. Check for old JARVIS processes: `ps aux | grep jarvis`
+1. Check for old Ironcliw processes: `ps aux | grep jarvis`
 2. Kill them: `pkill -9 -f main.py`
 3. Run emergency cleanup: `python -c "from process_cleanup_manager import emergency_cleanup; emergency_cleanup()"`
-4. Restart JARVIS
+4. Restart Ironcliw
 
 ### Connection pool not initializing
 

@@ -1,4 +1,4 @@
-# PROOF: All Core Modules ARE Being Used
+﻿# PROOF: All Core Modules ARE Being Used
 
 ## Import Chain
 ```
@@ -64,7 +64,7 @@ context_manager.py (line 17-21)
 
 ## Execution Flow with Line Numbers
 
-When user says **"JARVIS, open Safari and search for dogs"** (screen locked):
+When user says **"Ironcliw, open Safari and search for dogs"** (screen locked):
 
 1. **jarvis_voice_api.py:1169-1174**
    ```python

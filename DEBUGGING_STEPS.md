@@ -1,4 +1,4 @@
-# Debugging Steps for Desktop Spaces ValueError
+﻿# Debugging Steps for Desktop Spaces ValueError
 
 ## Changes Made
 
@@ -24,7 +24,7 @@ I've made several improvements to help diagnose and fix the ValueError:
 
 ### Option 1: Run the Debug Script
 ```bash
-cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+cd /Users/derekjrussell/Documents/repos/Ironcliw-AI-Agent
 python3 test_desktop_spaces_debug.py
 ```
 
@@ -35,13 +35,13 @@ This will:
 - Show you exactly where the ValueError is coming from
 
 ### Option 2: Check the Logs Manually
-If JARVIS is already running, ask it again and then check:
+If Ironcliw is already running, ask it again and then check:
 ```bash
 tail -200 backend/logs/backend_latest.log | grep -A 10 -B 10 "ValueError\|VISION\|screenshot"
 ```
 
-### Option 3: Restart JARVIS with Debug Logging
-1. Stop JARVIS
+### Option 3: Restart Ironcliw with Debug Logging
+1. Stop Ironcliw
 2. Start it again with: `python3 start_system.py`
 3. Ask: "What's happening across my desktop spaces?"
 4. The logs should now show:
@@ -61,20 +61,20 @@ The enhanced logging will show:
 
 Instead of:
 ```
-JARVIS: I encountered an error analyzing your screen: ValueError. Please try again.
+Ironcliw: I encountered an error analyzing your screen: ValueError. Please try again.
 ```
 
 You should see one of:
 1. **If permissions issue:**
    ```
-   JARVIS: I'm unable to capture screenshots of your desktop spaces at the moment. 
-   Please ensure screen recording permissions are enabled for JARVIS in 
+   Ironcliw: I'm unable to capture screenshots of your desktop spaces at the moment. 
+   Please ensure screen recording permissions are enabled for Ironcliw in 
    System Preferences > Security & Privacy > Privacy > Screen Recording.
    ```
 
 2. **If Yabai data available:**
    ```
-   JARVIS: Sir, I can see you have X desktop spaces with Y windows total.
+   Ironcliw: Sir, I can see you have X desktop spaces with Y windows total.
    Here's what I can detect:
      • Space 1: Chrome, Terminal
      • Space 2: VSCode, Cursor
@@ -83,7 +83,7 @@ You should see one of:
 
 3. **If something else is wrong:**
    ```
-   JARVIS: I encountered a data error: [specific error message]. Please try again.
+   Ironcliw: I encountered a data error: [specific error message]. Please try again.
    ```
 
 ## Files Modified

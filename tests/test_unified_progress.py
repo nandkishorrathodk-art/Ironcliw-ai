@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Test Unified Startup Progress Hub
 ==================================
@@ -101,7 +101,7 @@ async def test_ready_state():
     print(f"   Before mark_complete: is_ready={hub.is_ready()}")
 
     # Mark complete
-    await hub.mark_complete(True, "JARVIS is online!")
+    await hub.mark_complete(True, "Ironcliw is online!")
 
     # Now should be ready
     assert hub.is_ready(), "Hub SHOULD be ready after mark_complete"

@@ -1,5 +1,5 @@
-"""
-Phase 7: Shared unit-test fixtures for JARVIS test suite.
+﻿"""
+Phase 7: Shared unit-test fixtures for Ironcliw test suite.
 
 Supplements the root ``tests/conftest.py`` with fixtures specific to unit
 tests.  All fixtures here are function-scoped (default) to ensure complete
@@ -54,8 +54,8 @@ async def event_bus(monkeypatch):
 
     Yields the bus, then stops it and resets the singleton on teardown.
     """
-    monkeypatch.setenv("JARVIS_EVENT_BUS_QUEUE_SIZE", "10")
-    monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+    monkeypatch.setenv("Ironcliw_EVENT_BUS_QUEUE_SIZE", "10")
+    monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
     _patch_create_safe_task(monkeypatch)
 
     from unified_supervisor import SupervisorEventBus, get_event_bus
@@ -80,7 +80,7 @@ def event_bus_sync(monkeypatch):
 
     Tests the synchronous delivery path (``_queue is None``).
     """
-    monkeypatch.setenv("JARVIS_EVENT_BUS_ENABLED", "true")
+    monkeypatch.setenv("Ironcliw_EVENT_BUS_ENABLED", "true")
     _patch_create_safe_task(monkeypatch)
 
     from unified_supervisor import SupervisorEventBus

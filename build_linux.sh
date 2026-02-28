@@ -1,5 +1,5 @@
-#!/bin/bash
-# JARVIS Linux Build Script
+﻿#!/bin/bash
+# Ironcliw Linux Build Script
 # Version: 1.0.0
 # Platform: Ubuntu, Debian, Fedora, Arch Linux
 
@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "============================================"
-echo "  JARVIS Linux Build Script"
+echo "  Ironcliw Linux Build Script"
 echo "  Version 1.0.0"
 echo "============================================"
 echo ""
@@ -218,7 +218,7 @@ python verify_dependencies.py
 if [ $? -ne 0 ]; then
     echo ""
     echo -e "${YELLOW}[WARNING]${NC} Some dependencies failed verification."
-    echo "JARVIS may not work correctly."
+    echo "Ironcliw may not work correctly."
     echo "Check the output above for details."
     echo ""
 else
@@ -227,9 +227,9 @@ else
     echo "  Build Successful!"
     echo "============================================"
     echo ""
-    echo -e "${GREEN}JARVIS is ready to run on Linux.${NC}"
+    echo -e "${GREEN}Ironcliw is ready to run on Linux.${NC}"
     echo ""
-    echo "To start JARVIS:"
+    echo "To start Ironcliw:"
     echo "  1. Activate virtual environment: source venv/bin/activate"
     echo "  2. Run supervisor: python3 unified_supervisor.py"
     echo ""

@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "jarvis-websocket-enhanced",
   "version": "1.0.0",
-  "description": "Enhanced WebSocket system with TypeScript for JARVIS AI Agent",
+  "description": "Enhanced WebSocket system with TypeScript for Ironcliw AI Agent",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -17,7 +17,7 @@
     "ai",
     "dynamic"
   ],
-  "author": "JARVIS AI Team",
+  "author": "Ironcliw AI Team",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",

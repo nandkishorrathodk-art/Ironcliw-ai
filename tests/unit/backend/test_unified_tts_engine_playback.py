@@ -1,4 +1,4 @@
-"""Playback routing tests for UnifiedTTSEngine."""
+﻿"""Playback routing tests for UnifiedTTSEngine."""
 
 import io
 import sys
@@ -73,10 +73,10 @@ def test_pyttsx3_disabled_by_default_on_macos(monkeypatch):
         "backend.voice.engines.unified_tts_engine.platform.system",
         lambda: "Darwin",
     )
-    monkeypatch.delenv("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", raising=False)
-    monkeypatch.setenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel")
-    monkeypatch.setenv("JARVIS_VOICE_NAME", "Samantha")
-    monkeypatch.setenv("JARVIS_ENFORCE_CANONICAL_VOICE", "true")
+    monkeypatch.delenv("Ironcliw_TTS_ALLOW_PYTTSX3_DARWIN", raising=False)
+    monkeypatch.setenv("Ironcliw_CANONICAL_VOICE_NAME", "Daniel")
+    monkeypatch.setenv("Ironcliw_VOICE_NAME", "Samantha")
+    monkeypatch.setenv("Ironcliw_ENFORCE_CANONICAL_VOICE", "true")
 
     engine = UnifiedTTSEngine(
         preferred_engine=TTSEngine.PYTTSX3,
@@ -94,8 +94,8 @@ def test_pyttsx3_can_be_explicitly_enabled_on_macos(monkeypatch):
         "backend.voice.engines.unified_tts_engine.platform.system",
         lambda: "Darwin",
     )
-    monkeypatch.setenv("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", "true")
-    monkeypatch.setenv("JARVIS_ENFORCE_CANONICAL_VOICE", "false")
+    monkeypatch.setenv("Ironcliw_TTS_ALLOW_PYTTSX3_DARWIN", "true")
+    monkeypatch.setenv("Ironcliw_ENFORCE_CANONICAL_VOICE", "false")
 
     engine = UnifiedTTSEngine(enable_cache=False)
 

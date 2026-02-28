@@ -1,4 +1,4 @@
-"""
+﻿"""
 Cross-Repository Version Negotiation System v1.0
 =================================================
 
@@ -16,7 +16,7 @@ Architecture:
     ├─────────────────────────────────────────────────────────────────────────┤
     │                                                                         │
     │  ┌────────────────┐   ┌────────────────┐   ┌────────────────┐          │
-    │  │  JARVIS Body   │   │ JARVIS Prime   │   │  Reactor Core  │          │
+    │  │  Ironcliw Body   │   │ Ironcliw Prime   │   │  Reactor Core  │          │
     │  │  v13.4.0       │   │  v2.1.0        │   │  v1.5.0        │          │
     │  │  Protocol v3   │   │  Protocol v3   │   │  Protocol v2   │          │
     │  └───────┬────────┘   └───────┬────────┘   └───────┬────────┘          │
@@ -66,7 +66,7 @@ Handshake Protocol:
     3. AGREE: Establish common protocol version and enabled capabilities
     4. VERIFY: Confirm negotiated parameters with test message
 
-Author: JARVIS Trinity v96.0 - Cross-Repo Version Negotiation
+Author: Ironcliw Trinity v96.0 - Cross-Repo Version Negotiation
 """
 
 from __future__ import annotations
@@ -425,8 +425,8 @@ class CapabilitySet:
 
 class ComponentType(Enum):
     """Types of Trinity components."""
-    JARVIS_BODY = "jarvis_body"
-    JARVIS_PRIME = "jarvis_prime"
+    Ironcliw_BODY = "jarvis_body"
+    Ironcliw_PRIME = "jarvis_prime"
     REACTOR_CORE = "reactor_core"
     CODING_COUNCIL = "coding_council"
     EXTERNAL = "external"
@@ -696,9 +696,9 @@ class CompatibilityMatrix:
 
         # Component compatibility - these are examples, adjust as needed
         # The actual versions should be discovered at runtime
-        self._entries[ComponentType.JARVIS_BODY] = [
+        self._entries[ComponentType.Ironcliw_BODY] = [
             CompatibilityEntry(
-                component_type=ComponentType.JARVIS_PRIME,
+                component_type=ComponentType.Ironcliw_PRIME,
                 min_version=SemanticVersion(1, 0, 0),
                 required_capabilities=CapabilitySet(frozenset({
                     Capability.STREAMING,
@@ -1379,11 +1379,11 @@ async def initialize_version_negotiation(
     else:
         # Default capabilities based on component type
         default_caps = {
-            ComponentType.JARVIS_BODY: [
+            ComponentType.Ironcliw_BODY: [
                 "BASIC_REQUEST_RESPONSE", "STREAMING", "CIRCUIT_BREAKER",
                 "CLOUD_FALLBACK", "EVENT_BUS", "HEALTH_PROBES",
             ],
-            ComponentType.JARVIS_PRIME: [
+            ComponentType.Ironcliw_PRIME: [
                 "BASIC_REQUEST_RESPONSE", "STREAMING", "BACKPRESSURE",
                 "LOCAL_INFERENCE", "HOT_SWAP", "CIRCUIT_BREAKER", "HEALTH_PROBES",
             ],
