@@ -1,0 +1,453 @@
+{
+  "workflow_name": "Code Quality Checks",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22525682783",
+  "branch": "main",
+  "commit_sha": "41b1fb3",
+  "run_number": 77,
+  "failed_count": 8,
+  "fix_branch": "fix/ci/code-quality-checks-run77-20260228-174529",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Code Quality Checks (Run #77)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:42:54.1574092Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:42:54.1575070Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:42:54.1622152Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:42:54.5721703Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:42:54.5721703Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:42:28.5841329Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:42:28.5842189Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:42:28.5897502Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:42:29.0348894Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:42:29.0348894Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:42:50.6679363Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:42:50.6680522Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:42:50.6727220Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:42:51.1069299Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:42:51.1069299Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:43:39.4032337Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:43:39.4033150Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:43:39.4097990Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:39.8388669Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:39.8388669Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:43:53.4097529Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:43:53.4098754Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:43:53.4150221Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:53.8332353Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:53.8332353Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:43:51.1343706Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:43:51.1344461Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:43:51.1403046Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:51.5129366Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:51.5129366Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 34,
+              "content": "2026-02-28T17:43:19.4330162Z     raise MissingSectionHeaderError(fpname, lineno, line)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-28T17:43:19.4330935Z configparser.MissingSectionHeaderError: File contains no section headers.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-28T17:43:19.4382797Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:19.8575728Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:43:19.8575728Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 85,
+              "content": "2026-02-28T17:44:13.3909260Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 57,
+              "content": "2026-02-28T17:44:13.3235765Z \u001b[36;1mQUALITY_RESULT=\"failure\"\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-28T17:45:29.567575"
+}
